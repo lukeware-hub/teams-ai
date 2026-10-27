@@ -67,8 +67,15 @@ describe('repeatNote', () => {
 describe('the journal keeps a dropped repeat until the owner asks for it again', () => {
   const drop = {
     type: RefineEvent.QuestionDropped,
-    data: { questionId: 'speckit-b', role: 'po', text: 'Até quando o link de recuperação vale?', cycle: 2, command: 'specify', itemKey: 'login', matchedQuestionId: 'speckit-a', matchedText: 'Qual prazo vale para o link de recuperação?', matchedAnswer: 'Noventa dias' },
+    data: { questionId: 'speckit-b', role: 'po', text: 'Até quando o link de recuperação vale?', cycle: 2, blocking: false, relatedAcIds: [], origin: 'speckit', command: 'specify', itemKey: 'login', matchedQuestionId: 'speckit-a', matchedText: 'Qual prazo vale para o link de recuperação?', matchedAnswer: 'Noventa dias' },
   };
+
+  it('a dropped stage question comes back with its document and kind, not as a Spec Kit question', () => {
+    const stageDrop = { type: RefineEvent.QuestionDropped, data: { questionId: 'po-s2-0', role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: true, relatedAcIds: ['AC-001'], file: 'briefing.md', matchedQuestionId: 'po-s1-0', matchedText: 'Qual o prazo do link?', matchedAnswer: 'Noventa dias' } };
+    const s = reduceRefineEvents([stageDrop, { type: RefineEvent.QuestionReasked, data: { ...stageDrop.data } }]);
+    expect(s.questions).toEqual([expect.objectContaining({ questionId: 'po-s2-0', status: 'pending', file: 'briefing.md', blocking: true, relatedAcIds: ['AC-001'] })]);
+    expect(s.questions[0]!.origin).toBeUndefined();
+  });
 
   it('records the drop beside the questions, once per question', () => {
     const s = reduceRefineEvents([drop, drop]);

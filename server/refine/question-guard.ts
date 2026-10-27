@@ -2,21 +2,25 @@ import type { Question } from './events.js';
 import { overlap, words } from './question-pairs.js';
 import type { QuestionRow } from './state.js';
 
-/** Two questions at least this similar ask about the same fact (Jaccard over their meaningful words). */
+/** Spec Kit questions: two questions at least this similar ask about the same fact (Jaccard over their meaningful words). */
 export const REPEAT_OVERLAP = 0.3;
+/** Stage review questions, against any document: the live journal's repeats start at this similarity. */
+export const STAGE_REPEAT_OVERLAP = 0.25;
+/** Full-round questions, against any document. */
+export const ROUND_REPEAT_OVERLAP = 0.3;
 /** A difference is a sentence of at least this many words, so one bare word never passes as one. */
 const MIN_DIFFERENCE_WORDS = 8;
 
 /** A question the owner decided: answered by the owner, or skipped by the owner. */
 const decided = (q: QuestionRow): boolean => q.status === 'skipped' || (q.status === 'answered' && !q.answeredBy);
 
-/** The decided earlier questions of the same item that a new question repeats, the most similar first. */
-export function repeatsOf(question: Pick<Question, 'text' | 'itemKey'>, earlier: readonly QuestionRow[]): QuestionRow[] {
+/** The decided earlier questions of the same kind and item that a new question repeats, the most similar first. */
+export function repeatsOf(question: Pick<Question, 'text' | 'itemKey' | 'origin'>, earlier: readonly QuestionRow[], floor = REPEAT_OVERLAP): QuestionRow[] {
   const own = words(question.text);
   return earlier
-    .filter((e) => e.itemKey === question.itemKey && decided(e))
+    .filter((e) => e.origin === question.origin && e.itemKey === question.itemKey && decided(e))
     .map((e) => ({ e, score: overlap(own, words(e.text)) }))
-    .filter((x) => x.score >= REPEAT_OVERLAP)
+    .filter((x) => x.score >= floor)
     .sort((a, b) => b.score - a.score)
     .map((x) => x.e);
 }
@@ -35,16 +39,21 @@ export interface RepeatCheck {
 }
 
 /** Splits the new questions of a step between those the owner sees and the repeats of a decided question no difference justifies. */
-export function checkRepeats(fresh: readonly Question[], earlier: readonly QuestionRow[]): RepeatCheck {
+export function checkRepeats(fresh: readonly Question[], earlier: readonly QuestionRow[], floor = REPEAT_OVERLAP): RepeatCheck {
   const kept: Question[] = [];
   const unresolved: RepeatCheck['unresolved'] = [];
   for (const question of fresh) {
-    const matches = repeatsOf(question, earlier);
+    const matches = repeatsOf(question, earlier, floor);
     if (matches.length === 0) kept.push(question);
     else if (matches.every((m) => question.distinctFrom?.some((d) => d.questionId === m.questionId && differenceHolds(d.difference, m)))) kept.push(question);
     else unresolved.push({ question, matches });
   }
   return { kept, unresolved };
+}
+
+/** The journal payload of a dropped question: the question as it was asked, and the decided one it repeats. */
+export function droppedOf(question: Question, decidedQuestion: QuestionRow, file?: Question['file']): Record<string, unknown> {
+  return { ...question, ...(file === undefined ? {} : { file }), matchedQuestionId: decidedQuestion.questionId, matchedText: decidedQuestion.text, matchedAnswer: decidedQuestion.answer };
 }
 
 /** The note a step runs again with: each decided question a new one repeats, and the one way to keep the new question. */

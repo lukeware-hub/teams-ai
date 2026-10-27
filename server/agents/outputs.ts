@@ -76,6 +76,8 @@ export const RefineOutput = z.object({
       options: keepValid(QuestionChoice),
       // A bad subject is dropped alone; the question still reaches the owner.
       subject: z.string().optional().catch(undefined),
+      // The decided questions this one repeats, each with the real difference the agent names; a bad entry is dropped alone.
+      distinctFrom: keepValid(z.object({ questionId: z.string().min(1), difference: z.string().min(1) })).nullish(),
     }),
   ),
   docPatch: keepValid(DocPatch),

@@ -298,6 +298,19 @@ describe('the actions of the editor', () => {
     read.mockRestore();
   });
 
+  it('a stage lists the questions the guard dropped on its own document, and the owner can ask one again', () => {
+    open('?etapa=design.md');
+    const dropped = (questionId: string, file: string) => ({ questionId, role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: false, relatedAcIds: [], file, matchedQuestionId: 'po-s1-0', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' });
+    const handlers = { ...on(), onReask: vi.fn() };
+    show(base({ droppedQuestions: [dropped('po-s2-0', 'design.md'), dropped('po-s2-1', 'project.md')] }), handlers);
+    const list = screen.getByTestId('dropped-repeats');
+    expect(list.textContent).toContain('Perguntas repetidas que não foram feitas de novo (1)');
+    expect(list.textContent).toContain('Antes: Qual o prazo do link?');
+    expect(list.textContent).toContain('Você respondeu: 90 dias');
+    fireEvent.click(screen.getByTestId('reask-po-s2-0'));
+    expect(handlers.onReask).toHaveBeenCalledWith('po-s2-0');
+  });
+
   it('marks the design as not applicable after the owner confirms, and leaves it when they do not', () => {
     open('?etapa=design.md');
     const handlers = show(base());
@@ -354,6 +367,15 @@ describe('the final review', () => {
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir etapa' }));
     expect(editor('project.md').value).toBe('# Hello');
+  });
+
+  it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
+    open('?etapa=revisao');
+    const handlers = { ...on(), onReask: vi.fn() };
+    show(reviewSnap({ droppedQuestions: [{ questionId: 'po-c1-5', role: 'po', text: 'Quem aprova a conta?', cycle: 1, blocking: false, relatedAcIds: [], matchedQuestionId: 'po-c0-0', matchedText: 'Quem aprova?', matchedAnswer: 'O gerente' }] }), handlers);
+    expect(screen.getByTestId('dropped-repeats').textContent).toContain('Resolvida com "O gerente"');
+    fireEvent.click(screen.getByTestId('reask-po-c1-5'));
+    expect(handlers.onReask).toHaveBeenCalledWith('po-c1-5');
   });
 
   it('shows the verification blocks, and no other screen does', () => {

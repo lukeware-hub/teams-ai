@@ -387,6 +387,33 @@ describe('runStageCycle', () => {
     expect(pack.feedback).toMatch(/^You review only briefing\.md,/);
   });
 
+  it('a stage question that repeats a decision the owner gave is dropped and kept on record, not put to the owner', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const question = (questionId: string, role: 'po' | 'sm', text: string) => ({ questionId, role, text, blocking: false, relatedAcIds: [], cycle: 1 });
+    await journal.fact(RefineEvent.StageReviewed, { cycle: 1, file: 'project.md', questions: [question('po-s1-0', 'po', 'Qual o prazo do link de recuperação?')], divergences: [], discardedPatches: [] });
+    await journal.fact(RefineEvent.QuestionAnswered, { questionId: 'po-s1-0', text: 'Noventa dias' });
+    const runAgent = passes(answer([]), answer([], [{ text: 'Até quando o link de recuperação vale?', blocking: false, relatedAcIds: [], options: [] }]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 2, 'briefing.md');
+    const reviewed = journal.events.filter((e) => e.type === RefineEvent.StageReviewed).at(-1)!.data;
+    expect(reviewed.questions).toEqual([]);
+    expect(journal.events.find((e) => e.type === RefineEvent.QuestionDropped)!.data).toMatchObject({ text: 'Até quando o link de recuperação vale?', file: 'briefing.md', matchedQuestionId: 'po-s1-0', matchedAnswer: 'Noventa dias' });
+  });
+
+  it('a stage question that repeats a decision is kept when its distinctFrom names a real difference', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const question = (questionId: string, role: 'po' | 'sm', text: string) => ({ questionId, role, text, blocking: false, relatedAcIds: [], cycle: 1 });
+    await journal.fact(RefineEvent.StageReviewed, { cycle: 1, file: 'project.md', questions: [question('po-s1-0', 'po', 'Qual o prazo do link de recuperação?')], divergences: [], discardedPatches: [] });
+    await journal.fact(RefineEvent.QuestionAnswered, { questionId: 'po-s1-0', text: 'Noventa dias' });
+    const distinctFrom = [{ questionId: 'po-s1-0', difference: 'Vale até o fim do prazo de envio, não por noventa dias corridos.' }];
+    const runAgent = passes(answer([]), answer([], [{ text: 'Até quando o link de recuperação vale?', blocking: false, relatedAcIds: [], options: [], distinctFrom }]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 2, 'briefing.md');
+    const reviewed = journal.events.filter((e) => e.type === RefineEvent.StageReviewed).at(-1)!.data;
+    expect(reviewed.questions).toEqual([expect.objectContaining({ text: 'Até quando o link de recuperação vale?', distinctFrom })]);
+    expect(journal.events.some((e) => e.type === RefineEvent.QuestionDropped)).toBe(false);
+  });
+
   it('the review pack carries the answers, skips and open questions of the draft, and the patches it rejected', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
@@ -399,7 +426,7 @@ describe('runStageCycle', () => {
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 2, 'briefing.md');
     const feedback = runAgent.mock.calls.map(([req]) => (req as { pack?: { feedback?: string } }).pack?.feedback ?? '').find((f) => f.includes('### briefing.md (this stage)')) ?? '';
-    expect(feedback).toContain('### Answered questions (do not ask again)\n\n- [po] Quem usa?\n  answer: Equipe interna');
+    expect(feedback).toContain('### Answered questions (do not ask again)\n\n- [po] Quem usa?\n  id: po-s1-0\n  answer: Equipe interna');
     expect(feedback).toContain('### Skipped questions\n\n- [sm] Qual porta?');
     expect(feedback).toContain('### Open questions (waiting for the owner: do not ask again, not even reworded)\n\n- [po] Qual prazo?');
     expect(feedback).toContain('### Rejected patches (do not propose again)\n\n- docs/specs/shop-002/briefing.md: "velho" → rejected: não');

@@ -13,6 +13,7 @@ import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { historyBlocks, reorganizePack } from './packs.js';
+import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeAll } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
@@ -169,6 +170,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       relatedAcIds: q.relatedAcIds,
       ...(q.options.length ? { options: q.options } : {}),
       ...(q.subject ? { subject: q.subject } : {}),
+      ...(q.distinctFrom ? { distinctFrom: q.distinctFrom } : {}),
       cycle,
     }));
     // A finding keeps the document it names, as the stage knows it, and stands only when its quote is in that document.
@@ -178,7 +180,11 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     });
     await journal.fact(RefineEvent.FindingsReported, { cycle, files: scope, findings });
     const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
-    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions, divergences, discardedPatches });
+    // Plan 103: a question that repeats a decided one is dropped unless its distinctFrom names a real difference. Nothing re-runs:
+    // the patches above are already on record, so a second pass would propose them twice.
+    const guarded = checkRepeats(questions, journal.state.questions, STAGE_REPEAT_OVERLAP);
+    for (const { question, matches } of guarded.unresolved) await journal.fact(RefineEvent.QuestionDropped, droppedOf(question, matches[0]!, file));
+    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: guarded.kept, divergences, discardedPatches });
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage(`A revisão de ${file}`, err) });
   }

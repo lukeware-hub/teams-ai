@@ -279,10 +279,10 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
   );
 }
 
-/** The Spec Kit questions the guard dropped as repeats of decided ones: each shows what it repeats, and the owner may ask it again. */
-function DroppedRepeats({ rows, locked, onReask }: { rows: DroppedQuestionRow[]; locked: boolean; onReask: (id: string) => unknown }) {
+/** The questions the guard dropped as repeats of decided ones: each shows what it repeats, and the owner may ask it again. */
+function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: DroppedQuestionRow[]; locked: boolean; onReask: (id: string) => unknown; compact?: boolean }) {
   return (
-    <details className="group rounded-lg border border-line bg-surface px-4 py-3" data-testid="dropped-repeats">
+    <details open className="group rounded-lg border border-line bg-surface px-4 py-3" data-testid="dropped-repeats">
       <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
         <span className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
         Perguntas repetidas que não foram feitas de novo ({rows.length})
@@ -291,9 +291,14 @@ function DroppedRepeats({ rows, locked, onReask }: { rows: DroppedQuestionRow[];
         {rows.map((r) => (
           <li key={r.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
             <p className="m-0 text-[0.875rem] text-ink-soft">{r.text}</p>
-            <small className="text-[0.75rem] text-ink-soft">
-              {r.matchedAnswer === null ? `Repete a pergunta que você ignorou: "${r.matchedText}"` : `Resolvida com a sua resposta: "${r.matchedAnswer}"`}
-            </small>
+            {compact ? (
+              <small className="text-[0.75rem] text-ink-soft">{r.matchedAnswer === null ? 'Repete uma pergunta que você ignorou.' : `Resolvida com "${r.matchedAnswer}"`}</small>
+            ) : (
+              <>
+                <p className="m-0 text-[0.8125rem] text-ink-soft">Antes: {r.matchedText}</p>
+                <p className="m-0 text-[0.875rem] font-semibold text-ink">{r.matchedAnswer === null ? 'Você ignorou esta pergunta.' : `Você respondeu: ${r.matchedAnswer}`}</p>
+              </>
+            )}
             <button type="button" className="secondary h-10 w-fit px-3 text-[0.8125rem]" data-testid={`reask-${r.questionId}`} disabled={locked} onClick={() => onReask(r.questionId)}>Perguntar de novo</button>
           </li>
         ))}
@@ -1072,6 +1077,7 @@ export function RefinementView(p: ViewProps) {
           {!locked && patches.map(patchCard)}
           {discarded.map((d, i) => <p key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
           {count === 0 && !locked && <p className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
+          {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={locked} onReask={(id) => p.onReask?.(id)} />}
         </aside>
       </div>
     );
@@ -1120,6 +1126,7 @@ export function RefinementView(p: ViewProps) {
               </div>
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
+            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && <p className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
         </div>
@@ -1150,7 +1157,7 @@ export function RefinementView(p: ViewProps) {
       {askAgents}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={itemTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
-      {(st.droppedQuestions ?? []).length > 0 && <DroppedRepeats rows={st.droppedQuestions ?? []} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+      {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       {backlogBlock}
     </div>
   );

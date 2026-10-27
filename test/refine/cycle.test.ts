@@ -834,6 +834,35 @@ describe('refinement cycle questions for failed gaps', () => {
 });
 
 describe('refinement cycle System 1 filters (decisions 2-4)', () => {
+  it('a round question that repeats a decision the owner gave is dropped and journaled, and stays off the evaluation', async () => {
+    const spec = makeSpec();
+    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
+    const docs = path.join(root, 'docs');
+    await mkdir(docs, { recursive: true });
+    const draft = {
+      projectId: 'shop', specId: spec.specId, root, docs,
+      projectMd: path.join(docs, 'project.md'), projectJson: path.join(docs, 'project.json'), briefMd: path.join(docs, 'briefing.md'),
+      stackMd: path.join(docs, 'stack.md'), flowMd: path.join(docs, 'flow.md'), designMd: path.join(docs, 'design.md'),
+      specJson: path.join(docs, 'spec.json'), events: path.join(root, 'events.ndjson'), steps: (seq: number) => path.join(root, 'steps', String(seq)),
+    };
+    await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'x', specHash: 'draft', type, kind: 'fact' as const, data }; } };
+    journal.state.questions.push({ questionId: 'po-c0-0', role: 'po', text: 'Qual o prazo do link de recuperação?', blocking: false, relatedAcIds: [], cycle: 0, status: 'answered', answer: 'Noventa dias' } as never);
+    const ok = (value: unknown) => ({ ok: true, value, summary: {} });
+    const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
+    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
+      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...spec, status: 'refining', specHash: null } });
+      if (String(req.pack.feedback).startsWith('REORGANIZE:')) return ok({ checklist: [], questions: [], docPatch: [], moves: [] });
+      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [{ text: 'Até quando o link de recuperação vale?', blocking: false, relatedAcIds: [] }], docPatch: [] });
+      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
+    });
+    await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, 1);
+    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
+    expect(evaluated.data.questions).toEqual([]);
+    expect(events.find((e) => e.type === 'QUESTION_DROPPED')!.data).toMatchObject({ text: 'Até quando o link de recuperação vale?', matchedQuestionId: 'po-c0-0', matchedAnswer: 'Noventa dias' });
+  });
+
   it('hints not-ready criteria, drops a duplicate question and asks about a contradicted history chunk', async () => {
     const spec = makeSpec();
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));

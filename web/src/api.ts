@@ -253,12 +253,17 @@ export interface ChecklistItem {
   detail: string;
   divergences?: Divergence[];
 }
-/** A Spec Kit question the guard dropped as a repeat of a decided one, which the owner may ask again. */
+/** A question the guard dropped as a repeat of a decided one, which the owner may ask again: the question as it was asked. */
 export interface DroppedQuestionRow {
   questionId: string;
   role: 'po' | 'sm';
   text: string;
   cycle: number;
+  blocking?: boolean;
+  relatedAcIds?: string[];
+  /** The document of a stage review's question; absent for a question of a full round or a Spec Kit question. */
+  file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
+  origin?: 'speckit';
   command?: string;
   itemKey?: string;
   matchedQuestionId: string;

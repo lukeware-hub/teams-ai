@@ -183,7 +183,7 @@ describe('stage 7 of a new project prepares the development', () => {
   });
 
   it('the dropped repeats are listed, and the owner can ask for one again', () => {
-    const dropped = { questionId: 'speckit-b', role: 'po', text: 'Até quando o link vale?', cycle: 2, command: 'specify', itemKey: 'base', matchedQuestionId: 'speckit-old', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' };
+    const dropped = { questionId: 'speckit-b', role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: false, relatedAcIds: [], origin: 'speckit', command: 'specify', itemKey: 'base', matchedQuestionId: 'speckit-old', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' };
     const h = { ...handlersWithSpeckit(), onReask: vi.fn() };
     renderView(wizard({ speckit: speckit() as never, droppedQuestions: [dropped] as never }), h);
     expect((screen.getByTestId('dropped-repeats') as HTMLDetailsElement).textContent).toContain('Perguntas repetidas que não foram feitas de novo (1)');

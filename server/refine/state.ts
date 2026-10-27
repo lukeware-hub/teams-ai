@@ -131,14 +131,22 @@ export interface SpeckitStepFailure {
   failure?: FailureKind;
 }
 
-/** A Spec Kit question dropped because it repeats a decided one; the owner can ask for it again. */
+/** A question dropped because it repeats a decided one: the question as it was asked, so "Perguntar de novo" can restore it. */
 export interface DroppedQuestion {
   questionId: string;
   role: Question['role'];
   text: string;
   cycle: number;
+  blocking: boolean;
+  relatedAcIds: string[];
+  file?: Question['file'];
+  origin?: Question['origin'];
   command?: Question['command'];
   itemKey?: string;
+  options?: Question['options'];
+  subject?: string;
+  rule?: string;
+  context?: string;
   matchedQuestionId: string;
   matchedText: string;
   matchedAnswer: string | null;
@@ -419,36 +427,33 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     }
     case RefineEvent.QuestionDropped: {
-      const row: DroppedQuestion = {
-        questionId: String(d.questionId),
-        role: d.role as Question['role'],
-        text: String(d.text),
-        cycle: Number(d.cycle),
-        ...(d.command === undefined ? {} : { command: d.command as Question['command'] }),
-        ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }),
-        matchedQuestionId: String(d.matchedQuestionId),
-        matchedText: String(d.matchedText),
-        matchedAnswer: (d.matchedAnswer as string | null | undefined) ?? null,
-      };
+      const row = { ...(d as unknown as DroppedQuestion), matchedAnswer: (d.matchedAnswer as string | null | undefined) ?? null };
       s.droppedQuestions = [...(s.droppedQuestions ?? []).filter((x) => x.questionId !== row.questionId), row];
       break;
     }
     case RefineEvent.QuestionReasked: {
       const questionId = String(d.questionId);
+      const dropped = (s.droppedQuestions ?? []).find((x) => x.questionId === questionId) ?? (d as unknown as DroppedQuestion);
       s.droppedQuestions = (s.droppedQuestions ?? []).filter((x) => x.questionId !== questionId);
       if (!s.questions.some((q) => q.questionId === questionId)) {
+        // The question comes back as it was asked: its kind, document, blocking flag and subject are kept.
         s.questions.push({
           questionId,
-          role: d.role as Question['role'],
-          text: String(d.text),
-          blocking: false,
-          relatedAcIds: [],
-          cycle: Number(d.cycle),
-          origin: 'speckit',
-          ...(d.command === undefined ? {} : { command: d.command as Question['command'] }),
-          ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }),
+          role: dropped.role,
+          text: dropped.text,
+          blocking: dropped.blocking ?? false,
+          relatedAcIds: dropped.relatedAcIds ?? [],
+          cycle: dropped.cycle,
           status: 'pending',
           answer: null,
+          ...(dropped.file === undefined ? {} : { file: dropped.file }),
+          ...(dropped.origin === undefined ? {} : { origin: dropped.origin }),
+          ...(dropped.command === undefined ? {} : { command: dropped.command }),
+          ...(dropped.itemKey === undefined ? {} : { itemKey: dropped.itemKey }),
+          ...(dropped.options === undefined ? {} : { options: dropped.options }),
+          ...(dropped.subject === undefined ? {} : { subject: dropped.subject }),
+          ...(dropped.rule === undefined ? {} : { rule: dropped.rule }),
+          ...(dropped.context === undefined ? {} : { context: dropped.context }),
         });
       }
       s.status = computeStatus(s);

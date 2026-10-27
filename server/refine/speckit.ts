@@ -15,7 +15,7 @@ import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { questionPairs } from './question-pairs.js';
-import { checkRepeats, repeatNote } from './question-guard.js';
+import { checkRepeats, droppedOf, repeatNote } from './question-guard.js';
 import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
 import { itemSteps, speckitItems, speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecMd } from './spec-md.js';
@@ -429,7 +429,7 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
     }
     for (const { question, matches } of unresolved) {
       const decided = matches[0]!;
-      await deps.journal.fact(RefineEvent.QuestionDropped, { questionId: question.questionId, role: question.role, text: question.text, cycle: question.cycle, command: step.command, ...(question.itemKey ? { itemKey: question.itemKey } : {}), matchedQuestionId: decided.questionId, matchedText: decided.text, matchedAnswer: decided.answer });
+      await deps.journal.fact(RefineEvent.QuestionDropped, { ...droppedOf(question, decided), command: step.command });
     }
     const asked = kept;
     // The basis is the one this round's files were written from, with the questions it asks counted as pending, as they are on record.

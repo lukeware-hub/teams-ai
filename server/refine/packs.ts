@@ -141,12 +141,13 @@ export function historyBlocks(input: {
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
   const answered = [
     ...input.decisions.map((d) => `- ${d.question}\n  answer: ${d.answer}`),
-    ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  answer: ${q.answer}`),
+    ...input.history.filter((q) => q.status === 'answered').map((q) => `- [${q.role}] ${q.text}\n  id: ${q.questionId}\n  answer: ${q.answer}`),
   ];
-  const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}`);
-  const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}`);
+  const skipped = input.history.filter((q) => q.status === 'skipped').map((q) => `- [${q.role}] ${q.text}\n  id: ${q.questionId}`);
+  const openQuestions = input.history.filter((q) => q.status === 'pending').map((q) => `- [${q.role}] ${q.text}\n  id: ${q.questionId}`);
   const rejected = input.rejected.map((p) => `- ${rel(p.file)}: "${p.find.slice(0, 80)}" → rejected${p.decision ? `: ${p.decision}` : ''}`);
   return [
+    'A question listed below is decided or still open. Do not ask it again: a question that repeats one of them is dropped, unless its `distinctFrom` names, for each such question, its id and one sentence of at least eight words with a fact that question did not have.',
     '### Answered questions (do not ask again)',
     answered.join('\n') || '(none)',
     '### Skipped questions',

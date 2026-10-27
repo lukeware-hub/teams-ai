@@ -33,6 +33,7 @@ import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerive
 import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
 import { questionPairs } from './question-pairs.js';
+import { checkRepeats, droppedOf, ROUND_REPEAT_OVERLAP } from './question-guard.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
@@ -588,7 +589,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         seen.add(key);
         const subject = q.subject && q.subject.length <= 80 && !taken.has(norm(q.subject)) ? q.subject : undefined;
         taken.add(norm(subject ?? q.text));
-        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle, ...(subject ? { subject } : {}), ...(q.options?.length ? { options: q.options } : {}) });
+        merged.push({ questionId: `${role}-c${cycle}-${counters[role]++}`, role, text: q.text, blocking: q.blocking, relatedAcIds: q.relatedAcIds, cycle, ...(subject ? { subject } : {}), ...(q.options?.length ? { options: q.options } : {}), ...(q.distinctFrom ? { distinctFrom: q.distinctFrom } : {}) });
       }
     }
   }
@@ -625,6 +626,11 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       });
     }
   }
+  // Plan 103: a question that repeats a decided one is dropped unless its distinctFrom names a real difference. The round does not
+  // run again, and the drops come before the checklist counts the blocking questions, so no dropped question holds the round.
+  const guarded = checkRepeats(merged, state.questions, ROUND_REPEAT_OVERLAP);
+  for (const { question, matches } of guarded.unresolved) await journal.fact(RefineEvent.QuestionDropped, droppedOf(question, matches[0]!));
+  merged.splice(0, merged.length, ...guarded.kept);
   // R11.5.7: the route of each blocking question, journaled for the eval; it answers only at the floor the config fixes or the labels prove.
   const questionRouting: Record<string, { route: string; confidence: number | null; source: string }> = {};
   if (deps.decider) {
