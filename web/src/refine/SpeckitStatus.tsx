@@ -53,10 +53,19 @@ const line = 'm-0 flex items-start gap-2 text-[0.9375rem] leading-[1.5]';
 function FeatureFolders({ features, titles }: { features: Record<string, string>; titles: Map<string, string> }) {
   const rows = Object.entries(features);
   return (
-    <details className="text-[0.8125rem]" data-testid="speckit-features">
-      <summary className="w-fit cursor-pointer text-ink-soft">{rows.length === 1 ? '1 pasta de feature' : `${rows.length} pastas de feature`}</summary>
-      <ul className="m-0 mt-1 grid list-none gap-1 p-0">
-        {rows.map(([key, dir]) => <li key={key} className="wrap-anywhere">{titles.get(key) ?? key}: <code>{dir}</code></li>)}
+    <details className="group text-[0.8125rem]" data-testid="speckit-features">
+      <summary className="flex w-fit cursor-pointer list-none items-center gap-[0.35rem] text-ink-soft [&::-webkit-details-marker]:hidden">
+        <span className="transition-transform group-open:rotate-90"><Icon name="chevron-right" size={14} /></span>
+        {rows.length === 1 ? '1 pasta de feature' : `${rows.length} pastas de feature`}
+      </summary>
+      <ul className="m-0 mt-2.5 grid list-none gap-2 p-0">
+        {rows.map(([key, dir]) => (
+          <li key={key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-md border border-line bg-surface px-3 py-2.5">
+            <span className="flex-none text-accent"><Icon name="folder" size={16} /></span>
+            <span className="wrap-anywhere min-w-0 grow basis-40 text-[0.875rem] font-semibold text-ink">{titles.get(key) ?? key}</span>
+            <code className="ml-[1.625rem] max-w-full rounded-sm bg-surface-muted px-1.5 py-0.5 text-[0.75rem] text-ink-soft wrap-anywhere">{dir}</code>
+          </li>
+        ))}
       </ul>
     </details>
   );

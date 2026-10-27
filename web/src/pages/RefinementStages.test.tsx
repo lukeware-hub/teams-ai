@@ -133,7 +133,9 @@ describe('stage 7 of a new project prepares the development', () => {
 
   it('lists the feature folder Spec Kit made for each item', () => {
     renderView(wizard({ speckit: speckit({ features: { base: 'specs/001-base' } }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-features').textContent).toContain('Base: specs/001-base');
+    const row = screen.getByTestId('speckit-features').querySelector('li')!;
+    expect(row.textContent).toContain('Base');
+    expect(row.querySelector('code')!.textContent).toBe('specs/001-base');
   });
 
   it('shows the technical detail of a failed preparation under its reason, such as the stderr of a failed init', () => {
