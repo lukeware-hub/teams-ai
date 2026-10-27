@@ -177,7 +177,7 @@ The page loads `GET /refine/:sessionId` once and then applies SSE events with a 
 |---|---|
 | derive output fails `Project`/`Spec` validation | `REFINE_CYCLE_FAILED {reason: issues}`; state `error`; UI lists the issues next to the editor |
 | An agent step fails (schema retries exhausted, quota) | `REFINE_CYCLE_FAILED`; state `error`; quota reasons show the `until` time |
-| Server restart mid-cycle | Replay: a `REFINE_CYCLE_STARTED` without its `REFINE_EVALUATED`/`REFINE_CYCLE_FAILED` is treated as failed with reason `interrupted`; the human re-evaluates; nothing is charged as an attempt |
+| Server restart mid-cycle | Replay: a `REFINE_CYCLE_STARTED` without its `REFINE_EVALUATED`/`REFINE_CYCLE_FAILED` is treated as failed with reason `interrupted`; the human re-evaluates, or with `refine.heal.enabled` the heal driver starts a new cycle (plan 99); the cut cycle stays failed and nothing is charged as an attempt |
 | Patch `find` ambiguous or absent | Discarded with reason; never applied |
 | Repository exists but the human chose "New project" | 409 on `POST /projects/new` with "repository exists; register the project instead" (checked with `gh repo view` when gh is green, else skipped) |
 | Start when a run is already active for the spec | 409 (same rule as block A) |

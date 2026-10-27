@@ -27,7 +27,7 @@ describe('decideOnFailure', () => {
   });
 
   it('treats review changes, rebase conflicts, timeouts, budget and dependency errors as attempts', () => {
-    for (const kind of ['review-changes', 'rebase-conflict', 'timeout', 'budget', 'dependency'] as const) {
+    for (const kind of ['review-changes', 'rebase-conflict', 'timeout', 'aborted', 'budget', 'dependency'] as const) {
       expect(decideOnFailure({ kind }, task()).consumeAttempt).toBe(true);
     }
   });

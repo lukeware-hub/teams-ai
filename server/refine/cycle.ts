@@ -12,6 +12,7 @@ import { contradictedChunks, duplicatePairs, duplicatePatches, notReadyCriteria 
 import { routeQuestion } from '../decide/decisions/question-routing.js';
 import type { AgentStepRequest } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
+import type { FailureKind } from '../scheduler/retry-policy.js';
 import { adjustmentsDue, approvalPatch, approvedAdjustments, isAdjustment, type DueAdjustment } from './adjustments.js';
 import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { mergeChecklist, type ChecklistItem } from './checklist.js';
@@ -300,10 +301,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   // The five docs by the names backlog items cite them with.
   const backlogDocs = docs;
   const previous = await readDerived(draft);
-  const fail = (reason: string, detail?: string) => journal.fact(RefineEvent.CycleFailed, { cycle, reason, ...(detail ? { detail } : {}) });
+  const fail = (reason: string, detail?: string, kind?: FailureKind) => journal.fact(RefineEvent.CycleFailed, { cycle, reason, ...(detail ? { detail } : {}), ...(kind ? { kind } : {}) });
   const failAgent = (stage: string, out: Extract<StepOutcome<unknown>, { ok: false }>) => {
-    const { reason, detail } = failureMessage(stage, out.failure, out.errors);
-    return fail(reason, detail);
+    const { reason, detail, kind } = failureMessage(stage, out.failure, out.errors);
+    return fail(reason, detail, kind);
   };
   let jevValidation: JevValidationResult | undefined;
   // A confidential project never sends its docs to the OpenRouter: Jev is skipped and the agents run without its findings.
@@ -390,7 +391,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       // The recorded decider journals the Jev's checks of the detailing (R11.5a item 3).
       const detailed = await detailBacklog({ ...deps, decider }, { cycle, hash, docs: backlogDocs, backlog, ctx });
       if (!detailed.ok) {
-        await fail(detailed.reason, detailed.detail);
+        await fail(detailed.reason, detailed.detail, detailed.kind);
         return;
       }
       backlog = detailed.backlog;

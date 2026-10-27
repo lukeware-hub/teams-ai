@@ -508,9 +508,10 @@ describe('classifyFailure', () => {
     expect(classifyFailure(raw(text))).toBeNull();
   });
 
-  it('maps a missing result to code and a kill to timeout', () => {
+  it('maps a missing result to code, a kill to timeout and a stop to aborted', () => {
     expect(classifyFailure(raw('{"type":"system","subtype":"init"}'))).toBe('code');
     expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'turns' }))).toBe('timeout');
+    expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'aborted' }))).toBe('aborted');
     expect(classifyFailure(raw('{"type":"system","subtype":"init"}', { killedBy: 'environment', sandboxDisabled: true }))).toBe('environment');
   });
 });

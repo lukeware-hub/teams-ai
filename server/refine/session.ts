@@ -33,7 +33,8 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, newestReshape, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { answerUntriaged, optionsForOpen, PreparationFailed, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
+import { answerUntriaged, optionsForOpen, PreparationFailed, prepareSpeckit, speckitInputHash, SPECKIT_STAGE, stopKindOf } from './speckit.js';
+import { healRunsOf, type HealView } from './heal.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -42,6 +43,8 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
 export class ConflictError extends Error {}
+/** The draft is held by a run, a start or a discard: the caller tries again later. */
+export class BusyError extends ConflictError {}
 export class NotFoundError extends Error {}
 
 /** Single-writer journal of one refinement session, reduced into RefineState as it is appended. */
@@ -186,6 +189,8 @@ export class RefineSession {
   /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
    *  through the window between freezing the spec and the run being marked started. */
   private starting = false;
+  /** Set when the owner throws the draft away: no run starts on it after that. */
+  private discarding = false;
 
   private constructor(
     private readonly deps: SessionDeps,
@@ -202,11 +207,11 @@ export class RefineSession {
     ]);
     const journal = await RefineJournal.open(deps.draft.events, { projectId: deps.draft.projectId, specId: deps.draft.specId });
     // Spec §8: a cycle cut by a restart is failed, never resumed; nothing was charged as an attempt.
-    if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted' });
+    if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted', kind: 'interrupted' });
     // A restart in a pause between two cycles of one click: its end would be the restart, so its record is void.
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
     // A Spec Kit preparation cut by a restart is failed too; the owner runs it again.
-    if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.' });
+    if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.', kind: 'interrupted' });
     // The answers of the PO and the SM cut by a restart end with it, so the page does not show them as running.
     if (journal.state.speckitAnswering) await journal.fact(RefineEvent.SpeckitAnswersDone, {});
     // A crash between enabling backlog mode and moving the briefing: finish the move.
@@ -242,17 +247,42 @@ export class RefineSession {
   }
 
   private guardStarting(): void {
-    if (this.starting) throw new ConflictError('a start is already in progress');
+    if (this.starting) throw new BusyError('a start is already in progress');
   }
 
   private guard(): void {
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     this.guardStarting();
-    if (this.busy) throw new ConflictError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
+    if (this.discarding) throw new BusyError('o rascunho está sendo descartado');
+    if (this.busy) throw new BusyError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
   }
 
   ensureCanEvaluate(): void {
     this.guard();
+  }
+
+  /** What the heal driver needs about this draft, read from the journal: the failures in a row and whether the driver paused. */
+  healView(): HealView {
+    const runs = healRunsOf(this.journal.events);
+    return {
+      busy: this.busy || this.discarding,
+      started: this.state.status === 'started',
+      // A new project's stage reviews run until the owner closes the final review, and the driver does not call them.
+      staged: this.state.stages === true && this.state.reviewClosed !== true,
+      paused: runs.paused,
+      cycle: this.state.status === 'error' ? runs.cycle : undefined,
+      speckit: this.state.speckit?.status === 'failed' ? runs.speckit : undefined,
+    };
+  }
+
+  /** The heal driver stops on this draft; a later failure, which the owner's action produces, lifts the pause. */
+  async pauseHeal(reason: string): Promise<void> {
+    await this.journal.fact(RefineEvent.AutopilotPaused, { reason });
+  }
+
+  /** The owner throws this draft away: no run starts on it from now on, and the heal driver leaves it. */
+  beginDiscard(): void {
+    this.discarding = true;
   }
 
   async snapshot(): Promise<Snapshot> {
@@ -526,7 +556,7 @@ export class RefineSession {
       const detail = err instanceof OwnerError ? err.detail : String(err instanceof Error ? err.message : err).slice(0, 1000);
       // Every item step that stopped, each with its kind: the owner reads them, and the next run starts from the steps that finished.
       const failures = err instanceof PreparationFailed ? err.failures : undefined;
-      await this.journal.fact(RefineEvent.SpeckitFailed, { reason, detail, failures });
+      await this.journal.fact(RefineEvent.SpeckitFailed, { reason, detail, failures, kind: stopKindOf(err) });
     }
   }
 

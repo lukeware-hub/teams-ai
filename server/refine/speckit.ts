@@ -8,7 +8,8 @@ import { duplicatePairs } from '../decide/decisions/gate1.js';
 import type { Exec } from '../exec/command.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
-import { ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
+import type { FailureKind } from '../scheduler/retry-policy.js';
+import { AgentFailure, ownerFailure, retryOnSchema, TRY_AGAIN, withNote } from './agent-failure.js';
 import { isConfidential, recorded, type CycleJournal, type RunAgent } from './cycle.js';
 import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -68,10 +69,19 @@ export class PreparationFailed extends OwnerError {
   }
 }
 
+/** The kind a stopped preparation gives the heal driver: its agent failure's kind, or the kind every failed step shares. */
+export function stopKindOf(err: unknown): FailureKind | undefined {
+  if (err instanceof AgentFailure) return err.failure;
+  if (!(err instanceof PreparationFailed)) return undefined;
+  const kinds = new Set(err.failures.map((f) => f.failure));
+  return kinds.size === 1 ? [...kinds][0] : undefined;
+}
+
 /** The record of a step that failed: a step error keeps its kind, an agent that could not answer is `agent`, anything else is internal. */
 function failureOf(step: Step, error: unknown): SpeckitStepFailure {
   const base = { command: step.command, ...(step.item === undefined ? {} : { itemKey: step.item.key }) };
   if (error instanceof StepError) return { ...base, kind: error.kind, reason: error.message, detail: error.detail };
+  if (error instanceof AgentFailure) return { ...base, kind: 'agent', reason: error.message, detail: error.detail, failure: error.failure };
   if (error instanceof OwnerError) return { ...base, kind: 'agent', reason: error.message, detail: error.detail };
   return { ...base, kind: 'internal', reason: `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`, detail: String(error instanceof Error ? error.message : error).slice(0, 1000) };
 }

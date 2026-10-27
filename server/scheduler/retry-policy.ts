@@ -14,7 +14,8 @@ export type FailureKind =
   | 'compaction'
   | 'spec-gap'
   | 'quota'
-  | 'auth';
+  | 'auth'
+  | 'aborted';
 
 export interface Failure {
   kind: FailureKind;
@@ -89,6 +90,7 @@ export function decideOnFailure(
     case 'code':
     case 'dependency':
     case 'timeout':
+    case 'aborted':
     case 'budget':
     case 'review-changes':
     case 'rebase-conflict':

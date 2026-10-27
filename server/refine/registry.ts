@@ -16,6 +16,7 @@ import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
 import { answerFloor } from './auto-floor.js';
+import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
 import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, syncWithMain, type Draft, type RouteReport } from './draft.js';
@@ -319,6 +320,7 @@ export class SessionRegistry {
   }
 
   private async discardDraft(projectId: string, specId: string, session: RefineSession): Promise<void> {
+    session.beginDiscard();
     await session.abort();
     const draft = draftPaths(await this.ws(projectId), specId);
     await session.close();
@@ -341,6 +343,23 @@ export class SessionRegistry {
     const index = { cfg: await this.deps.cfg(), home: this.deps.home, isAlive: (pid: number) => isAlive(this.deps.control, pid) };
     const active = (await listRuns(index, projectId)).find((r) => r.specId === specId && claimsSpec(r) && r.status !== 'interrupted');
     if (active) throw new ConflictError(`a spec ${specId} tem a run ${active.runId} em andamento; pare a run antes`);
+  }
+
+  /** Every draft as the heal driver sees it: opened once, and kept open, so each tick reads its journal in memory. */
+  async healTargets(): Promise<HealTarget[]> {
+    const out: HealTarget[] = [];
+    for (const row of await this.list()) {
+      const session = await this.get(row.projectId, row.specId).catch(() => null);
+      if (session === null) continue;
+      out.push({
+        key: `${row.projectId}/${row.specId}`,
+        view: () => session.healView(),
+        evaluate: () => session.evaluate(),
+        prepare: () => session.runSpeckit(),
+        pause: (reason) => session.pauseHeal(reason),
+      });
+    }
+    return out;
   }
 
   async list(): Promise<DraftRow[]> {

@@ -45,6 +45,7 @@ import type { DecisionOutcome } from './decide/types.js';
 import { routeReport } from './decide/decisions/report-routing.js';
 import { Accounting } from './budget/accounting.js';
 import { addProject, readUserConfig } from './onboarding/config-store.js';
+import { RefineHealer } from './refine/heal-driver.js';
 import { hasScript, spawnScriptPty } from './onboarding/pty.js';
 import { DATASTORE_CREDENTIALS, datastoreCredentialsOf } from './deploy/datastore-credentials.js';
 import { DockerLocalTarget } from './deploy/docker-local.js';
@@ -80,6 +81,10 @@ export interface UiHooks {
 
 /** How often the program controller looks at every started backlog (a delivered spec is noticed within this). */
 const PROGRAM_TICK_MS = 15_000;
+
+/** How often the heal driver looks at the drafts a failure left in error, and how long after boot it first looks. */
+const HEAL_TICK_MS = 60_000;
+const HEAL_SETTLE_MS = 30_000;
 
 /** A decider that threw answers nothing, with its redacted reason, instead of passing for an exhausted one. */
 export const failedDecision = (err: unknown): DecisionOutcome => ({ answered: false, reason: 'error', message: redactSecrets(err instanceof Error ? err.message : String(err)) });
@@ -148,6 +153,17 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const programTimer = setInterval(tick, PROGRAM_TICK_MS);
   programTimer.unref();
   setTimeout(tick, 5_000).unref();
+  // The heal driver does nothing unless refine.heal.enabled is set, and it reads that flag on every tick.
+  const heal = new RefineHealer(
+    () => registry.healTargets(),
+    async () => (await readUserConfig()).cfg.refine.heal.enabled,
+    (key, err) => io.stderr(`heal tick ${key}: ${err instanceof Error ? err.message : String(err)}`),
+  );
+  const healTick = () => heal.tick().catch((err) => io.stderr(`heal tick: ${err instanceof Error ? err.message : String(err)}`));
+  const healTimer = setInterval(healTick, HEAL_TICK_MS);
+  healTimer.unref();
+  const healSettle = setTimeout(healTick, HEAL_SETTLE_MS);
+  healSettle.unref();
   const chat = new ChatService({
     guideDir: path.join(repoRoot, 'docs', 'guia'),
     store: new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats')),
@@ -192,7 +208,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     },
     port,
   );
-  return { port: api.port, close: async () => { clearInterval(programTimer); await api.close(); } };
+  return { port: api.port, close: async () => { clearInterval(programTimer); clearInterval(healTimer); clearTimeout(healSettle); await api.close(); } };
 }
 
 function flags(argv: string[]): Record<string, string | true> {

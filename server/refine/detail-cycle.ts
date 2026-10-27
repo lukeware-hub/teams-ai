@@ -12,6 +12,7 @@ import { adjusted } from './adjustments.js';
 import { failureMessage, internalErrorMessage } from './agent-failure.js';
 import { isStarted } from './coverage.js';
 import type { StepOutcome } from '../runner/step.js';
+import type { FailureKind } from '../scheduler/retry-policy.js';
 import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
@@ -30,7 +31,7 @@ const STOPPING = new Set(['quota', 'auth']);
 
 type Item = BacklogState['items'][number];
 type Ctx = Parameters<CycleDeps['runAgent']>[1];
-export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; reason: string; detail?: string };
+export type DetailResult = { ok: true; backlog: BacklogState } | { ok: false; reason: string; detail?: string; kind?: FailureKind };
 /** What an answer came to: recorded when it has no issues; `flagged` marks a valid answer the Jev flagged and nothing recorded; `detail` is what a retry tells the agent when it differs from the owner's `issues`. */
 type Verdict = { issues: string[]; flagged?: boolean; detail?: string[] };
 
@@ -127,7 +128,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const specs: Record<string, SpecRow> = { ...input.backlog.specs };
   const preplans: Record<string, PreplanRow> = { ...input.backlog.preplans };
   let highWater = Math.max(input.backlog.acHighWater ?? 0, await maxCriterionInDraft(draft));
-  let stopped = null as { reason: string; detail?: string } | null;
+  let stopped = null as { reason: string; detail?: string; kind?: FailureKind } | null;
   /** The run's stop, read through a call so each check sees its current value. */
   const haltedResult = (): DetailResult | null => (stopped ? { ok: false, ...stopped } : null);
   const governor = new Governor(DETAIL_CONCURRENCY);

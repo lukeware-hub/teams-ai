@@ -11,6 +11,7 @@ import type { PendingPatch } from './patches.js';
 import { DOC_STAGES } from './doc-stages.js';
 import type { DocScore, Readiness } from './readiness.js';
 import { stepKey } from './speckit-steps.js';
+import type { FailureKind } from '../scheduler/retry-policy.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
 export interface QuestionRow extends Question {
@@ -124,6 +125,8 @@ export interface SpeckitStepFailure {
   kind: 'agent' | 'blocked' | 'open-markers' | 'dropped-criteria' | 'files-missing' | 'feature-missing' | 'internal';
   reason: string;
   detail: string;
+  /** The kind of an agent failure, which the heal driver reads. */
+  failure?: FailureKind;
 }
 
 export interface RefineState {

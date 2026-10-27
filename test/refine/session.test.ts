@@ -7,7 +7,7 @@ import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { ConflictError, programEntries, RefineJournal, RefineSession } from '../../server/refine/session.js';
+import { BusyError, ConflictError, programEntries, RefineJournal, RefineSession } from '../../server/refine/session.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -180,6 +180,41 @@ describe('RefineSession', () => {
     expect(seen).toHaveLength(2);
     expect(seen[0]).not.toContain('did not match the output schema');
     expect(seen[1]).toContain('did not match the output schema: docPatch.3.reason');
+  });
+
+  it('the heal view of a draft a timeout stopped shows the failure in a row, and a pause the driver journals stops the heal', async () => {
+    const frontAgent = (async () => ({ ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false })) as never;
+    const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.healView()).toMatchObject({ busy: false, paused: false, cycle: { kind: 'timeout', attempts: 1 } });
+    await s.pauseHeal('timeout');
+    expect(s.healView()).toMatchObject({ paused: true });
+    await s.close();
+  });
+
+  it('keeps the kind of a quota failure in the journal, so the heal view reads it as a quota', async () => {
+    const frontAgent = (async () => ({ ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false })) as never;
+    const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.healView()).toMatchObject({ cycle: { kind: 'quota', attempts: 1 } });
+    await s.close();
+  });
+
+  it('a new project is healed once its final review is closed, and a draft being discarded is busy and starts no run', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    expect(s.healView()).toMatchObject({ staged: true });
+    await s.closeReview();
+    expect(s.healView()).toMatchObject({ staged: false });
+    s.beginDiscard();
+    expect(s.healView()).toMatchObject({ busy: true });
+    await expect(s.evaluate()).rejects.toBeInstanceOf(BusyError);
+    await s.close();
   });
 
   it('stops the evaluation with the Front reason when the Front times out', async () => {

@@ -10,6 +10,7 @@ describe('failureMessage', () => {
     ['compaction', 'A revisão de flow.md parou por causa do tamanho da conversa ou do ritmo de uso. Clique em Reavaliar.'],
     ['environment', 'A revisão de flow.md não conseguiu iniciar o agente. Clique em Reavaliar.'],
     ['code', 'A revisão de flow.md falhou por um erro do agente. Clique em Reavaliar.'],
+    ['aborted', 'A revisão de flow.md parou porque a execução foi interrompida. Clique em Reavaliar.'],
   ] as const)('gives the %s failure its plain reason for the stage', (failure, reason) => {
     expect(failureMessage('A revisão de flow.md', failure, []).reason).toBe(reason);
   });

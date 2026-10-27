@@ -125,6 +125,8 @@ const AUTH_TEXT = /not logged in|authentication|failed to authenticate|oauth ses
 export function classifyFailure(raw: RawStepResult): FailureKind | null {
   const s = raw.summary;
   if (raw.sandboxDisabled || raw.killedBy === 'environment') return 'environment';
+  // A stop is not a timeout: the heal driver retries timeouts, and a stopped run must stay stopped.
+  if (raw.killedBy === 'aborted') return 'aborted';
   if (raw.killedBy) return 'timeout';
   if (s.compactions > 0 || s.terminalReason === 'rapid_refill_breaker') return 'compaction';
   // The CLI's own turn cap is the same condition as the runner's cap (spec §12): one taxonomy.

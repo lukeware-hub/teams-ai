@@ -10,8 +10,8 @@ import { createNewProject, draftPaths, speckitBaseDir, writeDoc } from '../../se
 import { RefineEvent } from '../../server/refine/events.js';
 import { ConflictError, RefineJournal, RefineSession, type RunAgent } from '../../server/refine/session.js';
 import { speckitPack } from '../../server/refine/speckit-pack.js';
-import { SPECKIT_NOT_INSTALLED, speckitFeatureOf } from '../../server/refine/speckit.js';
-import { canStart } from '../../server/refine/state.js';
+import { PreparationFailed, SPECKIT_NOT_INSTALLED, speckitFeatureOf, stopKindOf } from '../../server/refine/speckit.js';
+import { canStart, type SpeckitStepFailure } from '../../server/refine/state.js';
 import { loadEvents } from '../../server/store/event-store.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 
@@ -861,6 +861,24 @@ describe('RefineSession.runSpeckit', () => {
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toContain('ENOENT');
     expect(agentCalls).toHaveLength(0);
     await s.close();
+  });
+
+  it('a step that fails with a quota keeps the quota kind in the journal, so the heal view reads a wait', async () => {
+    const s = await singleSession();
+    await s.close();
+    const quota = (async () => ({ ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary, sandboxDisabled: false })) as never;
+    const q = await RefineSession.open({ ...deps(), runAgent: quota });
+    await q.runSpeckit();
+    expect(q.healView()).toMatchObject({ speckit: { kind: 'quota', attempts: 1 } });
+    await q.close();
+  });
+
+  it('gives a stopped preparation the kind its failed steps share, and none when they differ', () => {
+    const failed = (failure?: SpeckitStepFailure['failure']): SpeckitStepFailure => ({ command: 'plan', kind: 'agent', reason: 'x', detail: 'y', ...(failure ? { failure } : {}) });
+    expect(stopKindOf(new PreparationFailed([failed('quota')]))).toBe('quota');
+    expect(stopKindOf(new PreparationFailed([failed('quota'), failed('timeout')]))).toBeUndefined();
+    expect(stopKindOf(new PreparationFailed([failed('quota'), failed()]))).toBeUndefined();
+    expect(stopKindOf(new Error('x'))).toBeUndefined();
   });
 
   it('an abort stops the preparation before its next step, with the interrupted message, and no later step runs', async () => {

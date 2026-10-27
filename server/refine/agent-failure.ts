@@ -17,14 +17,21 @@ export const TRY_AGAIN = 'Tente de novo.';
 const clip = (text: string, chars = DETAIL_CHARS): string => text.slice(0, chars);
 
 /** The owner's reason for a failed agent step, in plain words, with the raw errors for the journal. */
-export function failureMessage(stage: string, failure: FailureKind, errors: readonly string[], again = REVALUATE): { reason: string; detail: string } {
-  return { reason: reasonOf(stage, failure, again), detail: clip(errors.join('; ')) };
+export function failureMessage(stage: string, failure: FailureKind, errors: readonly string[], again = REVALUATE): { reason: string; detail: string; kind: FailureKind } {
+  return { reason: reasonOf(stage, failure, again), detail: clip(errors.join('; ')), kind: failure };
+}
+
+/** A failed agent step the owner reads, with the kind of its failure for the heal driver. */
+export class AgentFailure extends OwnerError {
+  constructor(readonly failure: FailureKind, message: string, detail: string) {
+    super(message, detail);
+  }
 }
 
 /** The error for a failed agent step that the route shows to the owner in Portuguese. */
 export function ownerFailure(stage: string, failure: FailureKind, errors: readonly string[], again = REVALUATE): OwnerError {
   const { reason, detail } = failureMessage(stage, failure, errors, again);
-  return new OwnerError(reason, detail);
+  return new AgentFailure(failure, reason, detail);
 }
 
 /** The reason for an error of this code; an oversized pack keeps its own message, which says what to do. */
@@ -60,6 +67,8 @@ function reasonOf(stage: string, failure: FailureKind, again: string): string {
       return 'O limite de uso do Claude foi atingido. Tente de novo quando ele for liberado.';
     case 'auth':
       return 'A sessão do Claude expirou. Entre de novo no Claude em Configurações e processe de novo.';
+    case 'aborted':
+      return `${stage} parou porque a execução foi interrompida. ${again}`;
     case 'timeout':
       return `${stage} passou do tempo limite. ${again}`;
     case 'schema':
