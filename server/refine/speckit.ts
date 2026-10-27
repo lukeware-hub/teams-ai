@@ -19,7 +19,7 @@ import { itemSteps, speckitItems, speckitSteps, stepKey, type Step } from './spe
 import { renderSpecMd } from './spec-md.js';
 import { renderSpecsMd } from './specs-md.js';
 import { loadEvents } from '../store/event-store.js';
-import { reduceRefineEvents, type QuestionRow, type RefineState } from './state.js';
+import { reduceRefineEvents, type QuestionRow, type RefineState, type SpeckitStepFailure } from './state.js';
 import type { Question } from './events.js';
 import { decisionsOf } from './decisions.js';
 import { answererOf, makeAnswerer, type Answerer } from './speckit-answers.js';
@@ -54,8 +54,35 @@ export interface SpeckitDeps {
 /** Whether a file or folder exists. */
 const exists = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
 
+/** A step error with the kind of its failure; the message and the detail are the ones the owner has always read. */
+class StepError extends OwnerError {
+  constructor(readonly kind: SpeckitStepFailure['kind'], message: string, detail: string) {
+    super(message, detail);
+  }
+}
+
+/** The item steps that failed, each in its own lane: the reason is the first failure, and every failure is listed. */
+export class PreparationFailed extends OwnerError {
+  constructor(readonly failures: readonly SpeckitStepFailure[]) {
+    super(failures.length > 1 ? `${failures[0]!.reason} Outros ${failures.length - 1} passo(s) também pararam.` : failures[0]!.reason, failures[0]!.detail);
+  }
+}
+
+/** The record of a step that failed: a step error keeps its kind, an agent that could not answer is `agent`, anything else is internal. */
+function failureOf(step: Step, error: unknown): SpeckitStepFailure {
+  const base = { command: step.command, ...(step.item === undefined ? {} : { itemKey: step.item.key }) };
+  if (error instanceof StepError) return { ...base, kind: error.kind, reason: error.message, detail: error.detail };
+  if (error instanceof OwnerError) return { ...base, kind: 'agent', reason: error.message, detail: error.detail };
+  return { ...base, kind: 'internal', reason: `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`, detail: String(error instanceof Error ? error.message : error).slice(0, 1000) };
+}
+
+/** The note a repair run reads: the criteria the previous run left out of its file, which it keeps this time. */
+const repairNote = (dropped: { file: string; ids: readonly string[] }): string => `- The previous run of this step left these acceptance criteria out of ${dropped.file}: ${dropped.ids.join(', ')}. Keep every acceptance criterion id of this item in that file, and change only what keeping them needs.`;
+
 /** How many rounds a step runs when the answers to its questions come in: a round that gets answers runs again with them. */
 const MAX_STEP_ROUNDS = 3;
+/** A step that left acceptance criteria out of its file runs again this many times, with their ids named, before the owner hears of it. */
+const MAX_REPAIRS = 2;
 
 /** The part of the session a preparation reads: the detailed backlog, or the single spec it derived. */
 export type SpeckitSource = Pick<RefineState, 'backlog' | 'derived' | 'featureKey'>;
@@ -178,9 +205,9 @@ const stepName = (step: Step): string => `/speckit-${step.command}${step.item ? 
 async function checkOnDisk(staging: string, step: Step, files: readonly string[]): Promise<void> {
   const found = await Promise.all(files.map((file) => fs.access(path.resolve(staging, file)).then(() => true, () => false)));
   const missing = files.filter((_, i) => !found[i]);
-  if (missing.length > 0) throw new OwnerError(`O Spec Kit não gravou os arquivos que ${stepName(step)} informou. ${TRY_AGAIN}`, missing.join(', '));
+  if (missing.length > 0) throw new StepError('files-missing', `O Spec Kit não gravou os arquivos que ${stepName(step)} informou. ${TRY_AGAIN}`, missing.join(', '));
   const spec = `${speckitFeatureDir(step.item?.key ?? '')}/spec.md`;
-  if (step.command === 'specify' && !(await exists(path.resolve(staging, spec)))) throw new OwnerError(`O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, `no ${spec}`);
+  if (step.command === 'specify' && !(await exists(path.resolve(staging, spec)))) throw new StepError('feature-missing', `O Spec Kit não criou a pasta da feature em ${stepName(step)}. ${TRY_AGAIN}`, `no ${spec}`);
 }
 
 /** The reported files that still hold a Spec Kit marker of an open point; a folder reads as empty. */
@@ -192,18 +219,18 @@ async function openMarkers(staging: string, files: readonly string[]): Promise<s
 /** The file each item command leaves in its feature folder, which must keep every acceptance criterion id of the item's spec. */
 const CRITERIA_FILE: Partial<Record<SpeckitCommand, string>> = { specify: 'spec.md', clarify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
 
-/** The item step's own file and the criterion ids it leaves out, as "<file>: <ids>"; undefined when it keeps them all. */
-async function droppedCriteria(staging: string, step: Step, source: SpeckitSource): Promise<string | undefined> {
+/** The item step's own file and the criterion ids it leaves out; undefined when it keeps them all. */
+async function droppedCriteria(staging: string, step: Step, source: SpeckitSource): Promise<{ file: string; ids: string[] } | undefined> {
   const name = CRITERIA_FILE[step.command];
   if (!name) return undefined;
   const file = `${speckitFeatureDir(step.item!.key)}/${name}`;
   const text = await fs.readFile(path.posix.join(staging, file), 'utf8').catch(() => '');
   // A whole-word match, so AC-100 never counts as kept by AC-1000.
   const dropped = criteriaOf(source, step.item!.key).map((c) => c.id).filter((id) => !new RegExp(`\\b${id}\\b`).test(text));
-  return dropped.length > 0 ? `${file}: ${dropped.join(', ')}` : undefined;
+  return dropped.length > 0 ? { file, ids: dropped } : undefined;
 }
 
-async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: boolean): Promise<SpeckitOutput> {
+async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: boolean, repair: string | null): Promise<SpeckitOutput> {
   const specHash = sha256(`speckit\n${step.command}\n${step.item?.key ?? ''}\n${hash}`);
   const inputDir = speckitInputDir(deps.draft);
   // A backlog writes the owner's answers into briefing.md; a single spec keeps every answer in the journal, as its freeze reads them.
@@ -215,7 +242,7 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: b
   const extraEnv = step.item ? { SPECIFY_FEATURE_DIRECTORY: speckitFeatureDir(step.item.key), SPECIFY_FEATURE_NO_PERSIST: '1' } : undefined;
   const out = (await retryOnSchema((note) =>
     deps.runAgent<'speckit'>(
-      { kind: 'speckit', role: 'dev', pack: withNote(pack, note), cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow, extraEnv },
+      { kind: 'speckit', role: 'dev', pack: withNote(pack, [repair, note].filter((x): x is string => x !== null).join('\n\n') || null), cwd: speckitDir(deps.draft), phase: 'refine', taskId: null, attempt: 1, extraAllow, extraEnv },
       { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
     ),
   )) as StepOutcome<SpeckitOutput>;
@@ -258,8 +285,11 @@ async function pruneFeatures(staging: string, items: readonly { key: string }[])
 }
 
 /** One step of the preparation: refused once it is aborted, skipped when an earlier preparation still holds it, run otherwise. */
+/** The error of a preparation the owner stopped: no step starts after it. */
+const interrupted = (): OwnerError => new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
+
 async function runOne(run: RunContext, step: Step): Promise<void> {
-  if (run.deps.signal?.aborted) throw new OwnerError(`${SPECKIT_STAGE} foi interrompida.`, 'aborted');
+  if (run.deps.signal?.aborted) throw interrupted();
   const key = stepKey(step.command, step.item?.key);
   if (run.reused.has(key)) return;
   await runStep(run.deps, { step, hash: run.hash, texts: run.texts, source: run.source, decider: run.decider, answerer: run.answerer, adjust: run.adjust.has(key) });
@@ -309,28 +339,37 @@ export async function prepareSpeckit(deps: SpeckitDeps, source: SpeckitSource): 
   }
   if (carried.length > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: carried });
   const run: RunContext = { deps, hash, texts, source, decider, answerer, reused, adjust };
-  await runOne(run, { command: 'constitution' });
+  try {
+    await runOne(run, { command: 'constitution' });
+  } catch (error) {
+    if (deps.signal?.aborted) throw error;
+    throw new PreparationFailed([failureOf({ command: 'constitution' }, error)]);
+  }
   const lanes = items.map(itemSteps);
-  const halt: { failed: boolean; error?: unknown } = { failed: false };
+  const failures: SpeckitStepFailure[] = [];
+  // An interruption is not a step's failure: the lanes stop, and a failure recorded before it is the one reported.
+  let interruption: unknown;
   const worker = async (): Promise<void> => {
     for (let lane = lanes.shift(); lane !== undefined; lane = lanes.shift()) {
       for (const step of lane) {
-        if (halt.failed) return;
         try {
           await runOne(run, step);
         } catch (error) {
-          // The first failure is the one reported: a later one, of a step that was already running, does not replace it.
-          if (!halt.failed) {
-            halt.failed = true;
-            halt.error = error;
+          if (deps.signal?.aborted) {
+            interruption ??= error;
+          } else {
+            // A failed step stops its own item's lane only: the other items go on, and the preparation reports every failure.
+            failures.push(failureOf(step, error));
           }
-          return;
+          break;
         }
       }
     }
   };
+  // Every lane ends before the preparation does, so no step of a stopped preparation is still running.
   await Promise.all(Array.from({ length: Math.max(1, Math.min(deps.agents ?? 1, lanes.length)) }, worker));
-  if (halt.failed) throw halt.error;
+  if (failures.length > 0) throw new PreparationFailed(failures);
+  if (interruption !== undefined) throw interruption;
   return hash;
 }
 
@@ -344,11 +383,18 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
   // A specify step makes a new feature folder on every run, so its answers reach the steps after it instead.
   const rework = step.command === 'specify' ? undefined : { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) };
   let answered = 0;
+  // The repairs of this step: a run that left criteria out runs again with their ids named, up to MAX_REPAIRS times.
+  let repairs = 0;
+  let repair: string | null = null;
   for (let round = 1; ; round++) {
+    // A stopped preparation starts no further round, whether the round is a repair or an answer.
+    if (deps.signal?.aborted) throw interrupted();
     await deps.journal.fact(RefineEvent.SpeckitStepStarted, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}) });
     let result: SpeckitOutput;
+    const note = repair;
+    repair = null;
     try {
-      result = await runCommand(deps, step, hash, adjust);
+      result = await runCommand(deps, step, hash, adjust, note);
       if (result.status === 'done') await checkOnDisk(dir, step, result.files);
     } catch (err) {
       // A step that fails before it is recorded leaves the running list now, not when the whole preparation stops.
@@ -365,12 +411,24 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
     // The questions of a step are on record and answered before the step stops, so the owner sees what is left.
     const count = await answerer.triage(asked, rework);
     answered += count;
-    if (count > 0 && rework && round < MAX_STEP_ROUNDS) continue;
+    // The run after this one names the criteria this one left out, however that run is reached: an answer round or a repair.
+    const left = dropped && result.status === 'done' && open.length === 0 ? dropped : undefined;
+    if (count > 0 && rework && round < MAX_STEP_ROUNDS) {
+      repair = left ? repairNote(left) : null;
+      continue;
+    }
+    // A step that left acceptance criteria out of its file runs again with their ids named, before the owner hears of it.
+    if (left && repairs < MAX_REPAIRS) {
+      repairs++;
+      await deps.journal.fact(RefineEvent.SpeckitStepRepaired, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), file: left.file, ids: left.ids, repair: repairs });
+      repair = repairNote(left);
+      continue;
+    }
     const stopped = result.status === 'blocked' || open.length > 0 || Boolean(dropped);
     if ((count > 0 && rework) || (stopped && answered > 0)) await deps.journal.fact(RefineEvent.SpeckitStale, {});
-    if (result.status === 'blocked') throw new OwnerError(`O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
-    if (open.length > 0) throw new OwnerError(`O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
-    if (dropped) throw new OwnerError(`O Spec Kit deixou critérios de aceite de fora em ${stepName(step)}. ${TRY_AGAIN}`, dropped);
+    if (result.status === 'blocked') throw new StepError('blocked', `O Spec Kit parou em ${stepName(step)}: ${result.reason}`, result.summary);
+    if (open.length > 0) throw new StepError('open-markers', `O Spec Kit deixou pontos em aberto ([NEEDS CLARIFICATION]) em ${stepName(step)}. Responda às perguntas dele ou tente de novo.`, open.join(', '));
+    if (dropped) throw new StepError('dropped-criteria', `O Spec Kit deixou critérios de aceite de fora em ${stepName(step)}. ${TRY_AGAIN}`, `${dropped.file}: ${dropped.ids.join(', ')}`);
     return;
   }
 }

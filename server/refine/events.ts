@@ -65,6 +65,7 @@ export const RefineEvent = {
   SpeckitStepStarted: 'SPECKIT_STEP_STARTED',
   /** One Spec Kit command finished: `{command, itemKey?, files}`. */
   SpeckitStepDone: 'SPECKIT_STEP_DONE',
+  SpeckitStepRepaired: 'SPECKIT_STEP_REPAIRED',
   /** The Spec Kit preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
   /** The Spec Kit preparation stopped: `{reason, detail?}`, the reason in plain words for the owner and its technical detail. */

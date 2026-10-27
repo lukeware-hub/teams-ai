@@ -117,6 +117,15 @@ export interface ConflictMap {
   pairs: Array<{ a: string; b: string; reason: string }>;
 }
 
+/** A Spec Kit step that did not finish, with the kind of failure: what the owner or a driver can act on. */
+export interface SpeckitStepFailure {
+  command: string;
+  itemKey?: string;
+  kind: 'agent' | 'blocked' | 'open-markers' | 'dropped-criteria' | 'files-missing' | 'feature-missing' | 'internal';
+  reason: string;
+  detail: string;
+}
+
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
@@ -168,7 +177,7 @@ export interface RefineState {
   /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
   speckitAnswering?: boolean;
   /** The Spec Kit preparation of a detailed backlog or a single spec; stale once a document, the backlog, the spec or an owner's answer changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; failures?: SpeckitStepFailure[]; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
 export interface StuckRun {
@@ -559,7 +568,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.SpeckitFailed:
       // A failure before the preparation started still shows, with no step done and with only its own detail.
-      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), detail: String(d.detail ?? '') };
+      s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), detail: String(d.detail ?? ''), failures: d.failures as SpeckitStepFailure[] | undefined };
       delete s.speckit.running;
       break;
     case RefineEvent.StartedRun:

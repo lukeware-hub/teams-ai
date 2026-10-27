@@ -33,7 +33,7 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, emptyRefineState, newestReshape, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
-import { answerUntriaged, optionsForOpen, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
+import { answerUntriaged, optionsForOpen, PreparationFailed, prepareSpeckit, speckitInputHash, SPECKIT_STAGE } from './speckit.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -524,7 +524,9 @@ export class RefineSession {
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${SPECKIT_STAGE} parou por um erro interno. ${TRY_AGAIN}`;
       const detail = err instanceof OwnerError ? err.detail : String(err instanceof Error ? err.message : err).slice(0, 1000);
-      await this.journal.fact(RefineEvent.SpeckitFailed, { reason, detail });
+      // Every item step that stopped, each with its kind: the owner reads them, and the next run starts from the steps that finished.
+      const failures = err instanceof PreparationFailed ? err.failures : undefined;
+      await this.journal.fact(RefineEvent.SpeckitFailed, { reason, detail, failures });
     }
   }
 

@@ -90,6 +90,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 95 | [`2026-10-27-teams-ai-95-autonomy-measurement.md`](2026-10-27-teams-ai-95-autonomy-measurement.md) | Built, with unit tests: the refinement journal keeps each decision whole, labels count only deliberate owner answers, and a replay script measures the owner's agreement with the recommendation. First step of the autonomous refinement (FEATURES item 11). |
 | 96 | [`2026-10-27-teams-ai-96-save-conflicts.md`](2026-10-27-teams-ai-96-save-conflicts.md) | Done and checked in Chrome on the live app: a document save states the hash it was typed over, and a save over a file another change moved is refused with 409 and changes nothing. Second step of FEATURES item 11. |
 | 97 | [`2026-10-27-teams-ai-97-scope-flag.md`](2026-10-27-teams-ai-97-scope-flag.md) | Built, with unit tests: every patch proposal says whether it adds or removes structure (a heading, a list item, a criterion id, a priority). Journaled only; nothing applies a patch because of it yet. Third step of FEATURES item 11. |
+| 98 | [`2026-10-27-teams-ai-98-spec-kit-repair.md`](2026-10-27-teams-ai-98-spec-kit-repair.md) | Built, with unit tests: a Spec Kit step that leaves acceptance criteria out runs again, up to twice, with the ids named; a failed item stops only its own lane, and the failure lists every step that stopped. Fourth step of FEATURES item 11. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 

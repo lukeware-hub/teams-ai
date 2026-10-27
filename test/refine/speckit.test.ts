@@ -218,6 +218,30 @@ describe('RefineSession.runSpeckit answers from the documents', () => {
     await s.close();
   });
 
+  it('a plan that asks a question and leaves a criterion out runs again with both the answer and the ids it left out', async () => {
+    let plans = 0;
+    answer = async (req) => {
+      if (!planLogin(req)) return done(req);
+      plans += 1;
+      // The first run asks a question and leaves AC-002 out of its file; the next run keeps every id and gets the answer.
+      if (plans === 1) {
+        await fs.writeFile(`${req.cwd}/specs/login/plan.md`, '- AC-001 é o link\n');
+        return { status: 'done', summary: 'ok', files: ['specs/login/plan.md'], questions: [{ text: 'Qual o prazo do link?', blocking: true }] };
+      }
+      return { ...(await done(req)), questions: [] };
+    };
+    answerFromDocs = answersIn;
+    const s = await detailedSession();
+    await briefing(s);
+    await s.runSpeckit();
+    const plan = agentCalls.filter(planLogin);
+    expect(plan).toHaveLength(2);
+    expect(plan[1]!.pack.decisions).toEqual([expect.objectContaining({ answer: '90 dias', by: 'sm' })]);
+    expect(plan[1]!.pack.feedback!).toContain('left these acceptance criteria out of specs/login/plan.md: AC-002');
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
+    await s.close();
+  });
+
   it('an answer that arrives after a re-run makes the step run again with it, and a question asked again in its own words adds no row', async () => {
     let plans = 0;
     const first = { text: 'Qual o prazo do link?', blocking: true };
@@ -491,19 +515,22 @@ describe('RefineSession.runSpeckit', () => {
     await s.close();
   });
 
-  it('stops at the first step that fails or that the agent reports blocked', async () => {
+  it('stops each item at its first step that fails or is blocked, and the other item goes on', async () => {
     answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
     const s = await detailedSession();
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.speckit?.error).toContain('o plano não fecha');
-    expect(agentCalls).toHaveLength(4);
+    // Each item's lane stops at its own blocked plan; the other item runs on to its plan, and no tasks step runs.
+    expect(agentCalls).toHaveLength(7);
+    expect(agentCalls.map(stepOf)).not.toContain('tasks:login');
     answer = () => null;
     await s.runSpeckit();
-    // The second run resumes at the plan: the constitution and the first item's specify and clarify stay finished, and the plan is asked twice.
-    expect(agentCalls).toHaveLength(6);
+    // The second run resumes at the two plans that the block stopped: each is asked twice, as the schema retry asks once more.
+    // The constitution and both items' specify and clarify stay finished.
+    expect(agentCalls).toHaveLength(11);
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
-    expect(s.state.speckit!.steps).toHaveLength(3);
+    expect(s.state.speckit!.steps).toHaveLength(5);
     expect(s.state.speckit?.error).toContain('Spec Kit');
     await s.close();
   });
@@ -534,7 +561,8 @@ describe('RefineSession.runSpeckit', () => {
     const before = agentCalls.length;
     answer = done;
     await s.runSpeckit();
-    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    // The cart's specify and clarify finished in the first run, so they stay; the two plans that the same block stopped run again.
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'plan:cart', 'tasks:cart']);
     expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
     expect(s.state.speckit!.steps).toHaveLength(9);
     expect(canStart(s.state)).toBe(true);
@@ -549,10 +577,11 @@ describe('RefineSession.runSpeckit', () => {
     answer = done;
     const before = agentCalls.length;
     await s.runSpeckit();
-    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['plan:login', 'tasks:login', 'plan:cart', 'tasks:cart']);
     expect(execCalls).toHaveLength(1);
     expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
-    expect(s.state.speckit!.steps.filter((step) => step.reused)).toHaveLength(3);
+    // The constitution and the four finished steps of the two items stay as they are.
+    expect(s.state.speckit!.steps.filter((step) => step.reused)).toHaveLength(5);
     await s.close();
   });
 
@@ -568,7 +597,7 @@ describe('RefineSession.runSpeckit', () => {
     answer = done;
     const before = agentCalls.length;
     await s.runSpeckit();
-    expect(agentCalls.slice(before).map(stepOf)).toEqual(['clarify:login', 'plan:login', 'tasks:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(agentCalls.slice(before).map(stepOf)).toEqual(['clarify:login', 'plan:login', 'tasks:login']);
     expect(s.state.speckit).toMatchObject({ status: 'done', total: 9 });
     await s.close();
   });
@@ -702,7 +731,8 @@ describe('RefineSession.runSpeckit', () => {
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.speckit?.error).toContain('/speckit-plan de login');
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/plan.md');
-    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'clarify', itemKey: 'login' });
+    // The other item's lane runs on to its end, so the last step finished for this item is its clarify.
+    expect(s.state.speckit?.steps.filter((st) => st.itemKey === 'login').at(-1)).toMatchObject({ command: 'clarify', itemKey: 'login' });
     expect(canStart(s.state)).toBe(false);
     await s.close();
   });
@@ -747,7 +777,7 @@ describe('RefineSession.runSpeckit', () => {
     expect(s.state.speckit?.error).toContain('/speckit-clarify de login');
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/spec.md');
     expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Qual o prazo de retenção?', origin: 'speckit', status: 'pending' })]);
-    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'specify', itemKey: 'login' });
+    expect(s.state.speckit?.steps.filter((st) => st.itemKey === 'login').at(-1)).toMatchObject({ command: 'specify', itemKey: 'login' });
     expect(canStart(s.state)).toBe(false);
     const before = agentCalls.length;
     answer = done;
@@ -772,13 +802,38 @@ describe('RefineSession.runSpeckit', () => {
     expect(s.state.speckit?.error).toContain('/speckit-tasks de login');
     expect(s.events.find((e) => e.type === RefineEvent.SpeckitFailed)!.data.detail).toBe('specs/login/tasks.md: AC-002');
     expect(s.state.questions).toEqual([expect.objectContaining({ text: 'Listar por data?', origin: 'speckit', status: 'pending' })]);
-    expect(s.state.speckit?.steps.at(-1)).toMatchObject({ command: 'plan', itemKey: 'login' });
+    // The repair ran twice more with the id named, and the owner sees the failure after the second repair.
+    expect(s.events.filter((e) => e.type === RefineEvent.SpeckitStepRepaired).map((e) => e.data.ids)).toEqual([['AC-002'], ['AC-002']]);
+    const tasks = agentCalls.filter((r) => stepOf(r) === 'tasks:login');
+    expect(tasks).toHaveLength(3);
+    expect(tasks[1]!.pack.feedback!).toContain('specs/login/tasks.md');
+    expect(tasks[1]!.pack.feedback!).toContain('AC-002');
+    expect(s.state.speckit?.steps.filter((st) => st.itemKey === 'login').at(-1)).toMatchObject({ command: 'plan', itemKey: 'login' });
     expect(canStart(s.state)).toBe(false);
     const before = agentCalls.length;
     answer = done;
     await s.runSpeckit();
     expect(agentCalls.slice(before).map(stepOf)[0]).toBe('tasks:login');
     expect(s.state.speckit).toMatchObject({ status: 'done' });
+    await s.close();
+  });
+
+  it('a step that leaves criteria out is repaired in the same run, with their ids named, and the preparation goes on', async () => {
+    let tasksRuns = 0;
+    answer = async (req) => {
+      if (stepOf(req) !== 'tasks:login') return done(req);
+      tasksRuns++;
+      // The first run leaves AC-002 out; the repair keeps every id.
+      await fs.writeFile(`${req.cwd}/specs/login/tasks.md`, tasksRuns === 1 ? '- T001 [AC-001] criar a rota\n- T002 [AC-0021] listar\n' : '- T001 [AC-001] criar a rota\n- T002 [AC-002] listar\n');
+      return { status: 'done', summary: 'ok', files: ['specs/login/tasks.md'] };
+    };
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit).toMatchObject({ status: 'done' });
+    expect(s.events.filter((e) => e.type === RefineEvent.SpeckitStepRepaired)).toHaveLength(1);
+    const tasks = agentCalls.filter((r) => stepOf(r) === 'tasks:login');
+    expect(tasks).toHaveLength(2);
+    expect(tasks[1]!.pack.feedback!).toContain('AC-002');
     await s.close();
   });
 
@@ -917,7 +972,7 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     await s.close();
   });
 
-  it('a step that stops one item keeps the other from starting a new step, and the first error is reported', async () => {
+  it("a step that stops one item stops only that item's lane: the other item runs on, and the first error is reported", async () => {
     answer = async (req) => {
       if (stepOf(req) === 'specify:login') return { status: 'blocked', summary: 'parou', files: [], reason: 'o login não fecha' };
       await pause();
@@ -927,7 +982,37 @@ describe('RefineSession.runSpeckit in parallel, and from an earlier run', () => 
     await s.runSpeckit();
     expect(s.state.speckit).toMatchObject({ status: 'failed' });
     expect(s.state.speckit?.error).toContain('/speckit-specify de login');
-    expect(agentCalls.map(stepOf)).toEqual(['constitution:', 'specify:login', 'specify:cart']);
+    expect(agentCalls.map(stepOf)).toEqual(['constitution:', 'specify:login', 'specify:cart', 'clarify:cart', 'plan:cart', 'tasks:cart']);
+    expect(s.state.speckit?.failures).toEqual([expect.objectContaining({ command: 'specify', itemKey: 'login', kind: 'blocked' })]);
+    await s.close();
+  });
+
+  it('two items that stop give one reason, with the count of the other, and list both failures', async () => {
+    answer = (req) => (req.pack.feedback!.includes('speckit-plan/SKILL') ? { status: 'blocked', summary: 'parou', files: [], reason: 'o plano não fecha' } : done(req));
+    const s = await detailedSession();
+    await s.runSpeckit();
+    expect(s.state.speckit?.error).toContain('o plano não fecha');
+    expect(s.state.speckit?.error).toContain('Outros 1 passo(s) também pararam.');
+    expect(s.state.speckit?.failures?.map((f) => `${f.command}:${f.itemKey}`).sort()).toEqual(['plan:cart', 'plan:login']);
+    expect(s.state.speckit?.failures?.every((f) => f.kind === 'blocked')).toBe(true);
+    await s.close();
+  });
+
+  it('an abort keeps the failure an item recorded before it, and starts no further step', async () => {
+    answer = async (req) => {
+      if (stepOf(req) === 'specify:login') return { status: 'blocked', summary: 'parou', files: [], reason: 'o login não fecha' };
+      if (stepOf(req) === 'clarify:cart') {
+        // The owner stops the preparation while the other item's lane is still running.
+        void s.abort();
+        return done(req);
+      }
+      return done(req);
+    };
+    const s = await detailedWith({ speckitAgents: async () => 2 });
+    await s.runSpeckit();
+    expect(s.state.speckit?.error).toContain('/speckit-specify de login');
+    expect(s.state.speckit?.error).not.toContain('foi interrompida');
+    expect(agentCalls.map(stepOf).at(-1)).toBe('clarify:cart');
     await s.close();
   });
 
