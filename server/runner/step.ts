@@ -106,7 +106,7 @@ const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TO
 /** The turn cap a kind has below its role's. */
 const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS, 'speckit-answer': ANSWER_MAX_TURNS, 'speckit-research': RESEARCH_MAX_TURNS };
 /** The only folders of its working directory a kind's file tools may write: a Spec Kit step writes its own files, never the inputs or a CLAUDE.md. */
-const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['.specify', 'specs'] };
+const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['.specify', 'specs', 'docs/specs'] };
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
   const turns = KIND_TURNS[kind];
   return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };

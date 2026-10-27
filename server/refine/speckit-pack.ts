@@ -36,7 +36,7 @@ function argumentsOf(command: SpeckitCommand, inputDir: string, item: SpeckitIte
 }
 
 /** The note of a step that runs again on the files of its earlier run, which are already in the staging folder. */
-const ADJUST_NOTE = `- Its files from an earlier run are already in this folder: read them first, keep what is still right, and change only what the owner's decisions and the changed documents require. Never copy the template over them, and never rewrite the constitution or a spec from scratch.`;
+export const ADJUST_NOTE = `- Its files from an earlier run are already in this folder: read them first, keep what is still right, and change only what the owner's decisions and the changed documents require. Never copy the template over them, and never rewrite the constitution or a spec from scratch.`;
 
 /** The most earlier questions a pack lists. */
 const LEDGER_LIMIT = 40;
