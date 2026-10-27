@@ -29,7 +29,19 @@ const UNCLASSIFIED = ['Como o sistema trata a sessão expirada?', 'Quais são as
 
 describe('the resolver rules', () => {
   it('stay frozen: a change of any number is a new stamp and a new holdout', () => {
-    expect(RULES).toEqual({ stamp: 'r1', repeat: { overlap: 0.8, words: 4 }, gate: { labels: 40, z: 1.645, lower: 0.8, bad: 0.6 } });
+    expect(RULES).toEqual({ stamp: 'r2', repeat: { overlap: 0.8, words: 4 }, gate: { labels: 40, z: 1.645, lower: 0.8, bad: 0.6 } });
+  });
+});
+
+describe('the scope vocabulary, after the DEV audit of r1 (plan 101)', () => {
+  it.each([
+    'Qual o prazo para o item entregue?',
+    'Qual o prazo da versão vigente da política?',
+    'Qual o prazo da regularização posterior?',
+    'Qual o prazo para os atos, inclusive os urgentes?',
+    'Qual o prazo próximo do vencimento?',
+  ])('does not take the ordinary or domain sense of a word for scope: %s', (text) => {
+    expect(impactOf(q(text)).impact).toBe('detail');
   });
 });
 

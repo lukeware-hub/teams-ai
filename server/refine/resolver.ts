@@ -4,7 +4,7 @@ import type { RefineState } from './state.js';
 
 /** The resolver's rules for one replay: a change is a new stamp, and promotion needs a holdout made after it (plan 101). */
 export const RULES = {
-  stamp: 'r1',
+  stamp: 'r2',
   /** A repeat: the same context, and a word overlap of at least `overlap` between questions of at least `words` content words. */
   repeat: { overlap: 0.8, words: 4 },
   /** The gate a stratum clears before it acts: labels, the one-sided Wilson z, the lower bound to clear, and the bound below which it is bad. */
@@ -65,7 +65,7 @@ export const normalized = (text: string): string => plainText(text).replace(/[^a
 const digitsOf = (text: string): string => (plainText(text).match(/\d+/g) ?? []).sort().join(' ');
 
 /** Words that put a question in scope: adding, cutting, priority, order, phase, release, or what enters this delivery. */
-const SCOPE_CUE = /\b(incl\w*|adicion\w*|adicionar|acrescent\w*|remov\w*|retir\w*|cort\w*|exclu\w*|descart\w*|divid\w*|mescl\w*|unir|unific\w*|prior\w*|escopo|mvp|fases?|versao\w*|release\w*|entreg\w*|entr(?:a|am|ar)|adi(?:ar|ado|ada|ados|adas|amento)|adiad\w*|proxim\w*|posterior\w*|futur\w*|split\w*|merge\w*|add\w*|drop\w*|cut\w*|scope|defer\w*|phase\w*|later|milestone\w*)\b/g;
+const SCOPE_CUE = /\b(inclu(?:ir|i|em|sao|ido|ida|idos|idas)|include\w*|adicion\w*|adicionar|acrescent\w*|remov\w*|retir\w*|cort\w*|exclu(?:ir|i|ido|ida|idos|idas)|descart\w*|divid\w*|mescl\w*|unir|unific\w*|prior\w*|escopo|mvp|fases?|release\w*|entregas?|entr(?:a|am|ar)|adi(?:ar|ado|ada|ados|adas|amento)|adiad\w*|split\w*|merge\w*|add\w*|drop\w*|cut\w*|scope|defer\w*|phase\w*|later|milestone\w*|futur\w*)\b/g;
 /** An ask: a question word. */
 const DETAIL_ASK = /\b(qual|quais|quanto|quanta|quantos|quantas|how many|how much|how long|what is|what are)\b/;
 /** The kind of value an ask names: a value, a limit, a name, a format or a message text. */
