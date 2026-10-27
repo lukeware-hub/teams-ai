@@ -1,17 +1,20 @@
 /**
- * How often the owner agreed with the recommended option in one refinement journal, against the replay gates, then what the
- * resolver would have decided for each question (plan 101).
- *   npx tsx scripts/evals/refine-replay.ts <path to events.ndjson> [--since <ISO time>] [--bins] [--audit <n>]
+ * How often the owner agreed with the recommended option in one refinement journal, against the replay gates; then what the
+ * resolver would have decided for each question, and how the saved evidence checks would have judged the agents' answers (plan 101).
+ *   npx tsx scripts/evals/refine-replay.ts <path to events.ndjson> [--since <ISO time>] [--bins] [--audit <n>] [--evidence]
  * Only deliberate answers label the agreement: an answer a few seconds after the owner's previous one is a bulk click or a script.
+ * --evidence reads the saved steps and the six inputs in the draft folder, next to the journal.
  */
+import path from 'node:path';
 import { bands, clusterInterval, leaveOneItemOut, ownerAnswers, REPLAY } from '../../server/refine/agreement.js';
 import { MIN_READ_SECONDS } from '../../server/decide/evals.js';
+import { readInputTexts, readProposalSteps, ownerTexts, renderReplay, replayProposals } from '../../server/refine/evidence-replay.js';
 import { renderResolverReport, replayResolver } from '../../server/refine/resolver-replay.js';
 import { loadEvents } from '../../server/store/event-store.js';
 
 const [file, ...flags] = process.argv.slice(2);
 if (!file) {
-  console.error('usage: refine-replay.ts <path to events.ndjson> [--since <ISO time>] [--bins] [--audit <n>]');
+  console.error('usage: refine-replay.ts <path to events.ndjson> [--since <ISO time>] [--bins] [--audit <n>] [--evidence]');
   process.exit(2);
 }
 const flagValue = (name: string): string | undefined => {
@@ -45,3 +48,10 @@ const loo = leaveOneItemOut(answers);
 console.log(loo ? `leave one item out: lowest ${pct(loo.lowest.share)} without ${loo.lowest.item}, highest ${pct(loo.highest.share)} without ${loo.highest.item}` : 'leave one item out: fewer than two items');
 console.log('');
 for (const line of renderResolverReport(replayResolver(events), { since, bins: flags.includes('--bins'), audit })) console.log(line);
+
+if (flags.includes('--evidence')) {
+  const root = path.dirname(file);
+  const replay = replayProposals(await readProposalSteps(root, events), await readInputTexts(root), ownerTexts(events));
+  console.log('');
+  for (const line of renderReplay(replay)) console.log(line);
+}

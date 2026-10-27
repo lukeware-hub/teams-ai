@@ -12,7 +12,7 @@ import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { SPECKIT_INPUTS, type SpeckitCommand, type SpeckitInput } from './speckit-pack.js';
 
 /** Lowercase, without accents or punctuation, one space between words: the form every quote is compared in. */
-const plain = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export const plain = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 /** Words that flip the meaning of a sentence when a quote leaves them out. */
 const NEGATIONS = new Set(['nao', 'nunca', 'jamais', 'sem', 'exceto', 'nenhum', 'nenhuma']);
 const MIN_WORDS_WHOLE_SENTENCE = 3;
@@ -31,35 +31,123 @@ function headingAbove(lines: readonly string[], index: number): { heading: strin
   return { heading, decisions: section !== undefined && ['decisoes', 'decisions'].includes(plain(section)) };
 }
 
-/** Where one quote sits in one of the six documents, or null when it is not a checkable quote of them. */
-function locate(texts: Record<SpeckitInput, string>, evidence: { source: string; quote: string }): QuoteEvidence | null {
-  if (!(SPECKIT_INPUTS as readonly string[]).includes(evidence.source)) return null;
-  const file = evidence.source as SpeckitInput;
-  const quote = plain(evidence.quote);
+/** Why a quote does not verify: the first refusal of the lines that hold it, or the place it is missing from. */
+export type EvidenceReason = 'source-unknown' | 'not-in-file' | 'in-other-file' | 'joins-lines' | 'too-short' | 'negation' | 'decisions';
+
+/** The checks a quote goes through: strict is the rule of the answers; each relaxed rule changes its own dimension and nothing else. */
+export interface EvidenceRules {
+  /** A source named with another spelling or a folder (`docs/briefing.md`, `Briefing`) means the document it names. */
+  sourceNames: boolean;
+  /** A quote under the owner's decisions counts when one of `ownerTexts`, the answers the owner wrote, holds it. */
+  decisions: boolean;
+  /** An answer stands when some quotes verify and together they hold every number, even if other quotes do not verify. */
+  perQuote: boolean;
+  ownerTexts: readonly string[];
+}
+
+export const STRICT_RULES: EvidenceRules = { sourceNames: false, decisions: false, perQuote: false, ownerTexts: [] };
+
+/** A quote that verifies, with the place it sits, or the reason it does not. */
+export type Scan = { hit: QuoteEvidence } | { reason: EvidenceReason };
+
+/** The document a source names under the relaxed spelling rule, or undefined. */
+function namedDocument(source: string): SpeckitInput | undefined {
+  const name = source.trim().toLowerCase().replace(/^\.\//, '').replace(/^docs\//, '');
+  return (SPECKIT_INPUTS as readonly string[]).find((file) => file === (name.endsWith('.md') ? name : `${name}.md`)) as SpeckitInput | undefined;
+}
+
+/** Whether one line of the text holds the quote, as whole words. */
+const holdsQuote = (text: string, quote: string): boolean => text.split('\n').some((line) => ` ${plain(line)} `.includes(` ${quote} `));
+
+/** Whether the quote runs across two adjacent lines of the text. */
+function joinsLines(text: string, quote: string): boolean {
+  const lines = text.split('\n');
+  return lines.some((line, i) => i + 1 < lines.length && ` ${plain(line)} ${plain(lines[i + 1]!)} `.includes(` ${quote} `));
+}
+
+/** One document: the lines that hold the quote are checked in order, and the first that passes is the hit. */
+function scanFile(texts: Record<SpeckitInput, string>, file: SpeckitInput, quote: string, original: string, rules: EvidenceRules): Scan {
   const words = quote.split(' ').length;
   const lines = texts[file].split('\n');
+  let refusal: EvidenceReason | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = plain(lines[i]!);
     const padded = ` ${line} `;
     if (!padded.includes(` ${quote} `)) continue;
     const whole = line === quote;
-    if (words < (whole ? MIN_WORDS_WHOLE_SENTENCE : MIN_WORDS_PART)) continue;
+    if (words < (whole ? MIN_WORDS_WHOLE_SENTENCE : MIN_WORDS_PART)) {
+      refusal ??= 'too-short';
+      continue;
+    }
     // A part of a sentence is refused when the rest of its line holds a negation, which would flip the answer.
-    if (!whole && padded.replace(` ${quote} `, ' ').split(' ').some((w) => NEGATIONS.has(w))) continue;
+    if (!whole && padded.replace(` ${quote} `, ' ').split(' ').some((w) => NEGATIONS.has(w))) {
+      refusal ??= 'negation';
+      continue;
+    }
     const { heading, decisions } = headingAbove(lines, i);
-    if (decisions) continue;
-    return { file, heading, quote: evidence.quote };
+    if (decisions && !(rules.decisions && rules.ownerTexts.some((text) => plain(text).includes(quote)))) {
+      refusal ??= 'decisions';
+      continue;
+    }
+    return { hit: { file, heading, quote: original } };
   }
-  return null;
+  return { reason: refusal ?? 'not-in-file' };
+}
+
+/** One quote in the six documents under the rules: where it sits, or why it does not verify. */
+export function scan(texts: Record<SpeckitInput, string>, evidence: { source: string; quote: string }, rules: EvidenceRules = STRICT_RULES): Scan {
+  const file = (SPECKIT_INPUTS as readonly string[]).includes(evidence.source) ? (evidence.source as SpeckitInput) : rules.sourceNames ? namedDocument(evidence.source) : undefined;
+  if (file === undefined) return { reason: 'source-unknown' };
+  const quote = plain(evidence.quote);
+  const found = scanFile(texts, file, quote, evidence.quote, rules);
+  if ('hit' in found || found.reason !== 'not-in-file') return found;
+  if (SPECKIT_INPUTS.some((other) => other !== file && holdsQuote(texts[other], quote))) return { reason: 'in-other-file' };
+  return { reason: joinsLines(texts[file], quote) ? 'joins-lines' : 'not-in-file' };
 }
 
 /** The evidence of an answer when every quote is in the documents and every number of the answer is in a quote; null otherwise. */
 export function verifyEvidence(texts: Record<SpeckitInput, string>, evidence: readonly { source: string; quote: string }[], answer: string): QuoteEvidence[] | null {
-  const located = evidence.map((e) => locate(texts, e)).filter((l): l is QuoteEvidence => l !== null);
-  if (located.length === 0 || located.length !== evidence.length) return null;
-  const quotes = evidence.map((e) => ` ${plain(e.quote)} `);
-  const numbers = plain(answer).split(' ').filter((w) => /^\d+$/.test(w));
-  return numbers.every((n) => quotes.some((q) => q.includes(` ${n} `))) ? located : null;
+  return admitted(texts, evidence, answer, STRICT_RULES);
+}
+
+/** The numbers an answer states, as digit words. */
+const answerNumbers = (answer: string): string[] => plain(answer).split(' ').filter((w) => /^\d+$/.test(w));
+
+/** The quotes that verify under the rules, in order, when the rules admit the answer; null otherwise. */
+function admitted(texts: Record<SpeckitInput, string>, evidence: readonly { source: string; quote: string }[], answer: string, rules: EvidenceRules): QuoteEvidence[] | null {
+  const hits = evidence.flatMap((e) => {
+    const found = scan(texts, e, rules);
+    return 'hit' in found ? [found.hit] : [];
+  });
+  if (hits.length === 0 || (!rules.perQuote && hits.length !== evidence.length)) return null;
+  const quotes = hits.map((h) => ` ${plain(h.quote)} `);
+  return answerNumbers(answer).every((n) => quotes.some((q) => q.includes(` ${n} `))) ? hits : null;
+}
+
+/** The rule sets the replay compares: strict first, then each relaxed rule alone. */
+export type RuleSet = 'strict' | 'sourceNames' | 'decisions' | 'perQuote';
+
+/** Why an answer's evidence verifies or not, quote by quote, and whether each rule set admits it; `ownerTexts` are the answers the owner wrote. */
+export interface EvidenceDiagnosis {
+  quotes: Array<{ source: string; reason: EvidenceReason | 'ok' }>;
+  numbers: Array<{ number: string; reason: 'number-missing' | 'number-format' }>;
+  admits: Record<RuleSet, boolean>;
+}
+
+export function diagnoseEvidence(texts: Record<SpeckitInput, string>, evidence: readonly { source: string; quote: string }[], answer: string, ownerTexts: readonly string[] = []): EvidenceDiagnosis {
+  const quoted = evidence.map((e) => plain(e.quote));
+  const numbers = answerNumbers(answer)
+    .filter((n) => !quoted.some((q) => ` ${q} `.includes(` ${n} `)))
+    .map((n) => ({ number: n, reason: quoted.some((q) => q.replace(/ /g, '').includes(n)) ? ('number-format' as const) : ('number-missing' as const) }));
+  const admit = (patch: Partial<EvidenceRules>) => admitted(texts, evidence, answer, { ...STRICT_RULES, ownerTexts, ...patch }) !== null;
+  return {
+    quotes: evidence.map((e) => {
+      const found = scan(texts, e, STRICT_RULES);
+      return { source: e.source, reason: 'hit' in found ? ('ok' as const) : found.reason };
+    }),
+    numbers,
+    admits: { strict: admit({}), sourceNames: admit({ sourceNames: true }), decisions: admit({ decisions: true }), perQuote: admit({ perQuote: true }) },
+  };
 }
 
 /** A question the PO or SM answers, with the item it is about in its title. */
