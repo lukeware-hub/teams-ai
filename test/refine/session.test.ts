@@ -338,6 +338,17 @@ describe('RefineSession', () => {
     expect(await readDoc(draft(), 'project.md')).toBe('# Hello\n\n## Folks\n');
   });
 
+  it('a save states the hash it was typed over: a file another change moved since is a conflict that keeps its text', async () => {
+    const s = await RefineSession.create(deps(), 'new-project');
+    const snap = await s.snapshot();
+    expect(snap.hashes['project.md']).toBe(sha256(snap.docs['project.md']));
+    const saved = await s.saveDoc('project.md', '# Hello\n\n## Mine\n', snap.hashes['project.md']);
+    expect(saved).toBe(sha256(await readDoc(draft(), 'project.md')));
+    // The old hash no longer matches the file, so the save is refused and the file keeps the text that is on disk.
+    await expect(s.saveDoc('project.md', '# Hello\n\n## Theirs\n', snap.hashes['project.md'])).rejects.toBeInstanceOf(ConflictError);
+    expect(await readDoc(draft(), 'project.md')).toBe('# Hello\n\n## Mine\n');
+  });
+
   it('accepting a patch drops the pending patches it made stale, with a message in Portuguese', async () => {
     const s = await RefineSession.create(deps(), 'new-project');
     script['derive/po'] = [derived];

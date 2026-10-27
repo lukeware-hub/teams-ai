@@ -38,6 +38,19 @@ describe('RefinementPage of a new project', () => {
     await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 
+  it('saves a document with the hash of the text it was typed over, then with the hash the save returned', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState(), hashes: { 'flow.md': 'hash-of-flow' } });
+    const save = vi.spyOn(refineApi, 'saveDoc').mockResolvedValue({ ok: true, hash: 'hash-after-save' });
+    renderPage();
+    const editor = await screen.findByTestId('doc-flow.md');
+    fireEvent.change(editor, { target: { value: '# Flow\n\nEdited by the owner.\n' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(save).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md', '# Flow\n\nEdited by the owner.\n', 'hash-of-flow'));
+    fireEvent.change(editor, { target: { value: '# Flow\n\nEdited again.\n' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith('hello-app', 'hello-001', 'flow.md', '# Flow\n\nEdited again.\n', 'hash-after-save'));
+  });
+
   it('sends the review of the stage document to the API', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
     const review = vi.spyOn(refineApi, 'evaluateStage').mockResolvedValue({ ok: true });

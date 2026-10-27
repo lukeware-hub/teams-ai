@@ -160,6 +160,9 @@ describe('refine api', () => {
     expect(await (await fetch(`${base()}/api/refine`)).json()).toEqual([{ projectId: 'hello-app', specId: 'hello-app-001', state: 'drafting', registered: false }]);
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/spec.json', { text: 'x' })).status).toBe(400);
     expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: '## Objectives\n- ship' })).status).toBe(200);
+    // A save states the hash of the file it was typed over: a stale one is a conflict that changes nothing, and a number is a bad request.
+    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/project.md', { text: '# Other', baseHash: 'stale' })).status).toBe(409);
+    expect((await call('PUT', '/api/refine/hello-app/hello-app-001/docs/project.md', { text: '# Other', baseHash: 1 })).status).toBe(400);
     script['derive/po'] = [derived];
     script['refine/po'] = [{ checklist: PO, questions: [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];

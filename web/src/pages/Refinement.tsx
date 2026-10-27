@@ -1255,6 +1255,11 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     lastReopen.current = reopened;
     load();
   }, [reopened]);
+  // The hash of each document as the page last read it: a save states it, so a file another change has moved is a conflict, not an overwrite.
+  const baseHashes = useRef<Snapshot['hashes']>(undefined);
+  useEffect(() => {
+    baseHashes.current = snap?.hashes;
+  }, [snap?.hashes]);
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
   const { program, phases } = useProgram(projectId, specId, following);
@@ -1309,7 +1314,10 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating'}
-        onSaveDoc={(f, t) => act(() => refineApi.saveDoc(projectId, specId, f, t))()}
+        onSaveDoc={(f, t) => act(async () => {
+          const { hash } = await refineApi.saveDoc(projectId, specId, f, t, baseHashes.current?.[f]);
+          baseHashes.current = { ...baseHashes.current, [f]: hash };
+        })()}
         onSuggestDoc={(f) => {
           setError(null);
           return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), null));

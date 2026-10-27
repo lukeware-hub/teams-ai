@@ -448,6 +448,8 @@ export interface Snapshot {
   specId: string;
   state: RefineState;
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
+  /** The sha256 of each document on disk: a save sends the one its text was typed over. */
+  hashes?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>;
   secrets: Array<{ name: string; present: boolean; hint: string | null; uses: Array<{ dependency: string; purpose: string }>; mentions: Array<{ doc: string; heading: string }> }>;
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** The seq of the last journal event the state holds. */
@@ -485,7 +487,7 @@ export const refineApi = {
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/restart`).then((r) => json<{ sessionId: string }>(r)),
   snapshot: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
   delete: (p: string, s: string) => send('DELETE', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<{ ok: true }>(r)),
-  saveDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', text: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text }).then((r) => json<{ ok: true }>(r)),
+  saveDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', text: string, baseHash?: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text, baseHash }).then((r) => json<{ ok: true; hash: string }>(r)),
   suggestDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'design.md') => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}/suggest`).then((r) => json<{ text: string }>(r)),
   suggestDesignFromImages: (p: string, s: string, images: { data: string }[]) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/design.md/images`, { images }).then((r) => json<{ text: string }>(r)),
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),

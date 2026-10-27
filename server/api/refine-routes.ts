@@ -107,8 +107,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, body, json }) => {
         const file = params.file!;
         if (!['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'].includes(file)) throw new HttpError(400, `unknown doc ${file}`);
-        await (await get(params)).saveDoc(file as DocFile, str(await body(DOC_BODY_MAX), 'text'));
-        json(200, { ok: true });
+        const payload = await body(DOC_BODY_MAX);
+        const raw = (payload as { baseHash?: unknown } | null)?.baseHash;
+        if (raw !== undefined && typeof raw !== 'string') throw new HttpError(400, 'baseHash must be a string');
+        const hash = await (await get(params)).saveDoc(file as DocFile, str(payload, 'text'), raw as string | undefined);
+        json(200, { ok: true, hash });
       }),
     },
     {

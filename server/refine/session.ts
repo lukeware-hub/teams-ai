@@ -144,6 +144,8 @@ export interface Snapshot {
   specId: string;
   state: RefineState;
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
+  /** The sha256 of each document as it is on disk: a save states the one its text was typed over. */
+  hashes: Record<DocFile, string>;
   secrets: SecretRow[];
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** True from the evaluate call on, even before the cycle journals that it started. */
@@ -280,7 +282,8 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   /** The rounds the current stage has used count against its limit. */
@@ -370,11 +373,16 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.ConfidentialityAnswered, { confidential });
   }
 
-  async saveDoc(file: DocFile, text: string): Promise<void> {
+  /** `baseHash` is the hash of the file the text was typed over: a file another change has moved since is a conflict, never an overwrite. Returns the hash of the file as saved. */
+  async saveDoc(file: DocFile, text: string, baseHash?: string): Promise<string> {
     this.guard();
+    if (baseHash !== undefined && sha256(await readDoc(this.deps.draft, file)) !== baseHash) {
+      throw new ConflictError('O documento mudou desde que você o abriu. Recarregue a página antes de salvar.');
+    }
     const saved = file === 'briefing.md' ? await this.keepDecisions(text) : text;
     await writeDoc(this.deps.draft, file, saved);
     await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(saved), source: 'human' });
+    return sha256(await readDoc(this.deps.draft, file));
   }
 
   /** The briefing's `## Decisões` section stays when a save leaves it out, so an answered question is never lost by an edit. */
