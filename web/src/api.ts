@@ -253,6 +253,19 @@ export interface ChecklistItem {
   detail: string;
   divergences?: Divergence[];
 }
+/** A Spec Kit question the guard dropped as a repeat of a decided one, which the owner may ask again. */
+export interface DroppedQuestionRow {
+  questionId: string;
+  role: 'po' | 'sm';
+  text: string;
+  cycle: number;
+  command?: string;
+  itemKey?: string;
+  matchedQuestionId: string;
+  matchedText: string;
+  matchedAnswer: string | null;
+}
+
 export interface QuestionRow {
   questionId: string;
   role: 'po' | 'sm';
@@ -263,6 +276,8 @@ export interface QuestionRow {
   status: 'pending' | 'answered' | 'skipped';
   answer: string | null;
   answeredBy?: 'po' | 'sm' | null;
+  /** The decided questions this Spec Kit question repeats, each with the difference the agent named. */
+  distinctFrom?: Array<{ questionId: string; difference: string }>;
   subject?: string;
   /** The document of a stage review's question; absent for a question of a full round. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
@@ -413,6 +428,7 @@ export interface RefineState {
   derived: DerivedDoc | null;
   checklist: ChecklistItem[];
   questions: QuestionRow[];
+  droppedQuestions?: DroppedQuestionRow[];
   patches: PatchRow[];
   moves: MoveRow[];
   reshapes: ReshapeRow[];
@@ -497,6 +513,7 @@ export const refineApi = {
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
+  reask: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/reask`).then((r) => json<{ ok: true }>(r)),
   accept: (p: string, s: string, patchId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/accept`).then((r) => json<{ ok: true }>(r)),
   reject: (p: string, s: string, patchId: string, reason: string | null) =>
     send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),

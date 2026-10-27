@@ -681,6 +681,15 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.QuestionSkipped, { questionId });
   }
 
+  /** The owner asks again for a question the guard dropped: it comes back as a pending question. */
+  async reask(questionId: string): Promise<void> {
+    this.guard();
+    const dropped = this.state.droppedQuestions?.find((d) => d.questionId === questionId);
+    if (!dropped) throw new NotFoundError(`unknown dropped question ${questionId}`);
+    if (this.state.questions.some((q) => q.questionId === questionId)) throw new ConflictError(`question ${questionId} is already on record`);
+    await this.journal.fact(RefineEvent.QuestionReasked, { ...dropped });
+  }
+
   private patch(id: string) {
     const p = this.state.patches.find((x) => x.patchId === id);
     if (!p) throw new NotFoundError(`unknown patch ${id}`);

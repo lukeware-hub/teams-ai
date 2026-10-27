@@ -74,7 +74,7 @@ const jev = (repeat: (pair: string) => boolean | null) => ({
   }),
 });
 /** Each item's steps ask the questions given for that item. */
-const askItems = (asks: Record<string, Array<{ text: string; blocking: boolean }>>) => async (req: AgentStepRequest<'speckit'>) => {
+const askItems = (asks: Record<string, Array<{ text: string; blocking: boolean; distinctFrom?: Array<{ questionId: string; difference: string }> }>>) => async (req: AgentStepRequest<'speckit'>) => {
   const key = Object.keys(asks).find((k) => req.pack.feedback!.includes(`"## ${k}:`));
   return { ...(await done(req)), questions: key ? asks[key] : [] };
 };
@@ -680,6 +680,40 @@ describe('RefineSession.runSpeckit', () => {
     await s.runSpeckit();
     expect(s.state.questions.filter((q) => q.origin === 'speckit')).toHaveLength(1);
     expect(jevs.decide).not.toHaveBeenCalled();
+    await s.close();
+  });
+
+  it('a question that repeats a decision the owner gave is repaired once, then dropped and kept on record', async () => {
+    answer = askItems({ login: [{ text: 'Qual prazo vale para o link de recuperação?', blocking: false }] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const decided = s.state.questions.find((q) => q.origin === 'speckit')!;
+    await s.answer(decided.questionId, 'Noventa dias');
+    // The files of the finished steps are gone, so the next run executes them and reads the owner's answer.
+    await fs.rm(`${draft().root}/speckit/specs`, { recursive: true, force: true });
+    answer = askItems({ login: [{ text: 'Até quando o link de recuperação vale?', blocking: false }] });
+    await s.runSpeckit();
+    expect(s.state.questions.filter((q) => q.origin === 'speckit').map((q) => q.text)).toEqual([decided.text]);
+    const [dropped] = s.state.droppedQuestions ?? [];
+    expect(dropped).toMatchObject({ text: 'Até quando o link de recuperação vale?', matchedQuestionId: decided.questionId, matchedAnswer: 'Noventa dias' });
+    await s.reask(dropped!.questionId);
+    expect(s.state.droppedQuestions).toEqual([]);
+    expect(s.state.questions.find((q) => q.questionId === dropped!.questionId)).toMatchObject({ status: 'pending', text: 'Até quando o link de recuperação vale?' });
+    await s.close();
+  });
+
+  it('keeps a repeat of a decided question when its distinctFrom names a real difference', async () => {
+    answer = askItems({ login: [{ text: 'Qual prazo vale para o link de recuperação?', blocking: false }] });
+    const s = await detailedSession();
+    await s.runSpeckit();
+    const decided = s.state.questions.find((q) => q.origin === 'speckit')!;
+    await s.answer(decided.questionId, 'Noventa dias');
+    await fs.rm(`${draft().root}/speckit/specs`, { recursive: true, force: true });
+    const difference ='Vale até o fim do prazo de envio, não por noventa dias corridos.';
+    answer = askItems({ login: [{ text: 'Até quando o link de recuperação vale?', blocking: false, distinctFrom: [{ questionId: decided.questionId, difference }] }] });
+    await s.runSpeckit();
+    expect(s.state.questions.find((q) => q.text === 'Até quando o link de recuperação vale?')).toMatchObject({ distinctFrom: [{ questionId: decided.questionId, difference }] });
+    expect(s.state.droppedQuestions ?? []).toEqual([]);
     await s.close();
   });
 

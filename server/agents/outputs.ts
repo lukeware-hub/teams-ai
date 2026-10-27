@@ -327,7 +327,7 @@ export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nulla
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
 /** A point Spec Kit left open for the owner, as the [NEEDS CLARIFICATION] markers and clarify questions; a bad one fails the step, so a blocking one is never lost. */
-const SpeckitQuestion = z.object({ text: z.string().min(1), blocking: z.boolean(), itemKey: z.string().nullish(), options: keepValid(QuestionChoice.extend({ detail: z.string().default('') })).optional() });
+const SpeckitQuestion = z.object({ text: z.string().min(1), blocking: z.boolean(), itemKey: z.string().nullish(), options: keepValid(QuestionChoice.extend({ detail: z.string().default('') })).optional(), distinctFrom: z.array(z.object({ questionId: z.string().min(1), difference: z.string().min(1) })).max(3).nullish() });
 const speckitCommon = { specHash, summary: z.string().min(1), files: z.array(z.string().min(1)), questions: z.array(SpeckitQuestion).default([]) };
 
 /** One Spec Kit command run in the staging folder: the files it wrote and the questions it left open, or why it could not finish. */

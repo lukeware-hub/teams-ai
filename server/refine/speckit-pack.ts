@@ -52,7 +52,7 @@ const ledgerState = (q: QuestionRow): string => {
 /** The earlier questions of an item, the latest answer first, one per line with its state. */
 export function questionLedger(rows: readonly QuestionRow[]): string {
   const latest = [...rows].sort((a, b) => (b.answeredAt ?? '').localeCompare(a.answeredAt ?? ''));
-  return latest.slice(0, LEDGER_LIMIT).map((q) => `- [${q.role}] ${q.text}\n  ${ledgerState(q)}`).join('\n') || '(none)';
+  return latest.slice(0, LEDGER_LIMIT).map((q) => `- [${q.role}] ${q.text}\n  id ${q.questionId}: ${ledgerState(q)}`).join('\n') || '(none)';
 }
 
 /** One Spec Kit command run by an agent in the staging folder, where `specify init` put the skills it follows. */
@@ -64,6 +64,7 @@ export function speckitPack(input: { command: SpeckitCommand; specHash: string; 
     '- Run the scripts the skill names from this folder.',
     '- Never stop to ask a question in the chat. List every open point, each [NEEDS CLARIFICATION] marker and each question the skill would ask, in `questions`: its text in Brazilian Portuguese, `options` with two or three choices, one marked recommended, whenever the question is a yes-or-no question or names alternatives, such as two places or two values; leave it empty only when the answer is free text, such as a name, a number or a date, `blocking` true only when the work cannot be right without the answer, and `itemKey` of the item it is about. Then take the most reasonable choice, flag it as an assumption in the file you write, and continue.',
     `- The owner's decisions are under "## Decisões" in ${path.posix.join(input.inputDir, 'briefing.md')}: they answer earlier questions, so follow them and never ask them again.`,
+    '- A question that repeats one listed under "Earlier questions" is dropped, unless `distinctFrom` names, for each such question, its id and one sentence of at least eight words with a fact the earlier question did not have.',
     '- The decisions marked "(PO, from the docs)" or "(SM, from the docs)" are provisional: the six documents and the owner\'s own decisions win over them, and a decision replaces any assumption you took, correcting every file you wrote that holds one.',
     '- Write only under .specify/ and specs/ in this folder; never change .claude/ or the inputs.',
     '- Write the content in Brazilian Portuguese; keep the template headings, ids, code names and commands as they are.',

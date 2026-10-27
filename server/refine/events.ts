@@ -44,6 +44,10 @@ export const RefineEvent = {
   FindingsReported: 'FINDINGS_REPORTED',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',
+  /** A Spec Kit question dropped as a repeat of a decided one: the question, the earlier one it repeats and that answer. */
+  QuestionDropped: 'QUESTION_DROPPED',
+  /** The owner asked again for a dropped question: it comes back as a pending question. */
+  QuestionReasked: 'QUESTION_REASKED',
   SecretWritten: 'SECRET_WRITTEN',
   StartedRun: 'REFINE_STARTED_RUN',
   /** Backlog mode: the human asked the agents to break the docs into a prioritized backlog of specs. */
@@ -111,6 +115,8 @@ export interface Question {
   command?: SpeckitCommand;
   /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
   context?: string;
+  /** The decided questions this one repeats, each with the real difference the agent named. */
+  distinctFrom?: Array<{ questionId: string; difference: string }>;
 }
 /** A quote of one of the six documents that backs an answer: the file, the heading above the quote, and the quote. */
 export interface QuoteEvidence {

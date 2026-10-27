@@ -171,6 +171,26 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('a Spec Kit question that repeats a decided one shows what the owner decided, and the difference', () => {
+    const decided = { ...question(true, 'answered'), questionId: 'speckit-old', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo do link?', answer: '90 dias', answeredBy: null };
+    const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Até quando o link vale?', distinctFrom: [{ questionId: 'speckit-old', difference: 'Vale até o fim do prazo de envio, não por noventa dias corridos.' }] };
+    renderView(wizard({ speckit: speckit() as never, questions: [decided as never, asked as never] }), handlersWithSpeckit());
+    const block = screen.getByTestId('distinct-from');
+    expect(block.textContent).toContain('Por que não é a mesma pergunta');
+    expect(block.textContent).toContain('Antes: Qual o prazo do link?');
+    expect(block.textContent).toContain('Você respondeu: 90 dias');
+    expect(block.textContent).toContain('Diferença: Vale até o fim do prazo de envio, não por noventa dias corridos.');
+  });
+
+  it('the dropped repeats are listed, and the owner can ask for one again', () => {
+    const dropped = { questionId: 'speckit-b', role: 'po', text: 'Até quando o link vale?', cycle: 2, command: 'specify', itemKey: 'base', matchedQuestionId: 'speckit-old', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' };
+    const h = { ...handlersWithSpeckit(), onReask: vi.fn() };
+    renderView(wizard({ speckit: speckit() as never, droppedQuestions: [dropped] as never }), h);
+    expect((screen.getByTestId('dropped-repeats') as HTMLDetailsElement).textContent).toContain('Perguntas repetidas que não foram feitas de novo (1)');
+    fireEvent.click(screen.getByTestId('reask-speckit-b'));
+    expect(h.onReask).toHaveBeenCalledWith('speckit-b');
+  });
+
   it('a Spec Kit question shows its item and its context, and drops the document checkbox', () => {
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', context: 'Sem prazo, o link fica aberto.', text: 'Por quanto tempo vale o link?' };
     renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());

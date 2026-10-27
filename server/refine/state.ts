@@ -131,6 +131,19 @@ export interface SpeckitStepFailure {
   failure?: FailureKind;
 }
 
+/** A Spec Kit question dropped because it repeats a decided one; the owner can ask for it again. */
+export interface DroppedQuestion {
+  questionId: string;
+  role: Question['role'];
+  text: string;
+  cycle: number;
+  command?: Question['command'];
+  itemKey?: string;
+  matchedQuestionId: string;
+  matchedText: string;
+  matchedAnswer: string | null;
+}
+
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
@@ -140,6 +153,8 @@ export interface RefineState {
   derived: { project: Project; spec: Spec } | null;
   checklist: ChecklistItem[];
   questions: QuestionRow[];
+  /** The Spec Kit questions the guard dropped as repeats of decided ones, until the owner asks for one again. */
+  droppedQuestions?: DroppedQuestion[];
   patches: PatchRow[];
   moves: MoveRow[];
   reshapes: ReshapeRow[];
@@ -401,6 +416,42 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       const id = String(d.noticeId);
       const row = s.moves.find((x) => x.moveId === id) ?? newestReshape(s.reshapes, id);
       if (row) row.closed = true;
+      break;
+    }
+    case RefineEvent.QuestionDropped: {
+      const row: DroppedQuestion = {
+        questionId: String(d.questionId),
+        role: d.role as Question['role'],
+        text: String(d.text),
+        cycle: Number(d.cycle),
+        ...(d.command === undefined ? {} : { command: d.command as Question['command'] }),
+        ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }),
+        matchedQuestionId: String(d.matchedQuestionId),
+        matchedText: String(d.matchedText),
+        matchedAnswer: (d.matchedAnswer as string | null | undefined) ?? null,
+      };
+      s.droppedQuestions = [...(s.droppedQuestions ?? []).filter((x) => x.questionId !== row.questionId), row];
+      break;
+    }
+    case RefineEvent.QuestionReasked: {
+      const questionId = String(d.questionId);
+      s.droppedQuestions = (s.droppedQuestions ?? []).filter((x) => x.questionId !== questionId);
+      if (!s.questions.some((q) => q.questionId === questionId)) {
+        s.questions.push({
+          questionId,
+          role: d.role as Question['role'],
+          text: String(d.text),
+          blocking: false,
+          relatedAcIds: [],
+          cycle: Number(d.cycle),
+          origin: 'speckit',
+          ...(d.command === undefined ? {} : { command: d.command as Question['command'] }),
+          ...(d.itemKey === undefined ? {} : { itemKey: String(d.itemKey) }),
+          status: 'pending',
+          answer: null,
+        });
+      }
+      s.status = computeStatus(s);
       break;
     }
     case RefineEvent.QuestionAnswered:

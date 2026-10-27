@@ -1,6 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
+import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type DroppedQuestionRow, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
 import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -236,6 +236,8 @@ export interface ViewProps {
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
   onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
   onSkip(id: string): void | Promise<unknown>;
+  /** The owner asks again for a question the guard dropped. */
+  onReask?(id: string): void | Promise<unknown>;
   onAccept(id: string): void | Promise<unknown>;
   onReject(id: string, reason: string | null): void | Promise<unknown>;
   onSecret(name: string, value: string): void | Promise<unknown>;
@@ -274,6 +276,29 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The Spec Kit questions the guard dropped as repeats of decided ones: each shows what it repeats, and the owner may ask it again. */
+function DroppedRepeats({ rows, locked, onReask }: { rows: DroppedQuestionRow[]; locked: boolean; onReask: (id: string) => unknown }) {
+  return (
+    <details className="group rounded-lg border border-line bg-surface px-4 py-3" data-testid="dropped-repeats">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+        <span className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+        Perguntas repetidas que não foram feitas de novo ({rows.length})
+      </summary>
+      <ul className="m-0 mt-3 grid list-none gap-3 p-0">
+        {rows.map((r) => (
+          <li key={r.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
+            <p className="m-0 text-[0.875rem] text-ink-soft">{r.text}</p>
+            <small className="text-[0.75rem] text-ink-soft">
+              {r.matchedAnswer === null ? `Repete a pergunta que você ignorou: "${r.matchedText}"` : `Resolvida com a sua resposta: "${r.matchedAnswer}"`}
+            </small>
+            <button type="button" className="secondary h-10 w-fit px-3 text-[0.8125rem]" data-testid={`reask-${r.questionId}`} disabled={locked} onClick={() => onReask(r.questionId)}>Perguntar de novo</button>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -683,6 +708,21 @@ export function RefinementView(p: ViewProps) {
           {current.origin === 'speckit' && current.itemKey && <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {itemTitles.get(current.itemKey) ?? current.itemKey}</p>}
           {current.origin === 'speckit' && current.context && <p className="m-0 leading-normal text-ink-soft">{current.context}</p>}
           <p className="m-0">{questionText(current.text)}</p>
+          {current.origin === 'speckit' && (current.distinctFrom ?? []).length > 0 && (
+            <div className="grid gap-[0.3rem] rounded-lg border border-line bg-surface px-4 py-3" data-testid="distinct-from">
+              <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Por que não é a mesma pergunta</p>
+              {(current.distinctFrom ?? []).map((d) => {
+                const earlier = st.questions.find((q) => q.questionId === d.questionId);
+                return (
+                  <div key={d.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
+                    <p className="m-0 text-[0.8125rem] text-ink-soft">Antes: {earlier?.text ?? d.questionId}</p>
+                    <p className="m-0 text-[0.875rem] font-semibold text-ink">{earlier?.status === 'skipped' ? 'Você ignorou esta pergunta.' : `Você respondeu: ${earlier?.answer ?? ''}`}</p>
+                    <p className="m-0 text-[0.8125rem] text-ink-soft">Diferença: {d.difference}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
             <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
@@ -1110,6 +1150,7 @@ export function RefinementView(p: ViewProps) {
       {askAgents}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={itemTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
+      {(st.droppedQuestions ?? []).length > 0 && <DroppedRepeats rows={st.droppedQuestions ?? []} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       {backlogBlock}
     </div>
   );
@@ -1339,6 +1380,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}
+        onReask={(id) => act(() => refineApi.reask(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}

@@ -42,7 +42,7 @@ describe('the Spec Kit pack lists the earlier questions of its item', () => {
       item,
       history: [row({ questionId: 'sm-1', role: 'sm', text: 'Qual porta?', status: 'answered', answer: '8080', answeredBy: 'sm', answeredAt: '2026-10-27T12:00:00.000Z' })],
     }).feedback ?? '';
-    expect(feedback).toContain('- [sm] Qual porta?\n  answered by the SM on 2026-10-27T12:00:00.000Z: 8080');
+    expect(feedback).toContain('- [sm] Qual porta?\n  id sm-1: answered by the SM on 2026-10-27T12:00:00.000Z: 8080');
   });
 });
 

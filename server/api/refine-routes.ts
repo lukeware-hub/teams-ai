@@ -171,6 +171,14 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/questions/:questionId/reask`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).reask(params.questionId!);
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/patches/:patchId/accept`,
       handler: wrap(async ({ params, json }) => {
         await (await get(params)).accept(params.patchId!);

@@ -15,6 +15,7 @@ import { CONSTITUTION, readDoc, speckitBaseDir, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { questionPairs } from './question-pairs.js';
+import { checkRepeats, repeatNote } from './question-guard.js';
 import { SPECKIT_INPUTS, speckitFeatureDir, speckitPack, type SpeckitCommand, type SpeckitInput, type SpeckitItem } from './speckit-pack.js';
 import { itemSteps, speckitItems, speckitSteps, stepKey, type Step } from './speckit-steps.js';
 import { renderSpecMd } from './spec-md.js';
@@ -184,7 +185,7 @@ function newQuestions(state: Pick<RefineState, 'questions' | 'cycle'>, asked: Sp
     if (seen.has(key) || ids.has(questionId)) return [];
     seen.add(key);
     const about = q.itemKey ?? step.item?.key;
-    return [{ questionId, role, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, command: step.command, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}) }];
+    return [{ questionId, role, text: q.text.trim(), blocking: q.blocking, relatedAcIds: [], cycle: state.cycle, origin: 'speckit' as const, command: step.command, ...(about ? { itemKey: about } : {}), ...(q.options?.length ? { options: q.options } : {}), ...(q.distinctFrom ? { distinctFrom: q.distinctFrom } : {}) }];
   });
 }
 
@@ -396,6 +397,8 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
   let answered = 0;
   // The repairs of this step: a run that left criteria out runs again with their ids named, up to MAX_REPAIRS times.
   let repairs = 0;
+  // The repeat repairs of this step: a question that repeats a decided one runs the step again once, then is dropped.
+  let repeatRepairs = 0;
   let repair: string | null = null;
   for (let round = 1; ; round++) {
     // A stopped preparation starts no further round, whether the round is a repair or an answer.
@@ -415,7 +418,20 @@ async function runStep(deps: SpeckitDeps, run: { step: Step; hash: string; texts
     const open = result.status === 'done' ? await openMarkers(dir, result.files) : [];
     const dropped = result.status === 'done' ? await droppedCriteria(dir, step, source) : undefined;
     const fresh = newQuestions(deps.journal.state, result.questions, step, answererOf(step.command));
-    const asked = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
+    const judged = decider ? await dropRepeats(fresh, deps.journal.state.questions, decider, await isConfidential(deps.draft, deps.journal.state)) : fresh;
+    const { kept, unresolved } = checkRepeats(judged, deps.journal.state.questions);
+    // A repeat of a decided question runs the step once more with the decision named; a repeat still unjustified then is dropped and kept on record.
+    if (unresolved.length > 0 && repeatRepairs === 0) {
+      repeatRepairs++;
+      await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, blocked: true });
+      repair = repeatNote(unresolved);
+      continue;
+    }
+    for (const { question, matches } of unresolved) {
+      const decided = matches[0]!;
+      await deps.journal.fact(RefineEvent.QuestionDropped, { questionId: question.questionId, role: question.role, text: question.text, cycle: question.cycle, command: step.command, ...(question.itemKey ? { itemKey: question.itemKey } : {}), matchedQuestionId: decided.questionId, matchedText: decided.text, matchedAnswer: decided.answer });
+    }
+    const asked = kept;
     // The basis is the one this round's files were written from, with the questions it asks counted as pending, as they are on record.
     const pending = asked.filter((q) => !deps.journal.state.questions.some((x) => x.questionId === q.questionId)).map((q) => ({ ...q, status: 'pending', answer: null, answeredBy: null }));
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { command: step.command, ...(step.item ? { itemKey: step.item.key } : {}), files: result.files, ...(step.command === 'specify' && result.status === 'done' ? { featureDir: speckitFeatureDir(step.item!.key) } : {}), ...(asked.length > 0 ? { questions: asked } : {}), ...(result.status === 'blocked' || open.length > 0 || dropped ? { blocked: true } : {}), basis: stepBasis(step, texts, [...deps.journal.state.questions, ...pending]) });
