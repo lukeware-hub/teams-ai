@@ -2,6 +2,7 @@ import path from 'node:path';
 import { QUALITY_RULES } from '../agents/registry.js';
 import type { SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
+import type { QuestionRow } from './state.js';
 import { outputContract } from '../orchestrator/steps.js';
 
 export type SpeckitCommand = 'constitution' | 'specify' | 'clarify' | 'plan' | 'tasks';
@@ -37,8 +38,25 @@ function argumentsOf(command: SpeckitCommand, inputDir: string, item: SpeckitIte
 /** The note of a step that runs again on the files of its earlier run, which are already in the staging folder. */
 const ADJUST_NOTE = `- Its files from an earlier run are already in this folder: read them first, keep what is still right, and change only what the owner's decisions and the changed documents require. Never copy the template over them, and never rewrite the constitution or a spec from scratch.`;
 
+/** The most earlier questions a pack lists. */
+const LEDGER_LIMIT = 40;
+
+/** What the journal says about one earlier question: its answer, who gave it and when. */
+const ledgerState = (q: QuestionRow): string => {
+  if (q.status === 'pending') return 'open, waiting for the owner';
+  if (q.status === 'skipped') return 'skipped by the owner';
+  const by = q.answeredBy ? `the ${q.answeredBy.toUpperCase()}` : 'the owner';
+  return `answered by ${by}${q.answeredAt ? ` on ${q.answeredAt}` : ''}: ${q.answer}`;
+};
+
+/** The earlier questions of an item, the latest answer first, one per line with its state. */
+export function questionLedger(rows: readonly QuestionRow[]): string {
+  const latest = [...rows].sort((a, b) => (b.answeredAt ?? '').localeCompare(a.answeredAt ?? ''));
+  return latest.slice(0, LEDGER_LIMIT).map((q) => `- [${q.role}] ${q.text}\n  ${ledgerState(q)}`).join('\n') || '(none)';
+}
+
 /** One Spec Kit command run by an agent in the staging folder, where `specify init` put the skills it follows. */
-export function speckitPack(input: { command: SpeckitCommand; specHash: string; inputDir: string; item?: SpeckitItem; decisions?: readonly SpecDecision[]; adjust?: boolean }): ContextPackInput {
+export function speckitPack(input: { command: SpeckitCommand; specHash: string; inputDir: string; item?: SpeckitItem; decisions?: readonly SpecDecision[]; history?: readonly QuestionRow[]; adjust?: boolean }): ContextPackInput {
   const feedback = [
     `Run the Spec Kit command /speckit-${input.command} in this folder: read .claude/skills/speckit-${input.command}/SKILL.md with the Read tool and follow it, with the text under "### arguments" as the user input.`,
     `- Your inputs are these six Markdown files, read with the Read tool: ${SPECKIT_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ')}. specs.md lists the backlog items in order, each in its own section with its acceptance criteria and pre-plan. Every spec.md, plan.md and tasks.md you write is derived from these six files only.`,
@@ -50,6 +68,7 @@ export function speckitPack(input: { command: SpeckitCommand; specHash: string; 
     '- Write only under .specify/ and specs/ in this folder; never change .claude/ or the inputs.',
     '- Write the content in Brazilian Portuguese; keep the template headings, ids, code names and commands as they are.',
     '- Answer status done with the files you wrote in `files` (paths relative to this folder) and a one-sentence `summary`; answer status blocked with `reason` when the command cannot finish.',
+    `### Earlier questions of this item (the latest owner answer wins; never ask one of them again, even reworded)\n${questionLedger(input.history ?? [])}`,
     ...(input.adjust ? [ADJUST_NOTE] : []),
     `### arguments\n${argumentsOf(input.command, input.inputDir, input.item)}`,
   ].join('\n\n');

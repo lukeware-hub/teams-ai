@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QUESTION_RULES } from '../../server/agents/registry.js';
 import {
   ENV_ALLOWLIST,
   ISOLATION_FLAGS,
@@ -43,7 +44,7 @@ describe('buildInvocation', () => {
     const inv = buildInvocation(base, hostEnv);
     expect(inv.args.slice(0, 3)).toEqual(['-p', '--agent', 'dev']);
     expect(inv.args).not.toContain('Implement T1');
-    expect(inv.stdin).toBe('Implement T1');
+    expect(inv.stdin).toBe(`${QUESTION_RULES}\n\nImplement T1`);
     for (const flag of ISOLATION_FLAGS) expect(inv.args).toContain(flag);
     expect(inv.args[inv.args.indexOf('--settings') + 1]).toBe(base.settingsPath);
     expect(inv.args[inv.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');

@@ -132,6 +132,16 @@ Delivery goals to keep in mind in every decision:
 - Fewest failures: no hidden bugs and nothing that breaks later; cover edge cases.
 - Delivery: complete, verified and working as asked.`;
 
+/** Question rules sent before every prompt; kept out of the agent body, which travels on the command line and Windows caps its length. */
+export const QUESTION_RULES = `Question rules for every role:
+1. Never hallucinate: every fact, name, number and rule you write comes from what already exists (the documents, the owner's earlier answers and, when there is one, the existing code), and you say which.
+2. Never invent a business rule. When nothing settles a point, choose the smallest option that changes nothing else and record it as \`Assumption: <claim>. Reason: <why nothing settles it>.\` An assumption is never evidence for another answer.
+3. Follow the existing behavior faithfully.
+4. Never change existing behavior only to follow good practice. A security fix or a failing test is the exception.
+5. Ask the owner only when all three hold: nothing that exists settles the point, the answer changes what gets built (adds or cuts functionality, changes priority), and no earlier question covers it. Never ask an irrelevant question, and never ask what something that exists already answers: use it and cite it.
+6. The latest owner answer wins. Never ask the owner to reconcile contradictory answers.
+7. Before asking, read the earlier questions of the same item in your pack. Never ask a question that an earlier one already asked, even reworded: follow the latest answer instead.`;
+
 export async function loadAgents(dir: string): Promise<Record<Role, AgentDefinition>> {
   const out = {} as Record<Role, AgentDefinition>;
   for (const role of ROLES) {

@@ -246,7 +246,8 @@ async function runCommand(deps: SpeckitDeps, step: Step, hash: string, adjust: b
   // A backlog writes the owner's answers into briefing.md; a single spec keeps every answer in the journal, as its freeze reads them.
   const single = !deps.journal.state.backlog?.enabled;
   const decisions = decisionsOf(deps.journal.state.questions.filter((q) => single || (q.origin === 'speckit' && q.answeredBy)));
-  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions, adjust }));
+  const history = deps.journal.state.questions.filter((q) => q.itemKey === step.item?.key);
+  const pack = fitPackBudget(speckitPack({ command: step.command, specHash, inputDir, item: step.item, decisions, history, adjust }));
   const extraAllow = [...SPECKIT_BASH, `Read(${absoluteRule(inputDir)}/**)`];
   // An item step works in its own feature folder, which the environment names, and never persists the feature pointer.
   const extraEnv = step.item ? { SPECIFY_FEATURE_DIRECTORY: speckitFeatureDir(step.item.key), SPECIFY_FEATURE_NO_PERSIST: '1' } : undefined;

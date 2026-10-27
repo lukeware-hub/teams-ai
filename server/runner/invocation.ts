@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { QUESTION_RULES } from '../agents/registry.js';
 import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
@@ -93,7 +94,7 @@ export interface Invocation {
   args: string[];
   env: Record<string, string>;
   cwd: string;
-  /** The prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
+  /** The question rules, then the prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
   stdin: string;
 }
 
@@ -149,7 +150,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   // Never read from the host env: only the key the config chose (`claude.auth: "api-key"`) reaches a step.
   if (input.apiKey) env.ANTHROPIC_API_KEY = input.apiKey;
   if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
-  return { args, env, cwd: input.cwd, stdin: input.prompt };
+  return { args, env, cwd: input.cwd, stdin: `${QUESTION_RULES}\n\n${input.prompt}` };
 }
 
 // Writes to ~/.claude.json go through `updateFileAtomic`: serialized per file in this process and atomic (temp file +

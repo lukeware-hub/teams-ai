@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseAgentFile } from '../../server/agents/registry.js';
+import { QUESTION_RULES, parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
 import { hasSession } from '../../server/runner/session-store.js';
@@ -275,7 +275,7 @@ describe('runStep', () => {
     // The step HOME holds a copy of the credentials: no command of the step reads it.
     expect(settings.sandbox.filesystem.denyRead).toContain(`${captured.env.HOME}/.claude`);
     expect(settings.permissions.deny).toContain('Edit(.claude/**)');
-    expect(captured.prompt).toBe('Implement it');
+    expect(captured.prompt).toBe(`${QUESTION_RULES}\n\nImplement it`);
   });
 
   it('passes extraEnv through to the child process', async () => {
@@ -317,7 +317,7 @@ describe('runStep', () => {
     captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.argv[captured.argv.indexOf('--resume') + 1]).toBe('sess-1');
     expect(captured.transcript).toBe(true);
-    expect(captured.prompt).toBe('Fix it');
+    expect(captured.prompt).toBe(`${QUESTION_RULES}\n\nFix it`);
   });
 
   it('books only the share of a resumed session that the CLI reports cumulatively', async () => {

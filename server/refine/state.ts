@@ -21,6 +21,8 @@ export interface QuestionRow extends Question {
   answeredBy?: 'po' | 'sm' | null;
   /** The quotes of the documents that back an answer the PO or SM gave. */
   evidence?: QuoteEvidence[];
+  /** When the question was answered or skipped, from the journal's event time. */
+  answeredAt?: string;
 }
 export interface PatchRow extends PendingPatch {
   cycle: number;
@@ -409,6 +411,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         q.answer = (d.text as string | undefined) ?? null;
         q.answeredBy = (d.by as 'po' | 'sm' | undefined) ?? null;
         q.evidence = d.evidence as QuoteEvidence[] | undefined;
+        if (e.at !== undefined) q.answeredAt = e.at;
       }
       // The owner's answer is a decision the Spec Kit files must follow; an answer the PO or the SM took from the documents comes with a new derivation.
       if (e.type === RefineEvent.QuestionAnswered && d.by === undefined) markSpeckitStale(s);
