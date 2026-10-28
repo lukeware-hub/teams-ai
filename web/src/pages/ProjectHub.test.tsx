@@ -413,3 +413,19 @@ describe('the process of the running execution on the project page', () => {
     expect(screen.queryByTestId('run-process')).toBeNull();
   });
 });
+
+describe('the attention banner', () => {
+  it('shows a run that waits for the owner, with a button to open it', () => {
+    const o = on();
+    const waiting = [row({ runId: 'hello-003-r1', specId: 'hello-003', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-25T10:00:00.000Z', tokens: 10, cost: 0.01, stoppable: false })];
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={waiting} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>
+    );
+    const banner = screen.getByTestId('attention-banner');
+    expect(banner.textContent).toContain('hello-003');
+    expect(banner.textContent).toContain('Precisa de você');
+    expect(within(banner).getByRole('link', { name: 'Abrir run' })).toBeTruthy();
+  });
+});

@@ -103,6 +103,25 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
 const PROCESS_PHASES = [1, 2, 3, 4, 5, 6];
 
 /** The whole process of the execution that is going or was stopped: each phase in order, with the state its journal gives. */
+/** Runs that stop and wait for the owner: blocked, deadlocked, or awaiting validation. */
+const NEEDS_OWNER = new Set(['blocked', 'deadlocked', 'awaiting-validation']);
+
+/** The yellow strip at the top of the project: one line per run that waits for the owner, with a button to open it. */
+function AttentionBanner({ runs }: { runs: RunRow[] }) {
+  const waiting = runs.filter((r) => NEEDS_OWNER.has(r.status));
+  if (waiting.length === 0) return null;
+  return (
+    <div className="grid gap-2" role="status" data-testid="attention-banner">
+      {waiting.map((r) => (
+        <div key={r.runId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn-line bg-warn-soft px-4 py-3">
+          <span className="text-[0.9375rem] text-warn">{runName(r)} de {r.specId}: {LABEL[r.status] ?? r.status}. Precisa de você.</span>
+          <Link className={action.primary} to={`/runs/${r.runId}`}>Abrir run</Link>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RunProcessSection({ run, events, title }: { run: RunRow; events: StoredEvent[]; title?: string }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const journal = phases(unique);
@@ -288,6 +307,7 @@ export function ProjectHubView(p: {
           <span className={statLabel}>custo total</span>
         </div>
       </div>
+      <AttentionBanner runs={p.runs} />
       {p.processRun ? <RunProcessSection run={p.processRun} events={p.processEvents ?? []} title={p.processTitle} /> : null}
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
