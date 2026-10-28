@@ -22,14 +22,18 @@ FEATURES item 2 covers the mobile delivery. Plan 108 built it for Flutter: the d
 - `server/orchestrator/steps.ts`: the Expo guidance line for the plan rules.
 - `server/validators/security-tooling.ts`: an Expo project gets the same `npm audit` as a node project.
 
+## CI
+
+- The CI pipeline (the verify job and the e2e job) sets up Node on the gate version, Java 17 and the Android SDK before the plan commands, the same setup as the release.
+- `validateWorkflow` requires the Java and the Android SDK setup steps in an Expo CI, and every plan command, the install command included, as a run step.
+
 ## Verification
 
-- Unit tests: stack detection, the Expo gate image (SDK, no Flutter), the release render and validator on a good and a broken release, and the artifact path (the APK is kept with the run, and a build that writes no APK fails).
+- Unit tests: stack detection, the Expo gate image (SDK, no Flutter), the Expo CI steps in order and its validator, the release render and validator on a good and a broken release, and the artifact path (the APK is kept with the run, and a build that writes no APK fails).
 - Typecheck: `npx tsc --noEmit`.
 
 ## Open questions for the owner
 
 1. **Stack text order.** A plan that says "TypeScript Expo app" reads as node, because TypeScript is mentioned first. The guidance tells the plan to name Expo first.
 2. **npm cache in the gate.** `npm ci` in the gate container uses the container user's home cache. The gate sets no npm cache directory, so a read-only home could fail the install. Not changed here, because moving the npm cache would change every node install.
-3. **CI for Expo.** The CI pipeline runs no setup step for Expo, as for Flutter, so it uses the runner's preinstalled Node and Java.
-4. **Release signing.** The APK is the debug build. A release signing key is a separate decision for the owner.
+3. **Release signing.** The APK is the debug build. A release signing key is a separate decision for the owner.

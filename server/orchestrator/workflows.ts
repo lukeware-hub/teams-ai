@@ -55,10 +55,16 @@ const androidSdkSetup = (): Step[] => [
 /** Flutter, Java and the Android SDK on the gate's Flutter version: what a Flutter job needs to build the APK. */
 const flutterSetup = (): Step[] => [{ uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } }, ...androidSdkSetup()];
 
+/** Node on the gate version, Java and the Android SDK: what an Expo job needs to build the APK. */
+const expoSetup = (plan: Plan): Step[] => {
+  const nodeVersion = toolVersion(plan, 'node');
+  return [{ uses: ACTIONS.node, ...(nodeVersion ? { with: { 'node-version': nodeVersion } } : {}) }, ...androidSdkSetup()];
+};
+
 function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
-  // An Expo CI needs its own setup action (the Android SDK), which does not exist yet.
-  if (kind === 'other' || kind === 'expo') return [];
+  if (kind === 'other') return [];
+  if (kind === 'expo') return expoSetup(plan);
   if (kind === 'flutter') return flutterSetup();
   const { image, key, base = {} } = SETUP[kind];
   const version = toolVersion(plan, image);
@@ -127,10 +133,7 @@ const APK_DIR: Record<AndroidToolchain, string> = { flutter: 'build/app/outputs/
  * Flutter's install command builds the APK; Expo's install command prebuilds the native project and its build command runs Gradle.
  */
 export function renderApkRelease(plan: Plan, toolchain: AndroidToolchain): string {
-  const nodeVersion = toolVersion(plan, 'node');
-  const setup: Step[] = toolchain === 'expo'
-    ? [{ uses: ACTIONS.node, ...(nodeVersion ? { with: { 'node-version': nodeVersion } } : {}) }, ...androidSdkSetup()]
-    : flutterSetup();
+  const setup: Step[] = toolchain === 'expo' ? expoSetup(plan) : flutterSetup();
   const build: Step[] = toolchain === 'expo'
     ? [{ name: 'Install', run: plan.commands.install }, { name: 'Build APK', run: plan.commands.build }]
     : [{ name: 'Build APK', run: plan.commands.install }];
@@ -224,6 +227,11 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     for (const [cmd, label] of need) if (cmd !== undefined && !runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
     if (!uses.some((u) => u.startsWith('gitleaks/'))) errors.push('ci is missing the secret scan step');
     if (planStack(plan) === 'flutter' && !uses.some((u) => u.startsWith('subosito/flutter-action@'))) errors.push('ci is missing the flutter setup step');
+    if (androidToolchainOf(planStack(plan)) === 'expo') {
+      for (const [action, label] of [[ACTIONS.java, 'java'], [ACTIONS.android, 'android sdk']] as const) {
+        if (!uses.some((u) => u.startsWith(action.slice(0, action.indexOf('@') + 1)))) errors.push(`ci is missing the ${label} setup step`);
+      }
+    }
     const e2e = e2eCommand(plan);
     if (e2e) {
       for (const [cmd, label] of [[COMPOSE_UP, 'compose up'], [e2e, 'e2e'], [COMPOSE_DOWN, 'compose down']] as const) if (!runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
