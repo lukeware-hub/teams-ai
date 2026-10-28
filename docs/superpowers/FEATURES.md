@@ -32,7 +32,7 @@ Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and
 
 Status: in progress (2026-10-28, owner authorized).
 - Done: retry within a token budget (plan 112): `retry.taskTokenBudget` in the config; unset keeps the old rule of three attempts, one replan, then block.
-- Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the frontmatter `model` lines are gone (plan 112 and this commit).
+- Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the `model` lines in the agent frontmatter stay, because the agent loader requires them; the runner ignores them.
 - Pending: a notice on the project screen when a run blocks or waits for validation (needs an approved mock).
 - Pending: the fallback when the Jev service is down (today refinement halts); a decision is needed on what replaces the halt.
 
