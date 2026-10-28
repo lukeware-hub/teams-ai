@@ -1019,8 +1019,9 @@ export class Run {
         if (err.fatal === true) throw err;
         this.log(`task ${id} failed with an unexpected error: ${err.message}`);
         if (!runner.done) {
-          await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'blocked' }).catch(() => undefined);
-          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: `orchestrator error: ${err.message}` }).catch(() => undefined);
+          const unrecorded = (what: string) => (e: Error) => this.log(`${what} not journaled for ${id}: ${e.message}`);
+          await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'blocked' }).catch(unrecorded('blocked state'));
+          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: `orchestrator error: ${err.message}` }).catch(unrecorded('block reason'));
         }
       })
       .finally(() => this.inflight.delete(id));
