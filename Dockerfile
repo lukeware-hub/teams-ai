@@ -48,9 +48,11 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 RUN npm install --global @playwright/cli@0.1.22 --no-audit --no-fund \
   && npx --yes playwright@1.64.0-alpha-1790635538000 install --with-deps chromium \
   && chmod -R a+rX /opt/ms-playwright
-# playwright-cli opens the chrome channel by default, which is served by the pinned Chromium here.
+# playwright-cli opens the chrome channel by default: that path runs the pinned Chromium without its sandbox,
+# which the container cannot start (no user namespaces); the container is the isolation here.
 RUN CH=$(find /opt/ms-playwright -path '*chromium-*' -name chrome -type f | head -n 1) && test -n "$CH" \
-  && mkdir -p /opt/google/chrome && ln -s "$CH" /opt/google/chrome/chrome
+  && mkdir -p /opt/google/chrome && printf '#!/bin/sh\nexec "%s" --no-sandbox "$@"\n' "$CH" > /opt/google/chrome/chrome \
+  && chmod 755 /opt/google/chrome/chrome
 # npm 10.9 (bundled with node 22) crashes in its peer-dependency resolver ("Cannot read properties of
 # null (reading 'edgesOut')") on some current packages, e.g. vitest 4.x; the Dev then cannot install
 # the toolchain it scaffolds. npm 12 resolves them.
