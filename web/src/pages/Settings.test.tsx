@@ -25,7 +25,7 @@ const envStatus = (over: Partial<Status['items']> = {}): Status => ({
 });
 
 function mockEnv() {
-  vi.spyOn(settingsApi, 'speckitAgents').mockResolvedValue({ agents: 5 });
+  vi.spyOn(settingsApi, 'planAgents').mockResolvedValue({ agents: 5 });
   vi.spyOn(api, 'status').mockResolvedValue(envStatus());
   vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme'], owner: 'acme' });
   vi.spyOn(usageApi, 'claude').mockResolvedValue({ available: false, reason: 'not-logged-in' });
@@ -132,13 +132,13 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(setStepTimeout).toHaveBeenCalledWith('demo', 45));
   });
 
-  it('shows how many agents prepare the Spec Kit and saves a count from 1 to 5', async () => {
+  it('shows how many agents prepare the plan and saves a count from 1 to 5', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([]);
-    const setSpeckitAgents = vi.spyOn(settingsApi, 'setSpeckitAgents').mockResolvedValue({ agents: 2 });
+    const setPlanAgents = vi.spyOn(settingsApi, 'setPlanAgents').mockResolvedValue({ agents: 2 });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
-    const card = await screen.findByRole('region', { name: 'Preparação do Spec Kit' });
+    const card = await screen.findByRole('region', { name: 'Preparação dos planos' });
     const agents = within(card).getByLabelText('Agentes em paralelo') as HTMLInputElement;
     await waitFor(() => expect(agents.value).toBe('5'));
     const save = within(card).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
@@ -147,7 +147,7 @@ describe('SettingsPage', () => {
     fireEvent.change(agents, { target: { value: '2' } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
-    await waitFor(() => expect(setSpeckitAgents).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(setPlanAgents).toHaveBeenCalledWith(2));
   });
 
   it('does not save a time limit that is not a whole number of minutes', async () => {

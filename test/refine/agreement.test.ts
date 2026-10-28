@@ -3,7 +3,7 @@ import { bands, clusterInterval, leaveOneItemOut, ownerAnswers, type JournalEven
 
 const clock = (s: number) => new Date(Date.UTC(2026, 9, 27, 10, 0, s)).toISOString();
 
-// Two Spec Kit items. q4 has no recommended option, and the last answer is a role's, so neither is a sample.
+// Two plan items. q4 has no recommended option, and the last answer is a role's, so neither is a sample.
 const journal: JournalEvent[] = [
   {
     type: 'SPECKIT_STEP_DONE',

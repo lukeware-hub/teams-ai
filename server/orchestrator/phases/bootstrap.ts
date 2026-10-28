@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
+import { planFileOf } from '../../refine/plan-file.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -25,11 +26,10 @@ async function githubLogin(gh: (args: string[]) => Promise<CommandResult>): Prom
 export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined }): Promise<PhaseResult> {
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
-  // A spec its refinement prepared with Spec Kit never reaches main without its feature folder.
-  const feature = deps.packBase().speckitFeature;
-  const staging = speckitStaging(opts.docsDir);
-  if (feature && !(await exists(path.join(staging, feature)))) {
-    const reason = `the Spec Kit files of ${feature} that the refinement prepared are not in ${staging}`;
+  // A spec whose refinement prepared its implementation plan never reaches main without the plan's file.
+  const planFile = deps.packBase().planFile;
+  if (planFile && !(await exists(path.join(opts.docsDir, path.posix.relative('docs', planFile))))) {
+    const reason = `the implementation plan ${planFile} that the refinement prepared is not in the draft docs`;
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
     return { ok: false, reason };
   }
@@ -55,7 +55,6 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
       await fs.mkdir(ws.repo, { recursive: true });
       if (!(await isRepo(ws.repo))) await git(ws.repo, ['init', '-b', 'main'], deps.exec);
       await fs.cp(opts.docsDir, path.join(ws.repo, 'docs'), { recursive: true, force: true });
-      await overlaySpeckit(opts.docsDir, ws.repo);
       const key = docsCommitKey(deps, 0);
       const message = `docs: ${project.projectId} ${spec.specId} v${version}`;
       if (!journal.isConfirmed(Intent.DocsCommit, key)) {
@@ -114,7 +113,6 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(source, target);
   }
-  await overlaySpeckit(opts.docsDir, wt, path.join(path.dirname(opts.docsDir), '.base', 'speckit'));
   return commitAndMergeDocs(deps, 0, branch, wt, `docs(${spec.specId}): spec v${version}`);
 }
 
@@ -182,40 +180,10 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
 
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 
-/** What the draft's Spec Kit preparation publishes at the repository root; `replace` says a new preparation overwrites what the repository holds. */
-const SPECKIT_ENTRIES = [
-  { entry: '.specify', replace: true },
-  { entry: 'specs', replace: true },
-  { entry: '.claude/skills', replace: false },
-  { entry: 'CLAUDE.md', replace: false },
-];
-
-/** The source documents a service's repository holds beside the Spec Kit files. */
+/** The source documents a service's repository holds beside its implementation plan. */
 const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefing.md'];
 
-/** The draft's Spec Kit staging folder, beside its docs. */
-const speckitStaging = (docsDir: string): string => path.join(path.dirname(docsDir), 'speckit');
-
-/** Copies the draft's Spec Kit preparation into `repo`; a link the repository holds is never written through. */
-async function overlaySpeckit(docsDir: string, repo: string, base?: string): Promise<void> {
-  const source = speckitStaging(docsDir);
-  for (const { entry, replace } of SPECKIT_ENTRIES) {
-    const stat = await fs.lstat(path.join(source, entry)).catch(() => null);
-    const files = stat?.isDirectory() ? (await listFiles(path.join(source, entry))).map((rel) => `${entry}/${rel}`) : stat?.isFile() ? [entry] : [];
-    for (const rel of files) {
-      const target = path.join(repo, rel);
-      // lstat, so a link main holds is never written through; a file main holds stays unless its entry is replaced.
-      const held = await fs.lstat(target).catch(() => null);
-      if (held?.isSymbolicLink() || (held !== null && !replace)) continue;
-      // A file still equal to `base`, main's copy when the draft began, leaves main's current copy as it is, changed or removed.
-      if (base && same(await read(path.join(source, rel)), await read(path.join(base, rel)))) continue;
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.copyFile(path.join(source, rel), target);
-    }
-  }
-}
-
-/** Publishes the Spec Kit files and the source documents to a service's repository, through a docs PR as the project's docs go. */
+/** Publishes the implementation plan and the source documents to a service's repository, through a docs PR as the project's docs go. */
 async function publishServiceDocs(deps: PhaseDeps, service: string, docsDir: string): Promise<PhaseResult> {
   const ws = serviceWorkspace(deps.ws, service);
   const sdeps: PhaseDeps = { ...deps, ws, service, mergeDeps: { ...deps.mergeDeps, ws } };
@@ -228,9 +196,13 @@ async function publishServiceDocs(deps: PhaseDeps, service: string, docsDir: str
       await fs.mkdir(path.join(wt, 'docs'), { recursive: true });
       await fs.copyFile(path.join(docsDir, file), path.join(wt, 'docs', file));
     }
-    await overlaySpeckit(docsDir, wt);
+    const plan = planFileOf(deps.spec.specId).replace(/^docs\//, '');
+    if (await exists(path.join(docsDir, plan))) {
+      await fs.mkdir(path.dirname(path.join(wt, 'docs', plan)), { recursive: true });
+      await fs.copyFile(path.join(docsDir, plan), path.join(wt, 'docs', plan));
+    }
   }
-  return commitAndMergeDocs(sdeps, 0, branch, wt, `docs(${deps.spec.specId}): Spec Kit and source documents`);
+  return commitAndMergeDocs(sdeps, 0, branch, wt, `docs(${deps.spec.specId}): source documents and implementation plan`);
 }
 const read = (p: string) => fs.readFile(p, 'utf8').catch(() => null);
 

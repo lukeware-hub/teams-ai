@@ -399,7 +399,7 @@ describe('stage progress', () => {
 
 describe('canStart', () => {
   type Input = Parameters<typeof canStart>[0];
-  /** A current Spec Kit preparation, which every start needs. */
+  /** A current plan preparation, which every start needs. */
   const prepared = { status: 'done', stale: false };
   const base: Input = { status: 'answering', mode: 'new-spec', derived: {}, backlog: null, speckit: prepared };
   /** A detailed backlog of one item with its pre-plan. */
@@ -429,7 +429,7 @@ describe('canStart', () => {
     expect(canStart({ ...base, backlog: { enabled: true, detail: null, items: [item] } })).toBe(false);
   });
 
-  it('a wizard backlog, an imported backlog, a new spec, a continued spec and an older draft start only once their Spec Kit preparation is done and current', () => {
+  it('a wizard backlog, an imported backlog, a new spec, a continued spec and an older draft start only once their plan preparation is done and current', () => {
     const sessions: Input[] = [{ ...base, mode: 'new-project', backlog: planned }, { ...base, mode: 'backlog', backlog: planned }, base, { ...base, mode: 'continue' }, { ...base, mode: null }];
     for (const session of sessions) {
       expect(canStart({ ...session, speckit: undefined }), String(session.mode)).toBe(false);
@@ -440,7 +440,7 @@ describe('canStart', () => {
     }
   });
 
-  it('a pending blocking question of Spec Kit keeps the start shut; an answered or advisory one does not', () => {
+  it('a pending blocking question of the plan preparation keeps the start shut; an answered or advisory one does not', () => {
     const q = (over: Record<string, unknown>) => ({ status: 'pending', blocking: true, origin: 'speckit', ...over });
     for (const ready of [{ ...base, mode: 'new-project', backlog: planned }, base]) {
       expect(canStart({ ...ready, questions: [q({})] })).toBe(false);
@@ -475,7 +475,7 @@ describe('canStart', () => {
   });
 });
 
-describe('Spec Kit triage state', () => {
+describe('plan triage state', () => {
   const started = { type: RefineEvent.SpeckitStarted, data: { total: 4 } };
   const asked = { questionId: 'speckit-1', role: 'po', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], cycle: 2, origin: 'speckit', itemKey: 'login' };
   const planDone = { type: RefineEvent.SpeckitStepDone, data: { command: 'plan', itemKey: 'login', files: [], questions: [asked] } };
@@ -525,7 +525,7 @@ describe('Spec Kit triage state', () => {
   });
 });
 
-describe('Spec Kit preparation state', () => {
+describe('plan preparation state', () => {
   const started = { type: RefineEvent.SpeckitStarted, data: { total: 4 } };
 
   it('follows a run from its start through each step to its end', () => {
@@ -539,7 +539,7 @@ describe('Spec Kit preparation state', () => {
     expect(done.speckit).toMatchObject({ status: 'done', stale: false });
   });
 
-  it('records the questions of a Spec Kit step as pending questions marked with their origin and item', () => {
+  it('records the questions of a plan step as pending questions marked with their origin and item', () => {
     const asked = { questionId: 'speckit-1', role: 'po', text: 'Qual moeda?', blocking: true, relatedAcIds: [], cycle: 2, origin: 'speckit', itemKey: 'cart' };
     const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'cart', files: [], questions: [asked] } }]);
     expect(s.questions).toEqual([{ ...asked, status: 'pending', answer: null }]);

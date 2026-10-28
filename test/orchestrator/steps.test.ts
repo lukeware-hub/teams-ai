@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, FILES_READ_RULE, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, sourceDocsRule, speckitImplementRule, speckitRule, specGapPack, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, FILES_READ_RULE, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -140,39 +140,39 @@ describe('packs', () => {
     expect(rules).toContain('keeps the data of earlier runs');
     expect(rules).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
-    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
-    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, speckitRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
+    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
+    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
   });
 
-  it('a dev task of Spec Kit tasks runs /speckit-implement on its ids only and never edits tasks.md', () => {
-    const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], speckitTasks: ['T001', 'T002'] });
-    const speckit = { feature: 'specs/003-login', ids: ['T001', 'T002'] };
-    const p = devPack({ ...base, speckitFeature: speckit.feature }, own, { code: { source: 'none' }, handoffs: [], feedback: null, speckit });
-    const rule = speckitImplementRule(speckit.feature, speckit.ids);
+  it('a dev task of plan tasks builds its tasks test-first and never edits the plan file', () => {
+    const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], speckitTasks: ['T1', 'T2'] });
+    const plan = { file: 'docs/specs/003-login/implementation-plan.md', ids: ['T1', 'T2'] };
+    const p = devPack({ ...base, planFile: plan.file }, own, { code: { source: 'none' }, handoffs: [], feedback: null, plan });
+    const rule = taskRule(plan.file, plan.ids);
     expect(p.principles).toContain(rule);
-    expect(rule).toContain('/speckit-implement');
-    expect(rule).toContain('T001, T002');
-    expect(rule).toContain('Never change tasks.md');
+    expect(rule).toContain('T1, T2');
+    expect(rule).toContain('write each of its tests first');
+    expect(rule).toContain('Never change the plan file');
+    expect(rule).not.toContain('/speckit');
     const plain = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
-    expect(plain.principles.join('\n')).not.toContain('/speckit-implement');
+    expect(plain.principles.join('\n')).not.toContain('write each of its tests first');
   });
 
-  it('tells every dev task to read the Spec Kit files and the five documents before it changes a file', () => {
+  it('tells every dev task to read the implementation plan and the five documents before it changes a file', () => {
     const p = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
-    expect(p.principles).toContain(speckitRule());
-    expect(speckitRule()).toContain('.specify/memory/constitution.md');
+    expect(p.principles).toContain(planRule());
+    expect(planRule()).toContain('no implementation plan');
     expect(p.principles).toContain(sourceDocsRule(spec.specId));
     for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', 'briefing.md']) expect(sourceDocsRule(spec.specId)).toContain(doc);
     expect(sourceDocsRule(spec.specId)).not.toContain('specs.md');
-    const known = devPack({ ...base, speckitFeature: 'specs/003-login' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
-    expect(known.principles).toContain(speckitRule('specs/003-login'));
-    expect(speckitRule('specs/003-login')).toContain('specs/003-login/tasks.md');
+    const known = devPack({ ...base, planFile: 'docs/specs/003-login/implementation-plan.md' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    expect(known.principles).toContain(planRule('docs/specs/003-login/implementation-plan.md'));
+    expect(planRule('docs/specs/003-login/implementation-plan.md')).toContain('docs/specs/003-login/implementation-plan.md');
   });
 
-  it('names the feature of the spec, and a spec without one is never pointed at the features of other specs', () => {
-    expect(speckitRule('specs/003-login')).toContain('specs/003-login/spec.md, specs/003-login/plan.md and specs/003-login/tasks.md');
-    expect(speckitRule()).not.toContain('specs/*/');
-    expect(speckitRule()).toContain('This spec has no Spec Kit feature');
+  it('a spec without a plan is never pointed at the plans of other specs', () => {
+    expect(planRule()).not.toContain('docs/specs/');
+    expect(planRule('docs/specs/003-login/implementation-plan.md')).toContain('read it, then follow its tasks');
   });
 
   it("names the spec's own briefing, and the project's docs/briefing.md that backlog mode keeps", () => {
@@ -190,11 +190,11 @@ describe('packs', () => {
     expect(pack.text).toContain(`docs/specs/${spec.specId}/tech-spec.md`);
   });
 
-  it('the reviewers and the security step read the Spec Kit files and the five documents too', () => {
-    const feature = { ...base, speckitFeature: 'specs/003-login' };
+  it('the reviewers and the security step read the implementation plan and the five documents too', () => {
+    const feature = { ...base, planFile: 'docs/specs/003-login/implementation-plan.md' };
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
     const security = { diffStat: '', changedFiles: [], diff: '', code: { source: 'none' as const } };
-    const rules = [...base.project.principles, speckitRule('specs/003-login'), sourceDocsRule(spec.specId)];
+    const rules = [...base.project.principles, planRule('docs/specs/003-login/implementation-plan.md'), sourceDocsRule(spec.specId)];
     expect(reviewPack(feature, task, review).principles).toEqual(rules);
     expect(securityPack(feature, task, security).principles).toEqual(rules);
   });
@@ -558,6 +558,16 @@ describe('runAgentStep', () => {
     await runAgentStep({ ...dev, role: 'sec', taskId: 'T2' }, d);
     expect(seen[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'max' });
     expect(seen[1]).toMatchObject({ model: 'haiku', effort: 'low' });
+  });
+
+  it('a plan step keeps its own model and effort, and the role pin that sets the builders does not apply to it', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.agentSetting = (role) => (role === 'dev' ? { model: 'claude-haiku-5-5', effort: 'low' } : undefined);
+    const pack = { kind: 'speckit', role: 'dev', specHash: HASH, principles: [], outputContract: '', criteria: [], feedback: 'Write the plan.', budgetTokens: 8000 };
+    await runAgentStep({ kind: 'speckit', role: 'dev', pack, cwd: dir, phase: 'refine', taskId: null, attempt: 1, model: 'claude-sonnet-5-5', effort: 'low' } as never, d);
+    expect(seen[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low' });
   });
 
   it('reads the manual setting when each step starts, so a change made during the run applies to the next step', async () => {

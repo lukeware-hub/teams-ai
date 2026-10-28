@@ -77,7 +77,7 @@ export async function setAgentSetting(projectId: string, role: Role, setting: Ag
   });
 }
 
-/** Sets how many agents prepare the Spec Kit items at once; the other settings stay. */
+/** Sets how many agents prepare the plan items at once; the other settings stay. */
 export async function setSpeckitAgents(agents: number, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => ({ ...raw, concurrency: { ...cfg.concurrency, speckitAgents: agents } }));
 }

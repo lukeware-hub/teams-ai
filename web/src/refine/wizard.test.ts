@@ -108,7 +108,7 @@ describe('what is pending for one document', () => {
   });
 });
 
-describe('the questions the Spec Kit asks', () => {
+describe('the questions the plan preparation asks', () => {
   it('go to stage 7, blocking first, and stay out of the unfiled ones of the review', () => {
     const st = state({ questions: [question('a'), question('s1', { origin: 'speckit' }), question('s2', { origin: 'speckit', blocking: true }), question('s3', { origin: 'speckit', status: 'answered' })] });
     expect(speckitQuestions(st).map((q) => q.questionId)).toEqual(['s2', 's1']);

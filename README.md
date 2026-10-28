@@ -252,7 +252,6 @@ Keep the repository in the Linux file system (`~/teams-ai`), not in `/mnt/c`.
    | GitHub CLI `gh` | PRs, merges and repository creation (run by the orchestrator) | GitHub apt repository |
    | `gitleaks`, `osv-scanner` | secret and dependency scans used as gates | GitHub release binaries |
    | `graphify` | optional knowledge graph | `pipx install graphifyy` |
-   | `specify` | Spec Kit: prepares the spec, plan and tasks of each backlog item in stage 7 | `pipx install` of the pinned `github/spec-kit` release (v1.2.3) |
    | Docker | gates and deploys | **not installed here**: comes from Docker Desktop WSL integration (Step 1) |
 
    If `script` (util-linux) is missing, install it with `sudo apt install bsdutils`. The UI needs it for the login terminal.

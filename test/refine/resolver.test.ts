@@ -125,7 +125,7 @@ describe('what an event lands', () => {
     expect(stage[0]).toMatchObject({ site: 'stage', item: 'doc:briefing.md' });
   });
 
-  it('re-decides a pending Spec Kit question from its triage card, with evidence and the card recommendation', () => {
+  it('re-decides a pending plan question from its triage card, with evidence and the card recommendation', () => {
     const state = emptyRefineState();
     applyRefineEvent(state, { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: [], questions: [q(DETAIL[0]!, { options: recommended })], discardedPatches: [] } });
     const card = { questionId: 'po-c1-0', text: DETAIL[0], subject: 'Prazo', options: [{ label: '90 dias', detail: '', recommended: true }, { label: '30 dias', detail: '' }], answer: { text: '90 dias' } };

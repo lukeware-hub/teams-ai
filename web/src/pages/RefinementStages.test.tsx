@@ -49,7 +49,7 @@ const renderView = (snap: Snapshot, h = handlers()) => {
 describe('stage 7 of a new project prepares the development', () => {
   const speckit = (over: Record<string, unknown> = {}) => ({ status: 'done', steps: [], stale: false, ...over });
   const wizard = (over: Partial<Snapshot['state']>) => project({ stages: true, backlog: backlogDetailed as never, ...over });
-  const handlersWithSpeckit = () => ({ ...handlers(), onEnableBacklog: vi.fn(), onPrepareSpeckit: vi.fn() });
+  const handlersWithSpeckit = () => ({ ...handlers(), onEnableBacklog: vi.fn(), onPreparePlans: vi.fn() });
 
   it('offers to break the backlog until it exists, with no start', () => {
     const h = renderView(project({ stages: true }), handlersWithSpeckit());
@@ -60,17 +60,17 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
-  it('keeps the Spec Kit preparation off until the backlog is detailed', () => {
+  it('keeps the plan preparation off until the backlog is detailed', () => {
     renderView(project({ stages: true, backlog: backlogOutline as never }), handlersWithSpeckit());
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows the Spec Kit box and its button to a project from before the document stages too', () => {
+  it('shows the plan box and its button to a project from before the document stages too', () => {
     renderView(project({ backlog: backlogDetailed as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-idle')).toBeTruthy();
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare o Spec Kit antes de iniciar.');
+    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare os planos antes de iniciar.');
   });
 
   it('asks for the preparation first, and keeps the start locked until it is done', () => {
@@ -79,10 +79,10 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('speckit-idle')).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('speckit-prepare'));
-    expect(h.onPrepareSpeckit).toHaveBeenCalledTimes(1);
+    expect(h.onPreparePlans).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the progress while the Spec Kit prepares', () => {
+  it('shows the progress while the plan prepares', () => {
     renderView(wizard({ speckit: speckit({ status: 'running', total: 4, steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('2');
     expect(screen.getByTestId('speckit-running').textContent).toContain('2 de 4 etapas concluídas · 0 em andamento');
@@ -90,36 +90,17 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('lists every step in order: the finished ones with their time, the running one, and the ones to come', () => {
-    const finished = { command: 'constitution', startedAt: '2026-10-25T10:00:00Z', endedAt: '2026-10-25T10:01:05Z' };
-    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [finished], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-running').textContent).toContain('1 de 5 etapas concluídas · 1 em andamento');
-    expect(screen.getByTestId('evaluation-timer')).toBeTruthy();
-    const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
-    expect(rows.map((row) => row.dataset.state)).toEqual(['done', 'running', 'pending', 'pending', 'pending']);
-    expect(rows[0]!.textContent).toContain('1 min 5 s');
-    expect(rows[2]!.textContent).toContain('Esclarecimento de Base');
-  });
 
-  it('shows every step running at once with its spinner, and a step kept from an earlier run as reaproveitada', () => {
-    const kept = { command: 'constitution', reused: true };
-    renderView(wizard({ speckit: speckit({ status: 'running', startedAt: new Date().toISOString(), total: 5, steps: [kept], running: [{ command: 'specify', itemKey: 'base' }, { command: 'clarify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-running').textContent).toContain('1 de 5 etapas concluídas · 2 em andamento · 1 reaproveitada');
-    const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
-    expect(rows.map((row) => row.dataset.state)).toEqual(['done', 'running', 'running', 'pending', 'pending']);
-    expect(rows[0]!.textContent).toContain('Reaproveitada');
-    expect(rows[1]!.textContent).toContain('em andamento');
-  });
 
   it('says why a failed preparation stopped, and lets the owner try again', () => {
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O Spec Kit não está instalado neste ambiente.' }) as never }), handlersWithSpeckit());
+    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan não está instalado neste ambiente.' }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('alert').textContent).toContain('não está instalado');
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('shows the technical detail of a failed preparation under its reason', () => {
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O Spec Kit parou.', detail: 'specs/001-base/plan.md: AC-002' }) as never }), handlersWithSpeckit());
+    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan parou.', detail: 'specs/001-base/plan.md: AC-002' }) as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-failed-detail').textContent).toContain('specs/001-base/plan.md: AC-002');
   });
 
@@ -131,16 +112,10 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(rows[1]!.textContent).not.toContain('Reaproveitada');
   });
 
-  it('lists the feature folder Spec Kit made for each item', () => {
-    renderView(wizard({ speckit: speckit({ features: { base: 'specs/001-base' } }) as never }), handlersWithSpeckit());
-    const row = screen.getByTestId('speckit-features').querySelector('li')!;
-    expect(row.textContent).toContain('Base');
-    expect(row.querySelector('code')!.textContent).toBe('specs/001-base');
-  });
 
   it('shows the technical detail of a failed preparation under its reason, such as the stderr of a failed init', () => {
     const stderr = '╭─ Error ─╮\n│ No such option: --integration │\n╰─────────╯';
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O Spec Kit não conseguiu preparar a pasta do projeto. Tente de novo.', detail: stderr }) as never }), handlersWithSpeckit());
+    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan não conseguiu preparar a pasta do projeto. Tente de novo.', detail: stderr }) as never }), handlersWithSpeckit());
     const alert = screen.getByRole('alert');
     expect(within(alert).getByText('Detalhe técnico')).toBeTruthy();
     expect(alert.querySelector('pre')!.textContent).toBe(stderr);
@@ -163,7 +138,7 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the questions the Spec Kit asked, for the owner to answer, and keeps the start locked while one blocks', () => {
+  it('shows the questions the plan asked, for the owner to answer, and keeps the start locked while one blocks', () => {
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Qual banco de dados?' };
     renderView(wizard({ status: 'answering', speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
     expect(screen.getByText('Qual banco de dados?')).toBeTruthy();
@@ -171,7 +146,7 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('a Spec Kit question that repeats a decided one shows what the owner decided, and the difference', () => {
+  it('a plan question that repeats a decided one shows what the owner decided, and the difference', () => {
     const decided = { ...question(true, 'answered'), questionId: 'speckit-old', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo do link?', answer: '90 dias', answeredBy: null };
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Até quando o link vale?', distinctFrom: [{ questionId: 'speckit-old', difference: 'Vale até o fim do prazo de envio, não por noventa dias corridos.' }] };
     renderView(wizard({ speckit: speckit() as never, questions: [decided as never, asked as never] }), handlersWithSpeckit());
@@ -191,7 +166,7 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onReask).toHaveBeenCalledWith('speckit-b');
   });
 
-  it('a Spec Kit question shows its item and its context, and drops the document checkbox', () => {
+  it('a plan question shows its item and its context, and drops the document checkbox', () => {
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', context: 'Sem prazo, o link fica aberto.', text: 'Por quanto tempo vale o link?' };
     renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
     expect(screen.getByText('Sobre o item Base')).toBeTruthy();
@@ -200,20 +175,11 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('docs-answered')).toBeNull();
   });
 
-  it('lists the questions the PO and the SM answered from the documents, closed, with the quote of their document', () => {
-    const answered = { ...question(true, 'answered'), questionId: 'speckit-xyz', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?', answer: '90 dias', answeredBy: 'sm', evidence: [{ file: 'briefing.md', heading: 'Regras', quote: 'O link vale por 90 dias.' }] };
-    renderView(wizard({ speckit: speckit() as never, questions: [answered as never] }), handlersWithSpeckit());
-    const list = screen.getByTestId('agent-answers') as HTMLDetailsElement;
-    expect(list.open).toBe(false);
-    expect(list.textContent).toContain('Respondidas pelo PO e pelo SM (1)');
-    expect(list.textContent).toContain('briefing.md › Regras');
-    expect(list.textContent).toContain('O link vale por 90 dias.');
-  });
 
   it('Iniciar is primary only once the preparation is ready, and says what it waits for', () => {
     renderView(wizard({ speckit: undefined as never }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).className).not.toContain('primary');
-    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare o Spec Kit antes de iniciar.');
+    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare os planos antes de iniciar.');
   });
 
   it('the steps of a running preparation sit behind a closed list, and a finished step says Feito', () => {
@@ -223,34 +189,10 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('start-reason').textContent).toContain('em andamento');
   });
 
-  it('offers to ask the PO and the SM about the questions nobody has read yet, and sends the request', () => {
-    const h = { ...handlersWithSpeckit(), onAskSpeckitAnswers: vi.fn() };
-    const unread = { ...question(true), questionId: 'speckit-u', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?' };
-    renderView(wizard({ speckit: speckit() as never, questions: [unread as never] }), h);
-    expect(screen.getByTestId('ask-agents-block').textContent).toContain('1 pergunta ainda não foi lida');
-    fireEvent.click(screen.getByTestId('ask-agents'));
-    expect(h.onAskSpeckitAnswers).toHaveBeenCalledTimes(1);
-  });
 
-  it('holds the request while the PO and the SM answer', () => {
-    const unread = { ...question(true), questionId: 'speckit-u', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?' };
-    renderView(wizard({ speckit: speckit() as never, questions: [unread as never], speckitAnswering: true }), handlersWithSpeckit());
-    const button = screen.getByTestId('ask-agents') as HTMLButtonElement;
-    expect(button.textContent).toContain('Perguntando ao PO e ao SM');
-    expect(button.disabled).toBe(true);
-  });
 
-  it('lets the owner replace an answer the PO or the SM gave, with his own text', () => {
-    const h = handlersWithSpeckit();
-    const agent = { ...question(true, 'answered'), questionId: 'speckit-a', origin: 'speckit', itemKey: 'base', text: 'Qual o prazo?', answer: '90 dias', answeredBy: 'po', evidence: [{ file: 'briefing.md', heading: 'Regras', quote: 'O link vale por 90 dias.' }] };
-    renderView(wizard({ speckit: speckit() as never, questions: [agent as never] }), h);
-    fireEvent.click(screen.getByTestId('own-speckit-a'));
-    fireEvent.change(screen.getByTestId('own-answer-speckit-a'), { target: { value: '30 dias' } });
-    fireEvent.click(screen.getByTestId('save-own-speckit-a'));
-    expect(h.onAnswer).toHaveBeenCalledWith('speckit-a', '30 dias', false);
-  });
 
-  it('says the start waits for a blocking Spec Kit question, even when the preparation is done', () => {
+  it('says the start waits for a blocking plan question, even when the preparation is done', () => {
     const asked = { ...question(true), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
     renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-waiting')).toBeTruthy();
@@ -258,7 +200,7 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('hides the Spec Kit question while the preparation runs, since the server refuses the answer then', () => {
+  it('hides the plan question while the preparation runs, since the server refuses the answer then', () => {
     const asked = { ...question(false), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
     renderView(wizard({ speckit: speckit({ status: 'running', steps: [], total: 3 }) as never, questions: [asked as never] }), handlersWithSpeckit());
     expect(screen.queryByText('Qual banco de dados?')).toBeNull();

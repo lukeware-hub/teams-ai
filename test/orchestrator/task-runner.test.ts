@@ -149,7 +149,7 @@ describe('TaskRunner: implementing', () => {
   it('sends a done Dev back, without spending an attempt, while filesRead leaves out a source file the worktree holds', async () => {
     await journal.close();
     await remote.cleanup();
-    const read = ['.specify/memory/constitution.md', 'specs/003-login/spec.md', 'specs/003-login/plan.md', 'specs/003-login/tasks.md', 'docs/project.md', 'docs/design.md', 'docs/briefing.md'];
+    const read = ['docs/specs/spec-001/implementation-plan.md', 'docs/project.md', 'docs/design.md', 'docs/briefing.md'];
     remote = await makeRemote({
       'docs/project.json': JSON.stringify(project),
       'docs/specs/spec-001/spec.json': JSON.stringify(spec),
@@ -167,7 +167,7 @@ describe('TaskRunner: implementing', () => {
       const filesRead = devCalls === 1 ? read.filter((f) => f !== 'docs/design.md') : [path.join(req.cwd, read[0]!), ...read.slice(1)];
       return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1', filesRead });
     };
-    const packBase = () => ({ spec, project, specHash: HASH, assumptions: [], budgetTokens: 8000, speckitFeature: 'specs/003-login' });
+    const packBase = () => ({ spec, project, specHash: HASH, assumptions: [], budgetTokens: 8000, planFile: 'docs/specs/spec-001/implementation-plan.md' });
     const r = new TaskRunner('T1', deps({ agent, packBase }));
     await r.advance();
     expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });

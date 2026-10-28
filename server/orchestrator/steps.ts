@@ -37,8 +37,8 @@ export interface PackBase {
   budgetTokens: number;
   /** Set when the step works in a service's repository, which holds none of the project's docs. */
   service?: ServiceContext;
-  /** The Spec Kit feature folder of this spec (`specs/NNN-name`), when the refinement prepared one. */
-  speckitFeature?: string;
+  /** The implementation plan of this spec in the repository, when the refinement published one. */
+  planFile?: string;
 }
 
 /** What a step in a service's repository needs from the project and cannot read there (R12.6). */
@@ -114,62 +114,59 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
 }
 
 /**
- * The Spec Kit files the refinement published to the repository. The pack names them and the agent reads them: principles
- * are never dropped for the budget, so pasting the files in would push the pack over it.
+ * The implementation plan the refinement published to the repository. The pack names it and the agent reads it: a plan is long, so
+ * pasting it in would push the pack over its budget.
  */
-export const speckitRule = (featureDir?: string): string =>
-  `When the repository has .specify/memory/constitution.md (made by Spec Kit), read it before you change any file, then follow it. ${featureDir ? `This spec's feature is ${featureDir}: read ${featureDir}/spec.md, ${featureDir}/plan.md and ${featureDir}/tasks.md too, and follow them.` : 'This spec has no Spec Kit feature: the features under specs/ belong to other specs, so none of them is the spec, plan or tasks of this task.'}`;
+export const planRule = (planFile?: string): string =>
+  planFile ? `This spec's implementation plan is ${planFile}: read it, then follow its tasks, their files and their test steps.` : 'This spec has no implementation plan in the repository, so there is no plan to follow for this task.';
 
 /** The project's five documents in the repository's docs folder, and where the ADRs and tech spec the budget drops live; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>
   `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's source of truth, and a document wins over the code when they disagree. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
 
-/** What every task that builds or judges code reads first: the Spec Kit files and the five documents. */
-const sourceRules = (base: PackBase): string[] => [speckitRule(base.speckitFeature), sourceDocsRule(base.spec.specId)];
+/** What every task that builds or judges code reads first: the implementation plan and the five documents. */
+const sourceRules = (base: PackBase): string[] => [planRule(base.planFile), sourceDocsRule(base.spec.specId)];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
 export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
 
-/** A departure from the task, plan.md or tasks.md is listed, so a contradiction never passes silently. */
-export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task, from plan.md or from tasks.md; leave it empty when you followed all three.';
+/** A departure from the task or from its implementation plan is listed, so a contradiction never passes silently. */
+export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task or from its implementation plan; leave it empty when you followed both.';
 
 /** The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there. */
-export async function sourceFiles(dir: string, featureDir: string | undefined, specId: string): Promise<string[]> {
+export async function sourceFiles(dir: string, planFile: string | undefined, specId: string): Promise<string[]> {
   const has = (file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
   const ownBriefing = `docs/specs/${specId}/briefing.md`;
   const rules = [
-    ['.specify/memory/constitution.md', ...(featureDir ? ['spec.md', 'plan.md', 'tasks.md'].map((f) => `${featureDir}/${f}`) : [])],
+    planFile ? [planFile] : [],
     ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', (await has(ownBriefing)) ? ownBriefing : 'docs/briefing.md'],
   ];
   const named: string[] = [];
-  for (const files of rules) if (await has(files[0]!)) named.push(...files);
+  for (const files of rules) if (files.length > 0 && (await has(files[0]!))) named.push(...files);
   const held = await Promise.all(named.map(has));
   return named.filter((_, i) => held[i]);
 }
 
-/** The Spec Kit tasks a plan task builds, and the feature folder whose tasks.md lists them. */
-export interface SpeckitTasks {
-  feature: string;
+/** The plan tasks a dev task builds, and the implementation plan whose blocks they are. */
+export interface PlanTasks {
+  file: string;
   ids: readonly string[];
 }
 
-/** The Spec Kit scripts the skills run; the allow-list names only them, not any bash command. */
-export const SPECKIT_ALLOW = ['Bash(bash .specify/scripts/bash/*:*)', 'Bash(.specify/scripts/bash/*:*)'] as const;
-
-/** A dev task runs the Spec Kit implement skill on its own ids; the orchestrator, not the Dev, marks tasks.md. */
-export const speckitImplementRule = (feature: string, ids: readonly string[]): string =>
-  `This task builds the Spec Kit task${ids.length > 1 ? 's' : ''} ${ids.join(', ')} of ${feature}/tasks.md. Run the Spec Kit command /speckit-implement in this worktree: read .claude/skills/speckit-implement/SKILL.md with the Read tool and follow it, with the user input ${ids.join(', ')}, so only these tasks are built and only within this task's affected paths. Never change tasks.md (the orchestrator marks it after the spec's tasks merge), never change .claude/, .specify/ or an ignore file, never ask a question in the chat (take the most reasonable choice and name it in the summary), and skip every git step and hook the skill names: the orchestrator commits.`;
+/** A dev task builds the plan tasks it names, test-first; the orchestrator, not the Dev, marks the plan's progress. */
+export const taskRule = (file: string, ids: readonly string[]): string =>
+  `This task builds the plan task${ids.length > 1 ? 's' : ''} ${ids.join(', ')} of ${file}: write each of its tests first, run the verifications the plan gives and read their output, and build only these tasks within this task's affected paths. Never change the plan file or .claude/, never ask a question in the chat (take the most reasonable choice and name it in the summary), and skip every git step: the orchestrator commits.`;
 
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; speckit?: SpeckitTasks },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; plan?: PlanTasks },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.speckit ? [speckitImplementRule(opts.speckit.feature, opts.speckit.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(opts.plan.file, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -203,7 +200,7 @@ export function reviewPack(
   task: PlanTask,
   opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile },
 ): ContextPackInput {
-  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts plan.md or tasks.md gets category "plan"; every other finding gets category "code".`;
+  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".`;
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
@@ -348,7 +345,7 @@ export function servicesPlanRules(opts: ServicesPack): string {
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack; speckit?: { feature: string; plan: string; tasks: string } },
+  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack; plan?: { file: string; outline: string } },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
@@ -357,7 +354,7 @@ export function planPack(
     opts.services ? servicesPlanRules(opts.services) : '',
     !opts.services && opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
-    opts.speckit ? `Spec Kit plan and tasks of this spec (${opts.speckit.feature}): follow plan.md where the plan rules allow, and give every task of tasks.md a plan task that lists its id (T001, ...) in speckitTasks; a tasks.md task that no plan task lists fails the plan.\n\n${opts.speckit.feature}/plan.md:\n${opts.speckit.plan}\n\n${opts.speckit.feature}/tasks.md:\n${opts.speckit.tasks}` : '',
+    opts.plan ? `The implementation plan of this spec is ${opts.plan.file}. Its ### Task blocks, with their files and criteria, are listed here: give every block a plan task that lists its number (T1, T2, ...) in speckitTasks; a block that no plan task lists fails the plan.\n\n${opts.plan.outline}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',
@@ -426,16 +423,15 @@ export function environmentPack(base: PackBase, opts: { unknown: Readonly<Record
   ].filter((p) => p !== '').join('\n\n') };
 }
 
-/** The Spec Kit convergence: the agent checks the code against the feature and appends only the gaps it finds. */
-export function convergePack(base: PackBase, opts: { feature: string }): ContextPackInput {
+/** The convergence after the build: a read-only review of the merged code against the implementation plan, which reports only the gaps it finds. */
+export function convergePack(base: PackBase, opts: { plan: string }): ContextPackInput {
   const feedback = [
-    `Run the Spec Kit command /speckit-converge in this folder for the feature ${opts.feature}: read .claude/skills/speckit-converge/SKILL.md with the Read tool and follow it.`,
-    `The feature's spec, plan and tasks are ${opts.feature}/spec.md, ${opts.feature}/plan.md and ${opts.feature}/tasks.md; the rest of this folder is the code.`,
-    'Append only: the one file you write is tasks.md, with a Convergence section at its end. Never change code, the spec, the plan or a task already in tasks.md, and never renumber an id.',
-    'Skip every git step and hook the skill names: the orchestrator commits.',
+    `Review the code of this repository against the implementation plan ${opts.plan}: load the requesting-code-review skill of Superpowers with the Skill tool and follow its review lens.`,
+    'Read only: never change a file, never run a git command that writes, and never commit.',
+    'Check that every plan task the code should build is built, and that every acceptance criterion the plan names is met by the code. Report only the gaps: a plan task or a criterion the code does not meet yet.',
     'Never stop to ask a question in the chat; take the most reasonable choice.',
-    'Write the appended tasks in Brazilian Portuguese; keep the template headings and ids.',
-    'Answer status converged when nothing is missing, and leave tasks.md unchanged. Answer status tasks-appended with `appended` set to the ids you appended (T### each) when gaps were found.',
+    'Describe each gap in Brazilian Portuguese, in one sentence, naming the plan task and the file that should hold it.',
+    'Answer status converged when nothing is missing. Answer status gaps with `gaps` listing the gaps when some were found.',
   ].join('\n\n');
   const shared = common(base, 'converge', 'dev');
   return { ...shared, principles: [...shared.principles, ...sourceRules(base)], criteria: base.spec.acceptanceCriteria, feedback };
@@ -453,7 +449,7 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
     `Module boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}`,
     OWNER_RULE,
     opts.services ? `Each task names its service, one of: ${opts.services.join(', ')}. A task changes only that service's repository.` : '',
-    opts.convergence ? `Spec Kit convergence found these tasks of tasks.md the code does not build yet. Each fix task lists the ids it builds in speckitTasks, and every id below needs one:\n${opts.convergence}` : '',
+    opts.convergence ? `The review of the code against the implementation plan found these gaps, which the code does not meet yet. Each fix task builds the gaps it names:\n${opts.convergence}` : '',
     opts.feedback ? `Previous answer was rejected:\n${opts.feedback}` : '',
   ].filter(Boolean).join('\n\n');
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
@@ -591,7 +587,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  const manual = await deps.agentSetting?.(req.role);
+  // A plan step carries its own model and effort (plan 107): the role's pin, which sets the builders, does not apply to it.
+  const manual = req.kind === 'speckit' ? undefined : await deps.agentSetting?.(req.role);
   const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.
   const lower = sessionStore || manual ? undefined : fallbackModel(planned);

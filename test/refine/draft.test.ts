@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, refineRoot, renderBriefMd, speckitBaseDir, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
+import { briefTemplate, createFromRepo, createNewProject, DOC_REL, draftExists, draftHash, draftPaths, keepBaseProject, moveBriefingToProject, readBase, readDerived, readDoc, refineRoot, renderBriefMd, syncWithMain, writeDerived, writeDoc } from '../../server/refine/draft.js';
 import { git } from '../../server/git/git.js';
 import { parseDecisions } from '../../server/refine/decisions.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
@@ -136,22 +136,7 @@ describe('draft', () => {
     expect(await readBase(fresh, 'project.md')).toBeNull();
   });
 
-  it("keeps main's Spec Kit constitution and feature folders in a hidden base beside the docs one, and none while main has no constitution", async () => {
-    remote = await makeRemote({ 'docs/project.json': JSON.stringify(makeProject()), 'specs/001-orders/spec.md': '# Orders\n' });
-    const before = draftPaths(ws, 'hello-040');
-    await createFromRepo(before, remote.repo, execCommand, { kind: 'backlog' });
-    await expect(fs.access(speckitBaseDir(before))).rejects.toThrow();
-    await fs.mkdir(path.join(remote.repo, '.specify', 'memory'), { recursive: true });
-    await fs.writeFile(path.join(remote.repo, '.specify', 'memory', 'constitution.md'), '# Main constitution\n');
-    await git(remote.repo, ['add', '-A'], execCommand);
-    await git(remote.repo, ['commit', '-q', '-m', 'spec kit'], execCommand);
-    await git(remote.repo, ['push', '-q', 'origin', 'main'], execCommand);
-    const d = draftPaths(ws, 'hello-041');
-    await createFromRepo(d, remote.repo, execCommand, { kind: 'backlog' });
-    expect(speckitBaseDir(d)).toBe(`${d.root}/.base/speckit`);
-    expect(await fs.readFile(`${speckitBaseDir(d)}/.specify/memory/constitution.md`, 'utf8')).toBe('# Main constitution\n');
-    expect(await fs.readFile(`${speckitBaseDir(d)}/specs/001-orders/spec.md`, 'utf8')).toBe('# Orders\n');
-  });
+
 
   it('creates a new project from templates and includes design.md in the draft hash', async () => {
     const d = draftPaths(ws, 'hello-001');

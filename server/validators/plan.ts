@@ -28,7 +28,7 @@ export interface PlanCheckOptions {
   repoFiles?: ReadonlySet<string>;
   /** Secrets the environment creates for every project (`environment.generatedSecrets`): a gate may read them without the spec declaring them. */
   generatedSecretNames?: readonly string[];
-  /** The task ids of the spec's Spec Kit tasks.md; each needs a plan task that lists it in speckitTasks. */
+  /** The task numbers (T1, T2, ...) of the spec's implementation plan; each needs a plan task that lists it in speckitTasks. */
   speckitTasks?: readonly string[];
 }
 
@@ -153,7 +153,7 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
   }
   const planned = new Set(plan.tasks.flatMap((t) => t.speckitTasks ?? []));
   for (const id of opts.speckitTasks ?? []) {
-    if (!planned.has(id)) errors.push(`Spec Kit task ${id} of tasks.md has no plan task; list it in speckitTasks of the task that does it`);
+    if (!planned.has(id)) errors.push(`the implementation plan's task ${id} has no plan task; list it in speckitTasks of the task that builds it`);
   }
 
   // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to

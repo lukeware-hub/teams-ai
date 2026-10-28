@@ -41,7 +41,7 @@ export interface HealView {
   paused: boolean;
   /** The cycle that failed, while the draft is in error. */
   cycle?: HealFailure;
-  /** The Spec Kit preparation that failed. */
+  /** The plan preparation that failed. */
   speckit?: HealFailure;
 }
 
@@ -69,7 +69,7 @@ export interface HealEvent {
   data: Record<string, unknown>;
 }
 
-/** The failures in a row of the cycle and of the Spec Kit preparation, and whether the driver paused since the last one. */
+/** The failures in a row of the cycle and of the plan preparation, and whether the driver paused since the last one. */
 export interface HealRuns {
   cycle?: HealFailure;
   speckit?: HealFailure;

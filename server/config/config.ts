@@ -35,8 +35,8 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
 const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus };
 
 const positive = z.number().int().min(1);
-/** The most agents that prepare the Spec Kit items at once. */
-export const SPECKIT_AGENTS_MAX = 5;
+/** The most agents that prepare the plans at once. */
+export const PLAN_AGENTS_MAX = 5;
 const linuxPath = z
   .string()
   .min(1)
@@ -161,8 +161,8 @@ export const Config = z.object({
     .object({
       maxParallel: positive.default(DEFAULT_MAX_PARALLEL),
       maxClaudeProcesses: positive.default(3),
-      /** Agents that prepare the Spec Kit items at once, set in Settings; a preparation runs one at a time when 1. */
-      speckitAgents: positive.max(SPECKIT_AGENTS_MAX).default(SPECKIT_AGENTS_MAX),
+      /** Agents that prepare the plans at once, set in Settings; a preparation runs one at a time when 1. */
+      speckitAgents: positive.max(PLAN_AGENTS_MAX).default(PLAN_AGENTS_MAX),
     })
     .prefault({}),
   retry: z
@@ -231,8 +231,6 @@ export const Config = z.object({
       perDecision: PerDecisionSchema.prefault({}),
       /** R11.5.7: the confidence at or above which a blocking refinement question Jev routes `auto` is answered from the docs; `measured` (the default) takes it from the project's labelled answers, `off` never answers. */
       autoAnswerFloor: z.union([unit, z.enum(['measured', 'off'])]).default('measured'),
-      /** On by default: a Spec Kit question the documents leave open may get one suggestion from a web search, which the owner confirms. Never for a confidential project. */
-      speckitResearch: z.boolean().default(true),
     })
     .prefault({}),
   paths: z

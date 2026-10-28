@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, SpeckitAnswerOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -16,18 +16,12 @@ describe('output contracts', () => {
     expect(Object.keys(OUTPUT_SCHEMAS).sort()).toEqual([...STEP_KINDS].sort());
   });
 
-  it('a Spec Kit answer keeps each valid result, and drops a malformed one on its own', () => {
-    const card = { subject: 'Prazo', context: 'Item Entrar.', text: 'Por quanto tempo?', options: [] };
-    const parsed = SpeckitAnswerOutput.parse({ specHash: HASH, results: [{ questionId: 'speckit-1', answer: null, evidence: [], card }, { questionId: 'speckit-2', answer: '90 dias' }] });
-    expect(parsed.results.map((r) => r.questionId)).toEqual(['speckit-1']);
-  });
-
-  it('a converge answer is converged, or names the Spec Kit task ids it appended', () => {
-    const appended = { specHash: HASH, status: 'tasks-appended', appended: ['T042'], summary: 'login has no logout' };
+  it('a review is converged, or lists the gaps it found, one sentence each', () => {
+    const gaps = { specHash: HASH, status: 'gaps', gaps: ['O login não tem logout.'], summary: 'login has no logout' };
     expect(ConvergeOutput.safeParse({ specHash: HASH, status: 'converged', summary: 'all built' }).success).toBe(true);
-    expect(ConvergeOutput.safeParse(appended).success).toBe(true);
-    expect(ConvergeOutput.safeParse({ ...appended, appended: [] }).success).toBe(false);
-    expect(ConvergeOutput.safeParse({ ...appended, appended: ['task-42'] }).success).toBe(false);
+    expect(ConvergeOutput.safeParse(gaps).success).toBe(true);
+    expect(ConvergeOutput.safeParse({ ...gaps, gaps: [] }).success).toBe(false);
+    expect(ConvergeOutput.safeParse({ ...gaps, gaps: [''] }).success).toBe(false);
   });
 
   it('a new plan names every task id with a slug; a stored plan with bare ids still loads', () => {
@@ -161,7 +155,7 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(done.required).toContain('commitMessage');
     expect(gap.required).toContain('question');
   });
-  it('a Spec Kit step answers done with the files it wrote, or blocked with a reason', () => {
+  it('a plan step answers done with the files it wrote, or blocked with a reason', () => {
     const HASH = 'sha256:' + 'a'.repeat(64);
     expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'done', summary: 'ok', files: ['specs/login/spec.md'] }).success).toBe(true);
     expect(OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'blocked', summary: 'parou', files: [], reason: 'sem template' }).success).toBe(true);
@@ -176,7 +170,7 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(asked.questions).toEqual([{ text: 'Qual moeda?', blocking: true, itemKey: 'cart', options: [{ label: 'Real', detail: '', recommended: true }] }]);
   });
 
-  it('a Spec Kit question with a malformed flag or an empty text fails the step, so a blocking question is never dropped', () => {
+  it('a plan question with a malformed flag or an empty text fails the step, so a blocking question is never dropped', () => {
     const HASH = 'sha256:' + 'a'.repeat(64);
     const step = (question: object) => OUTPUT_SCHEMAS.speckit.safeParse({ specHash: HASH, status: 'done', summary: 'ok', files: [], questions: [{ text: 'Qual moeda?', blocking: true }, question] }).success;
     expect(step({ text: 'Qual prazo?', blocking: 'sim' })).toBe(false);

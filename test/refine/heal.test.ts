@@ -51,7 +51,7 @@ describe('the next thing the driver does for a draft', () => {
     expect(nextHeal({ ...idle, cycle: failed('other', 1) })).toEqual({ do: 'pause', reason: 'other' });
   });
 
-  it('heals a failed Spec Kit preparation by preparing again, and the cycle first when both failed', () => {
+  it('heals a failed plan preparation by preparing again, and the cycle first when both failed', () => {
     expect(nextHeal({ ...idle, speckit: failed('interrupted', 1) })).toEqual({ do: 'prepare' });
     expect(nextHeal({ ...idle, cycle: failed('schema', 1), speckit: failed('interrupted', 1) })).toEqual({ do: 'evaluate' });
   });

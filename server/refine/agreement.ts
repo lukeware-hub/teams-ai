@@ -6,7 +6,7 @@ export const REPLAY = { longPauseSeconds: 30, z: 1.645, bootstrapRuns: 2000, see
 /** One owner answer to a question that had a recommended option. */
 export interface OwnerAnswer {
   questionId: string;
-  /** What the question is about: a Spec Kit item key, `doc:<file>` for a stage review, or `round` for a full round. */
+  /** What the question is about: a plan item key, `doc:<file>` for a stage review, or `round` for a full round. */
   item: string;
   /** Seconds since the owner's previous answer; null for the first answer of a journal. */
   gapSeconds: number | null;

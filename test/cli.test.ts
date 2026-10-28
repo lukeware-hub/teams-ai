@@ -270,17 +270,11 @@ describe('loadRunDeps', () => {
     expect(hits.map((h) => h.docId)).toEqual(['docs/specs/hello-001/spec.md']);
   });
 
-  it('gives the run of a spec the Spec Kit feature folder that the preparation of its draft recorded for that spec', async () => {
-    const feature = await fromRunDeps(async (draftRoot) => {
-      // The draft journal of a backlog whose preparation made a feature folder for each item, the spec's own last.
-      const journal = await RefineJournal.open(path.join(draftRoot, 'events.ndjson'), { projectId: 'hello-app', specId: path.basename(draftRoot) });
-      const item = (key: string, rank: number) => ({ key, title: key, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
-      await journal.fact(RefineEvent.BacklogEnabled, { keyIds: true });
-      await journal.fact(RefineEvent.BacklogDerived, { project: null, epics: [], items: [item('login', 1), item('hello-001', 2)], cycle: 1 });
-      await journal.fact(RefineEvent.SpeckitStarted, { total: 9 });
-      for (const key of ['login', 'hello-001']) await journal.fact(RefineEvent.SpeckitStepDone, { command: 'specify', itemKey: key, files: [`specs/${key}/spec.md`], featureDir: `specs/${key}` });
-      await journal.close();
-    }, (deps) => deps.speckitFeature);
-    expect(feature).toBe('specs/hello-001');
+  it('gives the run of a spec the implementation plan its preparation wrote', async () => {
+    const plan = await fromRunDeps(async (draftRoot) => {
+      await fs.mkdir(path.join(draftRoot, 'docs', 'specs', 'hello-001'), { recursive: true });
+      await fs.writeFile(path.join(draftRoot, 'docs', 'specs', 'hello-001', 'implementation-plan.md'), '# Plan\n');
+    }, (deps) => deps.planFile);
+    expect(plan).toBe('docs/specs/hello-001/implementation-plan.md');
   });
 });

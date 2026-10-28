@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'speckit-answer', 'speckit-research', 'converge'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -156,7 +156,7 @@ const devCommon = {
 export const DevOutput = z.discriminatedUnion('status', [
   /** Deleted paths the Dev's own sandbox has no tool to remove (Bash's rm/git rm are denied); the orchestrator deletes them before committing. */
   /** `filesRead`: the source files the rules told the builder to read; the orchestrator checks it against the worktree. */
-  /** `deviations`: each departure from the task, plan.md or tasks.md, one sentence each; empty when the builder followed all three. */
+  /** `deviations`: each departure from the task or from the implementation plan of its spec, one sentence each; empty when the builder followed both. */
   z.object({ ...devCommon, status: z.literal('done'), commitMessage: z.string().min(1), deletedFiles: z.array(z.string().min(1)).optional(), filesRead: z.array(z.string().min(1)).default([]), deviations: z.array(z.string().min(1)).default([]) }),
   z.object({ ...devCommon, status: z.literal('spec-gap'), question: z.string().min(1) }),
   /** The task cannot proceed for a reason outside its paths (deploy environment, missing access): no SM round, no attempt consumed. */
@@ -176,7 +176,7 @@ export const ReviewOutput = z.object({
       severity: z.enum(['critical', 'important', 'minor']),
       problem: z.string().min(1),
       fix: z.string().min(1),
-      /** `plan`: the change contradicts plan.md or tasks.md, not only the code. */
+      /** `plan`: the change contradicts the implementation plan of its spec, not only the code. */
       category: z.enum(['code', 'plan']).default('code'),
     }),
   ),
@@ -328,40 +328,21 @@ export type SuggestOutput = z.infer<typeof SuggestOutput>;
 export const AnswerOutput = z.object({ specHash, answer: z.string().min(1).nullable() });
 export type AnswerOutput = z.infer<typeof AnswerOutput>;
 
-/** A point Spec Kit left open for the owner, as the [NEEDS CLARIFICATION] markers and clarify questions; a bad one fails the step, so a blocking one is never lost. */
+/** A point plan left open for the owner, as the [NEEDS CLARIFICATION] markers and clarify questions; a bad one fails the step, so a blocking one is never lost. */
 const SpeckitQuestion = z.object({ text: z.string().min(1), blocking: z.boolean(), itemKey: z.string().nullish(), options: keepValid(QuestionChoice.extend({ detail: z.string().default('') })).optional(), distinctFrom: z.array(z.object({ questionId: z.string().min(1), difference: z.string().min(1) })).max(3).nullish() });
 const speckitCommon = { specHash, summary: z.string().min(1), files: z.array(z.string().min(1)), questions: z.array(SpeckitQuestion).default([]) };
 
-/** One Spec Kit command run in the staging folder: the files it wrote and the questions it left open, or why it could not finish. */
+/** One plan command run in the staging folder: the files it wrote and the questions it left open, or why it could not finish. */
 export const SpeckitOutput = z.discriminatedUnion('status', [
   z.object({ ...speckitCommon, status: z.literal('done') }),
   z.object({ ...speckitCommon, status: z.literal('blocked'), reason: z.string().min(1) }),
 ]);
 export type SpeckitOutput = z.infer<typeof SpeckitOutput>;
 
-/** A quote the PO or SM takes from one of the six documents; the server checks it against the text the agent was sent. */
-const AnswerEvidence = z.object({ source: z.string().min(1), quote: z.string().min(1) });
-/** The answer to one Spec Kit question with the card the owner reads; `answer` is null when the documents do not settle it. */
-const SpeckitAnswerResult = z.object({
-  questionId: z.string().min(1),
-  answer: z.string().min(1).nullable(),
-  evidence: keepValid(AnswerEvidence),
-  card: z.object({ subject: z.string().min(1).max(80), context: z.string().min(1), text: z.string().min(1), options: keepValid(QuestionChoice).optional() }),
-});
-/** One result per question the PO or SM was asked; a malformed result is dropped alone, so its question stays with the owner. */
-export const SpeckitAnswerOutput = z.object({ specHash, results: keepValid(SpeckitAnswerResult) });
-export type SpeckitAnswerOutput = z.infer<typeof SpeckitAnswerOutput>;
-
-/** A suggestion a web search supports: the short answer, one sentence on what the source says, and the address the search returned. */
-const ResearchSuggestion = z.object({ label: z.string().min(1).max(120), detail: z.string().min(1), url: z.string().url() });
-/** One result per question the search was asked about; `suggestion` is null when no search result settles it. */
-export const SpeckitResearchOutput = z.object({ specHash, results: keepValid(z.object({ questionId: z.string().min(1), suggestion: ResearchSuggestion.nullable() })) });
-export type SpeckitResearchOutput = z.infer<typeof SpeckitResearchOutput>;
-
-/** Spec Kit's convergence: the code is checked against the feature's spec, plan and tasks; gaps come back as appended task ids. */
+/** The review of the merged code against the implementation plan: `gaps` lists what the code does not meet yet, one sentence each. */
 export const ConvergeOutput = z.discriminatedUnion('status', [
   z.object({ specHash, status: z.literal('converged'), summary: z.string().min(1) }),
-  z.object({ specHash, status: z.literal('tasks-appended'), appended: z.array(z.string().regex(/^T\d+$/)).min(1), summary: z.string().min(1) }),
+  z.object({ specHash, status: z.literal('gaps'), gaps: z.array(z.string().min(1)).min(1).max(30), summary: z.string().min(1) }),
 ]);
 export type ConvergeOutput = z.infer<typeof ConvergeOutput>;
 
@@ -410,8 +391,6 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   chat: ChatOutput,
   'skill-select': SkillSelectionOutput,
   speckit: SpeckitOutput,
-  'speckit-answer': SpeckitAnswerOutput,
-  'speckit-research': SpeckitResearchOutput,
   converge: ConvergeOutput,
 };
 

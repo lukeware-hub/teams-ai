@@ -13,11 +13,10 @@ import { sha256 } from '../../server/contracts/hash.js';
 import { expandHome } from '../../server/orchestrator/workspace.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import { makeRunAgent } from '../../server/refine/agent.js';
-import { planFileOf } from '../../server/refine/plan-file.js';
+import { planFileOf, specSectionOf } from '../../server/refine/plan-file.js';
 import { runPlanStep, type PlanStepResult } from '../../server/refine/plan-step.js';
-import type { SpeckitItem } from '../../server/refine/speckit-pack.js';
+import { planItems, type PlanItem } from '../../server/refine/plan-items.js';
 import { planPack } from '../../server/refine/superpowers-pack.js';
-import { speckitItems } from '../../server/refine/speckit-steps.js';
 import { reduceRefineEvents } from '../../server/refine/state.js';
 import { absoluteRule } from '../../server/runner/role-settings.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -42,14 +41,6 @@ const median = (values: readonly number[]): number => {
   return sorted.length === 0 ? 0 : sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 };
 
-/** The item's section of specs.md, from its heading to the next level-two heading. */
-function sectionOf(specsMd: string, item: SpeckitItem): string {
-  const lines = specsMd.split('\n');
-  const start = lines.findIndex((line) => line.startsWith(`## ${item.key}:`));
-  if (start === -1) return '';
-  const end = lines.findIndex((line, i) => i > start && line.startsWith('## '));
-  return lines.slice(start, end === -1 ? undefined : end).join('\n');
-}
 
 /** A sample of the backlog: the five items with the most criteria, then the rest spread across the rank order. */
 function sampleOf<T extends { criteria: readonly string[] }>(all: readonly T[], size: number): T[] {
@@ -67,12 +58,13 @@ const setting: AgentSetting = variant === 'sonnet' ? { model: 'claude-sonnet-5-5
 
 const journal = (await fs.readFile(path.join(root, 'journal.ndjson'), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
 const state = reduceRefineEvents(journal);
-const items = speckitItems(DRAFT_ID, state);
+const items = planItems(DRAFT_ID, state);
 const withCriteria = items.map((item) => ({ item, criteria: (state.backlog?.specs?.[item.key]?.spec?.acceptanceCriteria ?? []).map((c: { id: string }) => c.id) }));
 const sample = sampleOf(withCriteria, limit);
 
 const inputDir = path.join(root, 'speckit-input');
-const staging = path.join(root, `speckit-${variant}-${run}`);
+const staging = path.join(root, flags.get('stage') ?? `speckit-${variant}-${run}`);
+const resultsFile = path.join(root, `results-${variant}-${run}.jsonl`);
 const specsMd = await fs.readFile(path.join(inputDir, 'specs.md'), 'utf8');
 await fs.mkdir(staging, { recursive: true });
 
@@ -125,23 +117,27 @@ async function runItem({ item, criteria }: (typeof withCriteria)[number]): Promi
     },
   });
   const planChars = await fs.readFile(file, 'utf8').then((text) => text.length).catch(() => 0);
-  const specChars = sectionOf(specsMd, item).length;
+  const specChars = specSectionOf(specsMd, item.key).length;
   return { key: item.key, specId: item.specId, status: result.status, repairs: result.repairs, questions: result.questions, runs, seconds: Math.round(seconds), costUsd: Math.round(costUsd * 10_000) / 10_000, planChars, specChars, ratio: specChars === 0 ? 0 : Math.round((planChars / specChars) * 100) / 100, issues: result.issues.slice(0, 4) };
 }
 
 const rows: Row[] = [];
+// With --resume 1, items already in the results file are not run again; the gate reads the whole file.
+const recorded = new Set<string>();
+if (flags.get('resume') === '1') for (const line of (await fs.readFile(resultsFile, 'utf8').catch(() => '')).split('\n').filter(Boolean)) recorded.add((JSON.parse(line) as Row).key);
+const todo = sample.filter((s) => !recorded.has(s.item.key));
 let next = 0;
 const worker = async (): Promise<void> => {
   for (;;) {
     const index = next++;
-    if (index >= sample.length) return;
-    const row = await runItem(sample[index]!);
-    rows.push(row);
+    if (index >= todo.length) return;
+    const row = await runItem(todo[index]!);
     process.stdout.write(`${JSON.stringify(row)}\n`);
-    await fs.appendFile(path.join(root, `results-${variant}-${run}.jsonl`), `${JSON.stringify(row)}\n`);
+    await fs.appendFile(resultsFile, `${JSON.stringify(row)}\n`);
   }
 };
-await Promise.all(Array.from({ length: Math.min(concurrency, sample.length) }, worker));
+await Promise.all(Array.from({ length: Math.min(concurrency, todo.length) }, worker));
+rows.splice(0, rows.length, ...(await fs.readFile(resultsFile, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line) as Row));
 
 const valid = rows.filter((r) => r.status === 'valid').length;
 const withQuestions = rows.filter((r) => r.questions > 0).length;

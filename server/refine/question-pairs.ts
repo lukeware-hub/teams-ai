@@ -6,7 +6,7 @@ import { normHeading } from './sections.js';
 const MIN_OVERLAP = 0.15;
 /** Three earlier questions per new one leave room for the repeat to rank below two others on the same subject. */
 const PER_QUESTION = 3;
-/** Ten new questions, more than a round or a Spec Kit step usually asks, with their three candidates each. */
+/** Ten new questions, more than a round or a plan step usually asks, with their three candidates each. */
 export const MAX_DEDUP_PAIRS = 30;
 
 const STOPWORDS = new Set(

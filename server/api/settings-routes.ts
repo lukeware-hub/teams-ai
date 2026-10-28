@@ -1,4 +1,4 @@
-import { AgentSetting, ROLES, SPECKIT_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
+import { AgentSetting, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { readUserConfig, setAgentSetting, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
@@ -10,7 +10,7 @@ export interface SettingsDeps {
 
 const P = '/api/settings/agents';
 const T = '/api/settings/step-timeout';
-const S = '/api/settings/speckit-agents';
+const S = '/api/settings/plan-agents';
 const MINUTE_MS = 60_000;
 
 const slugOf = (id: string): string => {
@@ -42,11 +42,11 @@ const minutesOf = (input: unknown): number => {
   return minutes;
 };
 
-/** `{agents}` from the Settings page: how many agents prepare the Spec Kit items at once, a whole number from 1 to 5. */
+/** `{agents}` from the Settings page: how many agents prepare the plan items at once, a whole number from 1 to 5. */
 const agentsOf = (input: unknown): number => {
   const agents = (input as { agents?: unknown } | null)?.agents;
-  if (typeof agents !== 'number' || !Number.isInteger(agents) || agents < 1 || agents > SPECKIT_AGENTS_MAX) {
-    throw new HttpError(400, `agents must be a whole number from 1 to ${SPECKIT_AGENTS_MAX}`);
+  if (typeof agents !== 'number' || !Number.isInteger(agents) || agents < 1 || agents > PLAN_AGENTS_MAX) {
+    throw new HttpError(400, `agents must be a whole number from 1 to ${PLAN_AGENTS_MAX}`);
   }
   return agents;
 };

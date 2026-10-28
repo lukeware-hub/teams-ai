@@ -2,7 +2,7 @@ import type { JournalEvent } from './agreement.js';
 
 /**
  * How many non-blocking questions one run may put to the owner (plan 106, measured in shadow). specify and clarify follow the
- * upstream Spec Kit templates; the rest follow the autonomy plan. Blocking questions are not capped yet.
+ * upstream plan templates; the rest follow the autonomy plan. Blocking questions are not capped yet.
  */
 export const ASK_CAPS = { constitution: 0, specify: 3, clarify: 5, plan: 0, tasks: 0, stageReview: 3, round: 5 } as const;
 export type AskScope = keyof typeof ASK_CAPS;
@@ -10,7 +10,7 @@ export type AskScope = keyof typeof ASK_CAPS;
 const SPECKIT_COMMANDS: readonly AskScope[] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'];
 const isSpeckitScope = (command: unknown): command is AskScope => SPECKIT_COMMANDS.includes(command as AskScope);
 
-/** One run of the refinement that put questions to the owner: a Spec Kit command for one item, a stage review, or a full round. */
+/** One run of the refinement that put questions to the owner: a plan command for one item, a stage review, or a full round. */
 export interface AskedRun {
   scope: AskScope;
   key: string;
@@ -18,7 +18,7 @@ export interface AskedRun {
 }
 
 /**
- * The runs that asked the owner, read from the journal. A Spec Kit question counts once, on its first id, as the owner sees one
+ * The runs that asked the owner, read from the journal. A plan question counts once, on its first id, as the owner sees one
  * card per id; a stage review and a round count every question they journaled, as the reducer keeps them all.
  */
 export function askedRuns(events: readonly JournalEvent[]): AskedRun[] {

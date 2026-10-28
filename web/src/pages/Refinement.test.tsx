@@ -29,7 +29,7 @@ const base = (over: Partial<Snapshot['state']>): Snapshot => ({
     moves: [], reshapes: [],
     error: null,
     runId: null,
-    // Every start needs a current Spec Kit preparation.
+    // Every start needs a current plan preparation.
     speckit: { status: 'done', steps: [], stale: false },
     ...over,
   },

@@ -153,7 +153,7 @@ export function resolveLanding(event: EventLike, state: RefineState): Resolution
   return [...fresh.values()].map((q) => resolveQuestion(q, site, ledger));
 }
 
-/** The triage card of each pending Spec Kit question re-decides its impact, recommendation and evidence. */
+/** The triage card of each pending plan question re-decides its impact, recommendation and evidence. */
 export function resolveCard(event: EventLike, state: RefineState): Resolution[] {
   if (event.type !== RefineEvent.SpeckitTriaged) return [];
   const ledger = ownerLedger(state);

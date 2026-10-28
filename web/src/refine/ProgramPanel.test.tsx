@@ -121,7 +121,7 @@ describe('ProgramStatus', () => {
 });
 
 describe('canStartRun', () => {
-  /** A current Spec Kit preparation, which every start needs. */
+  /** A current plan preparation, which every start needs. */
   const prepared = { status: 'done', steps: [], stale: false };
   const state = (over: Record<string, unknown> = {}) => ({ status: 'ready', mode: 'new-spec', derived: {}, backlog: undefined, speckit: prepared, ...over }) as never;
   it('is never locked by a check, a question, a suggestion, a stale list or the Jev', () => {
@@ -141,7 +141,7 @@ describe('canStartRun', () => {
     expect(canStartRun(state({ backlog: { enabled: true, detail: false, items: [item] } }), false)).toBe(false);
     expect(canStartRun(state({ backlog: { enabled: true, detail: true, items: [] } }), false)).toBe(false);
   });
-  it('a wizard backlog, an imported backlog, a new spec and a continued spec start only after a current Spec Kit preparation', () => {
+  it('a wizard backlog, an imported backlog, a new spec and a continued spec start only after a current plan preparation', () => {
     const backlog = { enabled: true, detail: true, items: [{ key: 'base' }], preplans: { base: { preplan: {} } } };
     for (const session of [{ mode: 'new-project', backlog }, { mode: 'backlog', backlog }, { mode: 'new-spec' }, { mode: 'continue' }]) {
       expect(canStartRun(state({ ...session, speckit: undefined }), false), session.mode).toBe(false);

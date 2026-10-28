@@ -24,16 +24,14 @@ const PO = ['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.
 const SM = ['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions'];
 const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: unknown[] = [], moves?: unknown[]) => ({ checklist, questions, docPatch, ...(moves ? { moves } : {}) });
 const draft = () => draftPaths(ws, 'hello-001');
-/** `specify init` of the Spec Kit preparation, which succeeds without running. */
-const specifyInit = async () => ({ exitCode: 0, signal: null, stdout: '', stderr: '', timedOut: false, durationMs: 1, truncated: false });
-const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [], exec: specifyInit });
+const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 
-/** The Spec Kit preparation every start needs: each step of the spec's one item writes its file with the spec's criterion ids. */
+/** The plan preparation every start needs: the single spec, one item, writes its plan file with the spec's criterion ids. */
 async function prepare(s: RefineSession): Promise<void> {
-  const own: Record<string, string> = { specify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
-  const content = s.state.derived!.spec.acceptanceCriteria.map((c) => c.id).join(', ');
-  script['speckit/dev'] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'].map((command) => ({ status: 'done', summary: 'ok', files: own[command] ? [`specs/hello-001/${own[command]}`] : [], questions: [], content }));
-  await s.runSpeckit();
+  const ids = s.state.derived!.spec.acceptanceCriteria.map((c) => c.id).join(', ');
+  const content = `# hello-001 Implementation Plan\n\n**Goal:** Build it.\n\n**Architecture:** One module.\n\n**Tech Stack:** TypeScript.\n\n**Spec:** docs/specs/hello-001/spec.md.\n\n## Global Constraints\n\n- The stack values of stack.md.\n\n## Review Focus\n\n- A repeated submit writes once.\n\n### Task 1: core\n\n**Files:**\n- Create: \`src/hello.ts\`\n\n**Criteria:** ${ids}\n\n## Assumptions\n\n- None.\n`;
+  script['speckit/dev'] = [{ status: 'done', summary: 'ok', files: ['docs/specs/hello-001/implementation-plan.md'], questions: [], content }];
+  await s.runPlans();
   expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
 }
 
@@ -524,29 +522,29 @@ describe('RefineSession', () => {
     await expect(s.freeze()).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it('prepares the Spec Kit of a single spec once it is derived, and refuses before', async () => {
+  it('prepares the plan of a single spec once it is derived, and refuses before', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
-    expect(() => s.runSpeckit()).toThrow('Avalie a spec antes de preparar o Spec Kit.');
+    expect(() => s.runPlans()).toThrow('Avalie a spec antes de preparar os planos.');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
     await prepare(s);
-    expect(s.state.speckit?.features).toEqual({ 'hello-001': 'specs/hello-001' });
+    expect(await fs.readFile(`${draft().docs}/specs/hello-001/implementation-plan.md`, 'utf8')).toContain('## Assumptions');
   });
 
-  it('a single spec starts only from a current Spec Kit preparation, and a document written without its journal entry shuts it by the input hash', async () => {
+  it('a single spec starts only from a current plan preparation, and a document written without its journal entry shuts it by the input hash', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
-    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await expect(s.freeze()).rejects.toThrow('Prepare os planos antes de iniciar');
     await prepare(s);
     const before = await readDoc(draft(), 'stack.md');
     await writeDoc(draft(), 'stack.md', '# Stack\n\nNode 24\n');
     expect(s.state.speckit).toMatchObject({ status: 'done', stale: false });
-    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await expect(s.freeze()).rejects.toThrow('Prepare os planos antes de iniciar');
     await writeDoc(draft(), 'stack.md', before);
     await expect(s.freeze()).resolves.toBeDefined();
   });
@@ -560,15 +558,15 @@ describe('RefineSession', () => {
     await prepare(s);
     await s.answer('po-c1-0', '8080');
     expect(s.state.speckit?.stale).toBe(true);
-    await expect(s.freeze()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await expect(s.freeze()).rejects.toThrow('Prepare os planos antes de iniciar');
   });
 
-  it('an imported backlog starts only from a current Spec Kit preparation', async () => {
+  it('an imported backlog starts only from a current plan preparation', async () => {
     const s = await RefineSession.create(deps(), 'backlog');
     await s.enableBacklog();
     const item = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 };
     s.state.backlog = { ...s.state.backlog!, detail: true, items: [item], specs: { base: { spec: makeSpec({ specId: 'base' }) } }, preplans: { base: { preplan: { tasks: [] } } } } as never;
-    await expect(s.freezeProgram()).rejects.toThrow('Prepare o Spec Kit antes de iniciar');
+    await expect(s.freezeProgram()).rejects.toThrow('Prepare os planos antes de iniciar');
   });
 
   it('refuses a backlog start while an evaluation holds the session', async () => {

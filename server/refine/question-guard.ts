@@ -2,7 +2,7 @@ import type { Question } from './events.js';
 import { overlap, words } from './question-pairs.js';
 import type { QuestionRow } from './state.js';
 
-/** Spec Kit questions: two questions at least this similar ask about the same fact (Jaccard over their meaningful words). */
+/** plan questions: two questions at least this similar ask about the same fact (Jaccard over their meaningful words). */
 export const REPEAT_OVERLAP = 0.3;
 /** Stage review questions, against any document: the live journal's repeats start at this similarity. */
 export const STAGE_REPEAT_OVERLAP = 0.25;

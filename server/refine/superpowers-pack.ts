@@ -3,7 +3,7 @@ import type { SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { planFileOf } from './plan-file.js';
-import { ADJUST_NOTE, questionLedger, SPECKIT_INPUTS } from './speckit-pack.js';
+import { ADJUST_NOTE, PLAN_INPUTS, questionLedger } from './plan-inputs.js';
 import type { QuestionRow } from './state.js';
 
 export interface PlanPackInput {
@@ -24,7 +24,7 @@ export interface PlanPackInput {
 
 /** The plan of one backlog item: the writing-plans skill runs unattended in the staging folder and writes only the plan file. */
 export function planPack(input: PlanPackInput): ContextPackInput {
-  const inputs = SPECKIT_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
+  const inputs = PLAN_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
   const file = planFileOf(input.specId);
   const feedback = [
     `Write the implementation plan of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}", with the writing-plans skill of Superpowers: load it with the Skill tool and follow it, with the overrides below.`,

@@ -21,7 +21,7 @@ describe('refineStepModel', () => {
 });
 
 describe('refineSettingsDir', () => {
-  it('keeps the settings of a Spec Kit step out of the folder it publishes', () => {
+  it('keeps the settings of a plan step out of the folder it publishes', () => {
     expect(refineSettingsDir({ kind: 'refine', cwd: '/w/refine/a' })).toBe('/w/refine/a/settings');
     expect(refineSettingsDir({ kind: 'speckit', cwd: '/w/refine/a/speckit' })).toBe('/w/refine/a/speckit-settings');
   });

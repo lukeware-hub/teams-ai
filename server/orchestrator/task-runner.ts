@@ -37,7 +37,7 @@ import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { SPECKIT_ALLOW, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
@@ -323,12 +323,12 @@ export class TaskRunner {
     const owner = task.def.owner;
     const priorFeedback = this.deps.journal.lastFeedback(this.taskId);
     const feedback = installNote ? [installNote, priorFeedback].filter((s) => s).join('\n\n') : priorFeedback;
-    // A task of a Spec Kit spec builds its own tasks.md ids with the implement skill; the rest of the run is unchanged.
-    const feature = this.deps.packBase().speckitFeature;
-    const speckit = feature && task.def.speckitTasks?.length ? { feature, ids: task.def.speckitTasks } : undefined;
-    const env = { ...(this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {}), ...(speckit ? { SPECIFY_FEATURE_DIRECTORY: speckit.feature } : {}) };
-    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, speckit }, owner);
-    const sources = await sourceFiles(this.worktree, feature, this.deps.spec.specId);
+    // A task of a spec with an implementation plan builds the plan tasks it names, test-first; the rest of the run is unchanged.
+    const planFile = this.deps.packBase().planFile;
+    const plan = planFile && task.def.speckitTasks?.length ? { file: planFile, ids: task.def.speckitTasks } : undefined;
+    const env: Record<string, string> = this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {};
+    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
+    const sources = await sourceFiles(this.worktree, planFile, this.deps.spec.specId);
     const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',
@@ -340,7 +340,6 @@ export class TaskRunner {
       phase: 'phase3',
       taskId: this.taskId,
       attempt,
-      ...(speckit ? { extraAllow: SPECKIT_ALLOW } : {}),
       extraEnv: Object.keys(env).length > 0 ? env : undefined,
       refContext: () => this.refContext(),
       refs: ((v: DevOutput) => ({ files: v.changedFiles })) as never,

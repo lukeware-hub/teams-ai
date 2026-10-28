@@ -1,4 +1,3 @@
-import type { SpeckitCommand } from './speckit-pack.js';
 import type { DocFile } from './draft.js';
 
 export const RefineEvent = {
@@ -44,7 +43,7 @@ export const RefineEvent = {
   FindingsReported: 'FINDINGS_REPORTED',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',
-  /** A Spec Kit question dropped as a repeat of a decided one: the question, the earlier one it repeats and that answer. */
+  /** A plan question dropped as a repeat of a decided one: the question, the earlier one it repeats and that answer. */
   QuestionDropped: 'QUESTION_DROPPED',
   /** The owner asked again for a dropped question: it comes back as a pending question. */
   QuestionReasked: 'QUESTION_REASKED',
@@ -61,27 +60,29 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
-  /** "Preparar Spec Kit" started: `{total, inputHash}`: the steps (the constitution plus four per backlog item) and the hash of the six inputs. */
+  /** "Preparar planos" started: `{total, inputHash}`: the steps (the constitution plus four per backlog item) and the hash of the six inputs. */
   SpeckitStarted: 'SPECKIT_STARTED',
   /** The steps of an earlier preparation that this one keeps: `{steps}`, each with its command, item, basis and times. */
   SpeckitReused: 'SPECKIT_REUSED',
-  /** One Spec Kit command started: `{command, itemKey?}`, so the owner sees what runs now. */
+  /** One plan command started: `{command, itemKey?}`, so the owner sees what runs now. */
   SpeckitStepStarted: 'SPECKIT_STEP_STARTED',
-  /** One Spec Kit command finished: `{command, itemKey?, files}`. */
+  /** One plan command finished: `{command, itemKey?, files}`. */
   SpeckitStepDone: 'SPECKIT_STEP_DONE',
   SpeckitStepRepaired: 'SPECKIT_STEP_REPAIRED',
   AutopilotPaused: 'AUTOPILOT_PAUSED',
-  /** The Spec Kit preparation finished: `{inputHash}` of the documents and item specs it read. */
+  /** The plan preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
-  /** The Spec Kit preparation stopped: `{reason, detail?}`, the reason in plain words for the owner and its technical detail. */
+  /** The implementation plans of every item are written (plan 107): `{inputHash}`. An older build ignores it and shows the preparation as not done. */
+  PlansPrepared: 'PLANS_PREPARED',
+  /** The plan preparation stopped: `{reason, detail?}`, the reason in plain words for the owner and its technical detail. */
   SpeckitFailed: 'SPECKIT_FAILED',
-  /** The PO or SM read the questions of a Spec Kit step: `{results, rework?}`; `rework` names the step to run again after an answer. */
+  /** The PO or SM read the questions of a plan step: `{results, rework?}`; `rework` names the step to run again after an answer. */
   SpeckitTriaged: 'SPECKIT_TRIAGED',
-  /** The Spec Kit preparation no longer stands: an answer came after its files were written, so the next run starts over. */
+  /** The plan preparation no longer stands: an answer came after its files were written, so the next run starts over. */
   SpeckitStale: 'SPECKIT_STALE',
-  /** The PO and the SM started answering the open Spec Kit questions, at the owner's request. */
+  /** The PO and the SM started answering the open plan questions, at the owner's request. */
   SpeckitAnswersStarted: 'SPECKIT_ANSWERS_STARTED',
-  /** The PO and the SM stopped answering the open Spec Kit questions, whether they finished or were stopped. */
+  /** The PO and the SM stopped answering the open plan questions, whether they finished or were stopped. */
   SpeckitAnswersDone: 'SPECKIT_ANSWERS_DONE',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
@@ -107,13 +108,13 @@ export interface Question {
   options?: QuestionChoice[];
   /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
   rule?: string;
-  /** Set on a question Spec Kit left open during its preparation. */
+  /** Set on a question plan left open during its preparation. */
   origin?: 'speckit';
-  /** The backlog item a Spec Kit question is about. */
+  /** The backlog item a plan question is about. */
   itemKey?: string;
-  /** The Spec Kit command that asked a Spec Kit question. */
-  command?: SpeckitCommand;
-  /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
+  /** The plan command that asked a plan question. */
+  command?: string;
+  /** The plain words the owner reads about a plan question: what it is about and why it needs a decision. */
   context?: string;
   /** The decided questions this one repeats, each with the real difference the agent named. */
   distinctFrom?: Array<{ questionId: string; difference: string }>;
@@ -124,7 +125,7 @@ export interface QuoteEvidence {
   heading: string;
   quote: string;
 }
-/** A Spec Kit question as the PO or SM left it: its card for the owner, and the answer when the documents settle it. */
+/** A plan question as the PO or SM left it: its card for the owner, and the answer when the documents settle it. */
 export interface SpeckitTriage {
   questionId: string;
   subject: string;

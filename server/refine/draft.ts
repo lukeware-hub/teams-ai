@@ -49,12 +49,6 @@ export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean
 /** The project's refinement directory: one draft per spec, each with its own journal. */
 export const refineRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'refine');
 
-/** The Spec Kit constitution of a repository that already uses Spec Kit. */
-export const CONSTITUTION = '.specify/memory/constitution.md';
-
-/** Main's Spec Kit constitution and feature folders, kept beside the docs base when the draft began. */
-export const speckitBaseDir = (d: Pick<Draft, 'root'>): string => path.posix.join(d.root, '.base', 'speckit');
-
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
 export function draftPaths(ws: Workspace, specId: string): Draft {
   const root = path.posix.join(refineRoot(ws), specId);
@@ -238,9 +232,6 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   }
   // The docs as the session received them: the start publishes only what differs from this copy.
   await fs.cp(d.docs, d.base!, { recursive: true });
-  // A project that already uses Spec Kit: its preparation keeps main's constitution and feature folders.
-  const speckit = await mainFiles(repo, exec, [CONSTITUTION, 'specs/']);
-  if (speckit.includes(CONSTITUTION)) await copyFromMain(repo, exec, speckit, speckitBaseDir(d));
   // A backlog draft starts from the docs alone: its outline comes from the evaluation.
   if (mode.kind === 'backlog') return;
   if (mode.kind === 'new-spec') {

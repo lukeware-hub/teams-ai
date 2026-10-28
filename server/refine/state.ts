@@ -10,7 +10,8 @@ import type { DocFile } from './draft.js';
 import type { PendingPatch } from './patches.js';
 import { DOC_STAGES } from './doc-stages.js';
 import type { DocScore, Readiness } from './readiness.js';
-import { stepKey } from './speckit-steps.js';
+/** The key of one step: its command and the item it is about. */
+const stepKey = (command: string, itemKey?: string): string => `${command}|${itemKey ?? ''}`;
 import type { FailureKind } from '../scheduler/retry-policy.js';
 
 export type RefineStatus = 'drafting' | 'evaluating' | 'answering' | 'ready' | 'error' | 'started';
@@ -120,11 +121,11 @@ export interface ConflictMap {
   pairs: Array<{ a: string; b: string; reason: string }>;
 }
 
-/** A Spec Kit step that did not finish, with the kind of failure: what the owner or a driver can act on. */
+/** A plan step that did not finish, with the kind of failure: what the owner or a driver can act on. */
 export interface SpeckitStepFailure {
   command: string;
   itemKey?: string;
-  kind: 'agent' | 'blocked' | 'open-markers' | 'dropped-criteria' | 'files-missing' | 'feature-missing' | 'internal';
+  kind: 'agent' | 'blocked' | 'open-markers' | 'dropped-criteria' | 'files-missing' | 'feature-missing' | 'plan-shape' | 'internal';
   reason: string;
   detail: string;
   /** The kind of an agent failure, which the heal driver reads. */
@@ -161,7 +162,7 @@ export interface RefineState {
   derived: { project: Project; spec: Spec } | null;
   checklist: ChecklistItem[];
   questions: QuestionRow[];
-  /** The Spec Kit questions the guard dropped as repeats of decided ones, until the owner asks for one again. */
+  /** The plan questions the guard dropped as repeats of decided ones, until the owner asks for one again. */
   droppedQuestions?: DroppedQuestion[];
   patches: PatchRow[];
   moves: MoveRow[];
@@ -176,7 +177,7 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
-  /** The backlog key a continued spec came from, which names its Spec Kit feature folder; absent when it came from no backlog. */
+  /** The backlog key a continued spec came from, which names its plan file; absent when it came from no backlog. */
   featureKey?: string;
   /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
   stages?: boolean;
@@ -202,9 +203,9 @@ export interface RefineState {
   staleBy?: Partial<Record<DocFile, DocFile>>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
-  /** The PO and the SM are answering the open Spec Kit questions now (true from their start until their end). */
+  /** The PO and the SM are answering the open plan questions now (true from their start until their end). */
   speckitAnswering?: boolean;
-  /** The Spec Kit preparation of a detailed backlog or a single spec; stale once a document, the backlog, the spec or an owner's answer changes after it. */
+  /** The plan preparation of a detailed backlog or a single spec; stale once a document, the backlog, the spec or an owner's answer changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; failures?: SpeckitStepFailure[]; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 
@@ -283,26 +284,26 @@ export interface StartInput {
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
 }
 
-/** A blocking question Spec Kit left open that the owner has not answered yet. */
+/** A blocking question plan left open that the owner has not answered yet. */
 const speckitAsks = (s: StartInput): boolean => (s.questions ?? []).some((q) => q.origin === 'speckit' && q.blocking && q.status === 'pending');
 
 /** The inputs' hash as they are now differs from the one the preparation recorded at its start, which catches a document written without its journal entry. */
 const speckitInputsChanged = (s: StartInput, inputHash: string | undefined): boolean => inputHash !== undefined && s.speckit?.inputHash !== undefined && s.speckit.inputHash !== inputHash;
 
-/** Every start needs a current Spec Kit preparation with its blocking questions answered. */
+/** Every start needs a current plan preparation with its blocking questions answered. */
 export const speckitPending = (s: StartInput, inputHash?: string): boolean => !(s.speckit?.status === 'done' && !s.speckit.stale) || speckitInputsChanged(s, inputHash) || speckitAsks(s);
 
 /** A backlog item still without a pre-plan; a started or delivered spec was planned by its own run and needs none. */
 const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.items ?? []).some((i) => !isStarted(b.specs?.[i.key]?.spec?.status) && !b.preplans?.[i.key]?.preplan);
 
-/** The start is open unless the agents evaluate, a run started or the Spec Kit preparation is not current: checks, other questions and the Jev only advise. */
+/** The start is open unless the agents evaluate, a run started or the plan preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
   if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
 
-/** A document or the backlog changed, so the Spec Kit preparation no longer matches them. */
+/** A document or the backlog changed, so the plan preparation no longer matches them. */
 function markSpeckitStale(s: RefineState): void {
   if (s.speckit) s.speckit.stale = true;
 }
@@ -326,7 +327,7 @@ function markStaleStages(s: RefineState, edited: DocFile): void {
   if (later.length > 0) s.staleBy = { ...(s.staleBy ?? {}), ...Object.fromEntries(later.map((doc) => [doc, edited])) };
 }
 
-/** The step a Spec Kit event names: its command and its backlog item. */
+/** The step a plan event names: its command and its backlog item. */
 const speckitKey = (d: Record<string, unknown>): string => stepKey(String(d.command), d.itemKey === undefined ? undefined : String(d.itemKey));
 
 /** The newest reshape with this id, since an older id may name every document reshaped in its cycle. */
@@ -469,7 +470,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         q.evidence = d.evidence as QuoteEvidence[] | undefined;
         if (e.at !== undefined) q.answeredAt = e.at;
       }
-      // The owner's answer is a decision the Spec Kit files must follow; an answer the PO or the SM took from the documents comes with a new derivation.
+      // The owner's answer is a decision the plan files must follow; an answer the PO or the SM took from the documents comes with a new derivation.
       if (e.type === RefineEvent.QuestionAnswered && d.by === undefined) markSpeckitStale(s);
       s.status = computeStatus(s);
       break;
@@ -623,6 +624,12 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.speckitAnswering = false;
       break;
     case RefineEvent.SpeckitDone:
+      if (s.speckit) {
+        s.speckit.status = 'done';
+        delete s.speckit.running;
+      }
+      break;
+    case RefineEvent.PlansPrepared:
       if (s.speckit) {
         s.speckit.status = 'done';
         delete s.speckit.running;

@@ -35,7 +35,7 @@ export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { planSpecKitGaps, runSpecKitRound } from './phases/speckit.js';
+import { planGapTasks, runPlanReview } from './phases/converge.js';
 import { reconcile } from './reconcile.js';
 import { resolveDocs, validateDocs, type DocsAnswer } from '../validators/docs.js';
 import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
@@ -85,8 +85,8 @@ export interface RunDeps {
   claudeJsonPath?: string;
   /** Spec (refinement) §4: docs to put on main before Phase 1 (`run --draft`). */
   bootstrap?: { docsDir: string; owner: string | undefined };
-  /** The Spec Kit feature folder of this spec, when its refinement prepared one. */
-  speckitFeature?: string;
+  /** The plan file of this spec, when its refinement prepared one. */
+  planFile?: string;
   target?: DeployTarget;
   /** Runs gates and smoke; absent means docker over `exec`. */
   gateExecutor?: GateExecutor;
@@ -504,7 +504,7 @@ export class Run {
     techSpecExcerpt: this.techSpecText.slice(0, 6000),
     retrieval: this.deps.knowledge?.search(this.deps.spec.objectives.join(' '), { k: 5, specId: this.deps.spec.specId }) ?? [],
     budgetTokens: 12_000,
-    speckitFeature: this.deps.speckitFeature,
+    planFile: this.deps.planFile,
   });
 
   private codeFor(view: ServiceView) {
@@ -760,26 +760,26 @@ export class Run {
     // Every task of a new repository depends on its scaffold, fix tasks included: verifying without it only spends tokens.
     const scaffold = this.plan.tasks.find((t) => t.id === scaffoldId(t.service ?? null) && this.journal.state.tasks.get(t.id)?.state === 'blocked');
     if (scaffold) return this.finish('blocked', `${scaffold.id} is blocked and every other task of its repository depends on it`);
-    const speckit = await this.convergeSpecKit();
-    if (speckit !== 'done') return speckit;
+    const review = await this.convergePlans();
+    if (review !== 'done') return review;
     // Unit harnesses without a deployment target exercise Phases 0–3 only; production deps always provide one.
     if (!this.deps.target) return this.finish('complete');
     return this.postPhases();
   }
 
-  /** Spec Kit's convergence after the build: round one marks the merged tasks and checks the code; the gaps it appends are built, then round two checks again. */
-  private async convergeSpecKit(): Promise<ExecuteResult | 'done'> {
+  /** The review of the merged code against the plan after the build: round one builds the gaps it finds, then round two reviews again. */
+  private async convergePlans(): Promise<ExecuteResult | 'done'> {
     for (const round of [1, 2] as const) {
-      const r = await runSpecKitRound(this.phaseDeps(), round);
+      const r = await runPlanReview(this.phaseDeps(), round);
       if (r.kind === 'paused') return 'paused:auth';
       if (r.kind === 'failed') return this.finish('phase-failed', r.reason);
       if (r.kind === 'done') return 'done';
       // The second round is the verdict: gaps it still finds are journaled and the verification runs as usual.
       if (round === 2) {
-        await this.journal.fact(OrchEvent.SpecKitGap, { appended: r.appended });
+        await this.journal.fact(OrchEvent.SpecKitGap, { gaps: r.gaps });
         return 'done';
       }
-      const gaps = await planSpecKitGaps(this.phaseDeps(), round, r.appended);
+      const gaps = await planGapTasks(this.phaseDeps(), round, r.gaps);
       if (gaps.kind === 'paused') return 'paused:auth';
       if (gaps.kind === 'failed') return this.finish('phase-failed', gaps.reason);
       const back = await this.runFixTasks(gaps.tasks);

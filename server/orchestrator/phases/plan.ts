@@ -38,8 +38,8 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const max = deps.maxPhaseAttempts ?? 3;
   const names = deps.project.services ?? [];
   const services = names.length > 0 ? await servicesContext(deps, names) : null;
-  const speckit = await speckitFiles(worktree, deps.packBase().speckitFeature);
-  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, generatedSecretNames: deps.generatedSecretNames, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope, speckitTasks: speckit ? speckitTaskIds(speckit.tasks) : undefined };
+  const planDoc = await planOnMain(worktree, deps.packBase().planFile);
+  const require = { requireDelivery: deps.requireDelivery, requireSecurityTooling: deps.requireSecurityTooling, requireE2e: deps.requireE2e, generatedSecretNames: deps.generatedSecretNames, requireCoverage: deps.requireCoverage, requireFrozenScope: deps.requireFrozenScope, speckitTasks: planDoc ? planTaskIds(planDoc.text) : undefined };
   const single = services
     ? null
     : { repoFiles: new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== '')), ports: deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] as number[] } };
@@ -52,7 +52,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       ? await deps.runAgent<'services-plan'>({
           kind: 'services-plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, speckit }),
+          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -62,7 +62,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       : await deps.runAgent<'plan'>({
           kind: 'plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, speckit }),
+          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -127,15 +127,40 @@ async function servicesContext(deps: PhaseDeps, names: readonly string[]) {
   return { repoFiles, newServices, ports, takenPorts: takenPorts ?? [] };
 }
 
-/** The Spec Kit plan.md and tasks.md of this spec on main, when its refinement prepared a feature folder. */
-async function speckitFiles(worktree: string, feature: string | undefined) {
-  if (!feature) return undefined;
-  const read = (file: string) => fs.readFile(path.join(worktree, feature, file), 'utf8');
-  return { feature, plan: await read('plan.md'), tasks: await read('tasks.md') };
+/** The implementation plan of this spec on main, when its refinement published one: its path, its text and the outline of its tasks. */
+async function planOnMain(worktree: string, planFile: string | undefined) {
+  if (!planFile) return undefined;
+  const text = await fs.readFile(path.join(worktree, planFile), 'utf8').catch(() => null);
+  return text === null ? undefined : { file: planFile, text, outline: outlineOf(text) };
 }
 
-/** The task ids of a Spec Kit tasks.md, each at the start of a checklist line such as `- [ ] T001 [P] Create the model`. */
-const speckitTaskIds = (tasks: string): string[] => [...new Set([...tasks.matchAll(/^\s*- \[[ xX]\] (T\d+)\b/gm)].map((m) => m[1]!))];
+/** Each ### Task block of a plan on one line, with its files and criteria: what the SM needs to derive the plan tasks. */
+export function outlineOf(text: string): string {
+  const lines: string[] = [];
+  let task: string | null = null;
+  let files: string[] = [];
+  let criteria = 'none';
+  const close = () => {
+    if (task !== null) lines.push(`Task ${task} | files: ${files.join(', ') || 'none'} | criteria: ${criteria}`);
+    task = null;
+  };
+  for (const line of text.split('\n')) {
+    const heading = /^### Task (\d+): (.*)$/.exec(line);
+    if (heading) {
+      close();
+      task = `${heading[1]}: ${heading[2]}`;
+      files = [];
+      criteria = 'none';
+    } else if (/^#{1,3} /.test(line)) close();
+    else if (task !== null && /^\s*- (Create|Modify|Test): /.test(line)) files.push(line.replace(/^\s*- (Create|Modify|Test): /, '').replace(/`/g, ''));
+    else if (task !== null && line.startsWith('**Criteria:**')) criteria = line.slice('**Criteria:**'.length).trim();
+  }
+  close();
+  return lines.join('\n');
+}
+
+/** The plan task ids a plan's ### Task blocks claim: each block is T<number>, so `### Task 3` is T3. */
+const planTaskIds = (text: string): string[] => [...new Set([...text.matchAll(/^### Task (\d+):/gm)].map((m) => `T${m[1]}`))];
 
 async function journalTasks(deps: PhaseDeps, plan: AnyPlan): Promise<void> {
   for (const task of plan.tasks) {

@@ -25,7 +25,7 @@ export interface AgentWiring {
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting>>>;
   /** The step budget of one project, read per step so a time limit changed in Settings applies to the next step. */
   stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
-  /** The agents that prepare the Spec Kit items at once; the governor admits that many steps, read per step. */
+  /** The agents that prepare the plan items at once; the governor admits that many steps, read per step. */
   speckitAgents?: () => Promise<number>;
 }
 
@@ -34,7 +34,7 @@ export function refineStepModel(routing: Config['routing'], kind: StepKind, cycl
   return (cycle > 1 ? routing.laterCycleModels[kind] : undefined) ?? routing.stepModels[kind];
 }
 
-/** Where a step's settings go: a Spec Kit step works in the folder that is published, so its settings sit beside it. */
+/** Where a step's settings go: a plan step works in the folder that is published, so its settings sit beside it. */
 export const refineSettingsDir = (req: { kind: StepKind; cwd: string }): string => (req.kind === 'speckit' ? `${req.cwd}-settings` : path.posix.join(req.cwd, 'settings'));
 
 /** One governor, breaker and ledger for every refinement session of the UI process (spec §2). */

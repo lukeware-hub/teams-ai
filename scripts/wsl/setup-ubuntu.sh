@@ -56,10 +56,6 @@ echo "== graphify"
 pipx ensurepath >/dev/null 2>&1 || true
 pipx list 2>/dev/null | grep -q graphifyy || pipx install graphifyy
 
-echo "== spec kit"
-# Reinstalls unless pipx records the archive the Dockerfile pins, so an older version never stays.
-SPECKIT=https://github.com/github/spec-kit/archive/5ea8b1cf0a38699340a38e00d02770308997d8c0.zip
-[[ "$(pipx list --json 2>/dev/null)" == *"$SPECKIT"* ]] || pipx install --force "$SPECKIT"
 
 echo "== docker (Docker Desktop WSL integration)"
 if ! have docker; then

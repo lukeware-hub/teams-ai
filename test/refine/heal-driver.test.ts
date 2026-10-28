@@ -35,7 +35,7 @@ describe('the heal driver', () => {
     expect(log).toEqual(['a:evaluate', 'b:pause:interrupted']);
   });
 
-  it('prepares a Spec Kit preparation a restart cut, and leaves a paused draft alone', async () => {
+  it('prepares the plans a restart cut, and leaves a paused draft alone', async () => {
     const log: string[] = [];
     const speckit = { ...idle, speckit: { kind: 'interrupted' as const, reason: 'x', attempts: 1 } };
     const healer = new RefineHealer(async () => [target('a', speckit, log), target('b', { ...interrupted, paused: true }, log)], async () => true, () => undefined);

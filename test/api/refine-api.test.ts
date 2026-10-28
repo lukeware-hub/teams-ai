@@ -42,16 +42,19 @@ const settle = async () => {
   }
   await new Promise((r) => setTimeout(r, 30)); // the session clears `busy` a tick after the last event lands
 };
-/** The Spec Kit preparation every start waits for; the registry fakes `specify`, and one item takes five steps. */
-const prepareSpeckit = async (url: string) => {
-  // Each item command writes its own file in the feature folder, keeping the criterion ids of the item's spec; a single spec is one item named by its id.
+/** A plan that passes the shape check for one item: its header, one task naming the criteria, and an assumption with its reason. */
+const planFor = (key: string, ids: string[]): string =>
+  `# ${key} Implementation Plan\n\n**Goal:** Build ${key}.\n\n**Architecture:** One module.\n\n**Tech Stack:** TypeScript.\n\n**Spec:** docs/specs/${key}/spec.md.\n\n## Global Constraints\n\n- The stack values of stack.md.\n\n## Review Focus\n\n- A repeated submit writes once.\n\n### Task 1: ${key} core\n\n**Files:**\n- Create: \`src/${key}.ts\`\n\n**Criteria:** ${ids.join(', ')}\n\n## Assumptions\n\n- None.\n`;
+
+/** The plan preparation every start waits for: the registry fakes one plan step per backlog item, each writing its plan file in rank order. */
+const preparePlans = async (url: string) => {
+  // Each plan names the criterion ids of its own item's spec, as a working agent does; a single spec is one item named by its id.
   const { backlog, derived } = (await snapshot()).state;
-  const specs = (backlog ? Object.values(backlog.specs).map((row) => (row as { spec: unknown }).spec) : [derived.spec]) as Array<{ acceptanceCriteria: Array<{ id: string }> }>;
-  const content = specs.flatMap((s) => s.acceptanceCriteria.map((c) => c.id)).join(', ');
-  const [key] = backlog ? Object.keys(backlog.specs) : ['hello-app-001'];
-  const own: Record<string, string> = { specify: 'spec.md', plan: 'plan.md', tasks: 'tasks.md' };
-  script['speckit/dev'] = ['constitution', 'specify', 'clarify', 'plan', 'tasks'].map((command) => ({ status: 'done', summary: 'ok', files: own[command] ? [`specs/${key}/${own[command]}`] : [], questions: [], content }));
-  expect((await call('POST', `${url}/speckit`)).status).toBe(202);
+  const items = backlog
+    ? [...backlog.items].sort((a, b) => a.rank - b.rank).map((i) => ({ key: i.key, ids: ((backlog.specs[i.key] as { spec: { acceptanceCriteria: Array<{ id: string }> } }).spec.acceptanceCriteria).map((c) => c.id) }))
+    : [{ key: 'hello-app-001', ids: (derived.spec as { acceptanceCriteria: Array<{ id: string }> }).acceptanceCriteria.map((c) => c.id) }];
+  script['speckit/dev'] = items.map(({ key, ids }) => ({ status: 'done', summary: 'ok', files: [`docs/specs/${key}/implementation-plan.md`], questions: [], content: planFor(key, ids) }));
+  expect((await call('POST', `${url}/plans`)).status).toBe(202);
   await settle();
   expect((await snapshot()).state.speckit).toMatchObject({ status: 'done', stale: false });
 };
@@ -221,12 +224,7 @@ describe('refine api', () => {
     expect(session.state.mode).toBe('backlog');
     expect(session.state.backlog?.enabled).toBe(true);
   });
-  it('asking the PO and the SM answers 202 at once, and a session with no backlog has nothing to ask', async () => {
-    expect((await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' })).status).toBe(200);
-    expect((await call('POST', '/api/refine/hello-app/hello-app-001/speckit/answers')).status).toBe(202);
-    await settle();
-    expect((await snapshot()).state.speckitAnswering).toBeFalsy();
-  });
+
 
   it('suggests a document from flow.md without saving it', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
@@ -319,7 +317,7 @@ describe('refine api', () => {
     const dir = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base`;
     expect(JSON.parse(await fs.readFile(`${dir}/spec.json`, 'utf8')).status).toBe('planned');
     // Detailed and ready: Start now starts the program, which freezes and launches the first item.
-    await prepareSpeckit(url);
+    await preparePlans(url);
     const started = await call('POST', `${url}/start`);
     expect(started.status).toBe(200);
     const body = await started.json();
@@ -394,7 +392,7 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
-    await prepareSpeckit(url);
+    await preparePlans(url);
     const failed = await call('POST', `${url}/start`);
     expect(failed.status).toBe(500);
     expect(JSON.stringify(await failed.json())).toMatch(/nenhuma run/);
@@ -420,7 +418,7 @@ describe('refine api', () => {
     await settle();
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status: 'retired' }));
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect(JSON.parse(await fs.readFile(file, 'utf8'))).toMatchObject({ status: 'running', specVersion: 1 });
   });
@@ -444,7 +442,7 @@ describe('refine api', () => {
       await call('POST', `${url}/answers`, { questionId: q.questionId, text: q.text.includes('JSON') ? 'Sim, application/json.' : 'Hello.' });
     }
     // The start needs no new evaluation after the answers: the item spec freezes them.
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
     expect(JSON.parse(await fs.readFile(file, 'utf8')).decisions).toEqual([{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }]);
@@ -464,13 +462,13 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(500);
     spawnShouldFail = false;
     const [q] = (await snapshot()).state.questions;
     await call('POST', `${url}/answers`, { questionId: q.questionId, text: 'Sim, application/json.' });
     // The start needs no new evaluation after the answer: the item spec freezes it.
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const frozen = JSON.parse(await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`, 'utf8'));
     expect(frozen).toMatchObject({ status: 'running', specVersion: 1, decisions: [{ question: 'O health responde em JSON?', answer: 'Sim, application/json.' }] });
@@ -489,16 +487,16 @@ describe('refine api', () => {
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
-    // A wizard backlog starts from its Spec Kit preparation: before it, the start says so.
+    // A wizard backlog starts from its plan preparation: before it, the start says so.
     const early = await call('POST', `${url}/start`);
     expect(early.status).toBe(409);
-    expect(JSON.stringify(await early.json())).toMatch(/Spec Kit/);
+    expect(JSON.stringify(await early.json())).toMatch(/planos/);
     // Neither the timer nor a new cycle starts the program: the person's Iniciar does.
     await registry.tickPrograms();
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
     expect((await snapshot()).state.status).toBe('ready');
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect((await snapshot()).state.status).toBe('started');
     expect(spawns).toHaveLength(1);
@@ -541,7 +539,7 @@ describe('refine api', () => {
     expect(ready.patches.filter((p: { status: string }) => p.status === 'pending')).toHaveLength(1);
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     const started = (await snapshot()).state;
     expect(started.status).toBe('started');
@@ -677,7 +675,7 @@ describe('refine api', () => {
     expect(planned.error).toBeNull();
     expect(planned.status).toBe('ready');
     expect(planned.backlog).toMatchObject({ enabled: true, detail: true, specs: { base: { specId: 'base' } }, preplans: { base: { preplan: { tasks: [{ id: 'P1' }] } } } });
-    await prepareSpeckit(url);
+    await preparePlans(url);
     expect((await call('POST', `${url}/start`)).status).toBe(200);
     expect((await snapshot()).state.status).toBe('started');
   });
@@ -835,11 +833,11 @@ describe('refine api', () => {
     expect((await snapshot()).state.status).toBe('ready');
     await call('PUT', '/api/refine/hello-app/hello-app-001/docs/briefing.md', { text: '## Objectives\n- changed' });
     expect((await snapshot()).state.stale).toBe(true);
-    // A single spec starts from its Spec Kit preparation too: before it, the start says so.
+    // A single spec starts from its plan preparation too: before it, the start says so.
     const early = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(early.status).toBe(409);
-    expect(JSON.stringify(await early.json())).toMatch(/Prepare o Spec Kit/);
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    expect(JSON.stringify(await early.json())).toMatch(/Prepare os planos/);
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     const started = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(started.status).toBe(200);
     expect(await started.json()).toEqual({ runId: 'hello-app--hello-app-001--run-1' });
@@ -861,7 +859,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     const [a, b] = await Promise.all([call('POST', '/api/refine/hello-app/hello-app-001/start'), call('POST', '/api/refine/hello-app/hello-app-001/start')]);
     const statuses = [a.status, b.status].sort();
     expect(statuses).toEqual([200, 409]);
@@ -924,7 +922,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect((await call('DELETE', '/api/refine/hello-app/hello-app-001')).status).toBe(409);
     expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(true);
@@ -949,7 +947,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     spawnShouldFail = true;
     const failed = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(failed.status).toBe(500);
@@ -970,7 +968,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     await fs.mkdir(`${home}/secrets`, { recursive: true });
     await fs.writeFile(`${home}/secrets/DB_PASSWORD`, 'p@ss w0rd!');
     failLog = 'fail p@ss w0rd!\n';
@@ -989,7 +987,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
-    await prepareSpeckit('/api/refine/hello-app/hello-app-001');
+    await preparePlans('/api/refine/hello-app/hello-app-001');
     registerShouldFail = true;
     const failed = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(failed.status).toBe(500);

@@ -27,7 +27,6 @@ export const REQUIRED_TOOLS: ReadonlyArray<{ name: string; minVersion?: string; 
   { name: 'gitleaks' },
   { name: 'osv-scanner' },
   { name: 'graphify' },
-  { name: 'specify' },
   { name: 'nvidia-smi', optional: true },
   { name: 'llama-server', optional: true },
 ];

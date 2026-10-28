@@ -1,4 +1,4 @@
-import { stepKey } from '@server/refine/speckit-steps';
+const stepKey = (command: string, itemKey?: string): string => `${command}|${itemKey ?? ''}`;
 import type { Snapshot } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { formatDuration } from '../run/selectors.js';
@@ -8,11 +8,11 @@ type Speckit = Snapshot['state']['speckit'];
 type Command = { command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean };
 type Row = { step: Command; state: 'done' | 'running' | 'pending' };
 
-const COMMAND = { constitution: 'Constituição do projeto', specify: 'Spec', clarify: 'Esclarecimento', plan: 'Plano', tasks: 'Tarefas' } as Record<string, string>;
 
-/** One Spec Kit command as the owner reads it: what it makes, and the backlog item it is about. */
+
+/** One plan step as the owner reads it: the plan of its backlog item. */
 function commandName(step: Command, titles: Map<string, string>): string {
-  const what = COMMAND[step.command] ?? step.command;
+  const what = 'Plano';
   return step.itemKey ? `${what} de ${titles.get(step.itemKey) ?? step.itemKey}` : what;
 }
 
@@ -49,44 +49,21 @@ const rowIcon = {
 
 const line = 'm-0 flex items-start gap-2 text-[0.9375rem] leading-[1.5]';
 
-/** The feature folder Spec Kit made for each item, behind a summary that counts them. */
-function FeatureFolders({ features, titles }: { features: Record<string, string>; titles: Map<string, string> }) {
-  const rows = Object.entries(features);
-  return (
-    <details className="group text-[0.8125rem]" data-testid="speckit-features">
-      <summary className="flex w-fit cursor-pointer list-none items-center gap-[0.35rem] text-ink-soft [&::-webkit-details-marker]:hidden">
-        <span className="transition-transform group-open:rotate-90"><Icon name="chevron-right" size={14} /></span>
-        {rows.length === 1 ? '1 pasta de feature' : `${rows.length} pastas de feature`}
-      </summary>
-      <ul className="m-0 mt-2.5 grid list-none gap-2 p-0">
-        {rows.map(([key, dir]) => (
-          <li key={key} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-md border border-line bg-surface px-3 py-2.5">
-            <span className="flex-none text-accent"><Icon name="folder" size={16} /></span>
-            <span className="wrap-anywhere min-w-0 grow basis-40 text-[0.875rem] font-semibold text-ink">{titles.get(key) ?? key}</span>
-            <code className="ml-[1.625rem] max-w-full rounded-sm bg-surface-muted px-1.5 py-0.5 text-[0.75rem] text-ink-soft wrap-anywhere">{dir}</code>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
 
 type Props = { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean };
 
-/** Where the Spec Kit preparation stands, with the feature folders it made so far. `plan` is every step in order. */
-export function SpeckitStatus(props: Props) {
-  const features = props.speckit?.features;
+/** Where the plan preparation stands, with the feature folders it made so far. `plan` is every step in order. */
+export function PlansStatus(props: Props) {
   return (
     <div className="grid gap-2">
       <Status {...props} />
-      {features && <FeatureFolders features={features} titles={props.titles} />}
     </div>
   );
 }
 
-/** Where the Spec Kit preparation stands: not started, running, done, out of date or failed. */
+/** Where the plan preparation stands: not started, running, done, out of date or failed. */
 function Status({ speckit, titles, plan = [], waiting = false }: Props) {
-  if (!speckit) return <p className={`${line} text-ink-soft`} data-testid="speckit-idle">O Spec Kit ainda não preparou o desenvolvimento. Ele cria a constituição do projeto e a spec, o plano e as tarefas de cada item do backlog.</p>;
+  if (!speckit) return <p className={`${line} text-ink-soft`} data-testid="speckit-idle">Os planos ainda não foram preparados. Um agente escreve o plano de implementação de cada item do backlog.</p>;
   if (speckit.status === 'failed') {
     return (
       <div role="alert" className={`${line} text-warn`} data-testid="speckit-failed">
@@ -110,9 +87,9 @@ function Status({ speckit, titles, plan = [], waiting = false }: Props) {
     const reused = speckit.steps.filter((step) => step.reused).length;
     const summary = `${done} de ${total} etapas concluídas · ${running} em andamento${reused > 0 ? ` · ${reused} ${reused === 1 ? 'reaproveitada' : 'reaproveitadas'}` : ''}`;
     return (
-      <ProcessBox title="Preparação do Spec Kit em andamento" since={speckit.startedAt} testId="speckit-running">
+      <ProcessBox title="Preparação dos planos em andamento" since={speckit.startedAt} testId="speckit-running">
         <span className="text-[0.75rem] leading-[1.35]">{summary}</span>
-        <div role="progressbar" aria-label="Preparação do Spec Kit" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line">
+        <div role="progressbar" aria-label="Preparação dos planos" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line">
           <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
         </div>
         <details className="group" data-testid="speckit-log">
@@ -134,6 +111,6 @@ function Status({ speckit, titles, plan = [], waiting = false }: Props) {
     );
   }
   if (speckit.stale) return <p className={`${line} text-warn`} data-testid="speckit-stale"><Icon name="alert" size={20} /><span>Os documentos ou o backlog mudaram depois da preparação. Prepare de novo antes de iniciar.</span></p>;
-  if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span>Responda à pergunta do Spec Kit abaixo para poder iniciar o desenvolvimento.</span></p>;
-  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>Tudo preparado: constituição, spec, plano e tarefas de cada item. Pode iniciar o desenvolvimento.</span></p>;
+  if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span>Responda à pergunta dos planos abaixo para poder iniciar o desenvolvimento.</span></p>;
+  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.</span></p>;
 }

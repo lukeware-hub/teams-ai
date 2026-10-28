@@ -95,18 +95,12 @@ const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'sug
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */
 export const CHAT_MAX_TURNS = 6;
-/** A Spec Kit answer reads the six documents it was sent, and answers in a few turns at most. */
-export const ANSWER_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob'];
-export const ANSWER_MAX_TURNS = 4;
-/** A Spec Kit web search uses WebSearch alone, in a few turns at most: it never opens a page. */
-export const RESEARCH_TOOLS: readonly string[] = ['WebSearch'];
-export const RESEARCH_MAX_TURNS = 4;
 /** The tools a kind gets whatever its role allows. */
-const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TOOLS, 'speckit-answer': ANSWER_TOOLS, 'speckit-research': RESEARCH_TOOLS };
+const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TOOLS };
 /** The turn cap a kind has below its role's. */
-const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS, 'speckit-answer': ANSWER_MAX_TURNS, 'speckit-research': RESEARCH_MAX_TURNS };
-/** The only folders of its working directory a kind's file tools may write: a Spec Kit step writes its own files, never the inputs or a CLAUDE.md. */
-const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['.specify', 'specs', 'docs/specs'] };
+const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS };
+/** The only folders of its working directory a kind's file tools may write: a plan step writes its plan file, never the inputs or a CLAUDE.md. */
+const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['docs/specs'] };
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
   const turns = KIND_TURNS[kind];
   return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };

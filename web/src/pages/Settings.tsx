@@ -21,8 +21,8 @@ const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esfo
 const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';
 const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste projeto. Passado esse tempo, o passo para e a revisão pede para reavaliar. Vale para o refinamento e para as execuções.';
 const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
-const HELP_SPECKIT_AGENTS = 'Quantos agentes preparam os itens do backlog ao mesmo tempo, cada um com o modelo e o esforço dos papéis acima. Vale a partir da próxima preparação. Vai de 1 a 5.';
-const SPECKIT_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
+const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlog ao mesmo tempo. Vale a partir da próxima preparação. Vai de 1 a 5.';
+const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
@@ -191,19 +191,19 @@ function StepTimeoutCard({ projectId }: { projectId: string }) {
   );
 }
 
-function SpeckitAgentsPanel() {
+function PlanAgentsPanel() {
   const [minAgents, setMinAgents] = useState('');
   const [saved, setSaved] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    settingsApi.speckitAgents().then((r) => {
+    settingsApi.planAgents().then((r) => {
       if (!active) return;
       setSaved(r.agents);
       setMinAgents(String(r.agents));
     }).catch(() => {
-      if (active) setError(SPECKIT_AGENTS_LOAD_ERROR);
+      if (active) setError(PLAN_AGENTS_LOAD_ERROR);
     });
     return () => {
       active = false;
@@ -215,7 +215,7 @@ function SpeckitAgentsPanel() {
     setBusy(true);
     setError(null);
     try {
-      const r = await settingsApi.setSpeckitAgents(value);
+      const r = await settingsApi.setPlanAgents(value);
       setSaved(r.agents);
       setMinAgents(String(r.agents));
     } catch {
@@ -225,10 +225,10 @@ function SpeckitAgentsPanel() {
     }
   };
   return (
-    <section className={`${panel} gap-3`} aria-labelledby="speckit-agents-title">
+    <section className={`${panel} gap-3`} aria-labelledby="plan-agents-title">
       <div className={sectionTitle}>
-        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="speckit-agents-title">Preparação do Spec Kit</h2>
-        <InfoTip label="Agentes em paralelo" text={HELP_SPECKIT_AGENTS} />
+        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="plan-agents-title">Preparação dos planos</h2>
+        <InfoTip label="Agentes em paralelo" text={HELP_PLAN_AGENTS} />
       </div>
       <form
         className="grid max-w-[24rem] grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem]"
@@ -295,7 +295,7 @@ export function SettingsPage() {
         </div>
       </header>
       <EnvironmentSettings />
-      <SpeckitAgentsPanel />
+      <PlanAgentsPanel />
       <ClaudeUsagePanel />
       {error ? <p className="error">{error}</p> : null}
       {projects === null && !error ? <Loading /> : null}

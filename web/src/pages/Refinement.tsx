@@ -9,7 +9,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { renderSpecMd } from '@server/refine/spec-md';
-import { speckitItems, speckitSteps } from '@server/refine/speckit-steps';
+import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
 import type { Divergence, DivergenceSide } from '@server/refine/checklist';
@@ -18,8 +18,7 @@ import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
-import { SpeckitStatus } from '../refine/SpeckitStatus.js';
-import { AgentAnswers } from '../refine/AgentAnswers.js';
+import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -32,7 +31,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitAnswered, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -215,10 +214,8 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
-  /** Stage 7: the owner asks the Spec Kit to prepare the spec, plan and tasks of every backlog item. */
-  onPrepareSpeckit?(): void | Promise<unknown>;
-  /** "Pedir ao PO e ao SM": the PO and the SM answer the Spec Kit questions nobody has read yet, from the documents. */
-  onAskSpeckitAnswers?(): void | Promise<unknown>;
+  /** Stage 7: the owner asks for the plans of every backlog item. */
+  onPreparePlans?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
   /** The owner moves on from the final review to the backlog; `false` says the server refused. */
@@ -376,7 +373,6 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
-  const agentAnswers = speckitAnswered(st);
   // A new question on screen starts with an empty answer and no mark, so neither reaches the wrong question.
   useEffect(() => {
     setAnswer('');
@@ -405,38 +401,38 @@ export function RefinementView(p: ViewProps) {
       {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
   );
-  // What the Spec Kit prepares: each backlog item, or the single spec as one item.
-  const speckitList = useMemo(() => speckitItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);
+  // What the plan preparation covers: each backlog item, or the single spec as one item.
+  const speckitList = useMemo(() => planItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);
   const itemTitles = new Map(speckitList.map((i) => [i.key, i.title]));
   const speckit = st.speckit;
   const speckitRunning = speckit?.status === 'running';
-  // Every session prepares with the Spec Kit before it starts; the server holds the same rule.
+  // Every session prepares its plans before it starts; the server holds the same rule.
   const speckitReady = speckit?.status === 'done' && !speckit.stale;
-  // What the Spec Kit preparation still owes the start, in plain words.
-  const speckitReason = speckitRunning ? 'A preparação do Spec Kit está em andamento.'
-    : speckitAsked.some((q) => q.blocking) ? 'Responda a pergunta obrigatória do Spec Kit.'
-    : !speckitReady ? (speckit?.stale ? 'Os documentos mudaram: prepare o Spec Kit de novo.' : 'Prepare o Spec Kit antes de iniciar.')
+  // What the plan preparation still owes the start, in plain words.
+  const speckitReason = speckitRunning ? 'A preparação dos planos está em andamento.'
+    : speckitAsked.some((q) => q.blocking) ? 'Responda a pergunta obrigatória dos planos.'
+    : !speckitReady ? (speckit?.stale ? 'Os documentos mudaram: prepare os planos de novo.' : 'Prepare os planos antes de iniciar.')
     : undefined;
   // The start would open with a current preparation, so the preparation is the next step.
   const waitsForSpeckit = !canStart && canStartRun({ ...st, speckit: { status: 'done', stale: false }, questions: [] }, busy);
   const backlogStageHeading = (
     <header className="grid gap-1">
       <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
-      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e o Spec Kit monta a spec, o plano e as tarefas de cada uma. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
+      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e outro agente monta o plano de implementação de cada uma, com testes primeiro. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
     </header>
   );
   // A wizard project and a backlog list markdown files only: specs.md, written by the evaluation, and the five documents.
   const mdFiles = backlogOn || newProject;
   const legacyFiles = !mdFiles;
   const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
-  // Every Spec Kit step in order, so the Spec Kit box lists the ones still to come.
-  const speckitPlan = useMemo(() => speckitSteps(speckitList).map(({ command, item }) => ({ command, itemKey: item?.key })), [speckitList]);
-  const speckitStatus = <SpeckitStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />;
+  // One plan step per item, so the plans box lists the ones still to come.
+  const speckitPlan = useMemo(() => speckitList.map((item) => ({ command: 'plan', itemKey: item.key })), [speckitList]);
+  const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />;
   // A backlog prepares once it is detailed, a single spec once it is derived.
   const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
   const prepareButton = (
-    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => p.onPrepareSpeckit?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
-      {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar com o Spec Kit'}
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => p.onPreparePlans?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+      {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar os planos'}
     </ActionButton>
   );
   const baseDocs = (['project.md', 'flow.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map((doc) => ({ doc, text: snap.docs[doc] }));
@@ -706,7 +702,7 @@ export function RefinementView(p: ViewProps) {
         <div className="rounded-lg border border-line bg-surface-sunken p-4">
           <div className="flex flex-wrap items-center gap-[0.35rem]">
             {current.origin === 'speckit'
-              ? <><span className={neutralBadge}>SPEC KIT</span><InfoTip text="Pergunta do Spec Kit, que prepara a spec, o plano e as tarefas de cada item do backlog." /></>
+              ? <><span className={neutralBadge}>PLANO</span><InfoTip text="Pergunta da preparação dos planos de cada item do backlog." /></>
               : <><span className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
@@ -844,7 +840,7 @@ export function RefinementView(p: ViewProps) {
         )}
         {reevaluateDialog}
       </div>
-      {/* The Spec Kit box and its button sit right before the start, as on the screen that prepares a new project's development. */}
+      {/* The plans box and its button sit right before the start, as on the screen that prepares a new project's development. */}
       {!newProject && <div className="mb-4 grid gap-3" data-testid="speckit-block">{speckitStatus}{prepareButton}</div>}
       {!newProject && !p.hideStart && startButton}
       {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
@@ -925,7 +921,7 @@ export function RefinementView(p: ViewProps) {
         </details>
       </div>
       {!newProject && backlogBlock}
-      <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O Spec Kit parte desses seis arquivos para criar a spec, o plano e as tarefas de cada item." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
+      <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
         <>
       {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong>{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
@@ -1136,27 +1132,11 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
-  // "Pedir ao PO e ao SM": the questions nobody has read yet; the page shows the request while the PO and the SM work on it.
-  const unread = speckitAsked.filter((q) => q.context === undefined).length;
-  const answering = st.speckitAnswering === true;
-  const askAgents = backlogOn && st.stages === true && unread > 0 ? (
-    <div className="grid gap-2 rounded-lg border border-line bg-surface p-4" data-testid="ask-agents-block">
-      <p className="m-0 text-[0.875rem] text-ink">{unread === 1 ? '1 pergunta ainda não foi lida pelo PO e pelo SM.' : `${unread} perguntas ainda não foram lidas pelo PO e pelo SM.`}</p>
-      <p className="m-0 text-[0.8125rem] text-ink-soft">Eles leem os seis documentos e respondem o que já está resolvido. O resto fica com você.</p>
-      <div>
-        <ActionButton data-testid="ask-agents" className="secondary" busy={answering} disabled={locked || answering || speckitRunning} onClick={() => p.onAskSpeckitAnswers?.()} icon={<Icon name="send" size={16} />}>
-          {answering ? 'Perguntando ao PO e ao SM…' : 'Pedir ao PO e ao SM'}
-        </ActionButton>
-      </div>
-    </div>
-  ) : null;
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {backlogOn && speckitStatus}
-      {askAgents}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
-      {agentAnswers.length > 0 && <AgentAnswers rows={agentAnswers} titles={itemTitles} locked={locked} onAnswer={(id, text) => p.onAnswer(id, text, false)} />}
       {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       {backlogBlock}
     </div>
@@ -1376,8 +1356,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
-        onPrepareSpeckit={act(() => refineApi.speckit(projectId, specId))}
-        onAskSpeckitAnswers={act(() => refineApi.askSpeckitAnswers(projectId, specId))}
+        onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}

@@ -55,9 +55,9 @@ export const settingsApi = {
   stepTimeout: (projectId: string) => fetch(`${S}/step-timeout/${projectId}`).then((r) => json<{ timeoutMinutes: number }>(r)),
   setStepTimeout: (projectId: string, timeoutMinutes: number) =>
     fetch(`${S}/step-timeout/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timeoutMinutes }) }).then((r) => json<{ timeoutMinutes: number }>(r)),
-  speckitAgents: () => fetch(`${S}/speckit-agents`).then((r) => json<{ agents: number }>(r)),
-  setSpeckitAgents: (agents: number) =>
-    fetch(`${S}/speckit-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),
+  planAgents: () => fetch(`${S}/plan-agents`).then((r) => json<{ agents: number }>(r)),
+  setPlanAgents: (agents: number) =>
+    fetch(`${S}/plan-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),
 };
 
 export const usageApi = {
@@ -261,7 +261,7 @@ export interface DroppedQuestionRow {
   cycle: number;
   blocking?: boolean;
   relatedAcIds?: string[];
-  /** The document of a stage review's question; absent for a question of a full round or a Spec Kit question. */
+  /** The document of a stage review's question; absent for a question of a full round or a plan question. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   origin?: 'speckit';
   command?: string;
@@ -281,17 +281,17 @@ export interface QuestionRow {
   status: 'pending' | 'answered' | 'skipped';
   answer: string | null;
   answeredBy?: 'po' | 'sm' | null;
-  /** The decided questions this Spec Kit question repeats, each with the difference the agent named. */
+  /** The decided questions this plan question repeats, each with the difference the agent named. */
   distinctFrom?: Array<{ questionId: string; difference: string }>;
   subject?: string;
   /** The document of a stage review's question; absent for a question of a full round. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   options?: Array<{ label: string; detail: string; recommended?: boolean }>;
-  /** Set on a question Spec Kit left open during its preparation. */
+  /** Set on a question plan left open during its preparation. */
   origin?: 'speckit';
-  /** The backlog item a Spec Kit question is about. */
+  /** The backlog item a plan question is about. */
   itemKey?: string;
-  /** The plain words the owner reads about a Spec Kit question: what it is about and why it needs a decision. */
+  /** The plain words the owner reads about a plan question: what it is about and why it needs a decision. */
   context?: string;
   /** The quotes of the documents that back an answer the PO or SM gave. */
   evidence?: Array<{ file: string; heading: string; quote: string }>;
@@ -442,7 +442,7 @@ export interface RefineState {
   runId: string | null;
   backlog?: BacklogView | null;
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
-  /** The backlog key a continued spec came from, which names its Spec Kit feature folder. */
+  /** The backlog key a continued spec came from, which names its plan feature folder. */
   featureKey?: string;
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
@@ -459,10 +459,8 @@ export interface RefineState {
   staleBy?: Record<string, string>;
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
-  /** The Spec Kit preparation of a detailed backlog; stale once a document or the backlog changes after it. */
+  /** The plan preparation of a detailed backlog; stale once a document or the backlog changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string> };
-  /** The PO and the SM are answering the open Spec Kit questions now. */
-  speckitAnswering?: boolean;
 }
 export interface Snapshot {
   projectId: string;
@@ -529,8 +527,7 @@ export const refineApi = {
   continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),
   closeReview: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/review/close`).then((r) => json<{ ok: true }>(r)),
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
-  speckit: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/speckit`).then((r) => json<{ ok: true }>(r)),
-  askSpeckitAnswers: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/speckit/answers`).then((r) => json<{ ok: true }>(r)),
+  plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),
   evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
   confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),
   program: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/program`).then((r) => json<{ program: ProgramView | null }>(r)),

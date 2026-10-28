@@ -22,7 +22,7 @@ describe('ask caps, measured in shadow', () => {
     expect(overCap([step('specify', [q('a', true), q('b', true), q('c', false), q('d', false), q('e', false)])])).toEqual([['specify', 0]]);
   });
 
-  it('counts a Spec Kit question once, on its first id, as the owner sees one card per id', () => {
+  it('counts a plan question once, on its first id, as the owner sees one card per id', () => {
     const events = [step('specify', [q('a', false)]), step('specify', [q('a', false), q('b', false)])];
     expect(askedRuns(events).map((r) => r.questions.map((x) => x.questionId))).toEqual([['a'], ['b']]);
   });
@@ -35,7 +35,7 @@ describe('ask caps, measured in shadow', () => {
     expect(overCap(events)).toEqual([['stageReview', 2], ['round', 2]]);
   });
 
-  it('ignores the Spec Kit commands it does not cap', () => {
+  it('ignores the preparation commands it does not cap', () => {
     expect(askedRuns([step('converge', [q('a', false)])])).toEqual([]);
   });
 
