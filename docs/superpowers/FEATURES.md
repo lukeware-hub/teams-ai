@@ -48,7 +48,7 @@ Status: pending.
 ## 7. Delivery and operations
 
 Status: pending.
-- README and RUNBOOK in the default post-phase, not a separate run.
+- README and RUNBOOK in the default post-phase, not a separate run. Checked 2026-10-28: Phase 6 (`phases/report.ts`) already writes both. The separate `spec readme` run and the button "Gerar README com o sm" on the run screen remain; removing that button is a screen change and waits for the owner's approval of a mock.
 - Done 2026-10-28: Claude Code is pinned to 2.1.295 and osv-scanner to v2.7.0 in `scripts/wsl/setup-ubuntu.sh`; the missing roadmap citation is replaced by a pointer to this file and to BACKLOG.md.
 - Done 2026-10-28: the platform containers have caps: teams-ai 4 CPUs and 8 GiB, dind 4 CPUs and 6 GiB, goproxy 1 CPU and 512 MiB (`docker-compose.yml`).
 
