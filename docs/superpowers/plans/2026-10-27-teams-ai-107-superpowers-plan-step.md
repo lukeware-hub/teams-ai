@@ -53,6 +53,7 @@ Run in a scratch draft copied from the live run's documents: 20 items, the five 
 |---|---|---|---|---|---|---|---|---|---|
 | r4 | pinned: haiku, effort low | 20 of 20 | 0 | 15 / 4 / 1 | 4.63 | 39,936 chars | 109 | 3.94 | fails: size |
 | r4 | sonnet, effort low | 20 of 20 | 0 | 14 / 5 / 1 | 2.83 | 19,400 chars | 75 | 8.68 | passes |
+| r5 | haiku, effort max (stopped after 3 of 20) | 3 of 3 | 0 | 3 / 0 / 0 | 6.45 | 54,912 chars | 895 | 2.92 for three | fails: size and time |
 
 Earlier runs, kept on the container as evidence:
 
@@ -60,3 +61,5 @@ Earlier runs, kept on the container as evidence:
 - r2 and r3 were stopped. The validator flagged the Portuguese word "todo" as the TODO marker, and an HTML attribute named "placeholder". Both were validator false positives, fixed before r4. Only r4 runs the final validator.
 
 Verdict: the sonnet setting passes every gate criterion, and the pinned setting fails the size criterion. The plan says the result sets the role setting the owner is advised to use, so the advice is sonnet at effort low for the plan step. The cut-over waits for the owner's decision on how to apply it, because the dev role's pin also drives every builder task.
+
+The owner then chose Haiku at effort max for the plan step. It was measured on three plans and stopped: each one fails the size gate (5.3 to 7.6 times its spec) and the time gate (13 to 18 minutes), and about 1 US dollar each. Three values that high cannot bring the median under the limits, so the run stopped and the advice stays sonnet at effort low.

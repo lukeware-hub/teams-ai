@@ -34,7 +34,7 @@ const variant = flags.get('variant') ?? 'pinned';
 const run = flags.get('run') ?? 'a';
 const limit = Number(flags.get('limit') ?? 20);
 const concurrency = Number(flags.get('concurrency') ?? 4);
-if (!root || (variant !== 'pinned' && variant !== 'sonnet')) throw new Error('usage: --root <draft folder> --variant pinned|sonnet');
+if (!root || !['pinned', 'sonnet', 'haiku-max'].includes(variant)) throw new Error('usage: --root <draft folder> --variant pinned|sonnet|haiku-max');
 
 const median = (values: readonly number[]): number => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -63,7 +63,7 @@ function sampleOf<T extends { criteria: readonly string[] }>(all: readonly T[], 
 const { cfg } = await readUserConfig();
 const pinned = cfg.agentSettings[PROJECT]?.dev;
 if (!pinned) throw new Error(`no dev pin for ${PROJECT} in the config`);
-const setting: AgentSetting = variant === 'sonnet' ? { model: 'claude-sonnet-5-5', effort: pinned.effort } : pinned;
+const setting: AgentSetting = variant === 'sonnet' ? { model: 'claude-sonnet-5-5', effort: pinned.effort } : variant === 'haiku-max' ? { model: 'claude-haiku-5-5', effort: 'max' } : pinned;
 
 const journal = (await fs.readFile(path.join(root, 'journal.ndjson'), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
 const state = reduceRefineEvents(journal);
