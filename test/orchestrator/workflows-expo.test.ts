@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import type { Plan } from '../../server/contracts/plan.js';
 import { androidImageSteps } from '../../server/exec/android-toolchain.js';
-import { renderRelease, validateWorkflow } from '../../server/orchestrator/workflows.js';
+import { renderCi, renderRelease, validateWorkflow } from '../../server/orchestrator/workflows.js';
 import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec({ specId: 'app-001' });
@@ -14,6 +15,40 @@ const expoPlan = makePlan(spec, {
   stack: 'Expo app, Android only',
   commands: { ...makePlan(spec).commands, install: INSTALL, build: BUILD },
   deploy: mobileDeploy,
+});
+const expoCiPlan = makePlan(spec, {
+  stack: 'Expo app, Android only',
+  commands: { ...makePlan(spec).commands, install: INSTALL, format: 'npm run format', lint: 'npm run lint', typecheck: undefined, test: 'npm test', build: BUILD },
+  deploy: mobileDeploy,
+});
+
+describe('the Expo CI workflow', () => {
+  const ci = renderCi(expoCiPlan);
+
+  it('sets up Node, Java and the Android SDK, then runs the plan commands in order', () => {
+    const steps = (parse(ci) as { jobs: { verify: { steps: Array<{ uses?: string; run?: string }> } } }).jobs.verify.steps;
+    expect(steps.map((s) => s.uses ?? s.run)).toEqual([
+      'actions/checkout@v4',
+      'actions/setup-node@v4',
+      'actions/setup-java@v4',
+      'android-actions/setup-android@v3',
+      INSTALL,
+      'npm run format',
+      'npm run lint',
+      'npm test',
+      BUILD,
+      'gitleaks/gitleaks-action@v2',
+    ]);
+    expect(ci).toMatch(/node-version: ['"]?22['"]?/);
+    expect(ci).toMatch(/java-version: ['"]?17['"]?/);
+  });
+
+  it('passes the CI validator, and fails one without the Java or Android setup, or without the install run step', () => {
+    expect(validateWorkflow('ci', ci, expoCiPlan)).toEqual([]);
+    expect(validateWorkflow('ci', ci.replace('actions/setup-java@v4', 'actions/other@v4'), expoCiPlan)).toContain('ci is missing the java setup step');
+    expect(validateWorkflow('ci', ci.replace('android-actions/setup-android@v3', 'actions/other@v3'), expoCiPlan)).toContain('ci is missing the android sdk setup step');
+    expect(validateWorkflow('ci', ci.replace(INSTALL, 'echo skipped'), expoCiPlan)).toContain(`ci is missing the install step (${INSTALL})`);
+  });
 });
 
 describe('the Expo release workflow', () => {
