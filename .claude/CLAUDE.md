@@ -76,3 +76,8 @@ Delivery goals to keep in mind in every decision: code quality, security, very l
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+## Repositório do projeto
+
+- O repositório do projeto não fica escrito neste arquivo. Ele foi registrado no início do projeto, no `remote.origin.url` do `.git/config` (o primeiro commit do projeto é `3b1eb64e`, de 23/09/2026).
+- Antes de commitar, dar push ou abrir PR, leia o valor com `git remote get-url origin` e confirme que é o registrado. Se mudou, ou se não bate com o que você sabe do projeto, pare e pergunte ao dono. Não publique.
+- Nunca publique em outro repositório, nem em outro clone ou worktree de outro projeto.
