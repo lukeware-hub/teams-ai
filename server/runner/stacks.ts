@@ -7,8 +7,9 @@ const REGISTRIES: Record<StackKind, readonly string[]> = {
   python: ['pypi.org', 'files.pythonhosted.org'],
   go: ['proxy.golang.org', 'sum.golang.org'],
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
-  // Flutter runs only in its gate image and in the install step there; no agent step runs it.
+  // Flutter and Expo run only in their gate images and in the install step there; no agent step runs them.
   flutter: [],
+  expo: [],
   other: [],
 };
 
@@ -68,7 +69,13 @@ export function stackEnv(cwd: string): Record<string, string> {
   };
 }
 
-export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'flutter' | 'other';
+export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'flutter' | 'expo' | 'other';
+
+/** The stacks whose gate image carries the Android SDK. */
+export type AndroidToolchain = Extract<StackKind, 'flutter' | 'expo'>;
+
+/** The Android toolchain a stack's gate image carries; undefined for a stack without one. */
+export const androidToolchainOf = (kind: StackKind): AndroidToolchain | undefined => (kind === 'flutter' || kind === 'expo' ? kind : undefined);
 
 const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
   node: /\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno|express)\b/i,
@@ -76,6 +83,7 @@ const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
   go: /\b(go|golang|gin|echo|fiber)\b/i,
   rust: /\b(rust|cargo|axum|actix|rocket)\b/i,
   flutter: /\b(flutter|dart)\b/i,
+  expo: /\bexpo\b/i,
 };
 
 /** The stack a free text names (the plan's stack, optionally with the gate image); the earliest mention wins. */

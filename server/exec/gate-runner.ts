@@ -3,11 +3,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
 import { redactSecrets } from '../core/redact.js';
-import { ANDROID_IMAGE_TAG, androidCommand, androidImageSteps } from './android-toolchain.js';
+import { FLUTTER_IMAGE_TAG, androidCommand, androidImageSteps } from './android-toolchain.js';
 import { COVERAGE_GATE, coveragePasses, parseCoverageSummary } from './coverage.js';
 import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
-import { stackEnv } from '../runner/stacks.js';
+import { stackEnv, type AndroidToolchain } from '../runner/stacks.js';
 
 export interface GateContext {
   worktree: string;
@@ -98,17 +98,17 @@ const isRustImage = (image: string) => /(^|\/)rust[:@]|^teams-ai-gate:rust-/.tes
  * drives Chromium; each gate image gets one derived image with what it misses, built once and reused. A failed build
  * keeps the original image so the gate reports its own error.
  */
-export async function prepareGateImage(image: string, exec: Exec, opts: { browser?: boolean; android?: boolean } = {}): Promise<string> {
+export async function prepareGateImage(image: string, exec: Exec, opts: { browser?: boolean; android?: AndroidToolchain } = {}): Promise<string> {
   // The image comes from an agent-written plan and lands in a Dockerfile built with network: only a plain reference passes.
   if (!IMAGE_REFERENCE.test(image)) throw new Error(`gate image ${JSON.stringify(image)} is not a plain image reference`);
   // The hash keeps two different images, and each flavour of one, from sharing one derived tag.
-  const flavour = [opts.browser && 'browser', opts.android && 'android'].filter(Boolean).join('-');
+  const flavour = [opts.browser && 'browser', opts.android].filter(Boolean).join('-');
   const tag = `teams-ai-gate:${image.replace(/[^a-zA-Z0-9_.-]/g, '-').slice(0, 100)}${flavour ? `-${flavour}` : ''}-${createHash('sha256').update(flavour ? `${image}+${flavour}` : image).digest('hex').slice(0, 12)}`;
   if ((await exec({ bin: 'docker', args: ['image', 'inspect', tag], timeoutMs: 60_000 })).exitCode === 0) return tag;
   const steps = ['RUN command -v jq >/dev/null || (apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*)'];
   if (isRustImage(image)) steps.push('RUN rustup component add rustfmt clippy');
   if (opts.browser) steps.push('RUN apt-get update && apt-get install -y --no-install-recommends chromium fonts-liberation && rm -rf /var/lib/apt/lists/*');
-  if (opts.android) steps.push(...androidImageSteps());
+  if (opts.android) steps.push(...androidImageSteps(opts.android));
   const built = await exec({ bin: 'docker', args: ['build', '-t', tag, '-'], stdin: `FROM ${image}\n${steps.join('\n')}\n`, timeoutMs: 15 * 60_000 });
   return built.exitCode === 0 ? tag : image;
 }
@@ -171,7 +171,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   }
   // Not a login shell: Debian's /etc/profile resets PATH and drops /usr/local/go/bin and /usr/local/cargo/bin of the golang and rust images.
   // The install step writes the project's packages into .tools; the gates read them through the image's pub cache (see androidCommand).
-  const command = isRustImage(ctx.image) ? `${RUST_IMAGE_TOOLCHAIN}${gate.command}` : ANDROID_IMAGE_TAG.test(ctx.image) && gate.name !== 'install' ? androidCommand(gate.command) : gate.command;
+  const command = isRustImage(ctx.image) ? `${RUST_IMAGE_TOOLCHAIN}${gate.command}` : FLUTTER_IMAGE_TAG.test(ctx.image) && gate.name !== 'install' ? androidCommand(gate.command) : gate.command;
   args.push(ctx.image, 'sh', '-c', command);
   return { args, env };
 }

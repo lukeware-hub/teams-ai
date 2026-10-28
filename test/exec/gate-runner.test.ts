@@ -82,8 +82,8 @@ describe('dockerArgs', () => {
 
   it('adds the Android toolchain to a flutter gate image, and only the gates copy the project packages into its pub cache', async () => {
     const built = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
-    const tag = await prepareGateImage('node:22-bookworm', built.exec, { android: true });
-    expect(tag).toMatch(/^teams-ai-gate:node-22-bookworm-android-[a-f0-9]{12}$/);
+    const tag = await prepareGateImage('node:22-bookworm', built.exec, { android: 'flutter' });
+    expect(tag).toMatch(/^teams-ai-gate:node-22-bookworm-flutter-[a-f0-9]{12}$/);
     const stdin = built.calls.find((c) => c.args[0] === 'build')!.stdin!;
     for (const piece of ['openjdk-17-jdk-headless', 'flutter_linux_3.47.8-stable.tar.xz', 'sha256sum -c', 'ndk;28.2.13676358', 'cd /opt/flutter/packages/flutter_tools && dart pub get']) expect(stdin).toContain(piece);
     const ctx = { worktree: '/w', image: tag, junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };
@@ -92,6 +92,18 @@ describe('dockerArgs', () => {
     expect(gateCommand).toContain('cp -rn /work/.tools/pub-cache/hosted /opt/pub-cache/');
     expect(gateCommand.endsWith('flutter build apk --debug')).toBe(true);
     expect(dockerArgs({ ...build, name: 'install', network: 'egress' }, ctx).args.at(-1)).toBe('flutter build apk --debug');
+  });
+
+  it('adds only the Android SDK to an expo gate image, with no Flutter and no pub cache step', async () => {
+    const built = new FakeExec().onArgs('docker', ['image', 'inspect'], () => ({ exitCode: 1 }));
+    const tag = await prepareGateImage('node:22-bookworm', built.exec, { android: 'expo' });
+    expect(tag).toMatch(/^teams-ai-gate:node-22-bookworm-expo-[a-f0-9]{12}$/);
+    const stdin = built.calls.find((c) => c.args[0] === 'build')!.stdin!;
+    for (const piece of ['openjdk-17-jdk-headless', 'ANDROID_HOME=/opt/android-sdk', 'sdkmanager', 'ndk;28.2.13676358']) expect(stdin).toContain(piece);
+    expect(stdin).not.toContain('flutter');
+    const ctx = { worktree: '/w', image: tag, junitPath: 'j', cpus: 1, memory: '1g', timeoutMs: 1, secrets: {}, containerName: 'c' };
+    const build = { name: 'build', command: 'cd android && ./gradlew assembleDebug', blocking: true, network: 'none' as const, secrets: [] };
+    expect(dockerArgs(build, ctx).args.at(-1)).toBe('cd android && ./gradlew assembleDebug');
   });
 
 
