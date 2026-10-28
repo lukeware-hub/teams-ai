@@ -74,6 +74,8 @@ export interface StepDeps {
   skillsRoot?: string;
   skillScope?: string;
   network: Pick<RoleSettingsInput, 'allowedDomains'>;
+  /** Stacks the run's steps work on; their toolchain commands go to the Front, Dev and Test roles. */
+  stacks?: RoleSettingsInput['stacks'];
   /** Config `sandbox`; when disabled the bubblewrap/socat tool check is skipped as well. */
   sandbox?: { enabled: boolean; unsafeNoSandbox?: boolean };
   hostEnv?: NodeJS.ProcessEnv;
@@ -333,7 +335,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.

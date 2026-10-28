@@ -25,6 +25,7 @@ const ACTIONS = {
   build: 'docker/build-push-action@v6',
   flutter: 'subosito/flutter-action@v2',
   java: 'actions/setup-java@v4',
+  dotnet: 'actions/setup-dotnet@v4',
   android: 'android-actions/setup-android@v3',
   upload: 'actions/upload-artifact@v4',
 } as const;
@@ -32,24 +33,37 @@ const ACTIONS = {
 type Step = Record<string, unknown>;
 const planStack = (plan: Plan): StackKind => stackKind(`${plan.stack} ${plan.gateImage}`);
 
-// Docker image name and the setup action's own version key, per stack.
-const SETUP: Record<Exclude<StackKind, 'other' | AndroidToolchain>, { image: string; key: string }> = {
+// Docker image name, the setup action's own version key and any fixed inputs, per stack.
+const SETUP: Record<Exclude<StackKind, 'other' | AndroidToolchain>, { image: string; key: string; base?: Record<string, string> }> = {
   node: { image: 'node', key: 'node-version' },
   python: { image: 'python', key: 'python-version' },
   go: { image: 'golang', key: 'go-version' },
   rust: { image: 'rust', key: 'toolchain' },
+  java: { image: 'eclipse-temurin', key: 'java-version', base: { distribution: 'temurin' } },
+  dotnet: { image: 'dotnet/sdk', key: 'dotnet-version' },
 };
 
 /** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no usable version (`rust:1-bookworm`). */
 const toolVersion = (plan: Plan, image: string): string | undefined => new RegExp(`${image}:(\\d+(?:\\.\\d+)${image === 'rust' ? '' : '?'})`, 'i').exec(plan.gateImage)?.[1];
 
+/** Java and the Android SDK: what an Android job needs to build an APK. */
+const androidSdkSetup = (): Step[] => [
+  { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
+  { uses: ACTIONS.android },
+];
+
+/** Flutter, Java and the Android SDK on the gate's Flutter version: what a Flutter job needs to build the APK. */
+const flutterSetup = (): Step[] => [{ uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } }, ...androidSdkSetup()];
+
 function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
-  // An Android CI needs its own setup action (the SDK, and Flutter for a Flutter app), which does not exist yet.
-  if (kind === 'other' || kind === 'flutter' || kind === 'expo') return [];
-  const { image, key } = SETUP[kind];
+  // An Expo CI needs its own setup action (the Android SDK), which does not exist yet.
+  if (kind === 'other' || kind === 'expo') return [];
+  if (kind === 'flutter') return flutterSetup();
+  const { image, key, base = {} } = SETUP[kind];
   const version = toolVersion(plan, image);
-  return [{ uses: ACTIONS[kind], ...(version ? { with: { [key]: version } } : {}) }];
+  const inputs = { ...base, ...(version ? { [key]: version } : {}) };
+  return [{ uses: ACTIONS[kind], ...(Object.keys(inputs).length > 0 ? { with: inputs } : {}) }];
 }
 
 export const COMPOSE_UP = 'docker compose up -d --build --wait';
@@ -114,17 +128,15 @@ const APK_DIR: Record<AndroidToolchain, string> = { flutter: 'build/app/outputs/
  */
 export function renderApkRelease(plan: Plan, toolchain: AndroidToolchain): string {
   const nodeVersion = toolVersion(plan, 'node');
-  const setup: Step = toolchain === 'expo'
-    ? { uses: ACTIONS.node, ...(nodeVersion ? { with: { 'node-version': nodeVersion } } : {}) }
-    : { uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } };
+  const setup: Step[] = toolchain === 'expo'
+    ? [{ uses: ACTIONS.node, ...(nodeVersion ? { with: { 'node-version': nodeVersion } } : {}) }, ...androidSdkSetup()]
+    : flutterSetup();
   const build: Step[] = toolchain === 'expo'
     ? [{ name: 'Install', run: plan.commands.install }, { name: 'Build APK', run: plan.commands.build }]
     : [{ name: 'Build APK', run: plan.commands.install }];
   const steps: Step[] = [
     { uses: ACTIONS.checkout },
-    setup,
-    { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
-    { uses: ACTIONS.android },
+    ...setup,
     ...build,
     { name: 'Keep APK', uses: ACTIONS.upload, with: { name: 'apk', path: `${APK_DIR[toolchain]}/*.apk` } },
   ];
@@ -211,6 +223,7 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     const need: Array<[string | undefined, string]> = [[c.install, 'install'], [c.format, 'format'], [c.lint, 'lint'], [c.typecheck, 'typecheck'], [c.test, 'test'], [c.build, 'build']];
     for (const [cmd, label] of need) if (cmd !== undefined && !runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
     if (!uses.some((u) => u.startsWith('gitleaks/'))) errors.push('ci is missing the secret scan step');
+    if (planStack(plan) === 'flutter' && !uses.some((u) => u.startsWith('subosito/flutter-action@'))) errors.push('ci is missing the flutter setup step');
     const e2e = e2eCommand(plan);
     if (e2e) {
       for (const [cmd, label] of [[COMPOSE_UP, 'compose up'], [e2e, 'e2e'], [COMPOSE_DOWN, 'compose down']] as const) if (!runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);

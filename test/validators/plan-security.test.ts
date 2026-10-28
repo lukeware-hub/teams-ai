@@ -152,10 +152,27 @@ describe('stack classification and pack text', () => {
     expect(stackKind('python-fastapi')).toBe('python');
     expect(stackKind('go-gin')).toBe('go');
     expect(stackKind('rust-axum')).toBe('rust');
-    expect(stackKind('java-spring')).toBe('other');
+    expect(stackKind('java-spring')).toBe('java');
+    expect(stackKind('dotnet-minimal-api')).toBe('dotnet');
     expect(stackKind('node:22-bookworm express and fastapi')).toBe('node'); // the earliest mention wins
     expect(stackKind('go golang:1.26-bookworm')).toBe('go');
     expect(prescribedCommands('node')['dependency-scan']![0]).toBe('npm audit --audit-level=high');
+  });
+
+  it('scans dependencies with the stack\'s own audit, and npm only for a node stack', () => {
+    for (const kind of ['java', 'dotnet', 'rust', 'other'] as const) {
+      expect(prescribedCommands(kind)['dependency-scan'], kind).toEqual(['osv-scanner scan source -r .']);
+    }
+    expect(prescribedCommands('python')['dependency-scan']![0]).toBe('pip-audit');
+    expect(prescribedCommands('go')['dependency-scan']![0]).toBe('osv-scanner scan source -r --no-call-analysis=go .');
+  });
+
+  it('rejects an npm dependency scan in a non-node plan', () => {
+    for (const stack of ['java-spring', 'dotnet-minimal-api']) {
+      expect(check(withGates(secureGates(), stack)), stack).toEqual([expect.stringContaining('dependency-scan must run')]);
+      const osv = secureGates({ 'dependency-scan': { command: `${P} osv-scanner scan source -r .` } });
+      expect(check(withGates(osv, stack)), stack).toEqual([]);
+    }
   });
 
   it('planRules states the exact commands only when required', () => {

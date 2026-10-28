@@ -8,6 +8,7 @@ import { COVERAGE_GATE, coveragePasses, parseCoverageSummary } from './coverage.
 import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
 import { stackEnv, type AndroidToolchain } from '../runner/stacks.js';
+import { TEST_GATE } from './test-services.js';
 
 export interface GateContext {
   worktree: string;
@@ -27,6 +28,8 @@ export interface GateContext {
   bindRewrite?: { from: string; to: string };
   /** Docker network an egress gate joins instead of the default bridge (the compose project network). */
   network?: string;
+  /** Private network of the test services; only the unit-test gate joins it (plan 111). */
+  testNetwork?: string;
   /** Host directory shared by the security gates (scanner downloads, trivy DB, pip cache), mounted at /gate-cache; see CACHED_GATES. */
   cacheDir?: string;
   /** Where the `coverage` gate's command writes `{"linesPct": N}` (roadmap R10.2); undefined when coverage is not required. */
@@ -123,7 +126,7 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '--name',
     `${ctx.containerName}-${gate.name}`,
     '--network',
-    gate.network === 'egress' ? ctx.network ?? 'bridge' : 'none',
+    gate.network === 'egress' ? ctx.network ?? 'bridge' : gate.name === TEST_GATE && ctx.testNetwork ? ctx.testNetwork : 'none',
     '--cpus',
     String(ctx.cpus),
     '--memory',

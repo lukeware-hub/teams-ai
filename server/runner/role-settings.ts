@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Role } from '../config/config.js';
-import { STACK_BASH } from './stacks.js';
+import { stackBash, type StackKind } from './stacks.js';
 
 /**
  * Settings the orchestrator ships to every agent process via `--settings <file>`.
@@ -29,14 +29,9 @@ export const PROTECTED_READ_PATHS: readonly string[] = [
  */
 const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit'] as const;
 // In dontAsk mode a compound command is denied unless every segment matches a rule, so the read-only
-// helpers a Dev chains onto npm/node (`... 2>&1 | tail -20`, `mktemp -d`, `grep`) are allowed too;
+// helpers a Dev chains onto its toolchain (`... 2>&1 | tail -20`, `mktemp -d`, `grep`) are allowed too;
 // without them the Dev concluded "Bash is denied" and stopped installing its own toolchain.
 const SUITE_BASH = [
-  'Bash(npm:*)',
-  'Bash(npx:*)',
-  'Bash(pnpm:*)',
-  'Bash(corepack:*)',
-  'Bash(node:*)',
   'Bash(git status:*)',
   'Bash(git diff:*)',
   'Bash(git log:*)',
@@ -51,8 +46,9 @@ const SUITE_BASH = [
   'Bash(echo:*)',
   'Bash(pwd:*)',
   'Bash(true:*)',
-  ...STACK_BASH,
 ] as const;
+/** Roles that run the project's own toolchain; each gets the commands of the stacks its step works on, and no other role gets any. */
+const TOOLCHAIN_ROLES: readonly Role[] = ['front', 'dev', 'test'];
 /** Every role may run the Agent Reach CLI for web research, and nothing else from Bash. */
 const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
@@ -69,6 +65,8 @@ const ROLE_ALLOW: Record<Role, readonly string[]> = {
 
 export interface RoleSettingsInput {
   allowedDomains: readonly string[];
+  /** Stacks of the step's project; the Front, Dev and Test roles get the toolchain commands of each (none without one). */
+  stacks?: readonly StackKind[];
   /** Extra allow rules derived from the plan's commands (e.g. `Bash(pytest:*)` for a Python stack). */
   extraAllow?: readonly string[];
   /** Config `sandbox.enabled`; defaults to on. */
@@ -121,7 +119,9 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   ];
   const denyWrite = (input.protectedDirs ?? []).map((d) => d.replace(/\/+$/, ''));
   // dontAsk denies every edit no rule allows, so a step held to some directories gets Edit rules for those in place of the bare file tools.
-  const roleAllow = input.writeDirs ? ROLE_ALLOW[role].filter((rule) => !(EDIT_TOOLS as readonly string[]).includes(rule)) : ROLE_ALLOW[role];
+  const toolchain = TOOLCHAIN_ROLES.includes(role) ? stackBash(input.stacks ?? []) : [];
+  const roleTools = [...ROLE_ALLOW[role], ...toolchain];
+  const roleAllow = input.writeDirs ? roleTools.filter((rule) => !(EDIT_TOOLS as readonly string[]).includes(rule)) : roleTools;
   const writeAllow = (input.writeDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`);
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },

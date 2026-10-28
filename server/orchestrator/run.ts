@@ -17,7 +17,8 @@ import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
-import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
+import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateContext, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
+import { TEST_GATE, withTestServices } from '../exec/test-services.js';
 import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
@@ -48,7 +49,7 @@ import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
-import { androidToolchainOf, copyCargoRoot, stackDomains, stackEnv, stackKind, type AndroidToolchain } from '../runner/stacks.js';
+import { androidToolchainOf, copyCargoRoot, stackDomains, stackEnv, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -297,11 +298,20 @@ export class Run {
     return viewOf(this.plan!, this.journal.state.tasks.get(taskId)?.def.service);
   }
 
-  /** Package registries a step may reach: its task's stack, or every stack of the plan for a step outside a task. */
-  private registries(view?: ServiceView): string[] {
+  /** Texts naming a step's stack: its task's, or every stack of the plan for a step outside a task. */
+  private stackTexts(view?: ServiceView): string[] {
     const views = view ? [view] : this.plan ? servicePlans(this.plan) : [];
-    const texts = views.length > 0 ? views.map((v) => `${v.plan.stack} ${v.plan.gateImage} ${this.deps.project.stack ?? ''}`) : [this.deps.project.stack ?? ''];
-    return [...new Set(texts.flatMap((text) => stackDomains(stackKind(text))))];
+    return views.length > 0 ? views.map((v) => `${v.plan.stack} ${v.plan.gateImage} ${this.deps.project.stack ?? ''}`) : [this.deps.project.stack ?? ''];
+  }
+
+  /** Package registries a step may reach, by its stacks. */
+  private registries(view?: ServiceView): string[] {
+    return [...new Set(this.stackTexts(view).flatMap((text) => stackDomains(stackKind(text))))];
+  }
+
+  /** The stacks a step works on, for its toolchain commands. */
+  private stacks(view?: ServiceView): StackKind[] {
+    return [...new Set(this.stackTexts(view).map(stackKind))];
   }
 
   private async loadPlan(): Promise<AnyPlan | null> {
@@ -331,6 +341,7 @@ export class Run {
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
       network: { allowedDomains: [...this.registries(view), cfg.docker.serviceHost] },
+      stacks: this.stacks(view),
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.
@@ -468,26 +479,36 @@ export class Run {
       const cacheDir = gateCacheDir(expandHome(this.deps.cfg.paths.gateCache), this.deps.ws.projectId);
       // The gate user may differ from the orchestrator's (rootless dind maps it to its own root), so the cache is open to all.
       await fs.mkdir(cacheDir, { recursive: true, mode: 0o777 }).then(() => fs.chmod(cacheDir, 0o777)).catch(() => undefined);
-      return runGates(
-        plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE), // the e2e gate runs in Phase 5 only
-        {
-          worktree,
-          image: await this.gateImageOf(plan),
-          junitPath: plan.junitPath,
-          coveragePath: plan.coveragePath,
-          cacheDir,
-          cpus: 2,
-          memory: '2g',
-          timeoutMs: buildTimeoutMs(plan),
-          secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()),
-          containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
-          // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
-          // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
-          user: containerUser(this.deps.cfg.docker.rootless),
-          bindRewrite: this.deps.cfg.docker.bindRewrite,
-        },
-        { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p) => fs.rm(p, { force: true }) },
-      );
+      const gates = plan.gates.filter((g) => g.blocking && g.name !== E2E_GATE); // the e2e gate runs in Phase 5 only
+      const ctx: GateContext = {
+        worktree,
+        image: await this.gateImageOf(plan),
+        junitPath: plan.junitPath,
+        coveragePath: plan.coveragePath,
+        cacheDir,
+        cpus: 2,
+        memory: '2g',
+        timeoutMs: buildTimeoutMs(plan),
+        secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()),
+        containerName: `teams-ai-${this.runId}-${branch.replace(/\//g, '__')}`,
+        // Files the gate writes into the bind-mounted worktree (the JUnit report) must stay owned by the
+        // orchestrator user, or the next attempt cannot remove them (EACCES on the first live run).
+        user: containerUser(this.deps.cfg.docker.rootless),
+        bindRewrite: this.deps.cfg.docker.bindRewrite,
+      };
+      const deps = { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (p: string) => fs.readFile(p, 'utf8').catch(() => null), removeFile: (p: string) => fs.rm(p, { force: true }) };
+      if (!plan.testServices?.length) return runGates(gates, ctx, deps);
+      // A service that fails to start fails the gate as infrastructure, with its message only (no values).
+      return withTestServices(plan.testServices, ctx.containerName, { exec: this.deps.exec }, (services) =>
+        runGates(
+          gates.map((g) => (g.name === TEST_GATE ? { ...g, secrets: [...g.secrets, ...services.urlNames] } : g)),
+          { ...ctx, testNetwork: services.network, secrets: { ...ctx.secrets, ...services.secrets } },
+          deps,
+        ),
+      ).catch((err: Error) => {
+        const failure: GateResult = { name: TEST_GATE, blocking: true, passed: false, exitCode: null, timedOut: false, durationMs: 0, stdoutTail: '', stderrTail: err.message, junit: null, failure: 'infra' };
+        return { results: [failure], blockingFailure: failure };
+      });
     };
   }
 
