@@ -4,7 +4,7 @@ Feature items, one at a time, in this order. Bugs stay in `BACKLOG.md`.
 
 ## 1. Redeploy the running container
 
-Status: pending. The commits `53e0d6e`, `5fc44cb` and `fcf73fe` are not in the running container yet.
+Status: done on 2026-10-28. The container runs commit `5cbc45a7` (the Superpowers cut-over, plan 107), built from a clean export, and the stage 7 screen shows "Preparar os planos" in the served bundle.
 
 Redeploy only when no agent is running in the container, because a redeploy stops the running steps.
 
