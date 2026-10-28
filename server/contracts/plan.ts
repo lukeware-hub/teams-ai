@@ -121,6 +121,11 @@ export function findCycle(tasks: ReadonlyArray<{ id: string; dependsOn: readonly
   return null;
 }
 
+/** Test services the unit-test gate can start on demand; each one has a pinned image in `exec/test-services.ts`. */
+export const TEST_SERVICE_NAMES = ['redis', 'mysql', 'mongodb', 'rabbitmq', 'postgresql'] as const;
+export const TestServiceName = z.enum(TEST_SERVICE_NAMES);
+export type TestServiceName = z.infer<typeof TestServiceName>;
+
 export const Plan = z.object({
   specId: z.string().regex(ID_PATTERNS.SLUG),
   specHash: z.string().regex(HASH_PATTERN),
@@ -165,6 +170,11 @@ export const Plan = z.object({
   coveragePath: RepoPath.optional(),
   /** Paths the coverage tool's own ignore mechanism already excluded from the denominator, with a reviewable reason. */
   coverageExemptions: z.array(z.object({ path: RepoPath, reason: z.string().min(1) })).optional(),
+  /** Test services the unit-test gate starts on a private network before its command runs (plan 111). */
+  testServices: z
+    .array(TestServiceName)
+    .refine((names) => new Set(names).size === names.length, { message: 'test service names must be unique' })
+    .optional(),
 });
 export type Plan = z.infer<typeof Plan>;
 
