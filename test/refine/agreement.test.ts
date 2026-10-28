@@ -6,7 +6,7 @@ const clock = (s: number) => new Date(Date.UTC(2026, 9, 27, 10, 0, s)).toISOStri
 // Two plan items. q4 has no recommended option, and the last answer is a role's, so neither is a sample.
 const journal: JournalEvent[] = [
   {
-    type: 'SPECKIT_STEP_DONE',
+    type: 'PLANS_STEP_DONE',
     at: clock(0),
     data: {
       questions: [
@@ -37,7 +37,7 @@ describe('owner agreement replay', () => {
 
   it('judges an answer against the recommendation the owner saw last, after a triage re-decided it', () => {
     const triaged: JournalEvent[] = [
-      { type: 'SPECKIT_STEP_DONE', at: clock(0), data: { questions: [{ questionId: 'q9', itemKey: 'item-c', options: [{ label: 'não', recommended: true }, { label: 'sim' }] }] } },
+      { type: 'PLANS_STEP_DONE', at: clock(0), data: { questions: [{ questionId: 'q9', itemKey: 'item-c', options: [{ label: 'não', recommended: true }, { label: 'sim' }] }] } },
       { type: 'SPECKIT_TRIAGED', at: clock(1), data: { results: [{ questionId: 'q9', options: [{ label: 'sim', recommended: true }, { label: 'não' }] }] } },
       { type: 'QUESTION_ANSWERED', at: clock(5), data: { questionId: 'q9', text: 'sim' } },
     ];

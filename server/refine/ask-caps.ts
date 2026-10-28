@@ -1,4 +1,5 @@
 import type { JournalEvent } from './agreement.js';
+import { RefineEvent } from './events.js';
 
 /**
  * How many non-blocking questions one run may put to the owner (plan 106, measured in shadow). specify and clarify follow the
@@ -26,7 +27,7 @@ export function askedRuns(events: readonly JournalEvent[]): AskedRun[] {
   const runs: AskedRun[] = [];
   for (const e of events) {
     const questions = (e.data.questions ?? []) as Array<{ questionId: string; blocking?: boolean }>;
-    if (e.type === 'SPECKIT_STEP_DONE' && isSpeckitScope(e.data.command)) {
+    if (e.type === RefineEvent.SpeckitStepDone && isSpeckitScope(e.data.command)) {
       const fresh = questions.filter((q) => !onRecord.has(q.questionId));
       fresh.forEach((q) => onRecord.add(q.questionId));
       if (fresh.length > 0) runs.push({ scope: e.data.command, key: `${String(e.data.command)}|${String(e.data.itemKey ?? '')}`, questions: fresh.map(toAsk) });

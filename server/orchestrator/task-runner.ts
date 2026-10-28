@@ -7,7 +7,7 @@ import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
-import { findCycle, type Plan, type PlanTask } from '../contracts/plan.js';
+import { findCycle, taskPlanIds, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
@@ -325,7 +325,7 @@ export class TaskRunner {
     const feedback = installNote ? [installNote, priorFeedback].filter((s) => s).join('\n\n') : priorFeedback;
     // A task of a spec with an implementation plan builds the plan tasks it names, test-first; the rest of the run is unchanged.
     const planFile = this.deps.packBase().planFile;
-    const plan = planFile && task.def.speckitTasks?.length ? { file: planFile, ids: task.def.speckitTasks } : undefined;
+    const plan = planFile && taskPlanIds(task.def).length ? { file: planFile, ids: taskPlanIds(task.def) } : undefined;
     const env: Record<string, string> = this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {};
     const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
     const sources = await sourceFiles(this.worktree, planFile, this.deps.spec.specId);

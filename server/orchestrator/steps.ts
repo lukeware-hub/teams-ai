@@ -354,7 +354,7 @@ export function planPack(
     opts.services ? servicesPlanRules(opts.services) : '',
     !opts.services && opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
-    opts.plan ? `The implementation plan of this spec is ${opts.plan.file}. Its ### Task blocks, with their files and criteria, are listed here: give every block a plan task that lists its number (T1, T2, ...) in speckitTasks; a block that no plan task lists fails the plan.\n\n${opts.plan.outline}` : '',
+    opts.plan ? `The implementation plan of this spec is ${opts.plan.file}. Its ### Task blocks, with their files and criteria, are listed here: give every block a plan task that lists its number (T1, T2, ...) in planTasks; a block that no plan task lists fails the plan.\n\n${opts.plan.outline}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',
     nodes.length > 0 ? `Central modules of the current code (graph god-nodes):\n${nodes.join('\n')}` : '',
     opts.feedback ?? '',

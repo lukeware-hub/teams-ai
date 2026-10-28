@@ -145,7 +145,7 @@ describe('packs', () => {
   });
 
   it('a dev task of plan tasks builds its tasks test-first and never edits the plan file', () => {
-    const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], speckitTasks: ['T1', 'T2'] });
+    const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], planTasks: ['T1', 'T2'] });
     const plan = { file: 'docs/specs/003-login/implementation-plan.md', ids: ['T1', 'T2'] };
     const p = devPack({ ...base, planFile: plan.file }, own, { code: { source: 'none' }, handoffs: [], feedback: null, plan });
     const rule = taskRule(plan.file, plan.ids);

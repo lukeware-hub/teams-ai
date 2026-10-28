@@ -234,7 +234,7 @@ describe('Phase 2', () => {
     await git(remote.repo, ['commit', '-q', '-m', 'plan']);
     await git(remote.repo, ['push', '-q', 'origin', 'main']);
     const plan = makePlan(spec);
-    const covered = { ...plan, tasks: plan.tasks.map((t, i) => (i === 0 ? { ...t, speckitTasks: ['T1', 'T2'] } : t)) };
+    const covered = { ...plan, tasks: plan.tasks.map((t, i) => (i === 0 ? { ...t, planTasks: ['T1', 'T2'] } : t)) };
     // The fake agent applies the step's semantic checks: the first plan lists no block, the second lists both.
     const agent: Agent = async (req) => {
       const value = calls.length === 1 ? plan : covered;

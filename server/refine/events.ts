@@ -1,4 +1,5 @@
 import type { DocFile } from './draft.js';
+import { withRenamedTypes } from '../core/event-types.js';
 
 export const RefineEvent = {
   Created: 'REFINE_CREATED',
@@ -98,10 +99,7 @@ const RENAMED_EVENT_TYPES = new Map<string, string>([
   ['SPECKIT_STALE', RefineEvent.SpeckitStale],
 ]);
 /** An event as the current code names it: a journal written before the rename reads with the current names. */
-export const currentEvent = <T extends { type: string }>(e: T): T => {
-  const type = RENAMED_EVENT_TYPES.get(e.type);
-  return type === undefined ? e : { ...e, type };
-};
+export const currentEvent = withRenamedTypes(RENAMED_EVENT_TYPES);
 /** A choice the owner can pick as the answer; `recommended` marks the one the agent suggests. */
 export interface QuestionChoice {
   label: string;

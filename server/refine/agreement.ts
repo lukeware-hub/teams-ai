@@ -1,4 +1,5 @@
 import { isIndependentOwnerLabel, MIN_READ_SECONDS, wilsonLower } from '../decide/evals.js';
+import { RefineEvent } from './events.js';
 
 /** The replay gates, fixed before any journal is read: a different number is a plan decision, not a tuned one. */
 export const REPLAY = { longPauseSeconds: 30, z: 1.645, bootstrapRuns: 2000, seed: 20261027 } as const;
@@ -42,7 +43,7 @@ export function ownerAnswers(events: readonly JournalEvent[]): OwnerAnswer[] {
   const answers: OwnerAnswer[] = [];
   let previous: number | null = null;
   for (const e of events) {
-    if (e.type === 'SPECKIT_STEP_DONE') for (const q of questionsOf(e)) define(asked, q, String(q.itemKey ?? 'speckit'));
+    if (e.type === RefineEvent.SpeckitStepDone) for (const q of questionsOf(e)) define(asked, q, String(q.itemKey ?? 'speckit'));
     else if (e.type === 'SPECKIT_TRIAGED') for (const q of (e.data.results ?? []) as Array<Record<string, unknown>>) define(asked, q);
     else if (e.type === 'REFINE_STAGE_REVIEWED') for (const q of questionsOf(e)) define(asked, q, `doc:${String(e.data.file)}`);
     else if (e.type === 'REFINE_EVALUATED') for (const q of questionsOf(e)) define(asked, q, 'round');

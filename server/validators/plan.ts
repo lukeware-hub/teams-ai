@@ -1,4 +1,4 @@
-import { DELIVERY_PATH_FIELDS, findCycle, SCAFFOLD_TASK_ID, scaffoldId, servicePlans, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
+import { DELIVERY_PATH_FIELDS, findCycle, SCAFFOLD_TASK_ID, scaffoldId, servicePlans, taskPlanIds, type Plan, type PlanTask, type ServicesPlan } from '../contracts/plan.js';
 import { IMAGE_REFERENCE } from '../exec/gate-runner.js';
 import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import { specShare, type Spec } from '../contracts/spec.js';
@@ -28,7 +28,7 @@ export interface PlanCheckOptions {
   repoFiles?: ReadonlySet<string>;
   /** Secrets the environment creates for every project (`environment.generatedSecrets`): a gate may read them without the spec declaring them. */
   generatedSecretNames?: readonly string[];
-  /** The task numbers (T1, T2, ...) of the spec's implementation plan; each needs a plan task that lists it in speckitTasks. */
+  /** The task numbers (T1, T2, ...) of the spec's implementation plan; each needs a plan task that lists it in planTasks. */
   speckitTasks?: readonly string[];
 }
 
@@ -151,9 +151,9 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
   }
-  const planned = new Set(plan.tasks.flatMap((t) => t.speckitTasks ?? []));
+  const planned = new Set(plan.tasks.flatMap((t) => taskPlanIds(t)));
   for (const id of opts.speckitTasks ?? []) {
-    if (!planned.has(id)) errors.push(`the implementation plan's task ${id} has no plan task; list it in speckitTasks of the task that builds it`);
+    if (!planned.has(id)) errors.push(`the implementation plan's task ${id} has no plan task; list it in planTasks of the task that builds it`);
   }
 
   // A criterion only ever touched by devops tasks (manifests, Dockerfile) has no unit/integration test to

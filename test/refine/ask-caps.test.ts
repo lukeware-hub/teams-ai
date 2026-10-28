@@ -3,7 +3,7 @@ import type { JournalEvent } from '../../server/refine/agreement.js';
 import { askCapLines, askedRuns, capCounts } from '../../server/refine/ask-caps.js';
 
 const q = (questionId: string, blocking: boolean) => ({ questionId, blocking });
-const step = (command: string, questions: Array<{ questionId: string; blocking: boolean }>, itemKey = 'login'): JournalEvent => ({ type: 'SPECKIT_STEP_DONE', data: { command, itemKey, files: [], questions } });
+const step = (command: string, questions: Array<{ questionId: string; blocking: boolean }>, itemKey = 'login'): JournalEvent => ({ type: 'PLANS_STEP_DONE', data: { command, itemKey, files: [], questions } });
 const stage = (file: string, cycle: number, questions: Array<{ questionId: string; blocking: boolean }>): JournalEvent => ({ type: 'REFINE_STAGE_REVIEWED', data: { file, cycle, questions } });
 const round = (cycle: number, questions: Array<{ questionId: string; blocking: boolean }>): JournalEvent => ({ type: 'REFINE_EVALUATED', data: { cycle, questions } });
 const overCap = (events: JournalEvent[]) => capCounts(askedRuns(events)).map((c) => [c.scope, c.excess]);

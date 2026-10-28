@@ -1,6 +1,7 @@
 import type { HandoffSummary } from '../knowledge/context-pack.js';
 import { applyEvent, emptyRunState, RunEvent, type RunState } from '../pipeline/run-state.js';
 import { EventStore, unconfirmedIntents, type EventInput, type StoredEvent } from '../store/event-store.js';
+import { withRenamedTypes } from '../core/event-types.js';
 
 export const OrchEvent = {
   RunStarted: 'RUN_STARTED',
@@ -9,9 +10,9 @@ export const OrchEvent = {
   TechSpecWritten: 'TECH_SPEC_WRITTEN',
   CoverageChecked: 'COVERAGE_CHECKED',
   DocsMerged: 'DOCS_MERGED',
-  SpecKitConverged: 'SPECKIT_CONVERGED',
-  SpecKitSkipped: 'SPECKIT_SKIPPED',
-  SpecKitGap: 'SPECKIT_GAP',
+  SpecKitConverged: 'PLANS_CONVERGED',
+  SpecKitSkipped: 'PLANS_SKIPPED',
+  SpecKitGap: 'PLANS_GAP',
   StepStarted: 'STEP_STARTED',
   StepFinished: 'STEP_FINISHED',
   DevCommitted: 'DEV_COMMITTED',
@@ -63,6 +64,12 @@ export const OrchEvent = {
   GapsChecked: 'GAPS_CHECKED',
   ReportReady: 'REPORT_READY',
 } as const;
+/** The run events written before the plan rename, with their current names. */
+const RENAMED_RUN_EVENT_TYPES = new Map<string, string>([
+  ['SPECKIT_CONVERGED', OrchEvent.SpecKitConverged],
+  ['SPECKIT_SKIPPED', OrchEvent.SpecKitSkipped],
+  ['SPECKIT_GAP', OrchEvent.SpecKitGap],
+]);
 
 export const Intent = {
   WorktreeCreate: 'WORKTREE_CREATE',
@@ -114,7 +121,7 @@ export class Journal {
 
   static async open(opts: { file: string; runId: string; specHash: string; clock?: () => Date }): Promise<Journal> {
     const store = await EventStore.open(opts);
-    const events = await store.readAll();
+    const events = (await store.readAll()).map(withRenamedTypes(RENAMED_RUN_EVENT_TYPES));
     return new Journal(store, events);
   }
 

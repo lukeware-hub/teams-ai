@@ -75,10 +75,14 @@ export const PlanTask = z.object({
   origin: z.enum(['plan', 'fix', 'deploy-fix']).default('plan'),
   /** The service whose repository the task changes; only in a services plan. */
   service: ServiceName.optional(),
-  /** The ids of the plan tasks (T001, ...) this task does. */
+  /** The ids of the plan tasks (T001, ...) this task does; `speckitTasks` is the name before the rename. */
+  planTasks: z.array(z.string().min(1)).optional(),
   speckitTasks: z.array(z.string().min(1)).optional(),
 });
 export type PlanTask = z.infer<typeof PlanTask>;
+
+/** The plan task ids a task does, under either name. */
+export const taskPlanIds = (task: Pick<PlanTask, 'planTasks' | 'speckitTasks'>): string[] => task.planTasks ?? task.speckitTasks ?? [];
 
 export const SCAFFOLD_TASK_ID = 'T0-scaffold';
 
