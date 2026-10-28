@@ -26,7 +26,7 @@ Status: pending. Expo is a Node stack that builds the Android app with Gradle, s
 
 ## 4. Chromium in the agent image
 
-Status: pending. The visual check at deploy (`uiCheckPack`) runs in the agent image, which has no browser. Playwright and Chromium must be pinned there.
+Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and the Chromium of Playwright 1.64.0-alpha-1790635538000, both pinned to the skill's versions; `playwright-cli open` opens the live app as the `node` user. Chromium runs with `--no-sandbox` there, because the container gives no user namespaces: the container is the isolation. Owner decision pending: accept that, or give the agent image user namespaces.
 
 ## 5. Autonomy
 
