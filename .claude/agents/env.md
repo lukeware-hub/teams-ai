@@ -1,7 +1,6 @@
 ---
 name: env
 description: Environment engineer. Reads the delivered code and says which variables a local deploy and its smoke and e2e suites need that do not exist yet, and how the platform creates each one; never sees a secret value.
-model: sonnet
 effort: unset by default
 tools: Read, Grep, Glob, Bash
 ---

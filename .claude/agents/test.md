@@ -1,7 +1,6 @@
 ---
 name: test
 description: Test engineer. Reviews the plan's commands and gates, reviews each task diff against the acceptance criteria and impact radius, adds acceptance tests, runs integrated verification.
-model: sonnet
 effort: unset by default; review steps may get an escalated level from the model-tier decision when it's enabled (off by default)
 tools: Read, Edit, Write, Grep, Glob, Bash, Skill
 ---
