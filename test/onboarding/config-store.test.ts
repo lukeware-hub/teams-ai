@@ -126,14 +126,14 @@ describe('config store', () => {
     expect(await fs.readdir(path.dirname(userConfigFile(home)))).toEqual(['config.json']);
   });
 
-  it('sets one agent of one project, keeps the others, and removes it with null', async () => {
+  it('sets one agent of one project, keeps the others, and stores null for automatic', async () => {
     home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
     await setAgentSetting('demo', 'dev', { model: 'claude-opus-5-5', effort: 'high' }, home);
     await setAgentSetting('demo', 'sm', { model: 'claude-haiku-5-5', effort: 'low' }, home);
     await setAgentSetting('other', 'dev', { model: 'claude-sonnet-5-5', effort: 'max' }, home);
     await setAgentSetting('demo', 'sm', null, home);
     const { cfg } = await readUserConfig(home);
-    expect(cfg.agentSettings).toEqual({ demo: { dev: { model: 'claude-opus-5-5', effort: 'high' } }, other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
+    expect(cfg.agentSettings).toEqual({ demo: { dev: { model: 'claude-opus-5-5', effort: 'high' }, sm: null }, other: { dev: { model: 'claude-sonnet-5-5', effort: 'max' } } });
   });
 
   it('setStepTimeout sets the time limit of one project and keeps the others', async () => {

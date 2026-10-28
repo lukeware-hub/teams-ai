@@ -4,7 +4,7 @@ import { loadAgents } from '../agents/registry.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import type { AgentSetting, Config, Role } from '../config/config.js';
+import { manualAgentSettings, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
 import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
@@ -22,7 +22,7 @@ export interface AgentWiring {
   claudeJsonPath?: string;
   runStep?: typeof runStepFn;
   /** The agent settings of one project, read per step so a change applies to the next step. */
-  agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting>>>;
+  agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting | null>>>;
   /** The step budget of one project, read per step so a time limit changed in Settings applies to the next step. */
   stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
   /** The agents that prepare the plan items at once; the governor admits that many steps, read per step. */
@@ -49,9 +49,10 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
     const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
     if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     const settings = ctx.projectId && w.agentSettings ? await w.agentSettings(ctx.projectId) : {};
+    const manual = manualAgentSettings(settings);
     const caps = ctx.projectId && w.stepBudget ? await w.stepBudget(ctx.projectId) : w.cfg.budgets.step;
     return runAgentStep(req, {
-      agentSetting: (role) => settings[role],
+      agentSetting: (role) => manual[role],
       runStep: w.runStep ?? runStepFn,
       stepDeps: {
         binary,

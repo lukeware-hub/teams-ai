@@ -1,4 +1,4 @@
-import { AgentSetting, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
+import { AgentSetting, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { readUserConfig, setAgentSetting, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
@@ -77,7 +77,7 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const projectId = slugOf(params.projectId!);
         const { cfg } = await readUserConfig(deps.home).catch(configProblem);
         const settings = cfg.agentSettings[projectId] ?? {};
-        json(200, { agents: ROLES.map((role) => ({ role, setting: settings[role] ?? null })) });
+        json(200, { agents: ROLES.map((role) => ({ role, setting: role in settings ? settings[role] ?? null : DEFAULT_AGENT_SETTING })) });
       },
     },
     {

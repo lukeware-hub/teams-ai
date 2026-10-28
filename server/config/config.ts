@@ -118,10 +118,23 @@ export const AgentSetting = z
   .strict();
 export type AgentSetting = z.infer<typeof AgentSetting>;
 
+/** The setting a role takes when its project has none: a manual Haiku at low effort. */
+export const DEFAULT_AGENT_SETTING: AgentSetting = { model: MODELS.haiku, effort: 'low' };
+
+/** The manual settings a run uses: a role never set takes the default, and a role stored as null (automatic) takes none. */
+export function manualAgentSettings(stored: Partial<Record<Role, AgentSetting | null>> = {}): Partial<Record<Role, AgentSetting>> {
+  const out: Partial<Record<Role, AgentSetting>> = {};
+  for (const role of ROLES) {
+    const setting = role in stored ? stored[role] : DEFAULT_AGENT_SETTING;
+    if (setting) out[role] = setting;
+  }
+  return out;
+}
+
 export const Config = z.object({
   roles: RolesSchema.prefault({}),
   /** Per project id, per role: the manual model and effort; a role absent here runs on the automatic choice. */
-  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting)).default({}),
+  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting.nullable())).default({}),
   /** Per project id: the time limit of each agent step in ms, set in Settings; a project absent here takes `budgets.step.timeoutMs`. */
   stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
   budgets: z

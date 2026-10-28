@@ -83,7 +83,7 @@ describe('SettingsPage', () => {
     expect(screen.queryByLabelText('Modelo de Desenvolvedor')).toBeNull();
 
     fireEvent.change(mode, { target: { value: 'manual' } });
-    await waitFor(() => expect(setAgent).toHaveBeenCalledWith('demo', 'dev', { mode: 'manual', model: 'claude-sonnet-5-5', effort: 'medium' }));
+    await waitFor(() => expect(setAgent).toHaveBeenCalledWith('demo', 'dev', { mode: 'manual', model: 'claude-haiku-5-5', effort: 'low' }));
     expect(await screen.findByLabelText('Modelo de Desenvolvedor')).toBeTruthy();
   });
 

@@ -15,7 +15,7 @@ import { emptyState, panel, row, rowActions, rowId, rows, sectionTitle } from '.
 const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente' };
 const MODEL_LABELS: Record<AgentModel, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5' };
 const EFFORT_LABELS: Record<AgentEffort, string> = { low: 'Baixo', medium: 'Médio', high: 'Alto', max: 'Máximo' };
-const DEFAULT_PICK: AgentSetting = { model: 'claude-sonnet-5-5', effort: 'medium' };
+const DEFAULT_PICK: AgentSetting = { model: 'claude-haiku-5-5', effort: 'low' };
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.';
 const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esforço de cada tarefa. Manual fixa os dois para o agente em todos os seus passos, inclusive os de arquitetura. Manual ignora o limite de esforço por modelo e pode gastar mais cota.';
 const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';

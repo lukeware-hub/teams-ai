@@ -71,8 +71,7 @@ export async function setGithubOwner(owner: string, home?: string): Promise<Conf
 export async function setAgentSetting(projectId: string, role: Role, setting: AgentSetting | null, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => {
     const roles = { ...cfg.agentSettings[projectId] };
-    if (setting) roles[role] = setting;
-    else delete roles[role];
+    roles[role] = setting;
     return { ...raw, agentSettings: { ...cfg.agentSettings, [projectId]: roles } };
   });
 }

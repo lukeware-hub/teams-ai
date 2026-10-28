@@ -20,10 +20,10 @@ afterEach(async () => {
 });
 
 describe('settings routes', () => {
-  it('lists the nine agents on automatic by default, then shows a manual pick', async () => {
+  it('lists the eight agents on manual Haiku at low by default, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
     expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env']);
-    expect(first.agents.every((a) => a.setting === null)).toBe(true);
+    expect(first.agents.every((a) => JSON.stringify(a.setting) === JSON.stringify({ model: 'claude-haiku-5-5', effort: 'low' }))).toBe(true);
 
     expect((await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-opus-5-5', effort: 'max' })).status).toBe(200);
     const after = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
@@ -33,8 +33,8 @@ describe('settings routes', () => {
   it('gives an agent back to automatic with mode auto', async () => {
     await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-haiku-5-5', effort: 'low' });
     expect((await put(`${base()}/demo/dev`, { mode: 'auto' })).status).toBe(200);
-    const after = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ setting: unknown }> };
-    expect(after.agents.every((a) => a.setting === null)).toBe(true);
+    const after = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
+    expect(after.agents.find((a) => a.role === 'dev')!.setting).toBeNull();
   });
 
   it('refuses an unknown role with 404 and a bad model, effort, mode or project id with 400', async () => {
