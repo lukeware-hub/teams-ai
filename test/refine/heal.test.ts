@@ -72,6 +72,11 @@ describe('the failures in a row, read from the journal', () => {
     expect(healRunsOf(events)).toEqual({ cycle: { kind: 'schema', reason: 'x', attempts: 1 }, speckit: undefined, paused: false });
   });
 
+  it('a finished plan preparation ends the failure run of an earlier one, as the retired Spec Kit completion did', () => {
+    expect(healRunsOf([event(1, RefineEvent.SpeckitFailed, { reason: 'x' })]).speckit).toBeDefined();
+    expect(healRunsOf([event(1, RefineEvent.SpeckitFailed, { reason: 'x' }), event(2, RefineEvent.PlansPrepared)]).speckit).toBeUndefined();
+  });
+
   it('marks a draft paused until a failure comes after the pause, which is the owner acting', () => {
     const events = [event(1, RefineEvent.CycleFailed, { kind: 'auth', reason: 'x' }), event(2, RefineEvent.AutopilotPaused, { reason: 'auth' })];
     expect(healRunsOf(events).paused).toBe(true);

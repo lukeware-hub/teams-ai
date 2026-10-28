@@ -624,10 +624,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.speckitAnswering = false;
       break;
     case RefineEvent.SpeckitDone:
-      if (s.speckit) {
-        s.speckit.status = 'done';
-        delete s.speckit.running;
-      }
+      // The retired Spec Kit left no plan files, so its completion is not a plan preparation.
+      delete s.speckit;
       break;
     case RefineEvent.PlansPrepared:
       if (s.speckit) {

@@ -514,7 +514,7 @@ describe('plan triage state', () => {
   });
 
   it('a stale mark keeps a finished preparation from standing, until it runs again', () => {
-    const s = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }, { type: RefineEvent.SpeckitStale, data: {} }]);
+    const s = reduceRefineEvents([started, { type: RefineEvent.PlansPrepared, data: { inputHash: 'h' } }, { type: RefineEvent.SpeckitStale, data: {} }]);
     expect(s.speckit).toMatchObject({ status: 'done', stale: true });
   });
 
@@ -535,8 +535,12 @@ describe('plan preparation state', () => {
       { type: RefineEvent.SpeckitStepDone, data: { command: 'specify', itemKey: 'login', files: ['specs/login/spec.md'] } },
     ]);
     expect(s.speckit).toEqual({ status: 'running', steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'login' }], total: 4, stale: false });
-    const done = reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }]);
+    const done = reduceRefineEvents([started, { type: RefineEvent.PlansPrepared, data: { inputHash: 'h' } }]);
     expect(done.speckit).toMatchObject({ status: 'done', stale: false });
+  });
+
+  it('a preparation of the retired Spec Kit is not a plan preparation, so the start waits for the plans', () => {
+    expect(reduceRefineEvents([started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }]).speckit).toBeUndefined();
   });
 
   it('records the questions of a plan step as pending questions marked with their origin and item', () => {
@@ -587,7 +591,7 @@ describe('plan preparation state', () => {
   });
 
   it('goes stale when a document or a backlog derivation changes after it', () => {
-    const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
+    const done = [started, { type: RefineEvent.PlansPrepared, data: { inputHash: 'h' } }];
     for (const e of [
       { type: RefineEvent.DocEdited, data: { file: 'stack.md', hash: 'x', source: 'human' } },
       { type: RefineEvent.BacklogDerived, data: { project: null, epics: [], items: [], cycle: 2 } },
@@ -600,7 +604,7 @@ describe('plan preparation state', () => {
   });
 
   it("goes stale when a single spec is derived again or the owner answers a question, but not on an answer the PO or the SM took from the documents", () => {
-    const done = [started, { type: RefineEvent.SpeckitDone, data: { inputHash: 'h' } }];
+    const done = [started, { type: RefineEvent.PlansPrepared, data: { inputHash: 'h' } }];
     expect(reduceRefineEvents([...done, ...cycle(2)]).speckit?.stale).toBe(true);
     expect(reduceRefineEvents([...done, { type: RefineEvent.QuestionAnswered, data: { questionId: 'q', text: 'Real' } }]).speckit?.stale).toBe(true);
     expect(reduceRefineEvents([...done, { type: RefineEvent.QuestionAnswered, data: { questionId: 'q', text: 'Real', by: 'po' } }]).speckit?.stale).toBe(false);

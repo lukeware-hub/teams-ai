@@ -94,7 +94,7 @@ export function healRunsOf(events: readonly HealEvent[]): HealRuns {
     } else if (e.type === RefineEvent.SpeckitFailed) {
       speckit = run(speckit, kindOf(e.data), String(e.data.reason ?? ''));
       lastFailure = e.seq;
-    } else if (e.type === RefineEvent.SpeckitDone) {
+    } else if (e.type === RefineEvent.SpeckitDone || e.type === RefineEvent.PlansPrepared) {
       speckit = undefined;
     } else if (e.type === RefineEvent.AutopilotPaused) {
       lastPause = e.seq;
