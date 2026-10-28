@@ -15,6 +15,7 @@ import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { loadEvents } from '../store/event-store.js';
+import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
 import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
@@ -104,7 +105,7 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.speckitAgents };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
@@ -370,7 +371,7 @@ export class SessionRegistry {
       const refine = path.posix.join(root, projectId, 'refine');
       for (const specId of await fs.readdir(refine).catch(() => [] as string[])) {
         const live = this.sessions.get(`${projectId}/${specId}`);
-        const events = live ? (await live).events : await loadEvents(path.posix.join(refine, specId, 'events.ndjson')).catch(() => null);
+        const events = live ? (await live).events : await loadEvents(path.posix.join(refine, specId, 'events.ndjson')).then((es) => es.map(currentEvent)).catch(() => null);
         if (!events) continue;
         out.push({ projectId, specId, state: reduceRefineEvents(events).status, registered: (await this.deps.projectDir(projectId)) !== null });
       }

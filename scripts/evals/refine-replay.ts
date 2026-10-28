@@ -10,6 +10,7 @@ import { MIN_READ_SECONDS } from '../../server/decide/evals.js';
 import { renderResolverReport, replayResolver } from '../../server/refine/resolver-replay.js';
 import { askCapLines } from '../../server/refine/ask-caps.js';
 import { loadEvents } from '../../server/store/event-store.js';
+import { currentEvent } from '../../server/refine/events.js';
 import { existsSync } from 'node:fs';
 
 const [file, ...flags] = process.argv.slice(2);
@@ -40,7 +41,7 @@ if (!existsSync(file)) {
   console.error(`no journal at ${file}`);
   process.exit(2);
 }
-const events = await loadEvents(file);
+const events = (await loadEvents(file)).map(currentEvent);
 const answers = ownerAnswers(events);
 console.log(`gates: read at least ${MIN_READ_SECONDS} s, long pause ${REPLAY.longPauseSeconds} s, z ${REPLAY.z}, bootstrap ${REPLAY.bootstrapRuns} runs, seed ${REPLAY.seed}`);
 console.log(`owner answers with a recommended option: ${answers.length}`);

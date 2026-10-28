@@ -58,7 +58,7 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
       path: S,
       handler: async ({ json }) => {
         const { cfg } = await readUserConfig(deps.home).catch(configProblem);
-        json(200, { agents: cfg.concurrency.speckitAgents });
+        json(200, { agents: cfg.concurrency.planAgents });
       },
     },
     {

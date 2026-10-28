@@ -70,3 +70,11 @@ describe('decisions config', () => {
     for (const id of enabled) expect(resolveDecision(cfg, id).chain).toEqual(['jev', 'local']);
   });
 });
+
+describe('the plan agents setting', () => {
+  it('defaults to the maximum, and reads the name the config had before the rename', () => {
+    expect(loadConfig({}).concurrency.planAgents).toBe(5);
+    expect(loadConfig({ concurrency: { planAgents: 2 } }).concurrency.planAgents).toBe(2);
+    expect(loadConfig({ concurrency: { speckitAgents: 3 } }).concurrency.planAgents).toBe(3);
+  });
+});

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { resolveDecision, type Config } from '../config/config.js';
 import { measuredFloor, routingSamples, type RoutingSample } from '../decide/evals.js';
 import { loadEvents } from '../store/event-store.js';
+import { currentEvent } from './events.js';
 
 /** The floor a session answers at: a fixed number, nothing when off or routing is off, or what the project's labelled answers prove. */
 export async function answerFloor(cfg: Config, refineDir: string): Promise<number | undefined> {
@@ -12,7 +13,7 @@ export async function answerFloor(cfg: Config, refineDir: string): Promise<numbe
   if (typeof setting === 'number') return setting;
   const samples: RoutingSample[] = [];
   for (const specId of await fs.readdir(refineDir).catch(() => [] as string[])) {
-    samples.push(...routingSamples(await loadEvents(path.join(refineDir, specId, 'events.ndjson')).catch(() => [])));
+    samples.push(...routingSamples((await loadEvents(path.join(refineDir, specId, 'events.ndjson')).catch(() => [])).map((e) => currentEvent(e))));
   }
   return measuredFloor(samples) ?? undefined;
 }

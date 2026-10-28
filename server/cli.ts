@@ -121,7 +121,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
-  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.speckitAgents });
+  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents });
   const projectDirOf = async (projectId: string): Promise<string | null> => {
     for (const { dir } of (await readUserConfig()).cfg.projects) {
       const read = await readProject(dir).catch(() => null);

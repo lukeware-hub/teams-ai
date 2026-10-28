@@ -61,25 +61,25 @@ export const RefineEvent = {
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
   /** "Preparar planos" started: `{total, inputHash}`: the steps (the constitution plus four per backlog item) and the hash of the six inputs. */
-  SpeckitStarted: 'SPECKIT_STARTED',
+  SpeckitStarted: 'PLANS_STARTED',
   /** The steps of an earlier preparation that this one keeps: `{steps}`, each with its command, item, basis and times. */
-  SpeckitReused: 'SPECKIT_REUSED',
+  SpeckitReused: 'PLANS_REUSED',
   /** One plan command started: `{command, itemKey?}`, so the owner sees what runs now. */
-  SpeckitStepStarted: 'SPECKIT_STEP_STARTED',
+  SpeckitStepStarted: 'PLANS_STEP_STARTED',
   /** One plan command finished: `{command, itemKey?, files}`. */
-  SpeckitStepDone: 'SPECKIT_STEP_DONE',
-  SpeckitStepRepaired: 'SPECKIT_STEP_REPAIRED',
+  SpeckitStepDone: 'PLANS_STEP_DONE',
+  SpeckitStepRepaired: 'PLANS_STEP_REPAIRED',
   AutopilotPaused: 'AUTOPILOT_PAUSED',
   /** The plan preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
   /** The implementation plans of every item are written (plan 107): `{inputHash}`. An older build ignores it and shows the preparation as not done. */
   PlansPrepared: 'PLANS_PREPARED',
   /** The plan preparation stopped: `{reason, detail?}`, the reason in plain words for the owner and its technical detail. */
-  SpeckitFailed: 'SPECKIT_FAILED',
+  SpeckitFailed: 'PLANS_FAILED',
   /** The PO or SM read the questions of a plan step: `{results, rework?}`; `rework` names the step to run again after an answer. */
   SpeckitTriaged: 'SPECKIT_TRIAGED',
   /** The plan preparation no longer stands: an answer came after its files were written, so the next run starts over. */
-  SpeckitStale: 'SPECKIT_STALE',
+  SpeckitStale: 'PLANS_STALE',
   /** The PO and the SM started answering the open plan questions, at the owner's request. */
   SpeckitAnswersStarted: 'SPECKIT_ANSWERS_STARTED',
   /** The PO and the SM stopped answering the open plan questions, whether they finished or were stopped. */
@@ -87,6 +87,21 @@ export const RefineEvent = {
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
   DecisionMade: 'DECISION_MADE',
 } as const;
+/** The names the journal wrote before the plan preparation was renamed, each with its current name. */
+const RENAMED_EVENT_TYPES = new Map<string, string>([
+  ['SPECKIT_STARTED', RefineEvent.SpeckitStarted],
+  ['SPECKIT_REUSED', RefineEvent.SpeckitReused],
+  ['SPECKIT_STEP_STARTED', RefineEvent.SpeckitStepStarted],
+  ['SPECKIT_STEP_DONE', RefineEvent.SpeckitStepDone],
+  ['SPECKIT_STEP_REPAIRED', RefineEvent.SpeckitStepRepaired],
+  ['SPECKIT_FAILED', RefineEvent.SpeckitFailed],
+  ['SPECKIT_STALE', RefineEvent.SpeckitStale],
+]);
+/** An event as the current code names it: a journal written before the rename reads with the current names. */
+export const currentEvent = <T extends { type: string }>(e: T): T => {
+  const type = RENAMED_EVENT_TYPES.get(e.type);
+  return type === undefined ? e : { ...e, type };
+};
 /** A choice the owner can pick as the answer; `recommended` marks the one the agent suggests. */
 export interface QuestionChoice {
   label: string;

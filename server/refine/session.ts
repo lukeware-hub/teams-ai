@@ -23,7 +23,7 @@ import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
-import { DRAFT_HASH, RefineEvent } from './events.js';
+import { currentEvent, DRAFT_HASH, RefineEvent } from './events.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -63,7 +63,7 @@ export class RefineJournal {
 
   static async open(file: string, ids: { projectId: string; specId: string }): Promise<RefineJournal> {
     const store = await EventStore.open({ file, runId: `${ids.projectId}/${ids.specId}`, specHash: DRAFT_HASH });
-    return new RefineJournal(store, await store.readAll());
+    return new RefineJournal(store, (await store.readAll()).map(currentEvent));
   }
 
   get events(): readonly StoredEvent[] {

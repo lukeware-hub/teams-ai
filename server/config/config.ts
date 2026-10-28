@@ -162,8 +162,11 @@ export const Config = z.object({
       maxParallel: positive.default(DEFAULT_MAX_PARALLEL),
       maxClaudeProcesses: positive.default(3),
       /** Agents that prepare the plans at once, set in Settings; a preparation runs one at a time when 1. */
-      speckitAgents: positive.max(PLAN_AGENTS_MAX).default(PLAN_AGENTS_MAX),
+      planAgents: positive.max(PLAN_AGENTS_MAX).optional(),
+      /** The name before the rename, read for a config written earlier. */
+      speckitAgents: positive.max(PLAN_AGENTS_MAX).optional(),
     })
+    .transform((c) => ({ maxParallel: c.maxParallel, maxClaudeProcesses: c.maxClaudeProcesses, planAgents: c.planAgents ?? c.speckitAgents ?? PLAN_AGENTS_MAX }))
     .prefault({}),
   retry: z
     .object({
