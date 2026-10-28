@@ -110,5 +110,4 @@ decision layer and plan 7's orchestrator.
 
 ## Outstanding work
 
-Moved to [`../ROADMAP.md`](../ROADMAP.md): the staged backlog to the golden run, the System 1 decision status, and
-the plan-before-implementing workflow.
+The staged roadmap is no longer in the repository. Its open features are in [`../FEATURES.md`](../FEATURES.md) and its known bugs in [`../BACKLOG.md`](../BACKLOG.md).

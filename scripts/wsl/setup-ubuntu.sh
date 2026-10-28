@@ -32,7 +32,7 @@ PROFILE
 fi
 
 echo "== claude code cli"
-have claude || npm install -g @anthropic-ai/claude-code
+have claude || npm install -g @anthropic-ai/claude-code@2.1.295
 
 echo "== gh"
 if ! have gh; then
@@ -48,7 +48,7 @@ if ! have gitleaks; then
   need_sudo install -m 755 /tmp/gitleaks /usr/local/bin/gitleaks
 fi
 if ! have osv-scanner; then
-  curl -fsSLo /tmp/osv-scanner https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+  curl -fsSLo /tmp/osv-scanner https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64
   need_sudo install -m 755 /tmp/osv-scanner /usr/local/bin/osv-scanner
 fi
 

@@ -49,8 +49,7 @@ Status: pending.
 
 Status: pending.
 - README and RUNBOOK in the default post-phase, not a separate run.
-- Pin Claude Code and osv-scanner in `scripts/wsl/setup-ubuntu.sh`.
-- `docs/superpowers/ROADMAP.md` is cited by `plans/README.md` but missing. Restore it or remove the citation.
+- Done 2026-10-28: Claude Code is pinned to 2.1.295 and osv-scanner to v2.7.0 in `scripts/wsl/setup-ubuntu.sh`; the missing roadmap citation is replaced by a pointer to this file and to BACKLOG.md.
 - Resource limits (CPU and memory) on the platform containers.
 
 Public deploy target: out of scope for now (the owner works locally).
