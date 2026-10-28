@@ -35,6 +35,18 @@ describe('workflow golden files', () => {
 });
 
 describe('toolchain setup per stack', () => {
+  it('sets up Java and .NET on the runner with the version of the gate image', () => {
+    const javaPlan = makePlan(spec, { stack: 'java-spring', gateImage: 'eclipse-temurin:21-jdk' });
+    expect(renderCi(javaPlan)).toContain('actions/setup-java@v4');
+    expect(renderCi(javaPlan)).toContain('distribution: temurin');
+    expect(renderCi(javaPlan)).toContain('java-version: "21"');
+    expect(validateWorkflow('ci', renderCi(javaPlan), javaPlan)).toEqual([]);
+    const dotnetPlan = makePlan(spec, { stack: 'dotnet-minimal-api', gateImage: 'mcr.microsoft.com/dotnet/sdk:8.0' });
+    expect(renderCi(dotnetPlan)).toContain('actions/setup-dotnet@v4');
+    expect(renderCi(dotnetPlan)).toContain('dotnet-version: "8.0"');
+    expect(validateWorkflow('ci', renderCi(dotnetPlan), dotnetPlan)).toEqual([]);
+  });
+
   it('sets up Go and Rust on the runner with the version of the gate image', () => {
     expect(renderCi(goPlan)).toContain('actions/setup-go@v5');
     expect(renderCi(goPlan)).toContain('go-version: "1.26"');

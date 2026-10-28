@@ -36,17 +36,38 @@ describe('buildRoleSettings', () => {
   });
 
   it('grants Bash allow rules only to roles that may run the suite', () => {
-    expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toEqual(
+    expect(buildRoleSettings('dev', { allowedDomains: [], stacks: ['node'] }).permissions.allow).toEqual(
       expect.arrayContaining(['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)']),
     );
-    expect(buildRoleSettings('test', { allowedDomains: [] }).permissions.allow).toContain('Bash(npm:*)');
+    expect(buildRoleSettings('test', { allowedDomains: [], stacks: ['node'] }).permissions.allow).toContain('Bash(npm:*)');
     // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
-    expect(buildRoleSettings('devops', { allowedDomains: [] }).permissions.allow).not.toContain('Bash(npm:*)');
+    expect(buildRoleSettings('devops', { allowedDomains: [], stacks: ['node'] }).permissions.allow).not.toContain('Bash(npm:*)');
     // Every role may run only the Agent Reach CLI from Bash, besides its own rules.
     expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
     expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
     expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['Bash(agent-reach:*)']);
+  });
+
+  it('gives the Front, Dev and Test roles the toolchain of their stacks only, and never npm without a node stack', () => {
+    for (const role of ['front', 'dev', 'test'] as const) {
+      const python = buildRoleSettings(role, { allowedDomains: [], stacks: ['python'] }).permissions.allow;
+      expect(python, role).toEqual(expect.arrayContaining(['Bash(.tools/venv/bin/pip:*)', 'Bash(python3:*)']));
+      expect(python, role).not.toEqual(expect.arrayContaining(['Bash(npm:*)', 'Bash(go:*)']));
+      expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['java'] }).permissions.allow, role).toEqual(expect.arrayContaining(['Bash(mvn:*)', 'Bash(./gradlew:*)']));
+      expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['rust', 'go'] }).permissions.allow, role).toEqual(expect.arrayContaining(['Bash(cargo:*)', 'Bash(go:*)']));
+      for (const stacks of [undefined, ['other'], ['python'], ['go'], ['java'], ['rust']] as const) {
+        expect(buildRoleSettings(role, { allowedDomains: [], stacks: stacks as undefined }).permissions.allow, `${role} ${stacks}`).not.toContain('Bash(npm:*)');
+      }
+      expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['node'] }).permissions.allow).toContain('Bash(npm:*)');
+    }
+    // A Java step never gets the Python or Go commands, and a Python step never gets Maven.
+    const java = buildRoleSettings('dev', { allowedDomains: [], stacks: ['java'] }).permissions.allow;
+    expect(java).not.toContain('Bash(python3:*)');
+    expect(java).not.toContain('Bash(go:*)');
+    expect(buildRoleSettings('dev', { allowedDomains: [], stacks: ['python'] }).permissions.allow).not.toContain('Bash(mvn:*)');
+    // Roles without a toolchain get no stack commands, whatever the stacks.
+    expect(buildRoleSettings('devops', { allowedDomains: [], stacks: ['python'] }).permissions.allow).not.toContain('Bash(python3:*)');
   });
 
   it('forbids every write to the installed skill plugins, by the Edit tool and by any command of the sandbox', () => {
@@ -137,7 +158,7 @@ describe('writeRoleSettings', () => {
 describe('sandbox.enabled', () => {
   it('turns the sandbox off when the config says so, keeping the permission rules', async () => {
     const { buildRoleSettings } = await import('../../server/runner/role-settings.js');
-    const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], sandboxEnabled: false });
+    const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], stacks: ['node'], sandboxEnabled: false });
     expect(s.sandbox).toEqual({ enabled: false, network: { allowedDomains: ['registry.npmjs.org'] } });
     expect(s.permissions.allow).toContain('Bash(npm:*)');
   });

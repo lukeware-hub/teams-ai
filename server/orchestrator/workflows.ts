@@ -25,6 +25,7 @@ const ACTIONS = {
   build: 'docker/build-push-action@v6',
   flutter: 'subosito/flutter-action@v2',
   java: 'actions/setup-java@v4',
+  dotnet: 'actions/setup-dotnet@v4',
   android: 'android-actions/setup-android@v3',
   upload: 'actions/upload-artifact@v4',
 } as const;
@@ -32,12 +33,14 @@ const ACTIONS = {
 type Step = Record<string, unknown>;
 const planStack = (plan: Plan): StackKind => stackKind(`${plan.stack} ${plan.gateImage}`);
 
-// Docker image name and the setup action's own version key, per stack.
-const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; key: string }> = {
+// Docker image name, the setup action's own version key and any fixed inputs, per stack.
+const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; key: string; base?: Record<string, string> }> = {
   node: { image: 'node', key: 'node-version' },
   python: { image: 'python', key: 'python-version' },
   go: { image: 'golang', key: 'go-version' },
   rust: { image: 'rust', key: 'toolchain' },
+  java: { image: 'eclipse-temurin', key: 'java-version', base: { distribution: 'temurin' } },
+  dotnet: { image: 'dotnet/sdk', key: 'dotnet-version' },
 };
 
 /** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no usable version (`rust:1-bookworm`). */
@@ -47,9 +50,10 @@ function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
   // A Flutter CI needs its own setup action (Flutter and the Android SDK), which does not exist yet.
   if (kind === 'other' || kind === 'flutter') return [];
-  const { image, key } = SETUP[kind];
+  const { image, key, base = {} } = SETUP[kind];
   const version = toolVersion(plan, image);
-  return [{ uses: ACTIONS[kind], ...(version ? { with: { [key]: version } } : {}) }];
+  const inputs = { ...base, ...(version ? { [key]: version } : {}) };
+  return [{ uses: ACTIONS[kind], ...(Object.keys(inputs).length > 0 ? { with: inputs } : {}) }];
 }
 
 export const COMPOSE_UP = 'docker compose up -d --build --wait';
