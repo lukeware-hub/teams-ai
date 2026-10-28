@@ -50,7 +50,7 @@ Status: pending.
 Status: pending.
 - README and RUNBOOK in the default post-phase, not a separate run.
 - Done 2026-10-28: Claude Code is pinned to 2.1.295 and osv-scanner to v2.7.0 in `scripts/wsl/setup-ubuntu.sh`; the missing roadmap citation is replaced by a pointer to this file and to BACKLOG.md.
-- Resource limits (CPU and memory) on the platform containers.
+- Done 2026-10-28: the platform containers have caps: teams-ai 4 CPUs and 8 GiB, dind 4 CPUs and 6 GiB, goproxy 1 CPU and 512 MiB (`docker-compose.yml`).
 
 Public deploy target: out of scope for now (the owner works locally).
 
