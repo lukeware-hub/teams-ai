@@ -476,4 +476,4 @@ scripts/   WSL setup, smoke tests, integration and evaluation scripts
 
 ## License
 
-No license has been declared yet.
+O código é privado. Uso e distribuição não autorizados são proibidos.

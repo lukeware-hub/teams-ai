@@ -105,6 +105,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 111 | [`2026-10-28-teams-ai-111-test-services.md`](2026-10-28-teams-ai-111-test-services.md) | Built and merged, 2026-10-28: test services on demand (Redis, MySQL, MongoDB, RabbitMQ, PostgreSQL) for the unit-test gate. FEATURES item 6. |
 | 112 | [`2026-10-28-teams-ai-112-retry-budget-and-models.md`](2026-10-28-teams-ai-112-retry-budget-and-models.md) | Built and merged, 2026-10-28: optional per-task token budget for retries (retry.taskTokenBudget; unset keeps the old rule); model per role confirmed. FEATURES item 5. |
 | 113 | [`2026-10-28-teams-ai-113-flutter-ci.md`](2026-10-28-teams-ai-113-flutter-ci.md) | Built and merged, 2026-10-28: Flutter CI setup. FEATURES item 2. |
+| 114 | [`2026-10-28-teams-ai-114-agents-in-use.md`](2026-10-28-teams-ai-114-agents-in-use.md) | Built, on the merged main, 2026-10-28: the Settings screen shows the model and effort each role uses now ("Em uso agora"), as a second line under each row. The Chrome check of the screen is still open. FEATURES item 5. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
