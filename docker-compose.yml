@@ -9,6 +9,9 @@ services:
     image: ${TEAMS_AI_IMAGE:-ghcr.io/lukeware-hub/teams-ai:latest}
     # Reaps killed runs: a zombie still looks alive to the run lock and blocks the next run of the spec.
     init: true
+    # The agents run Claude Code, gates and builds: the cap keeps a runaway step from taking the host.
+    cpus: 4
+    mem_limit: 8g
     depends_on:
       dind:
         condition: service_healthy
@@ -49,6 +52,8 @@ services:
     build: .
     image: ${TEAMS_AI_IMAGE:-ghcr.io/lukeware-hub/teams-ai:latest}
     init: true
+    cpus: 1
+    mem_limit: 512m
     command: ['npx', 'tsx', '--no-warnings=ExperimentalWarning', 'server/runner/go-proxy.ts']
     cap_drop:
       - ALL
@@ -62,6 +67,9 @@ services:
 
   dind:
     image: docker:27-dind-rootless@sha256:e2ac8e8f66ae21a060b0a8e3005c70f6ed9441aabf409434463d1f6eecd38026
+    # Runs the gate images and their builds, so it gets most of the rest of the host.
+    cpus: 4
+    mem_limit: 6g
     environment:
       DOCKER_TLS_CERTDIR: ''
     # Rootless dockerd needs user namespaces and /proc writes; it is not `privileged` and has no host socket.
