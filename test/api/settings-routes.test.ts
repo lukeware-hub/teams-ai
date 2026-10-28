@@ -30,6 +30,18 @@ describe('settings routes', () => {
     expect(after.agents.find((a) => a.role === 'dev')!.setting).toEqual({ model: 'claude-opus-5-5', effort: 'max' });
   });
 
+  it('shows the model and effort each agent uses now: the manual pick, or the role default when automatic', async () => {
+    await put(`${base()}/demo/sec`, { mode: 'manual', model: 'claude-opus-5-5', effort: 'max' });
+    const manual = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown; inUse: unknown }> };
+    expect(manual.agents.find((a) => a.role === 'sec')).toMatchObject({ setting: { model: 'claude-opus-5-5', effort: 'max' }, inUse: { model: 'claude-opus-5-5', effort: 'max' } });
+    expect(manual.agents.find((a) => a.role === 'dev')!.inUse).toEqual({ model: 'claude-haiku-5-5', effort: 'low' });
+
+    const saved = (await (await put(`${base()}/demo/dev`, { mode: 'auto' })).json()) as { setting: unknown; inUse: unknown };
+    expect(saved).toEqual({ setting: null, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } });
+    const automatic = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown; inUse: unknown }> };
+    expect(automatic.agents.find((a) => a.role === 'dev')).toMatchObject({ setting: null, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } });
+  });
+
   it('gives an agent back to automatic with mode auto', async () => {
     await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-haiku-5-5', effort: 'low' });
     expect((await put(`${base()}/demo/dev`, { mode: 'auto' })).status).toBe(200);

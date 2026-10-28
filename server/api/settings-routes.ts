@@ -1,5 +1,6 @@
-import { AgentSetting, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
+import { AgentSetting, Config, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
+import { effortFor } from '../runner/model-policy.js';
 import { readUserConfig, setAgentSetting, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
 import { configProblem } from './onboarding-routes.js';
@@ -51,6 +52,15 @@ const agentsOf = (input: unknown): number => {
   return agents;
 };
 
+/** The model and effort an automatic role uses by default: its role profile model, at the effort the model allows when nothing is asked. */
+const automaticSetting = (cfg: Config, role: Role): AgentSetting => {
+  const model = cfg.roles[role].model;
+  return { model, effort: effortFor(model, undefined) } as AgentSetting;
+};
+
+/** What a role runs on now: its manual setting, else the automatic default. */
+const inUseOf = (cfg: Config, role: Role, setting: AgentSetting | null): AgentSetting => setting ?? automaticSetting(cfg, role);
+
 export function settingsRoutes(deps: SettingsDeps): Route[] {
   return [
     {
@@ -77,7 +87,12 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const projectId = slugOf(params.projectId!);
         const { cfg } = await readUserConfig(deps.home).catch(configProblem);
         const settings = cfg.agentSettings[projectId] ?? {};
-        json(200, { agents: ROLES.map((role) => ({ role, setting: role in settings ? settings[role] ?? null : DEFAULT_AGENT_SETTING })) });
+        json(200, {
+          agents: ROLES.map((role) => {
+            const setting = role in settings ? settings[role] ?? null : DEFAULT_AGENT_SETTING;
+            return { role, setting, inUse: inUseOf(cfg, role, setting) };
+          }),
+        });
       },
     },
     {
@@ -87,8 +102,8 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const projectId = slugOf(params.projectId!);
         const role = roleOf(params.role!);
         const setting = settingOf(await body());
-        await setAgentSetting(projectId, role, setting, deps.home).catch(configProblem);
-        json(200, { setting });
+        const cfg = await setAgentSetting(projectId, role, setting, deps.home).catch(configProblem);
+        json(200, { setting, inUse: inUseOf(cfg, role, setting) });
       },
     },
     {

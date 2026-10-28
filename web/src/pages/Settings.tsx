@@ -28,9 +28,10 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
   const label = ROLE_LABELS[agent.role] ?? agent.role;
   const [manual, setManual] = useState(agent.setting !== null);
   const [pick, setPick] = useState<AgentSetting>(agent.setting ?? DEFAULT_PICK);
+  const [inUse, setInUse] = useState<AgentSetting>(agent.inUse);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const save = (choice: AgentChoice) => {
-    queue.current = queue.current.then(() => settingsApi.setAgent(projectId, agent.role, choice)).catch(onFailed);
+    queue.current = queue.current.then(() => settingsApi.setAgent(projectId, agent.role, choice)).then((r) => setInUse(r.inUse)).catch(onFailed);
   };
   const changeMode = (value: string) => {
     const next = value === 'manual';
@@ -44,7 +45,10 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
   return (
     <li className={row}>
       <span className={rowId}>{label}</span>
-      <span className="text-[0.8125rem] text-ink-soft">{manual ? `${MODEL_LABELS[pick.model]} · ${EFFORT_LABELS[pick.effort]}` : 'Orquestrador escolhe'}</span>
+      <div className="grid gap-0.5 text-[0.8125rem] text-ink-soft">
+        <span>{manual ? `${MODEL_LABELS[pick.model]} · ${EFFORT_LABELS[pick.effort]}` : 'Orquestrador escolhe'}</span>
+        <span data-testid={`in-use-${agent.role}`}>{`Em uso agora: ${MODEL_LABELS[inUse.model]} · ${EFFORT_LABELS[inUse.effort]}`}</span>
+      </div>
       <div className={`${rowActions} max-md:flex-col max-md:gap-3`}>
         {manual ? (
           <>

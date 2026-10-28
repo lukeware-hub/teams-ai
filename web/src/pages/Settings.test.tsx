@@ -10,7 +10,8 @@ afterEach(() => {
 });
 
 const project = { projectId: 'demo', name: 'Demo' } as ProjectRow;
-const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'].map((role) => ({ role, setting: null }));
+const sonnetLow = { model: 'claude-sonnet-5-5', effort: 'low' } as const;
+const agents = ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'].map((role) => ({ role, setting: null, inUse: sonnetLow }));
 const item = (ok: boolean, detail: string): Item => ({ ok, detail });
 const envStatus = (over: Partial<Status['items']> = {}): Status => ({
   items: {
@@ -75,7 +76,7 @@ describe('SettingsPage', () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
     vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
-    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null });
+    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null, inUse: sonnetLow });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     const mode = await openModelsCollapse();
@@ -87,11 +88,30 @@ describe('SettingsPage', () => {
     expect(await screen.findByLabelText('Modelo de Desenvolvedor')).toBeTruthy();
   });
 
+  it('shows the model and effort in use for a manual agent and for an automatic one', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({
+      agents: agents.map((a) => (a.role === 'sec' ? { role: 'sec', setting: { model: 'claude-opus-5-5', effort: 'max' }, inUse: { model: 'claude-opus-5-5', effort: 'max' } } : a)),
+    });
+    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null, inUse: sonnetLow });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    await openModelsCollapse();
+    expect(screen.getByTestId('in-use-sec').textContent).toBe('Em uso agora: Opus 5.5 · Máximo');
+    expect(screen.getByTestId('in-use-dev').textContent).toBe('Em uso agora: Sonnet 5.5 · Baixo');
+    expect(screen.getByLabelText('Modo de Desenvolvedor').closest('li')!.textContent).toContain('Orquestrador escolhe');
+
+    fireEvent.change(screen.getByLabelText('Modo de Segurança'), { target: { value: 'auto' } });
+    await waitFor(() => expect(setAgent).toHaveBeenCalledWith('demo', 'sec', { mode: 'auto' }));
+    await waitFor(() => expect(screen.getByTestId('in-use-sec').textContent).toBe('Em uso agora: Sonnet 5.5 · Baixo'));
+  });
+
   it('saves each change of model or effort for a manual agent', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
-    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: agents.map((a) => (a.role === 'sec' ? { role: 'sec', setting: { model: 'claude-opus-5-5', effort: 'max' } } : a)) });
-    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null });
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: agents.map((a) => (a.role === 'sec' ? { role: 'sec', setting: { model: 'claude-opus-5-5', effort: 'max' }, inUse: { model: 'claude-opus-5-5', effort: 'max' } } : a)) });
+    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null, inUse: sonnetLow });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     await openModelsCollapse();
