@@ -95,3 +95,14 @@ describe('stacks', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 });
+
+describe('expo detection and the npm cache', () => {
+  it('reads an Expo text as expo even when a Node word comes first', () => {
+    expect(stackKind('TypeScript Expo app node:22-bookworm')).toBe('expo');
+    expect(stackKind('Node express node:22-bookworm')).toBe('node');
+  });
+
+  it('keeps the npm cache in the worktree', () => {
+    expect(stackEnv('/w/t1').npm_config_cache).toBe('/w/t1/.tools/npm-cache');
+  });
+});

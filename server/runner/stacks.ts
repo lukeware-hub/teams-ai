@@ -60,6 +60,8 @@ export function stackEnv(cwd: string): Record<string, string> {
     CARGO_HOME: path.posix.join(tools, 'cargo'),
     RUSTUP_HOME: '/usr/local/rustup',
     PIP_CACHE_DIR: path.posix.join(tools, 'pip-cache'),
+    // The step HOME is read-only, so npm keeps its cache in the worktree as pip does.
+    npm_config_cache: path.posix.join(tools, 'npm-cache'),
     // The step HOME is read-only, so the Maven and NuGet caches and the .NET CLI home live in the worktree too.
     MAVEN_OPTS: `-Dmaven.repo.local=${path.posix.join(tools, 'm2')}`,
     NUGET_PACKAGES: path.posix.join(tools, 'nuget'),
@@ -98,6 +100,8 @@ const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
 
 /** The stack a free text names (the plan's stack, optionally with the gate image); the earliest mention wins. */
 export function stackKind(text: string): StackKind {
+  // Expo is a Node stack; its name wins over the Node words in the same text.
+  if (STACK_PATTERNS.expo.test(text)) return 'expo';
   let best: StackKind = 'other';
   let at = Infinity;
   for (const [kind, pattern] of Object.entries(STACK_PATTERNS) as Array<[Exclude<StackKind, 'other'>, RegExp]>) {
