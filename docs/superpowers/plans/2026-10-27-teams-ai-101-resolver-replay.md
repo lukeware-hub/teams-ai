@@ -117,3 +117,9 @@ Owner decisions:
 - The six inputs are the last preparation's, while some agents saw digests of them: a quote copied from a digest is checked against the full document, and the report says so.
 - The labels are the owner's own answers, given after the agents' recommendation was shown. Agreement is acceptance of a recommendation the owner saw, an upper bound on the owner's own preference.
 - The tuning of `r1` to `r2` was done on the DEV copy, so the DEV numbers are in-sample. They are not promotable, and the holdout after this commit is the first honest test.
+
+## Remeasured 2026-10-28 (owner's decision: wait for the holdout)
+
+A fresh copy of the live journal (9,210 events, the same as in the first measurement, so no owner answer came after plan 101's commit) gives the same DEV numbers: 76.3% on 363 independent labels, Wilson lower bound 0.725; detail 87.5% on 8 labels; scope 69.4%; unclassified 80.6%. No stratum clears the gate. The holdout (`--since` the plan 101 commit time) has 0 labels, so it cannot be read yet.
+
+Decision (owner, 2026-10-28): no build. The rules stay frozen as `r2`. The next measurement is the holdout, on the answers the owner gives after the plan 101 commit.
