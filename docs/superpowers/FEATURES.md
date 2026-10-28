@@ -10,7 +10,7 @@ Redeploy only when no agent is running in the container, because a redeploy stop
 
 ## 2. Mobile: Flutter for Android, end to end
 
-Status: partial. Built 2026-10-28 (plan 108): JUnit from `flutter test` and the APK release workflow. Left: the Flutter CI setup and a release signing key (owner decision).
+Status: partial. Built 2026-10-28 (plan 108): JUnit from `flutter test` and the APK release workflow. Done: the Flutter CI setup (plan 113). Decided 2026-10-28: the APK keeps the debug signing key for now; a release key is a later decision.
 
 Done: the stack `flutter`, a gate image with a pinned Android toolchain, the install step in that image, and a debug APK built offline by the gate.
 
