@@ -44,14 +44,15 @@ export const AGENT_EFFORTS = ['low', 'medium', 'high', 'max'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
 export type AgentEffort = (typeof AGENT_EFFORTS)[number];
 export interface AgentSetting { model: AgentModel; effort: AgentEffort }
-export interface AgentRow { role: string; setting: AgentSetting | null }
+/** `inUse` is the model and effort the role's next step runs on: its setting, or the automatic default. */
+export interface AgentRow { role: string; setting: AgentSetting | null; inUse: AgentSetting }
 export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting);
 
 const S = '/api/settings';
 export const settingsApi = {
   agents: (projectId: string) => fetch(`${S}/agents/${projectId}`).then((r) => json<{ agents: AgentRow[] }>(r)),
   setAgent: (projectId: string, role: string, choice: AgentChoice) =>
-    fetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null }>(r)),
+    fetch(`${S}/agents/${projectId}/${role}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(choice) }).then((r) => json<{ setting: AgentSetting | null; inUse: AgentSetting }>(r)),
   stepTimeout: (projectId: string) => fetch(`${S}/step-timeout/${projectId}`).then((r) => json<{ timeoutMinutes: number }>(r)),
   setStepTimeout: (projectId: string, timeoutMinutes: number) =>
     fetch(`${S}/step-timeout/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timeoutMinutes }) }).then((r) => json<{ timeoutMinutes: number }>(r)),
