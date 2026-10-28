@@ -981,7 +981,7 @@ describe('refinement cycle with large documents', () => {
 });
 
 describe('refinement cycle Jev requirement', () => {
-  it('fails before any agent runs when Jev is unavailable', async () => {
+  it('runs the agents without Jev when it is unavailable, and keeps the outage on record', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
     const docs = path.join(root, 'docs');
     await mkdir(docs, { recursive: true });
@@ -994,7 +994,7 @@ describe('refinement cycle Jev requirement', () => {
     await Promise.all([draft.projectMd, draft.briefMd, draft.stackMd, draft.flowMd, draft.designMd].map((f) => writeFile(f, '# doc')));
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];
     const journal = { state: emptyRefineState(), allocStepSeq: () => 1, fact: async (type: string, data: Record<string, unknown>) => { events.push({ type, data }); return { seq: events.length, at: '', runId: 'demo/demo-001', specHash: 'draft', type, kind: 'fact' as const, data }; } };
-    const runAgent = vi.fn();
+    const runAgent = vi.fn(async () => ({ ok: false, failure: 'schema', errors: ['stop here'], summary: {} }));
     await runCycle({
       draft,
       journal,
@@ -1002,9 +1002,10 @@ describe('refinement cycle Jev requirement', () => {
       principles: () => [],
       retrieval: () => [],
       validateDocs: async () => ({ available: false, decision: 'review' as const, consistent: null, confidence: null, model: null, checks: {}, stateTruncated: false }),
-    }, 1);
-    expect(runAgent).not.toHaveBeenCalled();
-    expect(events.find((event) => event.type === 'REFINE_CYCLE_FAILED')?.data.reason).toBe('Jev indisponível: confira a chave do OpenRouter.');
+    }, 1).catch(() => undefined);
+    expect(events.find((event) => event.type === 'REFINE_DOCS_VALIDATED')?.data).toMatchObject({ available: false });
+    expect(events.find((event) => event.type === 'REFINE_CYCLE_FAILED')?.data.reason).not.toBe('Jev indisponível: confira a chave do OpenRouter.');
+    expect(runAgent).toHaveBeenCalled();
   });
 });
 

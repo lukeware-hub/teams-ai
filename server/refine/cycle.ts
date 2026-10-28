@@ -317,11 +317,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     jevValidation = await deps.validateDocs({ project: docs['project.md'], briefing: docs['briefing.md'], stack: docs['stack.md'], flow: docs['flow.md'], design: docs['design.md'] }).catch(() => ({ available: false, confidence: null, model: null, checks: {}, stateTruncated: false }));
     const validation = jevValidation;
     await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', ...validation });
-    // Jev findings are advisory (passed to Claude, PO, and SM), but Jev itself is required: no agent runs without it.
-    if (!validation.available) {
-      await fail('Jev indisponível: confira a chave do OpenRouter.');
-      return;
-    }
+    // Jev findings are advisory: an outage does not stop the cycle. DOCS_VALIDATED keeps it, so its decisions can be reviewed.
   }
 
   const backlogMode = journal.state.backlog?.enabled === true;
