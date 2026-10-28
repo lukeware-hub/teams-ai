@@ -79,3 +79,15 @@ describe('stepBudgetFor', () => {
     expect(stepBudgetFor(loadConfig({}), 'constructor')).toEqual(DEFAULT_CONFIG.budgets.step);
   });
 });
+
+describe('retry.taskTokenBudget', () => {
+  it('is unset by default, so the attempt count alone decides', () => {
+    expect(loadConfig({}).retry.taskTokenBudget).toBeUndefined();
+  });
+
+  it('accepts a positive whole number of tokens and rejects anything else', () => {
+    expect(loadConfig({ retry: { taskTokenBudget: 500_000 } }).retry.taskTokenBudget).toBe(500_000);
+    expect(() => loadConfig({ retry: { taskTokenBudget: 0 } })).toThrow(ConfigError);
+    expect(() => loadConfig({ retry: { taskTokenBudget: 1.5 } })).toThrow(/retry.taskTokenBudget/);
+  });
+});

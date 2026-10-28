@@ -21,6 +21,10 @@ export interface Failure {
   kind: FailureKind;
   gate?: string;
   schemaRetriesUsed?: number;
+  /** Tokens the task has used so far, counted by the orchestrator. */
+  spentTokens?: number;
+  /** The failure is identical to the one before it. */
+  repeated?: boolean;
 }
 
 export interface PolicyConfig {
@@ -28,6 +32,8 @@ export interface PolicyConfig {
   maxInfraRetriesPerGate: number;
   maxFlakyRetriesPerGate: number;
   maxSchemaRetriesPerStep: number;
+  /** Set: attempts continue while the task's tokens stay under it. Unset: `maxAttempts` applies. */
+  taskTokenBudget?: number;
 }
 
 export const DEFAULT_POLICY: PolicyConfig = {
@@ -56,6 +62,8 @@ export interface PolicyDecision {
  * Attempt budget: a task gets `maxAttempts` dev attempts. When they are spent the
  * task is replanned once; replacement tasks start with a fresh attempt budget
  * but can never be replanned again, so they block when their budget is spent.
+ * With `taskTokenBudget` set, attempts continue while the task is under the budget;
+ * a repeated identical failure or a spent budget ends them at once.
  */
 export function decideOnFailure(
   failure: Failure,
@@ -75,18 +83,18 @@ export function decideOnFailure(
       if ((failure.schemaRetriesUsed ?? 0) < cfg.maxSchemaRetriesPerStep) {
         return { action: 'rerun-step', consumeAttempt: false };
       }
-      return attemptFailure(task, cfg);
+      return attemptFailure(failure, task, cfg);
     case 'infra':
     case 'environment':
       if (gateRetries(task.infraRetries, failure) < cfg.maxInfraRetriesPerGate) {
         return { action: 'rerun-gate', consumeAttempt: false };
       }
-      return attemptFailure(task, cfg);
+      return attemptFailure(failure, task, cfg);
     case 'flaky-test':
       if (gateRetries(task.flakyRetries, failure) < cfg.maxFlakyRetriesPerGate) {
         return { action: 'rerun-gate', consumeAttempt: false };
       }
-      return attemptFailure(task, cfg);
+      return attemptFailure(failure, task, cfg);
     case 'code':
     case 'dependency':
     case 'timeout':
@@ -94,7 +102,7 @@ export function decideOnFailure(
     case 'budget':
     case 'review-changes':
     case 'rebase-conflict':
-      return attemptFailure(task, cfg);
+      return attemptFailure(failure, task, cfg);
     default: {
       const unreachable: never = failure.kind;
       throw new Error(`unhandled failure kind ${String(unreachable)}`);
@@ -107,8 +115,15 @@ function gateRetries(counter: Record<string, number>, failure: Failure): number 
   return counter[failure.gate] ?? 0;
 }
 
-function attemptFailure(task: TaskRuntime, cfg: PolicyConfig): PolicyDecision {
-  const attemptsAfter = task.attempts + 1;
-  if (attemptsAfter < cfg.maxAttempts) return { action: 'retry-dev', consumeAttempt: true };
+function attemptFailure(failure: Failure, task: TaskRuntime, cfg: PolicyConfig): PolicyDecision {
+  if (cfg.taskTokenBudget !== undefined) {
+    if (!failure.repeated && (failure.spentTokens ?? 0) < cfg.taskTokenBudget) return { action: 'retry-dev', consumeAttempt: true };
+    return spentAttempts(task);
+  }
+  if (task.attempts + 1 < cfg.maxAttempts) return { action: 'retry-dev', consumeAttempt: true };
+  return spentAttempts(task);
+}
+
+function spentAttempts(task: TaskRuntime): PolicyDecision {
   return { action: task.replanned ? 'block' : 'replan', consumeAttempt: true };
 }
