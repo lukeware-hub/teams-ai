@@ -174,6 +174,8 @@ export const Config = z.object({
       maxInfraRetriesPerGate: positive.default(DEFAULT_POLICY.maxInfraRetriesPerGate),
       maxFlakyRetriesPerGate: positive.default(DEFAULT_POLICY.maxFlakyRetriesPerGate),
       maxSchemaRetriesPerStep: positive.default(DEFAULT_POLICY.maxSchemaRetriesPerStep),
+      /** Tokens a task may spend while its attempts continue past `maxAttempts`; unset keeps the attempt count alone. */
+      taskTokenBudget: positive.optional(),
     })
     .prefault({}),
   github: z.object({ owner: z.string().min(1).optional(), /** Hosts `POST /projects` may clone from (audit M1). */ allowedHosts: z.array(z.string().min(1)).default(['github.com']) }).prefault({}),

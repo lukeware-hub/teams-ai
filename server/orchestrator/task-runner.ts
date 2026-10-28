@@ -13,7 +13,7 @@ import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
 import { devChangedFiles } from './sandbox-placeholders.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
-import { assessAttemptProgress } from '../decide/decisions/attempt-progress.js';
+import { assessAttemptProgress, repeatedFailure } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
 import { chooseModelTier, heuristicTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
@@ -72,6 +72,8 @@ export interface TaskRunnerDeps {
   /** R11.13 slice 6: when the decision layer gives no tier, the task's own size picks one (config `routing`); absent means off. */
   routing?: { tiers: 'off' | 'shadow' | 'on'; models: Record<ModelTier, string> };
   policy: PolicyConfig;
+  /** Tokens the task has used so far, from the run's accounting; absent counts as none. */
+  spentTokens?: (taskId: string) => number;
   packBase: () => PackBase;
   handoffs: () => readonly HandoffSummary[];
   boundaries: () => Promise<readonly string[]>;
@@ -734,7 +736,13 @@ export class TaskRunner {
   }
 
   private async fail(kind: FailureKind, text: string, gate?: string): Promise<void> {
-    const failure: Failure = { kind, gate, schemaRetriesUsed: this.schemaRetries };
+    const failure: Failure = {
+      kind,
+      gate,
+      schemaRetriesUsed: this.schemaRetries,
+      spentTokens: this.deps.spentTokens?.(this.taskId),
+      repeated: repeatedFailure([...this.attemptDeltas(), text]),
+    };
     const decision = decideOnFailure(failure, this.task, this.deps.policy);
     switch (decision.action) {
       case 'retry-dev': {

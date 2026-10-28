@@ -583,6 +583,7 @@ export class Run {
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       routing: cfg.routing,
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
+      spentTokens: (taskId) => this.accounting.tokensOf(this.accounting.total({ taskId })),
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       deliveredBefore: this.deliveredBefore,
       skillsRoot: expandHome('~/.teams-ai/skills'),

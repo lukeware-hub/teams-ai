@@ -77,3 +77,33 @@ describe('decideOnFailure', () => {
     expect(decideOnFailure({ kind: 'spec-gap' }, task())).toEqual({ action: 'route-spec-gap', consumeAttempt: false });
   });
 });
+
+describe('decideOnFailure with a task token budget', () => {
+  const budget = { ...DEFAULT_POLICY, taskTokenBudget: 1000 };
+  const code = (extra = {}) => ({ kind: 'code' as const, spentTokens: 100, ...extra });
+
+  it('keeps retrying past the attempt count while the task is under budget', () => {
+    expect(decideOnFailure(code(), task({ attempts: 3 }), budget)).toEqual({ action: 'retry-dev', consumeAttempt: true });
+    expect(decideOnFailure(code(), task({ attempts: 9 }), budget).action).toBe('retry-dev');
+  });
+
+  it('stops once the task has spent its budget: replans, then blocks', () => {
+    expect(decideOnFailure(code({ spentTokens: 1000 }), task({ attempts: 1 }), budget)).toEqual({ action: 'replan', consumeAttempt: true });
+    expect(decideOnFailure(code({ spentTokens: 1500 }), task({ attempts: 1, replanned: true }), budget)).toEqual({ action: 'block', consumeAttempt: true });
+  });
+
+  it('stops on a repeated identical failure even while under budget', () => {
+    expect(decideOnFailure(code({ repeated: true }), task({ attempts: 1 }), budget).action).toBe('replan');
+    expect(decideOnFailure(code({ repeated: true }), task({ attempts: 1, replanned: true }), budget).action).toBe('block');
+  });
+
+  it('applies the budget to budget-kind failures too', () => {
+    expect(decideOnFailure({ kind: 'budget', spentTokens: 1200 }, task({ attempts: 0 }), budget).action).toBe('replan');
+  });
+
+  it('ignores the budget when it is unset: the attempt count alone decides, as before', () => {
+    expect(decideOnFailure(code({ spentTokens: 0 }), task({ attempts: 3 }), DEFAULT_POLICY).action).toBe('replan');
+    expect(decideOnFailure(code({ spentTokens: 0, repeated: true }), task({ attempts: 1 }), DEFAULT_POLICY).action).toBe('retry-dev');
+    expect(decideOnFailure(code({ spentTokens: 999_999 }), task({ attempts: 2 }), DEFAULT_POLICY).action).toBe('replan');
+  });
+});
