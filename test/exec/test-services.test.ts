@@ -90,7 +90,10 @@ describe('gate container network', () => {
 
 describe('TEST_SERVICES catalog', () => {
   it('pins every image to an explicit version tag, never latest', () => {
-    for (const spec of Object.values(TEST_SERVICES)) expect(spec.image).toMatch(/:\d+/);
+    for (const spec of Object.values(TEST_SERVICES)) {
+      expect(spec.image).not.toMatch(/:latest$/);
+      expect(spec.image).toMatch(/:\d+/);
+    }
   });
 });
 
