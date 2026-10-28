@@ -30,11 +30,11 @@ Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and
 
 ## 5. Autonomy
 
-Status: pending.
-- Retry until green within the token budget. Today: three attempts, one replan, then block.
-- Notice on the project screen when a run blocks or waits for validation.
-- Fallback decision when the Jev service is down. Today: refinement halts.
-- Confirm the model each role runs. The agent frontmatter says `opus`, the config runs `sonnet`.
+Status: in progress (2026-10-28, owner authorized).
+- Done: retry within a token budget (plan 112): `retry.taskTokenBudget` in the config; unset keeps the old rule of three attempts, one replan, then block.
+- Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the frontmatter `model` lines are gone (plan 112 and this commit).
+- Pending: a notice on the project screen when a run blocks or waits for validation (needs an approved mock).
+- Pending: the fallback when the Jev service is down (today refinement halts); a decision is needed on what replaces the halt.
 
 Cost: alert only, the run never stops (decided by the owner).
 
