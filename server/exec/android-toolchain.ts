@@ -8,6 +8,8 @@ export const FLUTTER_SHA256 = 'baf7dcc5a3dbba60fe863bf493a6cf203195621f7786eaa5a
 export const CMDLINE_TOOLS_URL = 'https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip';
 export const CMDLINE_TOOLS_SHA256 = '2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258';
 /** The SDK packages a Flutter Android build needs: the platform the Flutter template compiles against, its build tools and the NDK. */
+/** The pinned Dart package that turns `flutter test --machine` output into JUnit XML (`tojunit`). */
+export const JUNITREPORT_VERSION = '2.0.2';
 export const SDK_PACKAGES = ['platform-tools', 'platforms;android-36', 'build-tools;36.0.0', 'ndk;28.2.13676358'];
 /** Flutter's own pub cache inside the image, baked with the tool's dependencies; a gate copies the project's packages into it. */
 export const FLUTTER_PUB_CACHE = '/opt/pub-cache';
@@ -24,6 +26,7 @@ export const androidImageSteps = (): string[] => [
   `RUN yes | sdkmanager --licenses >/dev/null && sdkmanager ${SDK_PACKAGES.map((p) => `"${p}"`).join(' ')}`,
   `ENV PUB_CACHE=${FLUTTER_PUB_CACHE}`,
   'RUN cd /opt/flutter/packages/flutter_tools && dart pub get',
+  `RUN dart pub global activate junitreport ${JUNITREPORT_VERSION}`,
   `RUN chmod -R a+rwX /opt/flutter /opt/android-sdk ${FLUTTER_PUB_CACHE}`,
 ];
 

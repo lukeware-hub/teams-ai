@@ -1,6 +1,7 @@
 import { parse, stringify } from 'yaml';
 import type { Plan } from '../contracts/plan.js';
 import { e2eCommand } from '../exec/e2e.js';
+import { FLUTTER_VERSION } from '../exec/android-toolchain.js';
 import { stackKind, type StackKind } from '../runner/stacks.js';
 
 /**
@@ -22,6 +23,10 @@ const ACTIONS = {
   login: 'docker/login-action@v3',
   meta: 'docker/metadata-action@v5',
   build: 'docker/build-push-action@v6',
+  flutter: 'subosito/flutter-action@v2',
+  java: 'actions/setup-java@v4',
+  android: 'android-actions/setup-android@v3',
+  upload: 'actions/upload-artifact@v4',
 } as const;
 
 type Step = Record<string, unknown>;
@@ -100,7 +105,26 @@ export function renderCi(plan: Plan): string {
   });
 }
 
+/** A Flutter release builds the APK with the plan's install command, on the gate's Flutter version, and keeps it as an artifact of the run. */
+export function renderApkRelease(plan: Plan): string {
+  const steps: Step[] = [
+    { uses: ACTIONS.checkout },
+    { uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } },
+    { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
+    { uses: ACTIONS.android },
+    { name: 'Build APK', run: plan.commands.install },
+    { name: 'Keep APK', uses: ACTIONS.upload, with: { name: 'apk', path: 'build/app/outputs/flutter-apk/*.apk' } },
+  ];
+  return dump({
+    name: 'release',
+    on: { push: { tags: ['v*'] } },
+    permissions: { contents: 'read' },
+    jobs: { apk: { 'runs-on': 'ubuntu-latest', steps } },
+  });
+}
+
 export function renderRelease(plan: Plan): string {
+  if (planStack(plan) === 'flutter') return renderApkRelease(plan);
   const image = `ghcr.io/\${{ github.repository_owner }}/${plan.deploy.image}`;
   const steps: Step[] = [
     { uses: ACTIONS.checkout },
@@ -179,12 +203,20 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
       if (!text.includes('SERVICE_URL')) errors.push('ci e2e step must set SERVICE_URL');
     }
   } else {
-    for (const prefix of ['actions/checkout@', 'docker/setup-buildx-action@', 'docker/login-action@', 'docker/build-push-action@']) {
-      if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);
+    if (planStack(plan) === 'flutter') {
+      for (const prefix of ['actions/checkout@', 'subosito/flutter-action@', 'actions/upload-artifact@']) {
+        if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);
+      }
+      if (!runs.includes(plan.commands.install.trim())) errors.push('release is missing the build step (install command)');
+      if (!text.includes('build/app/outputs/flutter-apk')) errors.push('release must keep the APK');
+    } else {
+      for (const prefix of ['actions/checkout@', 'docker/setup-buildx-action@', 'docker/login-action@', 'docker/build-push-action@']) {
+        if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);
+      }
+      if (plan.deploy.image !== undefined && (!text.includes('ghcr.io') || !text.includes(plan.deploy.image))) errors.push(`release must push ghcr.io/<owner>/${plan.deploy.image}`);
+      if (!text.includes('secrets.GITHUB_TOKEN')) errors.push('release must log in with GITHUB_TOKEN');
+      if (!text.includes('type=sha') || !text.includes('type=raw,value=latest')) errors.push('release must tag the commit sha and latest');
     }
-    if (plan.deploy.image !== undefined && (!text.includes('ghcr.io') || !text.includes(plan.deploy.image))) errors.push(`release must push ghcr.io/<owner>/${plan.deploy.image}`);
-    if (!text.includes('secrets.GITHUB_TOKEN')) errors.push('release must log in with GITHUB_TOKEN');
-    if (!text.includes('type=sha') || !text.includes('type=raw,value=latest')) errors.push('release must tag the commit sha and latest');
   }
   return errors;
 }
