@@ -49,7 +49,7 @@ import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
-import { copyCargoRoot, stackDomains, stackEnv, stackKind, type StackKind } from '../runner/stacks.js';
+import { androidToolchainOf, copyCargoRoot, stackDomains, stackEnv, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -132,7 +132,7 @@ function assertApiKey(deps: RunDeps): void {
 }
 
 /** A cold Go or Rust build in a fresh worktree is slow, and parallel tasks compile their tools at the same time (live: three Rust installs passed 10 minutes). */
-const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust', 'flutter'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
+const buildTimeoutMs = (plan: Plan): number => ((['go', 'rust', 'flutter', 'expo'] as const).includes(stackKind(plan.stack) as 'go') ? 25 * 60_000 : 10 * 60_000);
 
 /** The plan when it has one repository; a services plan is read per service instead. */
 const singlePlan = (plan: AnyPlan | null): Plan | undefined => (plan && !('services' in plan) ? plan : undefined);
@@ -412,8 +412,8 @@ export class Run {
   private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
     const command = view.plan.commands.install;
     if (!command) return null;
-    // Flutter's tools exist only in its gate image, so its install runs there, never on the host.
-    if (stackKind(view.plan.stack) === 'flutter') return this.installInGate(view);
+    // Flutter's and Expo's Android tools exist only in their gate image, so their install runs there, never on the host.
+    if (androidToolchainOf(stackKind(view.plan.stack))) return this.installInGate(view);
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     const marker = path.join(worktree, 'node_modules', INSTALLED_AT);
     const installedAt = await fs.readFile(marker, 'utf8').then((s) => s.trim(), () => null);
@@ -457,14 +457,14 @@ export class Run {
 
   private readonly gateImages = new Map<string, Promise<string>>();
 
-  /** The gate image of a plan: its toolchain, plus Chromium for a front e2e and the Android SDK for Flutter. */
+  /** The gate image of a plan: its toolchain, plus Chromium for a front e2e and the Android SDK for Flutter and Expo. */
   private gateImageOf(plan: Plan, browser = false): Promise<string> {
-    return this.gateImage(plan.gateImage, { browser, android: stackKind(plan.stack) === 'flutter' });
+    return this.gateImage(plan.gateImage, { browser, android: androidToolchainOf(stackKind(plan.stack)) });
   }
 
   /** The image every gate, smoke and e2e container of one stack runs, prepared once per run and flavour (jq, rustfmt and clippy for rust, Chromium, the Android SDK). */
-  private gateImage(image: string, flavour: { browser?: boolean; android?: boolean } = {}): Promise<string> {
-    const key = `${flavour.browser ? 'browser' : ''}|${flavour.android ? 'android' : ''}|${image}`;
+  private gateImage(image: string, flavour: { browser?: boolean; android?: AndroidToolchain } = {}): Promise<string> {
+    const key = `${flavour.browser ? 'browser' : ''}|${flavour.android ?? ''}|${image}`;
     let ready = this.gateImages.get(key);
     if (!ready) this.gateImages.set(key, (ready = prepareGateImage(image, this.deps.exec, flavour)));
     return ready;

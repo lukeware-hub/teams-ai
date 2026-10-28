@@ -9,8 +9,9 @@ const REGISTRIES: Record<StackKind, readonly string[]> = {
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
   java: ['repo.maven.apache.org', 'repo1.maven.org', 'plugins.gradle.org', 'services.gradle.org'],
   dotnet: ['api.nuget.org'],
-  // Flutter runs only in its gate image and in the install step there; no agent step runs it.
+  // Flutter and Expo run only in their gate images and in the install step there; no agent step runs them.
   flutter: [],
+  expo: [],
   other: [],
 };
 
@@ -24,7 +25,7 @@ const ADVISORIES = ['osv.dev', 'api.osv.dev'];
 export function stackDomains(kind: StackKind, goProxy: string | null = goProxyUrl()): string[] {
   // Behind the platform's module proxy a Go step reaches only it and the checksum database, never the storage it redirects to.
   const registries = kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind];
-  return [...(kind === 'node' ? ['registry.npmjs.org'] : []), ...registries, ...ADVISORIES, ...(kind === 'go' ? ['vuln.go.dev'] : [])];
+  return [...(kind === 'node' || kind === 'expo' ? ['registry.npmjs.org'] : []), ...registries, ...ADVISORIES, ...(kind === 'go' ? ['vuln.go.dev'] : [])];
 }
 
 /** Toolchain commands a Dev, Test or Front may run, per stack; Python goes through the virtualenv in `.tools/venv`. */
@@ -37,6 +38,7 @@ export const STACK_BASH: Record<StackKind, readonly string[]> = {
   java: ['Bash(java:*)', 'Bash(javac:*)', 'Bash(mvn:*)', 'Bash(./mvnw:*)', 'Bash(gradle:*)', 'Bash(./gradlew:*)'],
   dotnet: ['Bash(dotnet:*)'],
   flutter: [],
+  expo: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)'],
   other: [],
 };
 
@@ -75,7 +77,13 @@ export function stackEnv(cwd: string): Record<string, string> {
   };
 }
 
-export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'java' | 'dotnet' | 'flutter' | 'other';
+export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'java' | 'dotnet' | 'flutter' | 'expo' | 'other';
+
+/** The stacks whose gate image carries the Android SDK. */
+export type AndroidToolchain = Extract<StackKind, 'flutter' | 'expo'>;
+
+/** The Android toolchain a stack's gate image carries; undefined for a stack without one. */
+export const androidToolchainOf = (kind: StackKind): AndroidToolchain | undefined => (kind === 'flutter' || kind === 'expo' ? kind : undefined);
 
 const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
   node: /\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno|express|react|vue|angular|svelte|nuxt|nestjs|vite|nextjs)\b/i,
@@ -85,6 +93,7 @@ const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
   java: /\b(java|jdk|maven|gradle|spring)\b/i,
   dotnet: /\b(dotnet|csharp|aspnet|asp\.net)\b|\.net\b|\bc#/i,
   flutter: /\b(flutter|dart)\b/i,
+  expo: /\bexpo\b/i,
 };
 
 /** The stack a free text names (the plan's stack, optionally with the gate image); the earliest mention wins. */

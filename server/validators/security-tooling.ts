@@ -12,7 +12,7 @@ export { stackKind, type StackKind };
 /** Prescribed commands per gate; for dependency-scan the stack-native audit comes first. */
 export function prescribedCommands(kind: StackKind): Record<string, string[]> {
   const dependency = ['osv-scanner scan source -r .'];
-  if (kind === 'node') dependency.unshift('npm audit --audit-level=high');
+  if (kind === 'node' || kind === 'expo') dependency.unshift('npm audit --audit-level=high');
   if (kind === 'python') dependency.unshift('pip-audit');
   // The bundled Go call analysis is built with an older Go and fails on a newer gateImage.
   if (kind === 'go') dependency[0] = 'osv-scanner scan source -r --no-call-analysis=go .';

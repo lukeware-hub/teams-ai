@@ -2,7 +2,7 @@ import { parse, stringify } from 'yaml';
 import type { Plan } from '../contracts/plan.js';
 import { e2eCommand } from '../exec/e2e.js';
 import { FLUTTER_VERSION } from '../exec/android-toolchain.js';
-import { stackKind, type StackKind } from '../runner/stacks.js';
+import { androidToolchainOf, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 
 /**
  * Deterministic GitHub Actions pipelines for a generated repository (roadmap R8.3). Rendered from the
@@ -34,7 +34,7 @@ type Step = Record<string, unknown>;
 const planStack = (plan: Plan): StackKind => stackKind(`${plan.stack} ${plan.gateImage}`);
 
 // Docker image name, the setup action's own version key and any fixed inputs, per stack.
-const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; key: string; base?: Record<string, string> }> = {
+const SETUP: Record<Exclude<StackKind, 'other' | AndroidToolchain>, { image: string; key: string; base?: Record<string, string> }> = {
   node: { image: 'node', key: 'node-version' },
   python: { image: 'python', key: 'python-version' },
   go: { image: 'golang', key: 'go-version' },
@@ -46,16 +46,19 @@ const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; ke
 /** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no usable version (`rust:1-bookworm`). */
 const toolVersion = (plan: Plan, image: string): string | undefined => new RegExp(`${image}:(\\d+(?:\\.\\d+)${image === 'rust' ? '' : '?'})`, 'i').exec(plan.gateImage)?.[1];
 
-/** Flutter, Java and the Android SDK on the gate's Flutter version: what a Flutter job needs to build the APK. */
-const flutterSetup = (): Step[] => [
-  { uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } },
+/** Java and the Android SDK: what an Android job needs to build an APK. */
+const androidSdkSetup = (): Step[] => [
   { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
   { uses: ACTIONS.android },
 ];
 
+/** Flutter, Java and the Android SDK on the gate's Flutter version: what a Flutter job needs to build the APK. */
+const flutterSetup = (): Step[] => [{ uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } }, ...androidSdkSetup()];
+
 function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
-  if (kind === 'other') return [];
+  // An Expo CI needs its own setup action (the Android SDK), which does not exist yet.
+  if (kind === 'other' || kind === 'expo') return [];
   if (kind === 'flutter') return flutterSetup();
   const { image, key, base = {} } = SETUP[kind];
   const version = toolVersion(plan, image);
@@ -116,13 +119,26 @@ export function renderCi(plan: Plan): string {
   });
 }
 
-/** A Flutter release builds the APK with the plan's install command, on the gate's Flutter version, and keeps it as an artifact of the run. */
-export function renderApkRelease(plan: Plan): string {
+/** The folder each Android stack's debug APK lands in, relative to the repository. */
+const APK_DIR: Record<AndroidToolchain, string> = { flutter: 'build/app/outputs/flutter-apk', expo: 'android/app/build/outputs/apk/debug' };
+
+/**
+ * An Android release builds the debug APK with the plan's commands, on the toolchain of its stack, and keeps it as an artifact of the run.
+ * Flutter's install command builds the APK; Expo's install command prebuilds the native project and its build command runs Gradle.
+ */
+export function renderApkRelease(plan: Plan, toolchain: AndroidToolchain): string {
+  const nodeVersion = toolVersion(plan, 'node');
+  const setup: Step[] = toolchain === 'expo'
+    ? [{ uses: ACTIONS.node, ...(nodeVersion ? { with: { 'node-version': nodeVersion } } : {}) }, ...androidSdkSetup()]
+    : flutterSetup();
+  const build: Step[] = toolchain === 'expo'
+    ? [{ name: 'Install', run: plan.commands.install }, { name: 'Build APK', run: plan.commands.build }]
+    : [{ name: 'Build APK', run: plan.commands.install }];
   const steps: Step[] = [
     { uses: ACTIONS.checkout },
-    ...flutterSetup(),
-    { name: 'Build APK', run: plan.commands.install },
-    { name: 'Keep APK', uses: ACTIONS.upload, with: { name: 'apk', path: 'build/app/outputs/flutter-apk/*.apk' } },
+    ...setup,
+    ...build,
+    { name: 'Keep APK', uses: ACTIONS.upload, with: { name: 'apk', path: `${APK_DIR[toolchain]}/*.apk` } },
   ];
   return dump({
     name: 'release',
@@ -133,7 +149,8 @@ export function renderApkRelease(plan: Plan): string {
 }
 
 export function renderRelease(plan: Plan): string {
-  if (planStack(plan) === 'flutter') return renderApkRelease(plan);
+  const toolchain = androidToolchainOf(planStack(plan));
+  if (toolchain) return renderApkRelease(plan, toolchain);
   const image = `ghcr.io/\${{ github.repository_owner }}/${plan.deploy.image}`;
   const steps: Step[] = [
     { uses: ACTIONS.checkout },
@@ -213,12 +230,18 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
       if (!text.includes('SERVICE_URL')) errors.push('ci e2e step must set SERVICE_URL');
     }
   } else {
-    if (planStack(plan) === 'flutter') {
-      for (const prefix of ['actions/checkout@', 'subosito/flutter-action@', 'actions/upload-artifact@']) {
+    const toolchain = androidToolchainOf(planStack(plan));
+    if (toolchain) {
+      const toolchainAction = toolchain === 'expo' ? ACTIONS.node : ACTIONS.flutter;
+      for (const action of [ACTIONS.checkout, toolchainAction, ACTIONS.upload]) {
+        const prefix = action.slice(0, action.indexOf('@') + 1);
         if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);
       }
-      if (!runs.includes(plan.commands.install.trim())) errors.push('release is missing the build step (install command)');
-      if (!text.includes('build/app/outputs/flutter-apk')) errors.push('release must keep the APK');
+      const builds: Array<[string, string]> = toolchain === 'expo'
+        ? [[plan.commands.install, 'install command'], [plan.commands.build, 'build command']]
+        : [[plan.commands.install, 'install command']];
+      for (const [cmd, label] of builds) if (!runs.includes(cmd.trim())) errors.push(`release is missing the build step (${label})`);
+      if (!text.includes(APK_DIR[toolchain])) errors.push('release must keep the APK');
     } else {
       for (const prefix of ['actions/checkout@', 'docker/setup-buildx-action@', 'docker/login-action@', 'docker/build-push-action@']) {
         if (!uses.some((u) => u.startsWith(prefix))) errors.push(`release is missing ${prefix}vN`);

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { prepareGateImage, runGate } from '../../exec/gate-runner.js';
-import { stackKind } from '../../runner/stacks.js';
+import { androidToolchainOf, stackKind } from '../../runner/stacks.js';
 import { OrchEvent } from '../events.js';
 import type { Phase5Result } from './deploy.js';
 import type { PhaseDeps } from './shared.js';
@@ -14,7 +14,7 @@ export async function runArtifact(deps: PhaseDeps, attempt: number): Promise<Pha
   const plan = deps.plan!;
   const artifact = plan.deploy.artifact!;
   if (!deps.artifactsDir) return { ok: false, reason: 'no run folder to keep the mobile artifact in' };
-  const image = await prepareGateImage(plan.gateImage, deps.exec, { android: stackKind(plan.stack) === 'flutter' });
+  const image = await prepareGateImage(plan.gateImage, deps.exec, { android: androidToolchainOf(stackKind(plan.stack)) });
   const ctx = { worktree: deps.ws.repo, image, junitPath: plan.junitPath, cpus: 2, memory: '2g', timeoutMs: 25 * 60_000, secrets: {}, containerName: `teams-ai-artifact-${attempt}` };
   const io = { exec: deps.exec, readFile: (f: string) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f: string) => fs.rm(f, { force: true }) };
   if (plan.commands.install) {

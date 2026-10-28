@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, copyCargoRoot, stackBash, stackDomains, stackEnv, stackKind } from '../../server/runner/stacks.js';
+import { STACK_BASH, UNCOMMITTED_BUILD_DIRS, androidToolchainOf, copyCargoRoot, stackBash, stackDomains, stackEnv, stackKind } from '../../server/runner/stacks.js';
 
 describe('stacks', () => {
   it('reaches only the registries of the run stack, and npm only from a node stack', () => {
@@ -63,6 +63,14 @@ describe('stacks', () => {
     expect(stackKind('Flutter app, Android only')).toBe('flutter');
     expect(stackKind('dart 3 package')).toBe('flutter');
     expect(stackKind('Flutter app node:22-bookworm')).toBe('flutter');
+  });
+
+  it('reads an Expo project as the expo stack, and gives only Flutter and Expo an Android toolchain', () => {
+    expect(stackKind('Expo app, Android only')).toBe('expo');
+    expect(stackKind('Expo React Native app node:22-bookworm')).toBe('expo');
+    expect(androidToolchainOf('expo')).toBe('expo');
+    expect(androidToolchainOf('flutter')).toBe('flutter');
+    expect(androidToolchainOf('node')).toBeUndefined();
   });
 
   it('copies the binaries and records cargo install leaves, so a seeded root sees the tools installed', async () => {

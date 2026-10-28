@@ -61,7 +61,7 @@ describe('the Flutter release workflow', () => {
 
 describe('the Flutter gate image', () => {
   it('pins junitreport and activates it after the Dart packages are fetched', () => {
-    const steps = androidImageSteps();
+    const steps = androidImageSteps('flutter');
     const activate = steps.indexOf(`RUN dart pub global activate junitreport ${JUNITREPORT_VERSION}`);
     expect(JUNITREPORT_VERSION).toBe('2.0.2');
     expect(activate).toBeGreaterThan(steps.indexOf('RUN cd /opt/flutter/packages/flutter_tools && dart pub get'));
