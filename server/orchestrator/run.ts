@@ -49,7 +49,7 @@ import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
-import { copyCargoRoot, stackDomains, stackEnv, stackKind } from '../runner/stacks.js';
+import { copyCargoRoot, stackDomains, stackEnv, stackKind, type StackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -298,11 +298,20 @@ export class Run {
     return viewOf(this.plan!, this.journal.state.tasks.get(taskId)?.def.service);
   }
 
-  /** Package registries a step may reach: its task's stack, or every stack of the plan for a step outside a task. */
-  private registries(view?: ServiceView): string[] {
+  /** Texts naming a step's stack: its task's, or every stack of the plan for a step outside a task. */
+  private stackTexts(view?: ServiceView): string[] {
     const views = view ? [view] : this.plan ? servicePlans(this.plan) : [];
-    const texts = views.length > 0 ? views.map((v) => `${v.plan.stack} ${v.plan.gateImage} ${this.deps.project.stack ?? ''}`) : [this.deps.project.stack ?? ''];
-    return [...new Set(texts.flatMap((text) => stackDomains(stackKind(text))))];
+    return views.length > 0 ? views.map((v) => `${v.plan.stack} ${v.plan.gateImage} ${this.deps.project.stack ?? ''}`) : [this.deps.project.stack ?? ''];
+  }
+
+  /** Package registries a step may reach, by its stacks. */
+  private registries(view?: ServiceView): string[] {
+    return [...new Set(this.stackTexts(view).flatMap((text) => stackDomains(stackKind(text))))];
+  }
+
+  /** The stacks a step works on, for its toolchain commands. */
+  private stacks(view?: ServiceView): StackKind[] {
+    return [...new Set(this.stackTexts(view).map(stackKind))];
   }
 
   private async loadPlan(): Promise<AnyPlan | null> {
@@ -332,6 +341,7 @@ export class Run {
       // gates already reach a deployed service (server/deploy/docker-local.ts), so a step's own sandbox needs the same
       // route to test against SERVICE_URL itself — never a wider one (no internet host, no datastore port).
       network: { allowedDomains: [...this.registries(view), cfg.docker.serviceHost] },
+      stacks: this.stacks(view),
       sandbox: { enabled: cfg.sandbox.enabled, unsafeNoSandbox: cfg.sandbox.unsafeNoSandbox },
       clock: this.clock,
       // cli-error's chain never reaches Claude, so classifying a failed step cannot start another step.

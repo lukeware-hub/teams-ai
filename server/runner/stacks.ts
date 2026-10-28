@@ -1,12 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-/** Package registries per stack; npm stays open for every stack, as before stacks existed. */
+/** Package registries per stack; npm is open only to a node stack (see `stackDomains`). */
 const REGISTRIES: Record<StackKind, readonly string[]> = {
   node: [],
   python: ['pypi.org', 'files.pythonhosted.org'],
   go: ['proxy.golang.org', 'sum.golang.org'],
   rust: ['crates.io', 'index.crates.io', 'static.crates.io'],
+  java: ['repo.maven.apache.org', 'repo1.maven.org', 'plugins.gradle.org', 'services.gradle.org'],
+  dotnet: ['api.nuget.org'],
   // Flutter runs only in its gate image and in the install step there; no agent step runs it.
   flutter: [],
   other: [],
@@ -21,24 +23,25 @@ const ADVISORIES = ['osv.dev', 'api.osv.dev'];
 /** The registries a step's sandbox may reach: only those of the run's stack (least privilege), plus the advisory databases. */
 export function stackDomains(kind: StackKind, goProxy: string | null = goProxyUrl()): string[] {
   // Behind the platform's module proxy a Go step reaches only it and the checksum database, never the storage it redirects to.
-  return ['registry.npmjs.org', ...(kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind]), ...ADVISORIES, ...(kind === 'go' ? ['vuln.go.dev'] : [])];
+  const registries = kind === 'go' && goProxy ? [new URL(goProxy).hostname, 'sum.golang.org'] : REGISTRIES[kind];
+  return [...(kind === 'node' ? ['registry.npmjs.org'] : []), ...registries, ...ADVISORIES, ...(kind === 'go' ? ['vuln.go.dev'] : [])];
 }
 
-/** Toolchain commands a Dev or Test may run besides npm and node (Python goes through the virtualenv in `.tools/venv`). */
-export const STACK_BASH: readonly string[] = [
-  'Bash(go:*)',
+/** Toolchain commands a Dev, Test or Front may run, per stack; Python goes through the virtualenv in `.tools/venv`. */
+export const STACK_BASH: Record<StackKind, readonly string[]> = {
+  node: ['Bash(npm:*)', 'Bash(npx:*)', 'Bash(pnpm:*)', 'Bash(corepack:*)', 'Bash(node:*)'],
+  python: ['Bash(python3:*)', 'Bash(python:*)', 'Bash(.tools/venv/bin/python:*)', 'Bash(.tools/venv/bin/python3:*)', 'Bash(.tools/venv/bin/pip:*)', 'Bash(.tools/venv/bin/pytest:*)'],
   // The Go formatter and the JUnit runner the plan rules prescribe (installed into .tools/bin), so a Dev runs the plan's own test command.
-  'Bash(gofmt:*)',
-  'Bash(.tools/bin/gotestsum:*)',
-  'Bash(cargo:*)',
-  'Bash(rustc:*)',
-  'Bash(python3:*)',
-  'Bash(python:*)',
-  'Bash(.tools/venv/bin/python:*)',
-  'Bash(.tools/venv/bin/python3:*)',
-  'Bash(.tools/venv/bin/pip:*)',
-  'Bash(.tools/venv/bin/pytest:*)',
-];
+  go: ['Bash(go:*)', 'Bash(gofmt:*)', 'Bash(.tools/bin/gotestsum:*)'],
+  rust: ['Bash(cargo:*)', 'Bash(rustc:*)'],
+  java: ['Bash(java:*)', 'Bash(javac:*)', 'Bash(mvn:*)', 'Bash(./mvnw:*)', 'Bash(gradle:*)', 'Bash(./gradlew:*)'],
+  dotnet: ['Bash(dotnet:*)'],
+  flutter: [],
+  other: [],
+};
+
+/** The toolchain commands of every stack the step may use, each listed once. */
+export const stackBash = (kinds: readonly StackKind[]): string[] => [...new Set(kinds.flatMap((kind) => STACK_BASH[kind]))];
 
 /**
  * Every toolchain cache and build output lives in the worktree's `.tools` (never committed): the agent sandbox writes only inside the worktree,
@@ -55,6 +58,10 @@ export function stackEnv(cwd: string): Record<string, string> {
     CARGO_HOME: path.posix.join(tools, 'cargo'),
     RUSTUP_HOME: '/usr/local/rustup',
     PIP_CACHE_DIR: path.posix.join(tools, 'pip-cache'),
+    // The step HOME is read-only, so the Maven and NuGet caches and the .NET CLI home live in the worktree too.
+    MAVEN_OPTS: `-Dmaven.repo.local=${path.posix.join(tools, 'm2')}`,
+    NUGET_PACKAGES: path.posix.join(tools, 'nuget'),
+    DOTNET_CLI_HOME: path.posix.join(tools, 'dotnet'),
     // The step HOME is read-only in the sandbox: buf, and any tool that writes `~/.cache`, would stop on it.
     BUF_CACHE_DIR: path.posix.join(tools, 'buf-cache'),
     XDG_CACHE_HOME: path.posix.join(tools, 'cache'),
@@ -68,13 +75,15 @@ export function stackEnv(cwd: string): Record<string, string> {
   };
 }
 
-export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'flutter' | 'other';
+export type StackKind = 'node' | 'python' | 'go' | 'rust' | 'java' | 'dotnet' | 'flutter' | 'other';
 
 const STACK_PATTERNS: Record<Exclude<StackKind, 'other'>, RegExp> = {
-  node: /\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno|express)\b/i,
+  node: /\b(node|nodejs|typescript|javascript|npm|pnpm|yarn|bun|deno|express|react|vue|angular|svelte|nuxt|nestjs|vite|nextjs)\b/i,
   python: /\b(python|pip|uv|django|flask|fastapi|poetry)\b/i,
   go: /\b(go|golang|gin|echo|fiber)\b/i,
   rust: /\b(rust|cargo|axum|actix|rocket)\b/i,
+  java: /\b(java|jdk|maven|gradle|spring)\b/i,
+  dotnet: /\b(dotnet|csharp|aspnet|asp\.net)\b|\.net\b|\bc#/i,
   flutter: /\b(flutter|dart)\b/i,
 };
 
