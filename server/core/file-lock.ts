@@ -40,14 +40,24 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>, staleM
   }
 }
 
+// Windows reports a lock file another process is deleting as EPERM or EBUSY for a moment: retry, but not forever.
+const TRANSIENT = new Set(['EPERM', 'EBUSY']);
+const TRANSIENT_RETRIES = 50;
+
 async function acquire(file: string, staleMs: number): Promise<void> {
   await ensureDir(path.dirname(file));
+  let transient = 0;
   for (;;) {
     try {
       await (await fs.open(file, 'wx')).close();
       return;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== undefined && TRANSIENT.has(code) && transient++ < TRANSIENT_RETRIES) {
+        await new Promise((r) => setTimeout(r, 100));
+        continue;
+      }
+      if (code !== 'EEXIST') throw err;
       const since = (await fs.stat(file).catch(() => null))?.mtimeMs;
       // ponytail: two waiters may both judge one dead lock stale; only after a crash, and the window is a few ms.
       if (since !== undefined && Date.now() - since > staleMs) await fs.rm(file, { force: true });

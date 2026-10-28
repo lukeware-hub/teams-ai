@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lockFile, withFileLock } from '../../server/core/file-lock.js';
 
 let dir = '';
@@ -46,4 +46,27 @@ describe('withFileLock', () => {
     await fs.chmod(open, 0o777);
     await expect(withFileLock(path.join(open, 'a.lock'), async () => 'x')).rejects.toThrow(/unsafe lock dir/);
   });
+});
+
+describe('withFileLock on a transient open error', () => {
+  it('waits out an EPERM from a lock file another process is deleting, then takes the lock', async () => {
+    const spy = vi.spyOn(fs, 'open').mockImplementationOnce(async () => { throw Object.assign(new Error('busy'), { code: 'EPERM' }); });
+    try {
+      const file = path.join(os.tmpdir(), 'teams-ai-lock-transient-' + Date.now());
+      await expect(withFileLock(file, async () => 'ok')).resolves.toBe('ok');
+      await fs.rm(file, { force: true });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('gives up on an EPERM that never clears', async () => {
+    const spy = vi.spyOn(fs, 'open').mockImplementation(async () => { throw Object.assign(new Error('denied'), { code: 'EPERM' }); });
+    try {
+      const file = path.join(os.tmpdir(), 'teams-ai-lock-denied-' + Date.now());
+      await expect(withFileLock(file, async () => 'never')).rejects.toThrow('denied');
+    } finally {
+      spy.mockRestore();
+    }
+  }, 30_000);
 });
