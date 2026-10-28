@@ -43,10 +43,17 @@ const SETUP: Record<Exclude<StackKind, 'other' | 'flutter'>, { image: string; ke
 /** `node:22-bookworm` -> `22`, `python:3.12-slim` -> `3.12`; undefined when the image carries no usable version (`rust:1-bookworm`). */
 const toolVersion = (plan: Plan, image: string): string | undefined => new RegExp(`${image}:(\\d+(?:\\.\\d+)${image === 'rust' ? '' : '?'})`, 'i').exec(plan.gateImage)?.[1];
 
+/** Flutter, Java and the Android SDK on the gate's Flutter version: what a Flutter job needs to build the APK. */
+const flutterSetup = (): Step[] => [
+  { uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } },
+  { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
+  { uses: ACTIONS.android },
+];
+
 function setupStep(plan: Plan): Step[] {
   const kind = planStack(plan);
-  // A Flutter CI needs its own setup action (Flutter and the Android SDK), which does not exist yet.
-  if (kind === 'other' || kind === 'flutter') return [];
+  if (kind === 'other') return [];
+  if (kind === 'flutter') return flutterSetup();
   const { image, key } = SETUP[kind];
   const version = toolVersion(plan, image);
   return [{ uses: ACTIONS[kind], ...(version ? { with: { [key]: version } } : {}) }];
@@ -109,9 +116,7 @@ export function renderCi(plan: Plan): string {
 export function renderApkRelease(plan: Plan): string {
   const steps: Step[] = [
     { uses: ACTIONS.checkout },
-    { uses: ACTIONS.flutter, with: { 'flutter-version': FLUTTER_VERSION, channel: 'stable' } },
-    { uses: ACTIONS.java, with: { distribution: 'temurin', 'java-version': '17' } },
-    { uses: ACTIONS.android },
+    ...flutterSetup(),
     { name: 'Build APK', run: plan.commands.install },
     { name: 'Keep APK', uses: ACTIONS.upload, with: { name: 'apk', path: 'build/app/outputs/flutter-apk/*.apk' } },
   ];
@@ -197,6 +202,7 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     const need: Array<[string | undefined, string]> = [[c.install, 'install'], [c.format, 'format'], [c.lint, 'lint'], [c.typecheck, 'typecheck'], [c.test, 'test'], [c.build, 'build']];
     for (const [cmd, label] of need) if (cmd !== undefined && !runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
     if (!uses.some((u) => u.startsWith('gitleaks/'))) errors.push('ci is missing the secret scan step');
+    if (planStack(plan) === 'flutter' && !uses.some((u) => u.startsWith('subosito/flutter-action@'))) errors.push('ci is missing the flutter setup step');
     const e2e = e2eCommand(plan);
     if (e2e) {
       for (const [cmd, label] of [[COMPOSE_UP, 'compose up'], [e2e, 'e2e'], [COMPOSE_DOWN, 'compose down']] as const) if (!runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
