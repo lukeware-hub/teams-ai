@@ -81,3 +81,4 @@ Delivery goals to keep in mind in every decision: code quality, security, very l
 - O repositório do projeto não fica escrito neste arquivo. Ele foi registrado no início do projeto, no `remote.origin.url` do `.git/config` (o primeiro commit do projeto é `3b1eb64e`, de 23/09/2026).
 - Antes de commitar, dar push ou abrir PR, leia o valor com `git remote get-url origin` e confirme que é o registrado. Se mudou, ou se não bate com o que você sabe do projeto, pare e pergunte ao dono. Não publique.
 - Nunca publique em outro repositório, nem em outro clone ou worktree de outro projeto.
+- A branch de trabalho também não fica escrita aqui. Ela é a do worktree em que você está: leia com `git branch --show-current` antes de commitar. O destino de PR e de push é o que o dono indicar no momento, não um nome fixo.
