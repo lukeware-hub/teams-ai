@@ -26,7 +26,7 @@ Status: pending. Expo is a Node stack that builds the Android app with Gradle, s
 
 ## 4. Chromium in the agent image
 
-Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and the Chromium of Playwright 1.64.0-alpha-1790635538000, both pinned to the skill's versions; `playwright-cli open` opens the live app as the `node` user. Chromium runs with `--no-sandbox` there, because the container gives no user namespaces: the container is the isolation. The owner accepted this on 2026-10-28; the alternative, user namespaces in the agent image, stays open.
+Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and the Chromium of Playwright 1.64.0-alpha-1790635538000, both pinned to the skill's versions; `playwright-cli open` opens the live app as the `node` user. Chromium keeps its sandbox on: the teams-ai service runs with seccomp and apparmor unconfined, which lets the sandbox use user namespaces. The owner chose this on 2026-10-28 over `--no-sandbox`.
 
 ## 5. Autonomy
 
