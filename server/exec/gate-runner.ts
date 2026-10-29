@@ -116,6 +116,9 @@ export async function prepareGateImage(image: string, exec: Exec, opts: { browse
   return built.exitCode === 0 ? tag : image;
 }
 
+/** The third-party libraries and SDK caches the stacks keep under the worktree's .tools (see stackEnv): a format gate never scans them. */
+export const THIRD_PARTY_CACHES: readonly string[] = ['go', 'go-build', 'cargo', 'pip-cache', 'npm-cache', 'm2', 'nuget', 'dotnet', 'buf-cache', 'cache', 'py', 'pub-cache'];
+
 export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
   const workdir = ctx.containerWorkdir ?? '/work';
   const source = rewriteBindSource(ctx.worktree.replace(/\\/g, '/'), ctx.bindRewrite);
@@ -153,6 +156,8 @@ export function dockerArgs(gate: Gate, ctx: GateContext): DockerInvocation {
     '-w',
     workdir,
   );
+  // A format gate checks the project's own code only: each third-party cache under .tools is hidden behind an empty tmpfs.
+  if (gate.name === 'format') for (const cache of THIRD_PARTY_CACHES) args.push('--mount', `type=tmpfs,destination=${workdir}/.tools/${cache}`);
   if (ctx.cacheDir && CACHED_GATES.has(gate.name)) {
     args.push(
       '--mount',
