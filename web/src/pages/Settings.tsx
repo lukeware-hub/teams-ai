@@ -23,7 +23,7 @@ const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste
 const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
 const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlog ao mesmo tempo. Vale a partir da próxima preparação. Vai de 1 a 5.';
 const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
-const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto. Com Sim, o botão Reprocessar não aparece na execução.';
+const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto, com rede no shell só para pacotes e pesquisa na web livre. Com Sim, o botão Reprocessar não aparece na execução.';
 const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos agentes.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
