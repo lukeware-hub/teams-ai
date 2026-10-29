@@ -11,6 +11,20 @@ export interface Remote {
   cleanup(): Promise<void>;
 }
 
+/** Windows drops git transport and lock calls under parallel load: a transient failure is retried, any other is not. */
+const TRANSIENT = /sideband|unexpected disconnect|index\.lock|could not lock|Permission denied/i;
+async function gitRetry(cwd: string, args: readonly string[]): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await git(cwd, args, execCommand);
+      return;
+    } catch (err) {
+      if (attempt >= 3 || !TRANSIENT.test(String(err))) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    }
+  }
+}
+
 /** Bare origin plus a clone whose main carries `files`; everything local, git only. */
 export async function makeRemote(files: Record<string, string>): Promise<Remote> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-remote-'));
@@ -27,6 +41,6 @@ export async function makeRemote(files: Record<string, string>): Promise<Remote>
   }
   await git(repo, ['add', '-A'], execCommand);
   await git(repo, ['commit', '-q', '-m', 'docs: initial'], execCommand);
-  await git(repo, ['push', '-q', '-u', 'origin', 'main'], execCommand);
+  await gitRetry(repo, ['push', '-q', '-u', 'origin', 'main']);
   return { root, origin, repo, cleanup: () => fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) };
 }

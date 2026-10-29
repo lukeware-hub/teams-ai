@@ -74,10 +74,14 @@ function deps(scenario: Scenario, over: Partial<RunDeps> = {}): RunDeps {
   };
 }
 
-/** Crash points: every intent with TEAMS_AI_CRASH_SWEEP=full, else the first intent of each kind and the last one. */
+/**
+ * Crash points: every intent with TEAMS_AI_CRASH_SWEEP=full, the listed ones with TEAMS_AI_CRASH_POINTS=13,14,
+ * else the first intent of each kind and the last one.
+ */
 const FULL_SWEEP = process.env.TEAMS_AI_CRASH_SWEEP === 'full';
 const crashPoints = (intents: readonly string[]): number[] => {
   if (FULL_SWEEP) return intents.map((_, i) => i);
+  if (process.env.TEAMS_AI_CRASH_POINTS) return process.env.TEAMS_AI_CRASH_POINTS.split(',').map(Number);
   const firstOfKind = new Map<string, number>();
   intents.forEach((id, i) => {
     const kind = id.split(':')[0]!;
