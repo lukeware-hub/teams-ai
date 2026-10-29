@@ -20,6 +20,15 @@ A blocked run showed a generic cause ("Tarefa bloqueada", "Abra a tarefa para ve
 - Answers are stored outside `docs/`, beside the repair notes, so Phase 0 never publishes them.
 - The question step runs on the SM's model (Sonnet), not on Haiku. The owner's question is the text the owner reads, so quality comes first. The cost is one short call per block, and the run page shows its tokens. `routing.stepModels["block-options"]` sets another model in the config if the cost ever matters.
 
+## Security review (2026-10-29)
+
+Checked with real agent runs in the container, using a harmless canary and an allowed command.
+
+- **Sandbox escape, fixed (all roles, not only Yes).** An allowed command that the sandbox blocked for the network was retried outside the sandbox with `dangerouslyDisableSandbox`. No prompt appeared, because the allow rule approves that retry. The check reached the network and read a newer version from the outside. Fix: the step settings set `allowUnsandboxedCommands: false`, so the retry is refused, and `failIfUnavailable: true`, so a missing sandbox stops the run instead of running the command bare. Re-run after the fix: the sandbox blocks the call, the retry does not happen, and normal sandboxed commands still work.
+- **Environment of the agent, checked.** The agent process builds its environment from scratch: the host environment is not inherited, and only the API key the config chooses reaches it.
+- **Interface, checked.** The compose file publishes the interface on `127.0.0.1` unless `TEAMS_AI_UI_BIND` is set. The interface has no login since 2026-10-23, so a non-local bind would expose Yes to anyone who reaches it.
+- **Open, owner decision.** With Yes, non-judge steps may reach any host through `WebFetch(domain:*)`, and a command may send data out in a request. That is the authority you granted; it stays as approved, and the Settings help says so. To narrow it, the network could be limited to an allowlist of documentation hosts.
+
 ## Covered without tokens
 
 - The No flow runs end to end in the orchestrator test suite, with the fake agent: a blocked Dev, the question journaled, the answer stored per spec, and the next run's Dev prompt carrying the answer (`test/orchestrator/loop.test.ts`).
