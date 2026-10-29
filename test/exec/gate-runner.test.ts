@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Gate } from '../../server/contracts/plan.js';
 import { Gate as GateSchema } from '../../server/contracts/plan.js';
-import { classifyGate, dockerArgs, prepareGateImage, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
+import { THIRD_PARTY_CACHES, classifyGate, dockerArgs, prepareGateImage, runGate, runGates, type GateContext, type GateDeps } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const ctx: GateContext = {
@@ -32,6 +32,13 @@ function files(map: Record<string, string>) {
 }
 
 describe('dockerArgs', () => {
+  it('hides every third-party cache under .tools behind an empty tmpfs for a format gate only', () => {
+    const format = dockerArgs(gate({ name: 'format', command: 'gofmt -l .' }), ctx).args;
+    for (const cache of THIRD_PARTY_CACHES) expect(format).toContain(`type=tmpfs,destination=/work/.tools/${cache}`);
+    expect(format.join(' ')).not.toContain('destination=/work/.tools/bin');
+    const lint = dockerArgs(gate({ name: 'lint', command: 'go vet ./...' }), ctx).args;
+    expect(lint.join(' ')).not.toContain('type=tmpfs');
+  });
   it('keeps the image PATH (no login shell) and points the toolchain caches into the mounted worktree', () => {
     const { args } = dockerArgs(gate({ name: 'lint', command: 'go vet ./...' }), ctx);
     expect(args.slice(-3)).toEqual(['sh', '-c', 'go vet ./...']);

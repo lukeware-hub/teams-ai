@@ -363,6 +363,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       sessionId: req.sessionId,
       resume: req.resume,
       agentDefinition: agentWithExtra,
+      // Beside the role settings file, in the step's own folder outside the worktree (writeRoleSettings uses the same folder).
+      agentsPath: path.join(deps.settingsDir, path.basename(home), `${req.role}.agents.json`),
       cacheTtl: PROMPT_CACHE_TTL,
       apiKey: deps.apiKey,
       effort: req.effort,
@@ -371,6 +373,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     hostEnv,
   );
 
+  if (invocation.agentsFile) await fs.writeFile(invocation.agentsFile.path, invocation.agentsFile.content);
   let raw: RawStepResult;
   try {
     raw = await runProcess(deps.binary, invocation, stepCaps(req.kind, deps.caps), deps.onEvent, deps.signal);

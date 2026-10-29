@@ -31,9 +31,10 @@ try {
   await ensureTrusted(cwd, path.join(home, '.claude.json'));
   const settingsPath = await writeRoleSettings(tmp, 'dev', { allowedDomains: [], hostHome });
   const inv = buildInvocation(
-    { role: 'dev', model: 'haiku', profile: {} as never, cwd, prompt, jsonSchema: { type: 'object', properties: { report: { type: 'string' } }, required: ['report'] }, tools: ['Read', 'Bash'], disallowedTools: [], settingsPath, home, agentDefinition: { description: 'probe', model: 'haiku', tools: ['Read', 'Bash'], body: 'You run the sandbox probe the user describes.' } },
+    { role: 'dev', model: 'haiku', profile: {} as never, cwd, prompt, jsonSchema: { type: 'object', properties: { report: { type: 'string' } }, required: ['report'] }, tools: ['Read', 'Bash'], disallowedTools: [], settingsPath, home, agentsPath: path.join(tmp, 'probe.agents.json'), agentDefinition: { description: 'probe', model: 'haiku', tools: ['Read', 'Bash'], body: 'You run the sandbox probe the user describes.' } },
     process.env,
   );
+  if (inv.agentsFile) await fs.writeFile(inv.agentsFile.path, inv.agentsFile.content);
   const out = await new Promise<string>((resolve) => {
     const p = spawn('claude', inv.args, { cwd: inv.cwd, env: inv.env });
     let s = '';

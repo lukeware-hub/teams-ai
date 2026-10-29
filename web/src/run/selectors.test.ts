@@ -118,6 +118,8 @@ describe('stopped run explanations', () => {
     expect(explainStop('something nobody has seen before')).toBeNull();
     // A service's workflows failing to land explain themselves like the project's.
     expect(explainStop('service inventory: docs merge failed: blocked')).toEqual(explainStop('docs merge failed: blocked'));
+    // A repository without a GitHub remote gets its own explanation, not the permissions hint of a rejected merge.
+    expect(explainStop('docs merge failed at rebase: gh pr list --head docs/greet-go failed (1): none of the git remotes configured for this repository point to a known GitHub host.')).toMatchObject({ title: 'O repositório não tem um remote do GitHub', owner: 'Você' });
     expect(explainStop('service inventory: rendered .github/workflows/ci.yml is invalid: x')).toEqual(explainStop('rendered .github/workflows/ci.yml is invalid: x'));
   });
 

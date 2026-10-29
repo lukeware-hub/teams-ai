@@ -376,6 +376,7 @@ const STOP_RULES: StopRule[] = [
   [/^Phase 1 exhausted/, { title: 'A especificação técnica não cobriu todos os critérios de aceitação', hint: 'Deixe mais claros na spec os critérios citados no detalhe técnico e reprocesse.', owner: 'Você' }],
   [/^Phase 2 exhausted/, { title: 'O plano de tarefas não passou na validação', hint: 'Leia o último motivo no detalhe técnico. Se ele apontar algo ambíguo na spec, ajuste e reprocesse.', owner: 'Sistema' }],
   [/^(service \S+: )?rendered \S+ is invalid/, { title: 'Os workflows de CI gerados a partir do plano são inválidos', hint: 'Revise os comandos do plan.json na main e reprocesse a spec.', owner: 'Plano' }],
+  [/none of the git remotes configured for this repository point to a known GitHub host/, { title: 'O repositório não tem um remote do GitHub', hint: 'Configure o remote de origem do repositório para um repositório do GitHub e reprocesse a spec.', owner: 'Você' }],
   [/^(service \S+: )?docs merge failed/, { title: 'O PR de documentação não entrou na main', hint: 'Confira as permissões e a proteção de branch do repositório e reprocesse a spec.', owner: 'Você' }],
   [/^Phase 6 blocked: documentation rejected/, { title: 'A documentação gerada no relatório foi rejeitada', hint: 'Reprocesse a spec. Se a falha se repetir, o motivo da rejeição está no detalhe técnico.', owner: 'Sistema' }],
   [/^Phase 6 blocked/, { title: 'O relatório final não foi gerado', hint: 'O Scrum Master não devolveu o relatório no formato esperado. Reprocesse a spec para gerar o relatório de novo.', owner: 'Sistema' }],

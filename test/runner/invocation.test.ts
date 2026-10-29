@@ -103,14 +103,29 @@ describe('buildInvocation', () => {
     expect(() => buildInvocation({ ...base, settingsPath: '' }, hostEnv)).toThrow(/settings/);
   });
 
-  it('passes the agent definition inline via --agents with the step model, not the file model', () => {
+  it('passes the agent definition as a file with --agents, with the step model, not the file model', () => {
+    const agentsPath = '/home/u/.teams-ai/runs/r1/settings/home-1/dev.agents.json';
     const inv = buildInvocation(
-      { ...base, model: 'sonnet', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
+      { ...base, model: 'sonnet', agentsPath, agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read', 'Edit'], body: 'Echo the specHash.' } },
       hostEnv,
     );
-    const json = JSON.parse(inv.args[inv.args.indexOf('--agents') + 1]!);
-    expect(json).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
+    expect(inv.args[inv.args.indexOf('--agents') + 1]).toBe(agentsPath);
     expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
+    expect(inv.agentsFile?.path).toBe(agentsPath);
+    expect(JSON.parse(inv.agentsFile!.content)).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
+  });
+
+  it('keeps the agent body out of the command line, whatever its size', () => {
+    const body = 'Rule. '.repeat(20000);
+    const inv = buildInvocation({ ...base, agentsPath: '/home/u/x/dev.agents.json', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body } }, hostEnv);
+    expect(inv.args.join(' ')).not.toContain('Rule.');
+    expect(inv.args.join(' ').length).toBeLessThan(2000);
+    expect(JSON.parse(inv.agentsFile!.content).dev.prompt).toBe(body);
+  });
+
+  it('refuses a definition that has no file to be written to', () => {
+    const agentDefinition = { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo.' };
+    expect(() => buildInvocation({ ...base, agentDefinition }, hostEnv)).toThrow(InvocationError);
   });
 
   it("points a step's go command at the platform's module proxy when the platform runs one", () => {
