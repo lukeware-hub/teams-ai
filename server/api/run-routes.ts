@@ -7,6 +7,7 @@ import { agentsDecideFor, type Config, type Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
+import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
@@ -385,8 +386,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           await clearPid(runs, run.runId);
         }
         const ws = workspacePaths(idx.cfg, projectId, deps.home);
-        await fs.rm(ws.root, { recursive: true, force: true });
-        for (const dir of dirs) await fs.rm(dir, { recursive: true, force: true });
+        await removeTree(ws.root);
+        for (const dir of dirs) await removeTree(dir);
         const runNames =(await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
         for (const runId of runNames) {
           const row = await runRow(idx, runId).catch(() => null);
