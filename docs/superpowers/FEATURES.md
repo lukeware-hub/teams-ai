@@ -30,7 +30,7 @@ Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and
 
 ## 5. Autonomy
 
-Status: in progress (2026-10-28, owner authorized).
+Status: done (2026-10-29). Plan 115 covers the per-project switch, the owner's question and the security review; the sandbox escape found in the review is closed.
 - Done: retry within a token budget (plan 112): `retry.taskTokenBudget` in the config; unset keeps the old rule of three attempts, one replan, then block.
 - Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the `model` lines in the agent frontmatter stay, because the agent loader requires them; the runner ignores them.
 - Done: a yellow notice on the project screen when a run blocks or waits for the owner (commit `479bda3d`).
