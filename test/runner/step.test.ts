@@ -286,13 +286,14 @@ describe('runStep', () => {
     expect(captured.env.DATABASE_URL).toBe('postgres://u:p@dind:55432/t');
   });
 
-  it('sends the role agent definition inline with the step model', async () => {
+  it('sends the role agent definition as a file with the step model, never on the command line', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request({ model: 'sonnet' }), deps);
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    const agents = JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]);
+    const agents = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8'));
     expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: 'sonnet' });
+    expect(captured.argv.join(' ')).not.toContain(devAgent.body);
   });
 
   it('gives the 5-minute prompt cache TTL to every step, dev included', async () => {
@@ -376,7 +377,7 @@ describe('runStep', () => {
     await runStep(request({ kind: 'review', agent }), deps);
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
-    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
+    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.tools).toEqual(['Read', 'Grep', 'Glob', 'Bash']);
     await runStep(request({ kind: 'dev', agent }), deps);
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
   });
@@ -439,10 +440,10 @@ describe('runStep', () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request({ kind: 'dev', systemExtra: 'EXTRA RULES' }), deps);
     let captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.prompt).toBe(`${devAgent.body}\n\nEXTRA RULES`);
+    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(`${devAgent.body}\n\nEXTRA RULES`);
     await runStep(request({ kind: 'dev' }), deps);
     captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    expect(JSON.parse(captured.argv[captured.argv.indexOf('--agents') + 1]).dev.prompt).toBe(devAgent.body);
+    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(devAgent.body);
   });
 
   it('returns an environment failure when the working directory does not exist, without trusting it', async () => {

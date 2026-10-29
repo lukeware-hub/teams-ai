@@ -71,11 +71,12 @@ export interface InvocationInput {
   sessionId?: string;
   resume?: boolean;
   /**
-   * Inline agent definition (`--agents` JSON). Agents in `.claude/agents` are loaded from the
-   * process cwd, which is the product worktree, so the orchestrator ships the role definition itself.
-   * The step model wins over the agent file's model.
+   * The role definition (the agent file's text and tools). It is written to `agentsPath` and passed with `--agents`,
+   * so the text never travels in the command line. The step model wins over the agent file's model.
    */
   agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
+  /** Where the definition file goes: outside the worktree, so the product repository cannot change it. Required with agentDefinition. */
+  agentsPath?: string;
   /** Per-step empty HOME (outside the worktree); replaces the host HOME and TMPDIR in the child env. */
   home?: string;
   /** Claude Code effort level for this step (spec 10A.5 decision 11); absent means the CLI default. */
@@ -96,6 +97,8 @@ export interface Invocation {
   cwd: string;
   /** The question rules, then the prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
   stdin: string;
+  /** The definition file the caller writes at `path` before the child starts, since `--agents` reads it. */
+  agentsFile?: { path: string; content: string };
 }
 
 export class InvocationError extends Error {}
@@ -113,12 +116,13 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   if (input.prompt.trim() === '') throw new InvocationError('prompt must not be empty');
   if (!input.settingsPath || input.settingsPath.trim() === '') throw new InvocationError('settingsPath is required');
   const args: string[] = ['-p', '--agent', input.role];
+  let agentsFile: { path: string; content: string } | undefined;
   if (input.agentDefinition) {
+    if (!input.agentsPath) throw new InvocationError('agentsPath is required with agentDefinition');
     const def = input.agentDefinition;
-    args.push(
-      '--agents',
-      JSON.stringify({ [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: input.model } }),
-    );
+    const role = { [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: input.model } };
+    agentsFile = { path: input.agentsPath, content: `${JSON.stringify(role, null, 2)}\n` };
+    args.push('--agents', input.agentsPath);
   }
   args.push(...ISOLATION_FLAGS);
   args.push('--settings', input.settingsPath);
@@ -150,7 +154,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   // Never read from the host env: only the key the config chose (`claude.auth: "api-key"`) reaches a step.
   if (input.apiKey) env.ANTHROPIC_API_KEY = input.apiKey;
   if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
-  return { args, env, cwd: input.cwd, stdin: `${QUESTION_RULES}\n\n${input.prompt}` };
+  return { args, env, cwd: input.cwd, stdin: `${QUESTION_RULES}\n\n${input.prompt}`, agentsFile };
 }
 
 // Writes to ~/.claude.json go through `updateFileAtomic`: serialized per file in this process and atomic (temp file +
