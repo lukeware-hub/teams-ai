@@ -12,6 +12,7 @@ import { addProject, removeProjectDirs, removeProjectSettings } from '../onboard
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { buildProjectGraph } from '../knowledge/project-graph.js';
+import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
@@ -388,6 +389,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const ws = workspacePaths(idx.cfg, projectId, deps.home);
         await removeTree(ws.root);
         for (const dir of dirs) await removeTree(dir);
+        const gates = expandHome(idx.cfg.paths.gateCache, deps.home);
+        await removeTree(gateCacheDir(gates, projectId));
+        await removeTree(path.join(gates, 'cargo-root', projectId));
         const runNames =(await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
         for (const runId of runNames) {
           const row = await runRow(idx, runId).catch(() => null);

@@ -256,7 +256,7 @@ describe('projects', () => {
     expect((await readUserConfig(home)).cfg.projects).toEqual([{ dir: HELLO }]);
   });
 
-  it('deletes a project from disk: its directory, workspace root, runs and config entry, and takes down each of its services', async () => {
+  it('deletes a project from disk: its directory, workspace root, gate caches, runs and config entry, and takes down each of its services', async () => {
     const project = path.join(home, 'project');
     await fs.cp(HELLO, project, { recursive: true });
     const json = path.join(project, 'docs', 'project.json');
@@ -265,6 +265,13 @@ describe('projects', () => {
     const ws = path.join(home, '.teams-ai', 'workspaces', 'hello-app');
     await fs.mkdir(ws, { recursive: true });
     await fs.writeFile(path.join(ws, 'marker.txt'), 'x');
+    const gates = path.join(home, '.teams-ai', 'gate-cache');
+    const gateCache = path.join(gates, 'gates', 'hello-app');
+    const cargoRoot = path.join(gates, 'cargo-root', 'hello-app');
+    await fs.mkdir(gateCache, { recursive: true });
+    await fs.mkdir(cargoRoot, { recursive: true });
+    const otherGateCache = path.join(gates, 'gates', 'other-app');
+    await fs.mkdir(otherGateCache, { recursive: true });
     const chat = path.join(home, '.teams-ai', 'chats', 'hello-app.json');
     await fs.mkdir(path.dirname(chat), { recursive: true });
     await fs.writeFile(chat, '[]');
@@ -278,6 +285,9 @@ describe('projects', () => {
     expect(await res.json()).toEqual({ deleted: true });
     expect(await exists(project)).toBe(false);
     expect(await exists(ws)).toBe(false);
+    expect(await exists(gateCache)).toBe(false);
+    expect(await exists(cargoRoot)).toBe(false);
+    expect(await exists(otherGateCache)).toBe(true);
     expect(await exists(chat)).toBe(false);
     expect(await exists(path.join(runs, 'hello-001-r1'))).toBe(false);
     expect(await exists(path.join(runs, 'other-app--hello-001--run-1'))).toBe(true);
