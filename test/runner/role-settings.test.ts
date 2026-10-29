@@ -44,7 +44,9 @@ describe('buildRoleSettings', () => {
     const plain = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'] });
     const full = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], fullAccess: true });
     expect(plain.permissions.allow).not.toContain('Bash');
-    expect(full.permissions.allow).toEqual(expect.arrayContaining(['Bash', 'WebSearch', 'WebFetch(domain:*)']));
+    expect(full.permissions.allow).toEqual(expect.arrayContaining(['Bash', 'WebSearch', 'WebFetch']));
+    expect(full.permissions.allow).not.toContain('WebFetch(domain:*)');
+    expect(full.sandbox.network.allowedDomains).toEqual(['registry.npmjs.org']);
     expect(full.permissions.deny).toEqual(plain.permissions.deny);
   });
 

@@ -51,8 +51,11 @@ const SUITE_BASH = [
 const TOOLCHAIN_ROLES: readonly Role[] = ['front', 'dev', 'test'];
 /** Every role may run the Agent Reach CLI for web research, and nothing else from Bash. */
 const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
-/** Granted to a step the owner lets decide: any shell command and the web; the deny rules still hold. */
-export const FULL_ACCESS_ALLOW = ['Bash', 'WebSearch', 'WebFetch(domain:*)'] as const;
+/**
+ * Granted to a step the owner lets decide: any shell command, and search and page reading. The bare WebFetch rule
+ * leaves the shell's network to the sandbox allowlist; a WebFetch(domain:*) rule would open it to every host.
+ */
+export const FULL_ACCESS_ALLOW = ['Bash', 'WebSearch', 'WebFetch'] as const;
 /** The web tools a step with full access gets on top of its role's tools. */
 export const FULL_ACCESS_TOOLS = ['WebSearch', 'WebFetch'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
