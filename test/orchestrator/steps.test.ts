@@ -321,6 +321,10 @@ describe('packs', () => {
     expect(planRules(true)).toMatch(/dependsOn names only a real dependency/);
   });
 
+  it('plan rules ask every gate tool to build with the toolchain of the gate image', () => {
+    expect(planRules(true)).toContain('must build with the toolchain of the gateImage');
+  });
+
   it('plan rules tell the SM to publish any datastore service port, not just the app port', () => {
     // A Postgres/MySQL/Redis compose service the app depends on must be reachable the same way the app itself is
     // (serviceHost:port), or integration tests against a real database have no route to it at all.
