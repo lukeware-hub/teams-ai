@@ -18,9 +18,16 @@ A blocked run showed a generic cause ("Tarefa bloqueada", "Abra a tarefa para ve
 - Judges (review, security, ui-check, gaps) never get the web or the shell, even with Yes.
 - The owner's permission reaches the SM through the spec-gap pack, not through a separate note in every prompt. The SM agent file says when overruling is allowed.
 - Answers are stored outside `docs/`, beside the repair notes, so Phase 0 never publishes them.
+- The question step runs on the SM's model (Sonnet), not on Haiku. The owner's question is the text the owner reads, so quality comes first. The cost is one short call per block, and the run page shows its tokens. `routing.stepModels["block-options"]` sets another model in the config if the cost ever matters.
 
-## Not done
+## Covered without tokens
 
-- A live run with a real blocked Dev and No (the question, the answer and the next run) has not run end to end. The path is covered by unit tests. A live run costs tokens and time, so it waits for the owner's go-ahead.
-- A block whose question step fails keeps the first sentence of its reason as its title, which can be long.
-- `FEATURES.md` item 5 lists more pending items than this plan covers. They were not reviewed here.
+- The No flow runs end to end in the orchestrator test suite, with the fake agent: a blocked Dev, the question journaled, the answer stored per spec, and the next run's Dev prompt carrying the answer (`test/orchestrator/loop.test.ts`).
+- The run API stores an answer, shows it on the run, and refuses a task nobody asked about (`test/api/run-api.test.ts`).
+- A block whose question step fails keeps the first sentence of its reason as its title. That sentence is cut at 100 characters, on a word boundary.
+
+## Follow-ups closed the same day
+
+- The backend suite runs on every push to `main` on CI, and the test time budget is checked there (`scripts/test-budget.ts`, limits in the file). A file over 60 s, or a run over 8 min, fails the CI job.
+- The crash sweep tests one intent of each kind and the last by default; `TEAMS_AI_CRASH_SWEEP=full` runs every point, and `TEAMS_AI_CRASH_POINTS=13,14` reruns chosen ones.
+- The git fixture retries a transient push under parallel load on Windows; Linux CI never showed it.

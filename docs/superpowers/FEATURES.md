@@ -33,8 +33,8 @@ Status: done on 2026-10-28. The agent image carries `@playwright/cli` 0.1.22 and
 Status: in progress (2026-10-28, owner authorized).
 - Done: retry within a token budget (plan 112): `retry.taskTokenBudget` in the config; unset keeps the old rule of three attempts, one replan, then block.
 - Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the `model` lines in the agent frontmatter stay, because the agent loader requires them; the runner ignores them.
-- Pending: a notice on the project screen when a run blocks or waits for validation (needs an approved mock).
-- Pending: the fallback when the Jev service is down (today refinement halts); a decision is needed on what replaces the halt.
+- Done: a yellow notice on the project screen when a run blocks or waits for the owner (commit `479bda3d`).
+- Done: a Jev outage no longer stops the refinement cycle (commit `ad5817ac`).
 - Done 2026-10-29 (plan 115): the per-project switch "Autorizo os agentes a tomar decisões?" (No by default). Yes: the SM decides a blocked Dev, and the steps that do not judge get the shell and the web. No: a block asks the owner one question with its choices on the run screen, and the answer starts the next run as a binding assumption. With Yes, the run screen offers no reprocess.
 
 Cost: alert only, the run never stops (decided by the owner).
