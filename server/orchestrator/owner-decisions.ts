@@ -2,10 +2,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { writeFileAtomic } from '../core/atomic-write.js';
 
-/** The owner's answer to a block: the run and task it answers, the question asked and the choice made. */
+/** The owner's answer to a block: the run, task and spec version it answers, the question asked and the choice made. */
 export interface OwnerDecision {
   runId: string;
   taskId: string;
+  specHash: string;
   question: string;
   answer: string;
 }
@@ -23,6 +24,6 @@ export async function recordOwnerDecisions(root: string, specId: string, answers
   await writeFileAtomic(ownerDecisionsFile(root, specId), `${JSON.stringify([...kept, ...answers], null, 2)}\n`);
 }
 
-/** The owner's answers as assumptions that every step reads first: each one is binding for the spec. */
-export const ownerDecisionLines = (decisions: readonly OwnerDecision[]): string[] =>
-  decisions.map((d) => `Owner decision (binding) for ${d.taskId}: ${d.question} → ${d.answer}`);
+/** The answers given for this spec version, as assumptions every step reads first; an answer for another version does not carry over. */
+export const ownerDecisionLines = (decisions: readonly OwnerDecision[], specHash: string): string[] =>
+  decisions.filter((d) => d.specHash === specHash).map((d) => `Owner decision (binding) for ${d.taskId}: ${d.question} → ${d.answer}`);

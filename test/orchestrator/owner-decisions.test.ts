@@ -15,18 +15,22 @@ afterEach(async () => {
 describe('owner decisions', () => {
   it('keeps one answer per run and task, and reads back empty when none was given', async () => {
     expect(await readOwnerDecisions(root, 'spec-a')).toEqual([]);
-    await recordOwnerDecisions(root, 'spec-a', [{ runId: 'spec-a--run-1', taskId: 'T1', question: 'Which Go?', answer: 'Go 1.26.9' }]);
+    await recordOwnerDecisions(root, 'spec-a', [{ runId: 'spec-a--run-1', taskId: 'T1', specHash: 'h1', question: 'Which Go?', answer: 'Go 1.26.9' }]);
     await recordOwnerDecisions(root, 'spec-a', [
-      { runId: 'spec-a--run-1', taskId: 'T1', question: 'Which Go?', answer: 'Go 1.27.2' },
-      { runId: 'spec-a--run-1', taskId: 'T2', question: 'Which DB?', answer: 'SQLite' },
+      { runId: 'spec-a--run-1', taskId: 'T1', specHash: 'h1', question: 'Which Go?', answer: 'Go 1.27.2' },
+      { runId: 'spec-a--run-1', taskId: 'T2', specHash: 'h1', question: 'Which DB?', answer: 'SQLite' },
     ]);
     expect(await readOwnerDecisions(root, 'spec-a')).toEqual([
-      { runId: 'spec-a--run-1', taskId: 'T1', question: 'Which Go?', answer: 'Go 1.27.2' },
-      { runId: 'spec-a--run-1', taskId: 'T2', question: 'Which DB?', answer: 'SQLite' },
+      { runId: 'spec-a--run-1', taskId: 'T1', specHash: 'h1', question: 'Which Go?', answer: 'Go 1.27.2' },
+      { runId: 'spec-a--run-1', taskId: 'T2', specHash: 'h1', question: 'Which DB?', answer: 'SQLite' },
     ]);
   });
 
-  it('states each answer as a binding assumption for the spec', () => {
-    expect(ownerDecisionLines([{ runId: 'r', taskId: 'T1', question: 'Which Go?', answer: 'Go 1.26.9' }])).toEqual(['Owner decision (binding) for T1: Which Go? → Go 1.26.9']);
+  it('states each answer as a binding assumption for its spec version only', () => {
+    const decisions = [
+      { runId: 'r', taskId: 'T1', specHash: 'h1', question: 'Which Go?', answer: 'Go 1.26.9' },
+      { runId: 'r', taskId: 'T2', specHash: 'h0', question: 'Which DB?', answer: 'SQLite' },
+    ];
+    expect(ownerDecisionLines(decisions, 'h1')).toEqual(['Owner decision (binding) for T1: Which Go? → Go 1.26.9']);
   });
 });

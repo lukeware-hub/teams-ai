@@ -878,7 +878,7 @@ export class TaskRunner {
     const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return;
     const value = outcome.value as BlockOptionsOutput;
-    await this.deps.journal.fact(OrchEvent.DecisionRequested, { taskId: this.taskId, reason, question: value.question, options: value.options });
+    await this.deps.journal.fact(OrchEvent.DecisionRequested, { taskId: this.taskId, specHash: this.deps.specHash, reason, question: value.question, options: value.options });
   }
 
   private async block(reason: string): Promise<void> {

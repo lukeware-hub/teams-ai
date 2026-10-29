@@ -532,7 +532,7 @@ export class Run {
     spec: this.deps.spec,
     project: this.deps.project,
     specHash: this.deps.spec.specHash!,
-    assumptions: withRepairNotes(this.deps.repairNotes, [...ownerDecisionLines(this.deps.ownerDecisions ?? []), ...this.journal.assumptions()]),
+    assumptions: withRepairNotes(this.deps.repairNotes, [...ownerDecisionLines(this.deps.ownerDecisions ?? [], this.deps.spec.specHash!), ...this.journal.assumptions()]),
     adrs: this.adrs,
     techSpecExcerpt: this.techSpecText.slice(0, 6000),
     retrieval: this.deps.knowledge?.search(this.deps.spec.objectives.join(' '), { k: 5, specId: this.deps.spec.specId }) ?? [],

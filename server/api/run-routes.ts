@@ -497,7 +497,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const records = answersOf(await body()).map(({ taskId, answer }) => {
           const ask = [...asked].reverse().find((e) => e.data.taskId === taskId);
           if (!ask) throw new HttpError(404, `run ${runId} asked no decision of ${taskId}`);
-          return { runId, taskId, question: String(ask.data.question), answer };
+          return { runId, taskId, specHash: String(ask.data.specHash ?? ""), question: String(ask.data.question), answer };
         });
         await recordOwnerDecisions(dir, row.specId, records);
         json(200, { saved: records.length });

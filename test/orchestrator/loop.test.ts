@@ -152,7 +152,7 @@ describe('orchestrator loop with the fake claude', () => {
 
     // The owner picks the recommended choice; the answer is stored per spec, as the run screen stores it.
     const projectDir = path.join(remote.root, 'project');
-    await recordOwnerDecisions(projectDir, 'spec-001', [{ runId: first.runId, taskId: 'T1-a', question: asked, answer: 'Go 1.26.9' }]);
+    await recordOwnerDecisions(projectDir, 'spec-001', [{ runId: first.runId, taskId: 'T1-a', specHash: HASH, question: asked, answer: 'Go 1.26.9' }]);
 
     const next = await Run.create({ ...deps(happyScenario(path.join(remote.root, 'scn-next'))), agents: await loadAgents(path.resolve('.claude/agents')), ownerDecisions: await readOwnerDecisions(projectDir, 'spec-001') });
     expect(await next.execute()).toBe('complete');
