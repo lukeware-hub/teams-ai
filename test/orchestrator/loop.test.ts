@@ -6,6 +6,7 @@ import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { CrashInjected, Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { readOwnerDecisions, recordOwnerDecisions } from '../../server/orchestrator/owner-decisions.js';
 import { KnowledgeIndex } from '../../server/knowledge/retrieval.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
@@ -30,6 +31,12 @@ beforeEach(async () => {
 afterEach(async () => {
   await remote.cleanup();
 });
+
+/** The text of every prompt a run sent to an agent, read back from its step folders. */
+async function promptsOf(runDir: string): Promise<string[]> {
+  const files = (await fs.readdir(runDir, { recursive: true })).filter((f) => f.endsWith('prompt.md'));
+  return Promise.all(files.map((f) => fs.readFile(path.join(runDir, f), 'utf8')));
+}
 
 function happyScenario(dir: string): Scenario {
   const s = new Scenario(dir);
@@ -128,6 +135,30 @@ describe('orchestrator loop with the fake claude', () => {
     expect(prompts.length).toBeGreaterThan(0);
     expect(prompts.some((p) => p.includes('zebracorn-7741'))).toBe(true);
     expect(() => knowledge.search('todo')).toThrow();
+  });
+
+  it('a block the owner decides: the question is journaled, the answer is stored, and the next run\'s Dev reads it', { timeout: 600_000 }, async () => {
+    const asked = 'Qual versão do Go?';
+    const blocked = happyScenario(path.join(remote.root, 'scn-blocked'));
+    blocked.set('dev', 'T1-a', 1, { output: { specHash: HASH, status: 'blocked', summary: 'no toolchain', changedFiles: [], reason: 'the gate has no Go 1.27.2' } });
+    blocked.set('block-options', 'T1-a', 1, { output: { specHash: HASH, question: asked, options: [{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }] } });
+    const first = await Run.create({ ...deps(blocked), agents: await loadAgents(path.resolve('.claude/agents')) });
+    await first.execute();
+    const asks = first.journal.events.filter((e) => e.type === 'DECISION_REQUESTED');
+    expect(asks).toHaveLength(1);
+    expect(asks[0]!.data).toMatchObject({ taskId: 'T1-a', question: asked });
+    expect(first.journal.events.some((e) => e.type === 'TASK_BLOCKED' && e.data.taskId === 'T1-a')).toBe(true);
+    await first.close();
+
+    // The owner picks the recommended choice; the answer is stored per spec, as the run screen stores it.
+    const projectDir = path.join(remote.root, 'project');
+    await recordOwnerDecisions(projectDir, 'spec-001', [{ runId: first.runId, taskId: 'T1-a', question: asked, answer: 'Go 1.26.9' }]);
+
+    const next = await Run.create({ ...deps(happyScenario(path.join(remote.root, 'scn-next'))), agents: await loadAgents(path.resolve('.claude/agents')), ownerDecisions: await readOwnerDecisions(projectDir, 'spec-001') });
+    expect(await next.execute()).toBe('complete');
+    const prompts = await promptsOf(path.join(remote.root, 'runs', next.runId));
+    expect(prompts.some((p) => p.includes('Owner decision (binding) for T1-a: Qual versão do Go? → Go 1.26.9'))).toBe(true);
+    await next.close();
   });
 
   it(FULL_SWEEP ? 'survives a crash after every intent and never duplicates a commit, PR or merge' : 'survives a crash after one intent of each kind and the last, and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {

@@ -387,6 +387,17 @@ describe('start, resume, stop', () => {
     expect(spawns).toHaveLength(1);
   });
 
+  it('stores the owner answers to a block, shows them on the run, and refuses a task nobody asked about', async () => {
+    const options = [{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }];
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'DECISION_REQUESTED', data: { taskId: 'T1-a', reason: 'no toolchain', question: 'Qual versão do Go?', options } }], state('blocked'), 1);
+    const post = (body: unknown) => fetch(`${base()}/api/runs/hello-001-r1/decisions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    expect((await post({ decisions: [{ taskId: 'T9', answer: 'x' }] })).status).toBe(404);
+    expect((await post({ decisions: [] })).status).toBe(400);
+    expect((await post({ decisions: [{ taskId: 'T1-a', answer: 'Go 1.26.9' }] })).status).toBe(200);
+    const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(detail.decisions).toEqual([{ taskId: 'T1-a', question: 'Qual versão do Go?', options, answer: 'Go 1.26.9' }]);
+  });
+
   it('complete refuses an unknown spec (404) and a spec not awaiting validation (409) without keeping the spec locked', async () => {
     const complete = '/api/projects/hello-app/specs/hello-001/complete';
     expect((await post('/api/projects/hello-app/specs/nope/complete')).status).toBe(404);
