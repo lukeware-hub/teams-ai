@@ -423,6 +423,7 @@ export function firstSentence(text: string, max = 160): string {
 const NEXT_STEP = 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.';
 const DEPLOY_NEXT_STEP = 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.';
 const AUTONOMOUS_NEXT_STEP = 'Os agentes já tentaram resolver sozinhos. Veja o detalhe técnico.';
+const AUTONOMOUS_BLOCKED_HINT = 'Os agentes já decidiram o que podiam e a tarefa não avançou. Veja o detalhe técnico.';
 
 /** With the owner letting the agents decide, no screen offers a reprocess, so a hint that asks for one is replaced. */
 export const ownHint = (hint: string, autonomous: boolean): string => (autonomous && /reprocess/i.test(hint) ? AUTONOMOUS_NEXT_STEP : hint);
@@ -493,7 +494,8 @@ export function stopSummary(input: { status: string; reason: string | null; caus
   const first = causes[0];
   const why = (first ? explainStop(first.reason) : null) ?? { title: first ? firstSentence(explainBlockReason(first.reason)) : 'Tarefas bloqueadas', hint: 'Abra a tarefa para ver o motivo.', owner: 'Sistema' as StopOwner };
   const n = causes.length;
-  return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, hint: ownHint(why.hint, autonomous), raw: first?.reason ?? reason ?? '', rollback: null, action: null };
+  const hint = autonomous ? AUTONOMOUS_BLOCKED_HINT : ownHint(why.hint, false);
+  return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, hint, raw: first?.reason ?? reason ?? '', rollback: null, action: null };
 }
 
 /** Every one of `taskIds` currently sitting blocked, with the reason its own TASK_BLOCKED event carries. Unlike

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { z } from 'zod';
 import { blockingFindings } from '../agents/outputs.js';
-import type { DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SkillSelectionOutput, SpecGapOutput, StepKind } from '../agents/outputs.js';
+import type { BlockOptionsOutput, DevOutput as DevOutputSchema, OutputOf, ReplanOutput, ReviewOutput as ReviewOutputSchema, SecurityOutput as SecurityOutputSchema, SkillSelectionOutput, SpecGapOutput, StepKind } from '../agents/outputs.js';
 
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
@@ -37,7 +37,7 @@ import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { withMainSnapshot } from './phases/shared.js';
-import { devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
+import { blockOptionsPack, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
 import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
@@ -356,6 +356,7 @@ export class TaskRunner {
     if (value.status === 'blocked') {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
       if (await this.autonomous()) return this.specGap(task.def, `Blocked, the task cannot be finished as written: ${value.reason}`);
+      await this.askOwner(task.def, value.reason);
       return this.block(value.reason);
     }
     // A source file the list leaves out sends the step back; an absolute path counts by its ending.
@@ -870,6 +871,14 @@ export class TaskRunner {
 
   private autonomous(): Promise<boolean> {
     return this.deps.autonomous?.() ?? Promise.resolve(false);
+  }
+
+  /** Asks the SM for the owner's question and choices on a block and journals them for the run screen; a failed step leaves the block as it is. */
+  private async askOwner(task: PlanTask, reason: string): Promise<void> {
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    if (!outcome.ok) return;
+    const value = outcome.value as BlockOptionsOutput;
+    await this.deps.journal.fact(OrchEvent.DecisionRequested, { taskId: this.taskId, reason, question: value.question, options: value.options });
   }
 
   private async block(reason: string): Promise<void> {

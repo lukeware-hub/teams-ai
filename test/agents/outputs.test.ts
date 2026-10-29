@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { BlockOptionsOutput, ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
 describe('output contracts', () => {
+  it('a block asks the owner one question with 2 to 4 choices', () => {
+    const asked = { specHash: HASH, question: 'Which runtime?', options: [{ label: 'Node 22', detail: 'Keeps the stack.', recommended: true }, { label: 'Node 20', detail: 'No lockfile change.' }] };
+    expect(BlockOptionsOutput.safeParse(asked).success).toBe(true);
+    expect(BlockOptionsOutput.safeParse({ ...asked, options: [asked.options[0]] }).success).toBe(false);
+    expect(BlockOptionsOutput.safeParse({ ...asked, options: Array.from({ length: 5 }, (_, i) => ({ label: `L${i}`, detail: 'd' })) }).success).toBe(false);
+  });
+
   it('every step kind has a schema requiring specHash', () => {
     for (const kind of STEP_KINDS) {
       const schema = toJsonSchema(kind) as { required?: string[]; anyOf?: Array<{ required?: string[] }>; oneOf?: Array<{ required?: string[] }> };

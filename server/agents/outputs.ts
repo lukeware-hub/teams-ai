@@ -8,7 +8,7 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -307,6 +307,10 @@ export type DecideOutput = z.infer<typeof DecideOutput>;
 export const SpecGapOutput = z.object({ specHash, answer: z.string().min(1), assumption: z.string().min(1) });
 export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
 
+/** A block the agents do not decide: the SM's question for the owner and the choices the repository can carry out. */
+export const BlockOptionsOutput = z.object({ specHash, question: z.string().min(1), options: z.array(QuestionChoice).min(2).max(4) });
+export type BlockOptionsOutput = z.infer<typeof BlockOptionsOutput>;
+
 /** Spec (orchestrator) §4.6: SM splits or changes a task that spent its attempts. */
 export const ReplanOutput = z.object({ specHash, replacements: z.array(PlanTask).min(1).max(3) });
 export type ReplanOutput = z.infer<typeof ReplanOutput>;
@@ -379,6 +383,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   readme: ReadmeOutput,
   decide: DecideOutput,
   'spec-gap': SpecGapOutput,
+  'block-options': BlockOptionsOutput,
   replan: ReplanOutput,
   'fix-tasks': FixTasksOutput,
   backlog: BacklogOutput,

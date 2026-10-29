@@ -549,6 +549,8 @@ describe('start, resume, stop', () => {
     expect(spawns).toHaveLength(0);
     expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).locked).toBe(true);
     expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).agentsDecide).toBe(false);
+    const answer = await fetch(`${base()}/api/runs/hello-001-r1/decisions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decisions: [{ taskId: 'T1', answer: 'yes' }] }) });
+    expect(answer.status).toBe(409);
     for (const url of ['/api/runs/hello-001-r1/readme']) {
       const r = await post(url);
       expect(r.status, url).toBe(409);

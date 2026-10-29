@@ -185,6 +185,8 @@ export interface GapItem { doc: string; heading: string; status: 'delivered' | '
 export type GapsReport = { items: GapItem[] } | { unavailable: string };
 /** A doc section the user accepted as out of scope. */
 export interface GapDecision { doc: string; heading: string; note: string; at: string }
+/** A question a blocked run asked the owner, with its choices and the answer given to it, if any. */
+export interface RunDecision { taskId: string; question: string; options: Array<{ label: string; detail: string; recommended?: boolean }>; answer: string | null }
 export interface Report {
   runId: string;
   specId: string;
@@ -223,6 +225,7 @@ export interface RunDetail {
   acceptanceCriteria: AcceptanceCriterion[];
   plan: PlanArtifact | ServicesPlanArtifact | null;
   gapDecisions?: GapDecision[];
+  decisions?: RunDecision[];
 }
 
 const R = '/api';
@@ -238,6 +241,7 @@ export const runApi = {
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<StartedRun>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
+  decide: (runId: string, answers: Array<{ taskId: string; answer: string }>) => jsonPost(`/runs/${encodeURIComponent(runId)}/decisions`, { decisions: answers }).then((r) => json<{ saved: number }>(r)),
   serviceStatus: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
   artifactUrl: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/artifact`,
   deployAgain: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/deploy`).then((r) => json<{ runId: string }>(r)),

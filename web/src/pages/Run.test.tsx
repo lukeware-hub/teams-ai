@@ -312,6 +312,16 @@ describe('RunView', () => {
       expect(screen.getByTestId('outcome-hint').textContent).not.toContain('reprocesse');
     });
 
+    it('a block the owner must decide shows the question with its choices, the recommended one picked, and one submit saves it', () => {
+      const onDecide = vi.fn();
+      const decisions = [{ taskId: 'T2', question: 'Qual versão do Go?', options: [{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }], answer: null }];
+      render(failedView({ detail: { ...detail, status: 'phase-failed', decisions }, decideAction: { onDecide, busy: false, error: null } }));
+      expect(screen.getByTestId('decision-question').textContent).toBe('Qual versão do Go?');
+      expect(screen.getByTestId('outcome-owner').textContent).toBe('Você');
+      fireEvent.click(screen.getByTestId('decide'));
+      expect(onDecide).toHaveBeenCalledWith([{ taskId: 'T2', answer: 'Go 1.26.9' }]);
+    });
+
     it('offers Reprocessar only when wired, disabled while the new run starts, with its error inline', () => {
       const onReprocess = vi.fn();
       const { rerender } = render(failedView());

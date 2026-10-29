@@ -94,7 +94,7 @@ export interface StepDeps {
 /** Tools a review step does not get, whatever its role may use elsewhere. */
 const REVIEW_DENIED_TOOLS: readonly string[] = ['Edit', 'Write', 'MultiEdit'];
 /** Steps that answer with JSON and edit no file: refinement changes reach the docs only as patches the owner accepts. */
-const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'suggest'];
+const READ_ONLY_KINDS: readonly string[] = ['review', 'ui-check', 'refine', 'suggest', 'block-options'];
 /** What the chat step may use: read files in its working directory and run the graphify queries its settings allow. */
 export const CHAT_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Bash'];
 /** A search or two and the answer: a chat that loops is cut short instead of spending the step budget. */

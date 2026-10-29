@@ -51,6 +51,7 @@ import { DATASTORE_CREDENTIALS, datastoreCredentialsOf } from './deploy/datastor
 import { DockerLocalTarget } from './deploy/docker-local.js';
 import { httpGet } from './deploy/target.js';
 import { readRepairNotes } from './program/repair-notes.js';
+import { readOwnerDecisions } from './orchestrator/owner-decisions.js';
 import { ensureAgentPlugins } from './skills/plugins.js';
 import { clearPrivateSkills, ensurePinnedSkills } from './skills/store.js';
 
@@ -317,7 +318,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets, cfg.environment.generatedSecrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   const planFile = await planFileFor(projectDir, specId);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), firstSpec, planFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId) };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

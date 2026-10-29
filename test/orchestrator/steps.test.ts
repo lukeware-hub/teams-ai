@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, FILES_READ_RULE, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -375,6 +375,15 @@ describe('specGapPack', () => {
   it('lets the SM overrule an owner decision only when the owner lets the agents decide', () => {
     expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('overrule it');
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('overrule it');
+  });
+});
+
+describe('blockOptionsPack', () => {
+  it('asks the SM for one question and 2 to 4 choices, with the Dev reason, and no file-editing rule', () => {
+    const pack = blockOptionsPack(base, task, { reason: 'the gate has no Go 1.27.2' });
+    expect(pack.kind).toBe('block-options');
+    expect(pack.feedback).toContain('the gate has no Go 1.27.2');
+    expect(pack.feedback).toContain('2 to 4 choices');
   });
 });
 

@@ -374,6 +374,17 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
   return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}` };
 }
 
+/** The owner's question for a block the agents cannot finish: one question and 2 to 4 choices the repository can carry out. */
+export function blockOptionsPack(base: PackBase, task: PlanTask, opts: { reason: string }): ContextPackInput {
+  return {
+    ...common(base, 'block-options', 'sm'),
+    task,
+    criteria: criteriaOf(base.spec, task.criteriaRefs),
+    decisions: base.spec.decisions,
+    feedback: `The Dev cannot finish this task as written:\n${opts.reason}\n\nWrite one question for the owner in Brazilian Portuguese (pt-BR), in plain words, and 2 to 4 choices the agents can carry out inside this repository. Each choice has a short label, a detail in one sentence with its cost or risk, and at most one is recommended. Never ask for a credential or a value only the owner has.`,
+  };
+}
+
 export function skillSelectPack(base: PackBase, task: PlanTask, opts: { role: Role; capability: string; reason: string; draft?: { id: string; whenToUse: string; rules: readonly string[] } }): ContextPackInput {
   const pinned = skillsForRole(opts.role).map((s) => `- ${s.id} (${s.repository}@${s.commit}): ${s.purpose}`).join('\n');
   const draft = opts.draft ? `\nA draft was proposed (do not install it yourself):\nid: ${opts.draft.id}\nwhen: ${opts.draft.whenToUse}\nrules:\n${opts.draft.rules.map((r) => `- ${r}`).join('\n')}` : '';

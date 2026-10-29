@@ -1,11 +1,12 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
-import { runApi, startedPath, type RunDetail, type StoredEvent } from '../api.js';
+import { runApi, startedPath, type RunDecision, type RunDetail, type StoredEvent } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
+import { OptionGroup } from '../components/OptionGroup.js';
 import { STATUS_HELP } from './project-shared.js';
 import { Loading } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
@@ -427,6 +428,40 @@ export interface ReprocessAction {
   error: string | null;
 }
 
+/** Saves the owner's answers to the questions of a blocked run, then starts the next run of the spec. */
+export interface DecideAction {
+  onDecide: (answers: Array<{ taskId: string; answer: string }>) => void;
+  busy: boolean;
+  error: string | null;
+}
+
+const OTHER_ANSWER = 'Outra resposta…';
+
+/** The owner's open questions of a blocked run: one choice each, or a text of their own. One submit saves them all. */
+function DecisionForm({ decisions, busy, error, onSubmit }: { decisions: RunDecision[]; busy: boolean; error: string | null; onSubmit: (answers: Array<{ taskId: string; answer: string }>) => void }) {
+  const [picks, setPicks] = useState<Record<string, string>>(() => Object.fromEntries(decisions.map((d) => [d.taskId, d.options.find((o) => o.recommended)?.label ?? d.options[0]?.label ?? OTHER_ANSWER])));
+  const [texts, setTexts] = useState<Record<string, string>>({});
+  const answerOf = (d: RunDecision): string => (picks[d.taskId] === OTHER_ANSWER ? (texts[d.taskId] ?? '').trim() : (picks[d.taskId] ?? ''));
+  const ready = decisions.every((d) => answerOf(d) !== '');
+  return (
+    <div className="grid gap-3" data-testid="decision-form">
+      {decisions.map((d) => (
+        <div key={d.taskId} className="grid gap-1">
+          <p className="m-0" data-testid="decision-question">{d.question}</p>
+          <OptionGroup options={[...d.options, { label: OTHER_ANSWER, detail: 'Escreva a sua decisão abaixo.' }]} value={picks[d.taskId] ?? ''} onChange={(label) => setPicks({ ...picks, [d.taskId]: label })} disabled={busy} />
+          {picks[d.taskId] === OTHER_ANSWER ? (
+            <textarea className="mt-3 min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" aria-label={`Sua decisão sobre ${d.taskId}`} value={texts[d.taskId] ?? ''} onChange={(e) => setTexts({ ...texts, [d.taskId]: e.target.value })} disabled={busy} />
+          ) : null}
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <ActionButton className="primary-button" data-testid="decide" busy={busy} disabled={!ready || busy} onClick={() => onSubmit(decisions.map((d) => ({ taskId: d.taskId, answer: answerOf(d) })))} icon={<Icon name="send" size={16} />}>Decidir e continuar</ActionButton>
+      </div>
+      {error ? <p className="error" data-testid="decide-error">{error}</p> : null}
+    </div>
+  );
+}
+
 /** Requests a graceful stop: in-flight steps finish, nothing new starts. The only way to turn a run stuck on a
  * blocked task (other tasks still progressing, so the run itself never settles on its own) into one that has
  * finished and can be reprocessed. */
@@ -451,7 +486,7 @@ const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 // process (interrupted) or an expired Claude session (paused:auth) resume; a quota pause lifts on its own.
 const RESUMABLE = new Set(['interrupted', 'paused:auth']);
 
-export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
+export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = [...unique].reverse().find((e) => e.type === 'RUN_FINISHED');
@@ -484,6 +519,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
   const autonomous = detail.agentsDecide === true;
+  // The owner's questions still open: none when the agents decide, since they never ask.
+  const pendingDecisions = autonomous ? [] : (detail.decisions ?? []).filter((d) => d.answer === null);
   const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase, autonomous });
   const before = stop ? stopBefore(status, blocked, autonomous) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
@@ -734,12 +771,16 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           Quem resolve
                           <InfoTip label="Quem resolve" text={TIP.owner} />
                         </dt>
-                        <dd>{ownerChip(stop.owner, 'outcome-owner')}</dd>
+                        <dd>{ownerChip(pendingDecisions.length ? 'Você' : stop.owner, 'outcome-owner')}</dd>
                       </div>
                       <div>
                         <dt>Próximo passo</dt>
                         <dd>
-                          <p data-testid="outcome-hint">{stop.hint}</p>
+                          {pendingDecisions.length ? (
+                            <DecisionForm decisions={pendingDecisions} busy={decideAction?.busy ?? false} error={decideAction?.error ?? null} onSubmit={(answers) => decideAction?.onDecide(answers)} />
+                          ) : (
+                            <p data-testid="outcome-hint">{stop.hint}</p>
+                          )}
                           <div className="flex flex-wrap items-center gap-3">
                             {redeploying ? (
                               <ActionButton className="primary-button" data-testid="redeploy" busy={redeployAction.busy} onClick={redeployAction.onRedeploy} icon={<Icon name="refresh" size={16} />}>
@@ -748,7 +789,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                             ) : null}
                             {reprocessAction && !detail.locked && !autonomous ? (
                               <span className="inline-flex items-center gap-[0.35rem]">
-                                <ActionButton className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
+                                <ActionButton className={redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                   {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
                                 </ActionButton>
                                 <InfoTip label="Reprocessar" text={TIP.reprocess} />
@@ -1016,6 +1057,8 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [writerRun, setWriterRun] = useState<string | null>(null);
   const [readmeError, setReadmeError] = useState<string | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
+  const [deciding, setDeciding] = useState(false);
+  const [decideFailure, setDecideFailure] = useState<string | null>(null);
   const [reprocessFailure, setReprocessFailure] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [stopFailure, setStopFailure] = useState<string | null>(null);
@@ -1076,6 +1119,22 @@ function RunScreen({ runId }: { runId: string | undefined }) {
         setReprocessFailure(reprocessError(e.message));
       });
   };
+  // Saves every answer first, so the next run starts with them; a failed save starts nothing.
+  const decide = (answers: Array<{ taskId: string; answer: string }>) => {
+    if (!runId || !detail) return;
+    setDeciding(true);
+    setDecideFailure(null);
+    runApi
+      .decide(runId, answers)
+      .then(() => {
+        setDeciding(false);
+        reprocess();
+      })
+      .catch((e: Error) => {
+        setDeciding(false);
+        setDecideFailure(`Não foi possível salvar a decisão: ${e.message}`);
+      });
+  };
   const stopExecution = () => {
     if (!runId) return;
     setStopping(true);
@@ -1126,6 +1185,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       loadStep={(stepId) => runApi.step(runId, stepId)}
       readmeAction={{ onGenerate: generateReadme, busy: writerRun !== null, error: readmeError }}
       reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure }}
+      decideAction={{ onDecide: decide, busy: deciding || reprocessing, error: decideFailure ?? reprocessFailure }}
       stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
       resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure }}
     />

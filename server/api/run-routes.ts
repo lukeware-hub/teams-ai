@@ -12,6 +12,8 @@ import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { buildProjectGraph } from '../knowledge/project-graph.js';
 import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
+import { OrchEvent } from '../orchestrator/events.js';
+import { readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -105,6 +107,30 @@ export function withDeployedAddress(report: unknown, deployed: Record<string, un
     ...(r.service ? { service: { ...r.service, url: deployed.url, port: deployed.port } } : {}),
     ...(r.services ? { services: r.services.map((x) => { const c = cards.find((k) => k.service === x.service); return c ? { ...x, url: c.url, port: c.port } : x; }) } : {}),
   };
+}
+
+/** `{decisions: [{taskId, answer}]}` from the run screen: every answer a text of 1 to 2000 characters. */
+const answersOf = (input: unknown): Array<{ taskId: string; answer: string }> => {
+  const list = (input as { decisions?: unknown } | null)?.decisions;
+  if (!Array.isArray(list) || list.length === 0) throw new HttpError(400, 'decisions must be a list of answers');
+  return list.map((item: unknown) => {
+    const { taskId, answer } = (item ?? {}) as { taskId?: unknown; answer?: unknown };
+    if (typeof taskId !== 'string' || typeof answer !== 'string' || answer.trim() === '' || answer.length > 2000) {
+      throw new HttpError(400, 'each answer needs a taskId and a text of 1 to 2000 characters');
+    }
+    return { taskId, answer: answer.trim() };
+  });
+};
+
+/** The questions a run asked the owner, each with the answer the owner gave it, if any. */
+async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: string | null, specId: string) {
+  const answers = root ? await readOwnerDecisions(root, specId) : [];
+  return evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => {
+    const taskId = String(e.data.taskId);
+    const question = String(e.data.question);
+    const answer = answers.find((a) => a.runId === runId && a.taskId === taskId && a.question === question)?.answer ?? null;
+    return { taskId, question, options: e.data.options, answer };
+  });
 }
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {
@@ -461,6 +487,24 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     },
     {
       method: 'POST',
+      path: `${P}/runs/:runId/decisions`,
+      handler: async ({ params, body, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const asked = (await events(runsDir(idx), runId)).filter((e) => e.type === OrchEvent.DecisionRequested);
+        const { row, dir } = await findRun(idx, runId);
+        if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
+        const records = answersOf(await body()).map(({ taskId, answer }) => {
+          const ask = [...asked].reverse().find((e) => e.data.taskId === taskId);
+          if (!ask) throw new HttpError(404, `run ${runId} asked no decision of ${taskId}`);
+          return { runId, taskId, question: String(ask.data.question), answer };
+        });
+        await recordOwnerDecisions(dir, row.specId, records);
+        json(200, { saved: records.length });
+      },
+    },
+    {
+      method: 'POST',
       path: `${P}/runs/:runId/stop`,
       handler: async ({ params, json }) => {
         const idx = await index();
@@ -643,6 +687,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
           gapDecisions: await readGapDecisions(runs, runId),
+          decisions: await decisionsOf(evs, runId, project, specId),
           tokens: tokensOf(evs),
           acceptanceCriteria: spec?.acceptanceCriteria ?? [],
           plan,

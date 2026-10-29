@@ -41,6 +41,8 @@ export const OrchEvent = {
   /** A conflicting task moved onto origin/main as one commit, conflict markers where both sides changed the same lines. */
   RebaseReplayed: 'REBASE_REPLAYED',
   TaskBlocked: 'TASK_BLOCKED',
+  /** The SM's question and choices for a block, asked of the owner on the run screen. */
+  DecisionRequested: 'DECISION_REQUESTED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
   RunFinished: 'RUN_FINISHED',
   RepoBootstrapped: 'REPO_BOOTSTRAPPED',

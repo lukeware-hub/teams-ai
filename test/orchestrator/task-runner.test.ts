@@ -223,13 +223,16 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[2]!.pack.assumptions).toContain('T1: timezone → UTC');
   });
 
-  it('a blocked Dev blocks the task at once with the reason: no SM round, no attempt consumed', async () => {
-    const agent: Agent = async () => ok({ specHash: HASH, status: 'blocked', summary: 'cannot deploy', changedFiles: [], reason: 'the smoke gate has no network' });
+  it('a blocked Dev blocks the task at once with the reason and the SM asks the owner: no attempt consumed', async () => {
+    const agent: Agent = async (req) => (req.kind === 'block-options'
+      ? ok({ specHash: HASH, question: 'Which runtime?', options: [{ label: 'Node 22', detail: 'Keeps the stack.' }, { label: 'Node 20', detail: 'Older, no change to the lockfile.' }] })
+      : ok({ specHash: HASH, status: 'blocked', summary: 'cannot deploy', changedFiles: [], reason: 'the smoke gate has no network' }));
     const r = new TaskRunner('T1', deps({ agent }));
     await r.advance();
     expect(state()).toMatchObject({ state: 'blocked', attempts: 0 });
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data).toMatchObject({ taskId: 'T1', reason: 'the smoke gate has no network' });
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
+    expect(journal.events.find((e) => e.type === OrchEvent.DecisionRequested)!.data).toMatchObject({ taskId: 'T1', question: 'Which runtime?' });
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'block-options']);
   });
 
   it('a blocked Dev goes to the SM and resumes with its answer when the owner lets the agents decide', async () => {

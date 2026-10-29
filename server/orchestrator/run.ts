@@ -49,6 +49,7 @@ import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
+import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackEnv, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
@@ -61,6 +62,8 @@ export interface RunDeps {
   project: Project;
   spec: Spec;
   repairNotes?: string | null;
+  /** The owner's answers to this spec's blocks, read at the start of the run; each is a binding assumption. */
+  ownerDecisions?: OwnerDecision[];
   firstSpec: boolean;
   requireDelivery?: boolean;
   requireSecurityTooling?: boolean;
@@ -529,7 +532,7 @@ export class Run {
     spec: this.deps.spec,
     project: this.deps.project,
     specHash: this.deps.spec.specHash!,
-    assumptions: withRepairNotes(this.deps.repairNotes, this.journal.assumptions()),
+    assumptions: withRepairNotes(this.deps.repairNotes, [...ownerDecisionLines(this.deps.ownerDecisions ?? []), ...this.journal.assumptions()]),
     adrs: this.adrs,
     techSpecExcerpt: this.techSpecText.slice(0, 6000),
     retrieval: this.deps.knowledge?.search(this.deps.spec.objectives.join(' '), { k: 5, specId: this.deps.spec.specId }) ?? [],

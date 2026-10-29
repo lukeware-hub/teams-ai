@@ -301,7 +301,7 @@ describe('Run', () => {
     };
     const run = await Run.create(await withAgents(deps(script, { firstSpec: true, target: { validate: async () => [] } as unknown as RunDeps['target'] })));
     expect(await run.execute()).toBe('blocked');
-    expect(kinds).toEqual(['dev']);
+    expect(kinds).toEqual(['dev', 'block-options']);
     expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4)).toBe(false);
     expect(run.journal.events.at(-1)!.data).toMatchObject({ result: 'blocked', blocked: expect.arrayContaining([{ taskId: 'T0-scaffold', reason: 'the security-tools gate cannot install semgrep' }, { taskId: 'T1-create', reason: 'a dependency is blocked' }]) });
     await run.close();
