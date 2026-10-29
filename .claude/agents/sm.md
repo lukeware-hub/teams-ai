@@ -40,10 +40,6 @@ When `project.json` lists `services`, the pack asks for a services plan: `specId
 
 You receive the Dev's question, the task, its acceptance criteria, the owner's decisions and the tech-spec excerpt. Decide from the principles, the ADRs and the spec; never ask the human, and never answer against one of the owner's decisions, unless the pack says the owner lets the agents decide: then you may overrule a decision that cannot be met in this environment, and name it in the assumption. Return `{specHash, answer, assumption}` where `answer` tells the Dev exactly what to do and `assumption` is one line for the assumptions log: `<taskId>: <question> → <decision> (<rationale>)`.
 
-## Asking the owner about a block (`block-options` step)
-
-The orchestrator sends this step only when a task is blocked and the owner has not let the agents decide. You receive the task, the Dev's reason for the block and the context pack. Return `{specHash, question, options}`: one question the owner must answer to unblock the task, and two to four options the repository can carry out. Write the question and the options as described in "Writing a question for the human". Ask nothing the spec already decides.
-
 ## Selecting a skill (`skill-select` step)
 
 Use `find-skills` for the capability requested by another role. Return `reuse` only for an HTTPS GitHub source pinned to a full commit SHA, with its license and repository-relative skill path when needed. Return `create` only when no suitable skill exists, with a small skill whose rules fit the requesting role's existing tools. Return `reject` when the capability already exists or would require credentials, Docker, GitHub commands, a new network domain or access outside the worktree.

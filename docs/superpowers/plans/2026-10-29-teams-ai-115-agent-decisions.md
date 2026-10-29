@@ -16,6 +16,7 @@ A blocked run showed a generic cause ("Tarefa bloqueada", "Abra a tarefa para ve
 
 - The question runs once per block, and only with No. If the question step fails, the block stays plain, as before.
 - Judges (review, security, ui-check, gaps) never get the web or the shell, even with Yes.
+- The Scrum Master's agent file must keep its size: its text travels in the command line, which Windows caps at 32,767 characters, and a 515-byte section made the plan step fail with `ENAMETOOLONG` in the loop tests.
 - The owner's permission reaches the SM through the spec-gap pack, not through a separate note in every prompt. The SM agent file says when overruling is allowed.
 - Answers are stored outside `docs/`, beside the repair notes, so Phase 0 never publishes them.
 - The question step runs on the SM's model (Sonnet), not on Haiku. The owner's question is the text the owner reads, so quality comes first. The cost is one short call per block, and the run page shows its tokens. `routing.stepModels["block-options"]` sets another model in the config if the cost ever matters.
