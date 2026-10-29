@@ -23,6 +23,8 @@ const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste
 const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
 const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlog ao mesmo tempo. Vale a partir da próxima preparação. Vai de 1 a 5.';
 const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
+const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto.';
+const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos agentes.';
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
@@ -195,6 +197,49 @@ function StepTimeoutCard({ projectId }: { projectId: string }) {
   );
 }
 
+function AgentsDecideCard({ projectId }: { projectId: string }) {
+  const [decide, setDecide] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    settingsApi.agentsDecide(projectId).then((r) => {
+      if (active) setDecide(r.agentsDecide);
+    }).catch(() => {
+      if (active) setError(AGENTS_DECIDE_LOAD_ERROR);
+    });
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+  const save = async (next: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await settingsApi.setAgentsDecide(projectId, next);
+      setDecide(r.agentsDecide);
+    } catch {
+      setError(SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (decide === null) return error ? <p className="error">{error}</p> : <Loading />;
+  return (
+    <>
+      <div className={`${sectionTitle} mb-3`}>
+        <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]">Autorizo os agentes a tomar decisões?</h3>
+        <InfoTip label="Autonomia dos agentes" text={HELP_AGENTS_DECIDE} />
+      </div>
+      <Select wrapperClassName="w-full max-w-[12rem]" aria-label="Autorizo os agentes a tomar decisões?" value={decide ? 'yes' : 'no'} disabled={busy} onChange={(e) => void save(e.target.value === 'yes')}>
+        <option value="no">Não</option>
+        <option value="yes">Sim</option>
+      </Select>
+      {error ? <p className="error">{error}</p> : null}
+    </>
+  );
+}
+
 function PlanAgentsPanel() {
   const [minAgents, setMinAgents] = useState('');
   const [saved, setSaved] = useState<number | null>(null);
@@ -345,6 +390,9 @@ export function SettingsPage() {
           )}
           <SettingsCollapse title="Tempo limite">
             <StepTimeoutCard key={projectId} projectId={projectId} />
+          </SettingsCollapse>
+          <SettingsCollapse title="Autonomia dos agentes">
+            <AgentsDecideCard key={projectId} projectId={projectId} />
           </SettingsCollapse>
         </section>
       ) : null}

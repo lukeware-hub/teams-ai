@@ -152,6 +152,22 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(setStepTimeout).toHaveBeenCalledWith('demo', 45));
   });
 
+  it('saves whether the agents of a project decide its blocks', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    vi.spyOn(settingsApi, 'agentsDecide').mockResolvedValue({ agentsDecide: false });
+    const setAgentsDecide = vi.spyOn(settingsApi, 'setAgentsDecide').mockResolvedValue({ agentsDecide: true });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByText('Autonomia dos agentes', { selector: '.settings-collapse-title' }));
+    const decide = (await screen.findByLabelText('Autorizo os agentes a tomar decisões?')) as HTMLSelectElement;
+    await waitFor(() => expect(decide.value).toBe('no'));
+    fireEvent.change(decide, { target: { value: 'yes' } });
+    await waitFor(() => expect(setAgentsDecide).toHaveBeenCalledWith('demo', true));
+    await waitFor(() => expect(decide.value).toBe('yes'));
+  });
+
   it('shows how many agents prepare the plan and saves a count from 1 to 5', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([]);

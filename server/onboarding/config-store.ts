@@ -86,15 +86,22 @@ export async function setStepTimeout(projectId: string, timeoutMs: number, home?
   return updateUserConfig(home, (raw, cfg) => ({ ...raw, stepTimeouts: { ...cfg.stepTimeouts, [projectId]: timeoutMs } }));
 }
 
-/** Drops a project's agent settings and time limit, so a project created later under the same id starts on the defaults. */
+/** Sets whether the agents of one project decide its blocks themselves; its other settings stay. */
+export async function setAgentsDecide(projectId: string, agentsDecide: boolean, home?: string): Promise<Config> {
+  return updateUserConfig(home, (raw, cfg) => ({ ...raw, agentsDecide: { ...cfg.agentsDecide, [projectId]: agentsDecide } }));
+}
+
+/** Drops a project's agent settings, time limit and autonomy, so a project created later under the same id starts on the defaults. */
 export async function removeProjectSettings(projectId: string, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => {
-    if (!(projectId in cfg.agentSettings) && !(projectId in cfg.stepTimeouts)) return undefined;
+    if (!(projectId in cfg.agentSettings) && !(projectId in cfg.stepTimeouts) && !(projectId in cfg.agentsDecide)) return undefined;
     const agentSettings = { ...cfg.agentSettings };
     const stepTimeouts = { ...cfg.stepTimeouts };
+    const agentsDecide = { ...cfg.agentsDecide };
     delete agentSettings[projectId];
     delete stepTimeouts[projectId];
-    return { ...raw, agentSettings, stepTimeouts };
+    delete agentsDecide[projectId];
+    return { ...raw, agentSettings, stepTimeouts, agentsDecide };
   });
 }
 

@@ -137,6 +137,8 @@ export const Config = z.object({
   agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting.nullable())).default({}),
   /** Per project id: the time limit of each agent step in ms, set in Settings; a project absent here takes `budgets.step.timeoutMs`. */
   stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
+  /** Per project id: whether its agents decide a block themselves, set in Settings; a project absent here does not. */
+  agentsDecide: z.record(z.string().min(1), z.boolean()).default({}),
   budgets: z
     .object({
       step: StepBudget.prefault({}),
@@ -272,6 +274,9 @@ export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets'
   if (projectId === undefined || !Object.hasOwn(cfg.stepTimeouts, projectId)) return cfg.budgets.step;
   return { ...cfg.budgets.step, timeoutMs: cfg.stepTimeouts[projectId] };
 }
+
+/** Whether the agents of one project decide its blocks themselves; a project absent from Settings does not. */
+export const agentsDecideFor = (cfg: Config, projectId: string): boolean => Object.hasOwn(cfg.agentsDecide, projectId) && cfg.agentsDecide[projectId] === true;
 
 export class ConfigError extends Error {}
 

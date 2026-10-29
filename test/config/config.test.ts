@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
+import { ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, agentsDecideFor, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
 
 describe('stepModelFor', () => {
   it("gives a services plan the plan's model unless it has its own, since both plan the run", () => {
@@ -64,6 +64,14 @@ describe('loadConfig', () => {
   it('rejects a step time limit that a timer cannot hold', () => {
     expect(() => loadConfig({ stepTimeouts: { demo: TIMER_MAX_MS + 1 } })).toThrow(/stepTimeouts/);
     expect(loadConfig({ stepTimeouts: { demo: TIMER_MAX_MS } }).stepTimeouts.demo).toBe(TIMER_MAX_MS);
+  });
+
+  it('lets agents decide blocks only in the projects that say so, and never for an inherited name', () => {
+    expect(agentsDecideFor(loadConfig({}), 'demo')).toBe(false);
+    const cfg = loadConfig({ agentsDecide: { demo: true, other: false } });
+    expect(agentsDecideFor(cfg, 'demo')).toBe(true);
+    expect(agentsDecideFor(cfg, 'other')).toBe(false);
+    expect(agentsDecideFor(cfg, 'constructor')).toBe(false);
   });
 });
 

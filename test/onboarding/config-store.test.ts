@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigError } from '../../server/config/config.js';
-import { GITHUB_OWNER, addProject, readUserConfig, removeProjectSettings, setAgentSetting, setGithubOwner, setStepTimeout, userConfigFile } from '../../server/onboarding/config-store.js';
+import { GITHUB_OWNER, addProject, readUserConfig, removeProjectSettings, setAgentSetting, setAgentsDecide, setGithubOwner, setStepTimeout, userConfigFile } from '../../server/onboarding/config-store.js';
 
 let home = '';
 afterEach(async () => {
@@ -141,6 +141,15 @@ describe('config store', () => {
     await setStepTimeout('demo', 45 * 60_000, home);
     await setStepTimeout('other', 10 * 60_000, home);
     expect((await readUserConfig(home)).cfg.stepTimeouts).toEqual({ demo: 45 * 60_000, other: 10 * 60_000 });
+  });
+
+  it('setAgentsDecide sets the autonomy of one project and removeProjectSettings drops it with the rest', async () => {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-home-'));
+    await setAgentsDecide('demo', true, home);
+    await setAgentsDecide('other', false, home);
+    expect((await readUserConfig(home)).cfg.agentsDecide).toEqual({ demo: true, other: false });
+    await removeProjectSettings('demo', home);
+    expect((await readUserConfig(home)).cfg.agentsDecide).toEqual({ other: false });
   });
 
   it('removeProjectSettings drops one project agent settings and time limit and keeps the others', async () => {

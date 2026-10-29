@@ -56,6 +56,9 @@ export const settingsApi = {
   stepTimeout: (projectId: string) => fetch(`${S}/step-timeout/${projectId}`).then((r) => json<{ timeoutMinutes: number }>(r)),
   setStepTimeout: (projectId: string, timeoutMinutes: number) =>
     fetch(`${S}/step-timeout/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ timeoutMinutes }) }).then((r) => json<{ timeoutMinutes: number }>(r)),
+  agentsDecide: (projectId: string) => fetch(`${S}/agents-decide/${projectId}`).then((r) => json<{ agentsDecide: boolean }>(r)),
+  setAgentsDecide: (projectId: string, agentsDecide: boolean) =>
+    fetch(`${S}/agents-decide/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agentsDecide }) }).then((r) => json<{ agentsDecide: boolean }>(r)),
   planAgents: () => fetch(`${S}/plan-agents`).then((r) => json<{ agents: number }>(r)),
   setPlanAgents: (agents: number) =>
     fetch(`${S}/plan-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),

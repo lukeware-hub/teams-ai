@@ -1,7 +1,7 @@
-import { AgentSetting, Config, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, stepBudgetFor, type Role } from '../config/config.js';
+import { AgentSetting, Config, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type Role } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { effortFor } from '../runner/model-policy.js';
-import { readUserConfig, setAgentSetting, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
+import { readUserConfig, setAgentSetting, setAgentsDecide, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
 import { configProblem } from './onboarding-routes.js';
 
@@ -12,6 +12,7 @@ export interface SettingsDeps {
 const P = '/api/settings/agents';
 const T = '/api/settings/step-timeout';
 const S = '/api/settings/plan-agents';
+const D = '/api/settings/agents-decide';
 const MINUTE_MS = 60_000;
 
 const slugOf = (id: string): string => {
@@ -41,6 +42,13 @@ const minutesOf = (input: unknown): number => {
     throw new HttpError(400, `timeoutMinutes must be a whole number from 1 to ${Math.floor(TIMER_MAX_MS / MINUTE_MS)}`);
   }
   return minutes;
+};
+
+/** `{agentsDecide}` from the Settings page: a yes or no answer. */
+const agentsDecideOf = (input: unknown): boolean => {
+  const value = (input as { agentsDecide?: unknown } | null)?.agentsDecide;
+  if (typeof value !== 'boolean') throw new HttpError(400, 'agentsDecide must be true or false');
+  return value;
 };
 
 /** `{agents}` from the Settings page: how many agents prepare the plan items at once, a whole number from 1 to 5. */
@@ -123,6 +131,25 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const timeoutMinutes = minutesOf(await body());
         await setStepTimeout(projectId, timeoutMinutes * MINUTE_MS, deps.home).catch(configProblem);
         json(200, { timeoutMinutes });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${D}/:projectId`,
+      handler: async ({ params, json }) => {
+        const projectId = slugOf(params.projectId!);
+        const { cfg } = await readUserConfig(deps.home).catch(configProblem);
+        json(200, { agentsDecide: agentsDecideFor(cfg, projectId) });
+      },
+    },
+    {
+      method: 'PUT',
+      path: `${D}/:projectId`,
+      handler: async ({ params, body, json }) => {
+        const projectId = slugOf(params.projectId!);
+        const agentsDecide = agentsDecideOf(await body());
+        await setAgentsDecide(projectId, agentsDecide, deps.home).catch(configProblem);
+        json(200, { agentsDecide });
       },
     },
   ];

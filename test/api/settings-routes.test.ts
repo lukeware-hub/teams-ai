@@ -58,6 +58,16 @@ describe('settings routes', () => {
     expect((await fetch(`${base()}/Bad_Id`)).status).toBe(400);
   });
 
+  it('gives a project its autonomy, off by default, and saves a yes or no answer', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/agents-decide/demo`;
+    expect(await (await fetch(url)).json()).toEqual({ agentsDecide: false });
+    expect((await put(url, { agentsDecide: true })).status).toBe(200);
+    expect(await (await fetch(url)).json()).toEqual({ agentsDecide: true });
+    for (const body of [{}, { agentsDecide: 'sim' }, { agentsDecide: 1 }]) expect((await put(url, body)).status).toBe(400);
+    expect((await fetch(`http://127.0.0.1:${api.port}/api/settings/agents-decide/Bad_Id`)).status).toBe(400);
+    expect(await (await fetch(url)).json()).toEqual({ agentsDecide: true });
+  });
+
   it('gives a project its time limit in minutes, 20 by default, and saves a new one', async () => {
     const url = `http://127.0.0.1:${api.port}/api/settings/step-timeout/demo`;
     expect(await (await fetch(url)).json()).toEqual({ timeoutMinutes: 60 });
