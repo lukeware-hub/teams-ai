@@ -37,6 +37,12 @@ describe('SpecTree', () => {
     expect(within(epic).getByTestId('tree-caso')).toBeTruthy();
   });
 
+  it('puts each doc section under its épico, and the sections with no item apart', () => {
+    render(<SpecTree backlog={backlog} />);
+    expect(within(screen.getByTestId('tree-section-epic-core')).getByTestId('tree-section-0')).toBeTruthy();
+    expect(within(screen.getByTestId('tree-section-epic-none')).getByTestId('tree-section-1')).toBeTruthy();
+  });
+
   it('goes from the doc section to the spec, its criteria and the pre-plan tasks that cover them', () => {
     render(<SpecTree backlog={backlog} />);
     expect(within(screen.getByTestId('tree-section-0')).getByText('Abertura de caso')).toBeTruthy();
