@@ -377,6 +377,7 @@ export class Run {
       stepModel: (kind) => stepModelFor(cfg.routing, kind),
       agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
+      agentsDecide: () => this.autonomous(),
       specHash: this.deps.spec.specHash!,
     };
   }

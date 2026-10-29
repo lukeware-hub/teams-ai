@@ -381,6 +381,19 @@ describe('runStep', () => {
     expect(JSON.parse(await fs.readFile(capture, 'utf8')).argv).toContain('Read,Edit,Write,Grep,Glob,Bash');
   });
 
+  it('adds the web tools to a step with full access only', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const toolsOf = async () => {
+      const { argv } = JSON.parse(await fs.readFile(capture, 'utf8'));
+      return argv[argv.indexOf('--tools') + 1];
+    };
+    await runStep(request({ kind: 'dev' }), deps);
+    expect(await toolsOf()).not.toContain('WebSearch');
+    await runStep(request({ kind: 'dev', fullAccess: true }), deps);
+    expect(await toolsOf()).toMatch(/,WebSearch,WebFetch$/);
+  });
+
   it('gives a refinement step no file-editing tools either, since its changes reach the docs only as patches', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

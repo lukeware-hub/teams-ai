@@ -51,6 +51,10 @@ const SUITE_BASH = [
 const TOOLCHAIN_ROLES: readonly Role[] = ['front', 'dev', 'test'];
 /** Every role may run the Agent Reach CLI for web research, and nothing else from Bash. */
 const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
+/** Granted to a step the owner lets decide: any shell command and the web; the deny rules still hold. */
+export const FULL_ACCESS_ALLOW = ['Bash', 'WebSearch', 'WebFetch(domain:*)'] as const;
+/** The web tools a step with full access gets on top of its role's tools. */
+export const FULL_ACCESS_TOOLS = ['WebSearch', 'WebFetch'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sm: ['Skill'],
@@ -87,6 +91,8 @@ export interface RoleSettingsInput {
   protectedDirs?: readonly string[];
   /** The only directories the step's file tools may write; when set, the role's file tools, which name no directory, are left out. */
   writeDirs?: readonly string[];
+  /** The owner lets the step decide: it may run any shell command and search or fetch the web. */
+  fullAccess?: boolean;
 }
 
 export interface RoleSettings {
@@ -125,7 +131,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   const writeAllow = (input.writeDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`);
   return {
     sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
-    permissions: { allow: [...roleAllow, ...writeAllow, ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? [])], deny: [...new Set(deny)] },
+    permissions: { allow: [...roleAllow, ...writeAllow, ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? []), ...(input.fullAccess ? FULL_ACCESS_ALLOW : [])], deny: [...new Set(deny)] },
   };
 }
 

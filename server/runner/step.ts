@@ -16,7 +16,7 @@ import { sandboxPolicyViolation } from './sandbox-policy.js';
 import { readTotals, restoreSession, saveSession, writeTotals } from './session-store.js';
 import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, removeStepHome, syncBackCredentials } from './step-home.js';
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
-import { absoluteRule, writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
+import { FULL_ACCESS_TOOLS, absoluteRule, writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { buildDynamicPlugin, referenceDirs } from '../skills/plugins.js';
 import { isRateLimitRejected, type ResultSummary, type Usage } from './stream-events.js';
 import { redactSecrets } from '../core/redact.js';
@@ -41,6 +41,8 @@ export interface StepRequest {
   resume?: boolean;
   /** Directory that keeps this session's transcript between steps (see session-store.ts); with `resume`, it is restored into the step HOME first. */
   sessionStore?: string;
+  /** The owner lets this step decide: it gets the web tools and the permissions of `FULL_ACCESS_ALLOW`. */
+  fullAccess?: boolean;
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
   /** Directories this step must not read (see `RoleSettingsInput.extraDenyRead`). */
@@ -335,12 +337,13 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const kindTools = KIND_TOOLS[req.kind];
-  const agent = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
+  const scoped = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
+  const agent = req.fullAccess ? { ...scoped, tools: [...scoped.tools, ...FULL_ACCESS_TOOLS] } : scoped;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;

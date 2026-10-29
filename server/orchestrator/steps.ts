@@ -573,8 +573,13 @@ export interface AgentStepDeps {
   /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
   agentSetting?: (role: Role) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
+  /** Whether the owner lets the agents decide; a step that does not judge then gets full access (shell and web). */
+  agentsDecide?: () => Promise<boolean>;
   specHash: string;
 }
+
+/** The steps that judge a change or a document; they never get the shell and web the owner lets the other steps have. */
+const JUDGING_KINDS: readonly StepKind[] = ['review', 'security', 'ui-check', 'gaps'];
 
 /**
  * One agent step: journaled, governed, breaker-observed, redacted, with prompt and output kept under
@@ -611,6 +616,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   });
   await fs.writeFile(path.join(dir, 'prompt.md'), pack.text);
   const clean = (s: string) => redactSecrets(s, deps.secretValues());
+  // The owner lets the agents decide: a step that does not judge gets full access (shell and web).
+  const fullAccess = !JUDGING_KINDS.includes(req.kind) && (await deps.agentsDecide?.()) === true;
   const release = await deps.governor.acquire();
   let outcome: StepOutcome<OutputOf<K>>;
   const attempt = (m: string) =>
@@ -636,6 +643,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         denyRead: req.denyRead,
         systemExtra: req.systemExtra,
         extraEnv: req.extraEnv,
+        fullAccess,
         ...(sessionStore ? { sessionId: req.session!.id, resume, sessionStore } : {}),
       },
       deps.stepDeps,

@@ -35,6 +35,14 @@ describe('buildRoleSettings', () => {
     }
   });
 
+  it('gives a step with full access any shell command and the web, and keeps every deny rule', () => {
+    const plain = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'] });
+    const full = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], fullAccess: true });
+    expect(plain.permissions.allow).not.toContain('Bash');
+    expect(full.permissions.allow).toEqual(expect.arrayContaining(['Bash', 'WebSearch', 'WebFetch(domain:*)']));
+    expect(full.permissions.deny).toEqual(plain.permissions.deny);
+  });
+
   it('grants Bash allow rules only to roles that may run the suite', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [], stacks: ['node'] }).permissions.allow).toEqual(
       expect.arrayContaining(['Bash(npm:*)', 'Bash(npx:*)', 'Bash(node:*)', 'Bash(git status:*)', 'Bash(git diff:*)']),

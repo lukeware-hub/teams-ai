@@ -555,6 +555,18 @@ describe('runAgentStep', () => {
     expect((await seeing('opus', 'max')).seen[0]!.effort).toBe('low');
   });
 
+  it('gives full access to a step the owner lets decide, and never to a judge', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
+    const seen: Array<{ kind: string; fullAccess?: boolean }> = [];
+    d.runStep = (async (req: { kind: string; fullAccess?: boolean }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    const dev = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
+    await runAgentStep(dev, d);
+    d.agentsDecide = async () => true;
+    await runAgentStep(dev, d);
+    await runAgentStep({ ...dev, kind: 'review' as const }, d);
+    expect(seen.map((s) => s.fullAccess)).toEqual([false, true, false]);
+  });
+
   it('a manual agent setting wins over the request and keeps its effort unclamped, for that role only', async () => {
     const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
     const seen: Array<{ model: string; effort?: string }> = [];
