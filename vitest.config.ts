@@ -10,5 +10,8 @@ export default defineConfig({
     hookTimeout: 120_000,
     // Real git runs slow down sharply when many files share the disk at once: fewer workers keep each test well inside its limit.
     maxWorkers: 4,
+    // The timing of every file, read by scripts/test-budget.ts on CI.
+    reporters: ['default', 'json'],
+    outputFile: { json: 'reports/vitest-results.json' },
   },
 });

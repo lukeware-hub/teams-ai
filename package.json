@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:budget": "tsx scripts/test-budget.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "teams-ai": "tsx --no-warnings=ExperimentalWarning server/cli.ts",

@@ -32,6 +32,10 @@ jobs:
       - name: Run backend tests
         run: npm test
 
+      - name: Check the backend test time budget
+        if: always()
+        run: npm run test:budget
+
       - name: Install web dependencies
         run: npm run web:install
 
