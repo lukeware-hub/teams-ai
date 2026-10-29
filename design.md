@@ -1198,6 +1198,7 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 - **Projects** — breadcrumb `⌂ › Projetos`, one panel per project or a table (§11.16) where the count exceeds a screen. Empty state per §11.11, sectional form.
 - **Run** — breadcrumb `⌂ › Projetos › <project> › <run>`, a phase timeline using chips (§11.4), a task list using rows (§11.10), the terminal (§11.15), and the meta line (§11.12) for tokens and cost. The existing `.phase`, `.test` and `.status-pill` classes all collapse into the one chip family.
+- **Blocked run: the owner's question** — when a block asks the owner, the banner's "Próximo passo" row holds a radio group (the shared `OptionGroup`, as in the refinement questions: one option tagged "Recomendada", and "Outra resposta…" with a text box) and one primary button, "Decidir e continuar". Reprocessar is secondary while a question is open.
 - **Project hub** (`/projects/:projectId`) — section headings are H2. Services are a grid of links to their repositories: one column on a phone, up to eight on a wide screen. The specs are one list in groups by who must act next: `Precisam de você`, `Em andamento`, `Prontas`, `Concluídas`; a group with no spec is left out. Each row has one primary action. The new spec form uses the app's own fields and buttons: a padded textarea, a 40px input, `Cancelar` as the secondary action and the primary action at the right.
 - **Status** — a single panel, no breadcrumb beyond `⌂ › Status`.
 
