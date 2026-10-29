@@ -414,10 +414,13 @@ export function explainStop(reason: string): StopExplanation | null {
 }
 
 /** The first sentence of a free-text reason, cut to `max` characters: a one-line title for a long explanation. */
-export function firstSentence(text: string, max = 160): string {
+export function firstSentence(text: string, max = 100): string {
   const line = text.trim().split('\n', 1)[0] ?? '';
   const sentence = /^.*?[.!?](?=\s|$)/.exec(line)?.[0] ?? line;
-  return sentence.length > max ? `${sentence.slice(0, max - 1).trimEnd()}…` : sentence;
+  if (sentence.length <= max) return sentence;
+  const cut = sentence.slice(0, max - 1);
+  const word = cut.lastIndexOf(' ');
+  return `${(word > max / 2 ? cut.slice(0, word) : cut).trimEnd()}…`;
 }
 
 const NEXT_STEP = 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.';

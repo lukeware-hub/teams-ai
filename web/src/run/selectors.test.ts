@@ -228,8 +228,9 @@ describe('stopped run explanations', () => {
     expect(firstSentence('It failed. Then it stopped.')).toBe('It failed.');
     expect(firstSentence('Runs `.tools/bin/semgrep --version` in plan.json and exits 2. Nobody can fix it.')).toBe('Runs `.tools/bin/semgrep --version` in plan.json and exits 2.');
     expect(firstSentence('no period here\nsecond line')).toBe('no period here');
-    expect(firstSentence('x'.repeat(300))).toHaveLength(160);
+    expect(firstSentence('x'.repeat(300))).toHaveLength(100);
     expect(firstSentence('x'.repeat(300)).endsWith('…')).toBe(true);
+    expect(firstSentence('palavra '.repeat(30))).toMatch(/palavra…$/);
   });
 });
 
