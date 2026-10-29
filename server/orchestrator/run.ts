@@ -6,7 +6,7 @@ import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -55,6 +55,8 @@ export interface RunDeps {
   cfg: Config;
   /** The project's manual model and effort per agent, read at each step; without it the run uses `cfg`. */
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting | null>>>;
+  /** Whether the project's agents decide blocks themselves, read at each use; without it the run uses `cfg`. */
+  agentsDecide?: (projectId: string) => Promise<boolean>;
   ws: Workspace;
   project: Project;
   spec: Spec;
@@ -323,6 +325,12 @@ export class Run {
   private async manualSettings(): Promise<Partial<Record<Role, AgentSetting>>> {
     const projectId = this.deps.project.projectId;
     return manualAgentSettings(this.deps.agentSettings ? await this.deps.agentSettings(projectId) : this.deps.cfg.agentSettings[projectId]);
+  }
+
+  /** Whether this project's agents decide blocks themselves, read at each use so a change in Settings reaches the next step. */
+  private async autonomous(): Promise<boolean> {
+    const projectId = this.deps.project.projectId;
+    return this.deps.agentsDecide ? this.deps.agentsDecide(projectId) : agentsDecideFor(this.deps.cfg, projectId);
   }
 
   private stepDeps(view?: ServiceView): StepDeps {
@@ -603,6 +611,7 @@ export class Run {
       decider,
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       routing: cfg.routing,
+      autonomous: () => this.autonomous(),
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       spentTokens: (taskId) => this.accounting.tokensOf(this.accounting.total({ taskId })),
       packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,

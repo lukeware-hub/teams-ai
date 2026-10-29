@@ -369,8 +369,9 @@ export function planPack(
   };
 }
 
-export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string }): ContextPackInput {
-  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}` };
+export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean }): ContextPackInput {
+  const overrule = opts.overrule ? '\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.' : '';
+  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}` };
 }
 
 export function skillSelectPack(base: PackBase, task: PlanTask, opts: { role: Role; capability: string; reason: string; draft?: { id: string; whenToUse: string; rules: readonly string[] } }): ContextPackInput {

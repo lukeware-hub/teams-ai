@@ -371,6 +371,13 @@ describe('packs', () => {
   });
 });
 
+describe('specGapPack', () => {
+  it('lets the SM overrule an owner decision only when the owner lets the agents decide', () => {
+    expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('overrule it');
+    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('overrule it');
+  });
+});
+
 describe('runAgentStep', () => {
   it('resumes a kept Dev session with only the retry prompt, and starts one when none was kept', async () => {
     const prompts: Array<{ prompt: string; sessionId?: string; resume?: boolean; sessionStore?: string }> = [];

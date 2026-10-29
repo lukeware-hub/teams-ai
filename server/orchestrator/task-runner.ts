@@ -78,6 +78,8 @@ export interface TaskRunnerDeps {
   handoffs: () => readonly HandoffSummary[];
   boundaries: () => Promise<readonly string[]>;
   maxSpecGapRounds?: number;
+  /** Whether the owner lets the agents decide: a blocked Dev then goes to the SM instead of ending the task. Absent means no. */
+  autonomous?: () => Promise<boolean>;
   /** Secret values to strip from gate tails and other process text before journaling (spec §5). */
   secretValues?: () => readonly string[];
   /** Refused merges tolerated per task before they count as an infra failure (default 3). */
@@ -353,6 +355,7 @@ export class TaskRunner {
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     if (value.status === 'blocked') {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
+      if (await this.autonomous()) return this.specGap(task.def, `Blocked, the task cannot be finished as written: ${value.reason}`);
       return this.block(value.reason);
     }
     // A source file the list leaves out sends the step back; an absolute path counts by its ending.
@@ -516,7 +519,8 @@ export class TaskRunner {
       return this.fail('code', `spec-gap rounds exhausted (${this.maxSpecGapRounds}); last question: ${question}`);
     }
     // The SM only reads the repo. It reads a snapshot of origin/main, so another task's merge cannot rewrite the tree under it.
-    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    const overrule = await this.autonomous();
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
@@ -862,6 +866,10 @@ export class TaskRunner {
     const cycle = findCycle(all);
     if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
     return errors;
+  }
+
+  private autonomous(): Promise<boolean> {
+    return this.deps.autonomous?.() ?? Promise.resolve(false);
   }
 
   private async block(reason: string): Promise<void> {

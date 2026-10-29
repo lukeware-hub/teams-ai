@@ -232,6 +232,22 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
   });
 
+  it('a blocked Dev goes to the SM and resumes with its answer when the owner lets the agents decide', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Use Go 1.26.9 and record it', assumption: 'T1: go version → 1.26.9 (the gate image has it)' });
+      devCalls += 1;
+      if (devCalls === 1) return ok({ specHash: HASH, status: 'blocked', summary: 'no toolchain', changedFiles: [], reason: 'the gate has no Go 1.27.2' });
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent, autonomous: async () => true }));
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'validating', attempts: 0 });
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'spec-gap', 'dev']);
+    expect(agentCalls[1]!.pack.feedback).toContain('overrule it');
+    expect(agentCalls[2]!.pack.feedback).toContain('Use Go 1.26.9 and record it');
+  });
+
   it('retries a blocked Dev whose tool result shows the sandbox failing to start, whatever language it reports in', async () => {
     let devCalls = 0;
     const agent: Agent = async (req) => {
