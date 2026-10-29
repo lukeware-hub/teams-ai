@@ -28,6 +28,15 @@ describe('SpecTree', () => {
     expect(within(screen.getByTestId('tree-fatura')).getByText('pendente').className).not.toContain('text-bad');
   });
 
+  it('groups the specs under their épico, collapsed like the backlog', () => {
+    render(<SpecTree backlog={backlog} />);
+    const epic = screen.getByTestId('tree-epic-core');
+    expect(epic.tagName).toBe('DETAILS');
+    expect((epic as HTMLDetailsElement).open).toBe(false);
+    expect(within(epic).getByText('Núcleo')).toBeTruthy();
+    expect(within(epic).getByTestId('tree-caso')).toBeTruthy();
+  });
+
   it('goes from the doc section to the spec, its criteria and the pre-plan tasks that cover them', () => {
     render(<SpecTree backlog={backlog} />);
     expect(within(screen.getByTestId('tree-section-0')).getByText('Abertura de caso')).toBeTruthy();

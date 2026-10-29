@@ -17,6 +17,8 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
   const specs = matrix.items.filter((i) => i.specId !== null).length;
   const criteria = matrix.items.reduce((n, i) => n + i.criteria.length, 0);
   const tasks = Object.values(backlog.preplans ?? {}).reduce((n, row) => n + (row.preplan?.tasks.length ?? 0), 0);
+  const epicOf = new Map(backlog.items.map((i) => [i.key, i.epic]));
+  const epics = backlog.epics.map((e) => ({ ...e, items: matrix.items.filter((i) => epicOf.get(i.key) === e.key) })).filter((e) => e.items.length > 0);
   return (
     <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree">
       <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h3>
@@ -54,33 +56,42 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
           ))}
         </ol>
       )}
-      <div className="grid">
-        {matrix.items.map((item) => {
-          const spec = backlog.specs?.[item.key]?.spec ?? null;
-          const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
-          return (
-            <details key={item.key} className="settings-collapse" data-testid={`tree-${item.key}`}>
-              <summary className="settings-collapse-summary flex-wrap">
-                <Icon name="chevron-right" size={16} />
-                <span className="settings-collapse-title flex-[1_1_12rem] wrap-anywhere">{titles.get(item.key) ?? item.key}</span>
-                {item.specId ? <code className="settings-collapse-meta">{item.specId}</code> : evaluating ? <span className="settings-collapse-meta">pendente</span> : <span className="status-chip tone-bad">sem spec</span>}
-              </summary>
-              <div className="settings-collapse-body">
-                <ul className="m-0 grid list-none gap-[0.4rem] pt-[0.85rem] text-[0.8125rem] leading-snug text-ink-soft">
-                  {item.criteria.map((c) => {
-                    const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
-                    return (
-                      <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-warn'}>
-                        {c.id}{full && <InfoTip text={criterionText(full)} />} → {c.tasks.length > 0 ? c.tasks.map((t) => `${t} ${planned.find((x) => x.id === t)?.title ?? ''}`.trim()).join(', ') : 'sem tarefa'}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </details>
-          );
-        })}
-      </div>
+      {epics.map((epic) => (
+        <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`tree-epic-${epic.key}`}>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden">
+            <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+            <span className="min-w-0 flex-1 font-semibold wrap-anywhere">{epic.title}</span>
+            <span className="count-pill">{epic.items.length}</span>
+          </summary>
+          <div className="grid gap-[0.4rem]">
+            {epic.items.map((item) => {
+              const spec = backlog.specs?.[item.key]?.spec ?? null;
+              const planned = backlog.preplans?.[item.key]?.preplan?.tasks ?? [];
+              return (
+                <details key={item.key} className="settings-collapse" data-testid={`tree-${item.key}`}>
+                  <summary className="settings-collapse-summary flex-wrap">
+                    <Icon name="chevron-right" size={16} />
+                    <span className="settings-collapse-title flex-[1_1_12rem] wrap-anywhere">{titles.get(item.key) ?? item.key}</span>
+                    {item.specId ? <code className="settings-collapse-meta">{item.specId}</code> : evaluating ? <span className="settings-collapse-meta">pendente</span> : <span className="status-chip tone-bad">sem spec</span>}
+                  </summary>
+                  <div className="settings-collapse-body">
+                    <ul className="m-0 grid list-none gap-[0.4rem] pt-[0.85rem] text-[0.8125rem] leading-snug text-ink-soft">
+                      {item.criteria.map((c) => {
+                        const full = spec?.acceptanceCriteria.find((a) => a.id === c.id);
+                        return (
+                          <li key={c.id} data-testid={`tree-ac-${c.id}`} className={c.tasks.length > 0 ? '' : 'text-warn'}>
+                            {c.id}{full && <InfoTip text={criterionText(full)} />} → {c.tasks.length > 0 ? c.tasks.map((t) => `${t} ${planned.find((x) => x.id === t)?.title ?? ''}`.trim()).join(', ') : 'sem tarefa'}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </details>
+      ))}
     </div>
   );
 }
