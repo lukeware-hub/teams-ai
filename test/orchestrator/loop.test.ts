@@ -74,6 +74,18 @@ function deps(scenario: Scenario, over: Partial<RunDeps> = {}): RunDeps {
   };
 }
 
+/** Crash points: every intent with TEAMS_AI_CRASH_SWEEP=full, else the first intent of each kind and the last one. */
+const FULL_SWEEP = process.env.TEAMS_AI_CRASH_SWEEP === 'full';
+const crashPoints = (intents: readonly string[]): number[] => {
+  if (FULL_SWEEP) return intents.map((_, i) => i);
+  const firstOfKind = new Map<string, number>();
+  intents.forEach((id, i) => {
+    const kind = id.split(':')[0]!;
+    if (!firstOfKind.has(kind)) firstOfKind.set(kind, i);
+  });
+  return [...new Set([...firstOfKind.values(), intents.length - 1])].sort((a, b) => a - b);
+};
+
 describe('orchestrator loop with the fake claude', () => {
   it('goes from a frozen spec to every task merged', { timeout: 300_000 }, async () => {
     const scenario = happyScenario(path.join(remote.root, 'scn'));
@@ -114,7 +126,7 @@ describe('orchestrator loop with the fake claude', () => {
     expect(() => knowledge.search('todo')).toThrow();
   });
 
-  it('survives a crash after every intent and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {
+  it(FULL_SWEEP ? 'survives a crash after every intent and never duplicates a commit, PR or merge' : 'survives a crash after one intent of each kind and the last, and never duplicates a commit, PR or merge', { timeout: 3_600_000 }, async () => {
     // First, a clean run to learn the intent ids in order.
     const probe = happyScenario(path.join(remote.root, 'scn-probe'));
     const d0 = { ...deps(probe), agents: await loadAgents(path.resolve('.claude/agents')) };
@@ -125,7 +137,8 @@ describe('orchestrator loop with the fake claude', () => {
     await remote.cleanup();
     expect(intents.length).toBeGreaterThan(10);
 
-    for (const [index, target] of intents.entries()) {
+    for (const index of crashPoints(intents)) {
+      const target = intents[index]!;
       remote = await makeRemote({ 'docs/project.json': JSON.stringify(project), 'docs/specs/spec-001/spec.json': JSON.stringify(spec) });
       gh = new FakeGh();
       const scenario = happyScenario(path.join(remote.root, 'scn'));
