@@ -168,6 +168,17 @@ describe('stopped run explanations', () => {
     expect(unknown!.hint).toContain('reprocesse');
   });
 
+  it('stopSummary names a block it cannot classify by the first sentence of its reason', () => {
+    const s = stopSummary({ status: 'blocked', reason: null, causes: [{ taskId: 'T1', reason: 'Go 1.27.2 is not in the gate image. Use another version.' }], deployFailure: null });
+    expect(s!.title).toBe('Go 1.27.2 is not in the gate image.');
+  });
+
+  it('stopSummary asks no reprocess when the owner lets the agents decide', () => {
+    expect(stopSummary({ status: 'phase-failed', reason: 'Phase 1 exhausted', causes: [], deployFailure: null, failedPhase: 1 })!.hint).toContain('reprocesse');
+    expect(stopSummary({ status: 'phase-failed', reason: 'Phase 1 exhausted', causes: [], deployFailure: null, failedPhase: 1, autonomous: true })!.hint).toBe('Os agentes já tentaram resolver sozinhos. Veja o detalhe técnico.');
+    expect(blockedSummary([{ taskId: 'T2', reason: 'x' }], true)).toBe('T2 ficou bloqueada. Os agentes já tentaram resolver sozinhos.');
+  });
+
   it('stopSummary tells a missing delivery apart from failing tests', () => {
     const delivery = stopSummary({ status: 'verification-failed', reason: 'delivery contract not met on main, missing: compose: docker-compose.yml', causes: [], deployFailure: null });
     expect(delivery!.title).toBe('Faltam arquivos de entrega na main');

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
-import type { Config, Role } from '../config/config.js';
+import { agentsDecideFor, type Config, type Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { redactSecrets } from '../core/redact.js';
@@ -639,6 +639,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           readme,
           status,
           locked: row?.locked ?? false,
+          agentsDecide: agentsDecideFor(idx.cfg, projectId),
           state: { status: state.status, order: state.order, tasks: state.order.map((id) => state.tasks.get(id)) },
           finished: finished?.data ?? null,
           gapDecisions: await readGapDecisions(runs, runId),

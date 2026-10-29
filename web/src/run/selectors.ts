@@ -422,26 +422,33 @@ export function firstSentence(text: string, max = 160): string {
 
 const NEXT_STEP = 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.';
 const DEPLOY_NEXT_STEP = 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.';
+const AUTONOMOUS_NEXT_STEP = 'Os agentes já tentaram resolver sozinhos. Veja o detalhe técnico.';
+
+/** With the owner letting the agents decide, no screen offers a reprocess, so a hint that asks for one is replaced. */
+export const ownHint = (hint: string, autonomous: boolean): string => (autonomous && /reprocess/i.test(hint) ? AUTONOMOUS_NEXT_STEP : hint);
 
 /** What a failed phase row says: the known explanation of its reason, else the reason's first sentence and a generic next step. */
-export function explainPhase(row: { phase: number; reason: string | null }): StopExplanation {
+export function explainPhase(row: { phase: number; reason: string | null }, autonomous = false): StopExplanation {
   const reason = row.reason ?? '';
-  return explainStop(reason) ?? { title: reason ? firstSentence(reason) : `${phaseTitle(row.phase)} falhou`, hint: row.phase === 5 ? DEPLOY_NEXT_STEP : NEXT_STEP, owner: 'Sistema' };
+  const why: StopExplanation = explainStop(reason) ?? { title: reason ? firstSentence(reason) : `${phaseTitle(row.phase)} falhou`, hint: row.phase === 5 ? DEPLOY_NEXT_STEP : NEXT_STEP, owner: 'Sistema' };
+  return { ...why, hint: ownHint(why.hint, autonomous) };
 }
 
 /** One sentence tying a failed run to the tasks that blocked on their own, or null when none did. */
-export function blockedSummary(blocked: Array<{ taskId: string; reason: string }>): string | null {
+export function blockedSummary(blocked: Array<{ taskId: string; reason: string }>, autonomous = false): string | null {
   const roots = rootBlockers(blocked);
   if (!roots.length) return null;
   const others = blocked.length - roots.length;
   const stuck = others === 1 ? 'outra tarefa' : `outras ${others} tarefas`;
-  if (roots.length === 1) return `${roots[0]!.taskId} ficou bloqueada${others ? ` e travou ${stuck}` : ''}. Sem resolver esse bloqueio, reprocessar tende a repetir a falha.`;
-  return `${roots.length} tarefas ficaram bloqueadas${others ? ` e travaram ${stuck}` : ''}. Sem resolver esses bloqueios, reprocessar tende a repetir a falha.`;
+  const single = roots.length === 1;
+  const head = single ? `${roots[0]!.taskId} ficou bloqueada` : `${roots.length} tarefas ficaram bloqueadas`;
+  const tail = autonomous ? 'Os agentes já tentaram resolver sozinhos.' : single ? 'Sem resolver esse bloqueio, reprocessar tende a repetir a falha.' : 'Sem resolver esses bloqueios, reprocessar tende a repetir a falha.';
+  return `${head}${others ? ` e ${single ? 'travou' : 'travaram'} ${stuck}` : ''}. ${tail}`;
 }
 
 /** The stop banner's "before that" line; a blocked or deadlocked run's banner already leads with its blocked tasks. */
-export function stopBefore(status: string, blocked: Array<{ taskId: string; reason: string }>): string | null {
-  return status === 'blocked' || status === 'deadlocked' ? null : blockedSummary(blocked);
+export function stopBefore(status: string, blocked: Array<{ taskId: string; reason: string }>, autonomous = false): string | null {
+  return status === 'blocked' || status === 'deadlocked' ? null : blockedSummary(blocked, autonomous);
 }
 
 const STOP_STATUSES = new Set(['deploy-failed', 'verification-failed', 'blocked', 'phase-failed', 'deadlocked', 'failed']);
@@ -457,8 +464,8 @@ export interface StopSummary {
 }
 
 /** What the outcome banner says about a run that ended without success, or null while it is fine. */
-export function stopSummary(input: { status: string; reason: string | null; causes: Array<{ taskId: string; reason: string }>; deployFailure: DeployFailure | null; failedPhase?: number | null }): StopSummary | null {
-  const { status, reason, causes, deployFailure } = input;
+export function stopSummary(input: { status: string; reason: string | null; causes: Array<{ taskId: string; reason: string }>; deployFailure: DeployFailure | null; failedPhase?: number | null; autonomous?: boolean }): StopSummary | null {
+  const { status, reason, causes, deployFailure, autonomous = false } = input;
   if (!STOP_STATUSES.has(status)) return null;
   if (status === 'deploy-failed') {
     const f = deployFailure;
@@ -467,26 +474,26 @@ export function stopSummary(input: { status: string; reason: string | null; caus
     const generic: StopExplanation = { title: f ? `Falha no ${where}` : 'O deploy falhou', hint: DEPLOY_NEXT_STEP, owner: 'Sistema' };
     const why = explainStop(raw) ?? explainStop(reason ?? '') ?? generic;
     const rollback = f?.rolledBack ? (f.rollbackHealthy === false ? 'Rollback feito, mas a versão anterior não respondeu ao healthcheck.' : 'Rollback feito e saudável: a versão anterior continua no ar.') : null;
-    return { what: f ? `O deploy falhou no ${where} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, raw, rollback, action: 'redeploy' };
+    return { what: f ? `O deploy falhou no ${where} (tentativa ${f.attempt}).` : 'O deploy falhou.', ...why, hint: ownHint(why.hint, autonomous), raw, rollback, action: 'redeploy' };
   }
   if (status === 'verification-failed') {
     // The verdict is either missing delivery files or failing tests; the reason says which.
     const why = explainStop(reason ?? '');
-    return { what: 'A verificação (fase 4) não passou depois de duas rodadas.', title: why?.title ?? 'Os testes de aceitação não passaram', hint: why?.hint ?? 'Veja a matriz de evidências abaixo e reporte o problema na tela de validação.', owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
+    return { what: 'A verificação (fase 4) não passou depois de duas rodadas.', title: why?.title ?? 'Os testes de aceitação não passaram', hint: ownHint(why?.hint ?? 'Veja a matriz de evidências abaixo e reporte o problema na tela de validação.', autonomous), owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
   }
   if (status === 'deadlocked') {
-    return { what: 'Nenhuma tarefa pode avançar.', title: 'Todas as tarefas restantes dependem de uma tarefa bloqueada', hint: 'Resolva primeiro a tarefa bloqueada (veja Tarefas bloqueadas) e reprocesse a spec.', owner: 'Você', raw: reason ?? '', rollback: null, action: null };
+    return { what: 'Nenhuma tarefa pode avançar.', title: 'Todas as tarefas restantes dependem de uma tarefa bloqueada', hint: ownHint('Resolva primeiro a tarefa bloqueada (veja Tarefas bloqueadas) e reprocesse a spec.', autonomous), owner: 'Você', raw: reason ?? '', rollback: null, action: null };
   }
   if (status === 'phase-failed' || status === 'failed') {
     const why = explainStop(reason ?? '');
     const where = input.failedPhase === undefined || input.failedPhase === null ? null : phaseTitle(input.failedPhase);
     const what = where ? `A run parou na fase ${where}.` : status === 'failed' ? 'A run falhou.' : 'Uma fase da run falhou.';
-    return { what, title: why?.title ?? (reason ? firstSentence(reason) : 'O orquestrador não registrou o motivo'), hint: why?.hint ?? NEXT_STEP, owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
+    return { what, title: why?.title ?? (reason ? firstSentence(reason) : 'O orquestrador não registrou o motivo'), hint: ownHint(why?.hint ?? NEXT_STEP, autonomous), owner: why?.owner ?? 'Sistema', raw: reason ?? '', rollback: null, action: null };
   }
   const first = causes[0];
-  const why = (first ? explainStop(first.reason) : null) ?? { title: first ? 'Tarefa bloqueada' : 'Tarefas bloqueadas', hint: 'Abra a tarefa para ver o motivo.', owner: 'Sistema' as StopOwner };
+  const why = (first ? explainStop(first.reason) : null) ?? { title: first ? firstSentence(explainBlockReason(first.reason)) : 'Tarefas bloqueadas', hint: 'Abra a tarefa para ver o motivo.', owner: 'Sistema' as StopOwner };
   const n = causes.length;
-  return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, raw: first?.reason ?? reason ?? '', rollback: null, action: null };
+  return { what: n === 1 ? '1 tarefa ficou bloqueada.' : `${n} tarefas ficaram bloqueadas.`, ...why, hint: ownHint(why.hint, autonomous), raw: first?.reason ?? reason ?? '', rollback: null, action: null };
 }
 
 /** Every one of `taskIds` currently sitting blocked, with the reason its own TASK_BLOCKED event carries. Unlike

@@ -306,6 +306,12 @@ describe('RunView', () => {
       expect(screen.getByRole('dialog', { name: 'Detalhe técnico' }).querySelector('pre')!.textContent).toBe(reportReason);
     });
 
+    it('an owner who lets the agents decide gets no Reprocessar, and the banner asks for none', () => {
+      render(failedView({ detail: { ...detail, status: 'phase-failed', agentsDecide: true }, reprocessAction: { onReprocess: vi.fn(), busy: false, error: null } }));
+      expect(screen.queryByTestId('reprocess')).toBeNull();
+      expect(screen.getByTestId('outcome-hint').textContent).not.toContain('reprocesse');
+    });
+
     it('offers Reprocessar only when wired, disabled while the new run starts, with its error inline', () => {
       const onReprocess = vi.fn();
       const { rerender } = render(failedView());

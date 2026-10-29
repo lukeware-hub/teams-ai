@@ -548,6 +548,7 @@ describe('start, resume, stop', () => {
     expect((await start.json()).error).toContain('concluded');
     expect(spawns).toHaveLength(0);
     expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).locked).toBe(true);
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).agentsDecide).toBe(false);
     for (const url of ['/api/runs/hello-001-r1/readme']) {
       const r = await post(url);
       expect(r.status, url).toBe(409);

@@ -13,7 +13,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -483,8 +483,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   }, []);
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
-  const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase });
-  const before = stop ? stopBefore(status, blocked) : null;
+  const autonomous = detail.agentsDecide === true;
+  const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase, autonomous });
+  const before = stop ? stopBefore(status, blocked, autonomous) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
   const prs = mergedPrs(unique);
   const totalTasks = state.order.length;
@@ -511,7 +512,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const openedPhase = opened?.kind === 'phase' ? phaseList.find((p) => p.phase === opened.phase) : undefined;
   if (opened && openedPhase) {
     const failed = openedPhase.result === 'failed';
-    const why = explainPhase(openedPhase);
+    const why = explainPhase(openedPhase, autonomous);
     const { items, steps: agentSteps } = activity.get(openedPhase.phase) ?? { items: [], steps: [] };
     const problems = items.filter((i) => i.tone === 'bad');
     const [label, tone] = phaseState(openedPhase, status, blockedTasks);
@@ -561,7 +562,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
     const ids = openedCause.taskIds;
     detailDialog = (
       <Dialog title={ids.length === 1 ? `Por que ${ids[0]} ficou bloqueada` : `Por que ${ids.length} tarefas ficaram bloqueadas`} onClose={closeDetail} returnFocus={opened.opener}>
-        <Facts rows={[[ids.length === 1 ? 'Tarefa' : 'Tarefas', ids.join(', ')], why ? ['O que aconteceu', why.title] : null, ['Quem resolve', ownerChip(why?.owner ?? 'Sistema')], ['Próximo passo', why?.hint ?? 'Leia o motivo abaixo. Quando a causa estiver resolvida, reprocesse a spec.']]} />
+        <Facts rows={[[ids.length === 1 ? 'Tarefa' : 'Tarefas', ids.join(', ')], why ? ['O que aconteceu', why.title] : null, ['Quem resolve', ownerChip(why?.owner ?? 'Sistema')], ['Próximo passo', ownHint(why?.hint ?? 'Leia o motivo abaixo. Quando a causa estiver resolvida, reprocesse a spec.', autonomous)]]} />
         <section>
           <h3 className={SECTION_TITLE}>Motivo registrado</h3>
           <div>
@@ -745,7 +746,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                 {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
                               </ActionButton>
                             ) : null}
-                            {reprocessAction && !detail.locked ? (
+                            {reprocessAction && !detail.locked && !autonomous ? (
                               <span className="inline-flex items-center gap-[0.35rem]">
                                 <ActionButton className={redeploying ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                   {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
@@ -775,7 +776,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     </div>
                     {!stop && stopAction && STOPPABLE.has(status) ? (
                       <p className="hint" data-testid="block-cause-live-hint">
-                        A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.
+                        {autonomous ? 'A run continua com as outras tarefas. Veja o motivo em cada uma.' : 'A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.'}
                       </p>
                     ) : null}
                     <ul className={RUN_UI.boxList}>
@@ -788,7 +789,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                               </button>
                             ))}
                           </span>
-                          <span className="min-w-0 truncate text-ink max-md:col-span-full max-md:row-start-2 max-md:line-clamp-2 max-md:whitespace-normal max-md:wrap-anywhere">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
+                          <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
                           <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${g.taskIds.join(', ')}`} onClick={openDetail({ kind: 'cause', reason: g.reason })}>
                             Ver detalhe
                             <Icon name="chevron-right" size={14} />

@@ -7,7 +7,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { responsiveCell, responsiveHead, responsiveRow, responsiveTable } from './project-shared.js';
-import { explainBlockReason, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
+import { explainBlockReason, ownHint, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
 import { RUN_UI } from './Run.js';
 import { STATUS_HELP } from './project-shared.js';
@@ -277,7 +277,7 @@ interface ServiceProps {
 }
 
 /** The cause the run recorded for an open doc section, in words the owner reads. */
-function gapCauseLabel(cause: GapCause | null): { title: string; hint: string } | null {
+function gapCauseLabel(cause: GapCause | null, autonomous: boolean): { title: string; hint: string } | null {
   if (!cause) return null;
   switch (cause.kind) {
     case 'no-task':
@@ -285,17 +285,17 @@ function gapCauseLabel(cause: GapCause | null): { title: string; hint: string } 
     case 'blocked':
       return { title: `Tarefa bloqueada: ${cause.roots.map((r) => r.taskId).join(', ')}`, hint: cause.roots.map((r) => explainBlockReason(r.reason)).join(' ') };
     case 'tests-failing':
-      return { title: `Teste falhou: ${cause.acIds.join(', ')}`, hint: 'O código existe, mas o teste do critério não passou. Use Reprocessar na execução.' };
+      return { title: `Teste falhou: ${cause.acIds.join(', ')}`, hint: ownHint('O código existe, mas o teste do critério não passou. Use Reprocessar na execução.', autonomous) };
     case 'run-stopped':
-      return { title: `A execução terminou como “${statusLabel(cause.result)}”`, hint: 'O trecho não chegou a ser verificado. Use Reprocessar na execução.' };
+      return { title: `A execução terminou como “${statusLabel(cause.result)}”`, hint: ownHint('O trecho não chegou a ser verificado. Use Reprocessar na execução.', autonomous) };
     case 'not-built':
       return { title: 'O código não cobre este trecho', hint: 'As tarefas foram concluídas e os testes passaram, mas o código não faz tudo o que o documento pede. Relate o problema.' };
   }
 }
 
-function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept }: { gap: GapItem; decision: GapDecision | undefined; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown }) {
+function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept, autonomous }: { gap: GapItem; decision: GapDecision | undefined; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown; autonomous: boolean }) {
   const [note, setNote] = useState('');
-  const why = gapCauseLabel(gap.cause);
+  const why = gapCauseLabel(gap.cause, autonomous);
   return (
     <li data-testid="gap-row" className="flex flex-col gap-1.5">
       <strong className="text-[0.875rem]">{gap.doc} › {gap.heading}</strong>
@@ -314,7 +314,7 @@ function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept }: { gap
   );
 }
 
-function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept }: { gaps: GapsReport; decisions: GapDecision[]; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown }) {
+function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept, autonomous }: { gaps: GapsReport; decisions: GapDecision[]; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown; autonomous: boolean }) {
   const open = 'items' in gaps ? gaps.items.filter((g) => g.status !== 'delivered') : [];
   return (
     <section className="card" data-testid="gaps">
@@ -330,7 +330,7 @@ function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept }: {
           {open.length ? (
             <ul className={FINDINGS} data-testid="gaps-open">
               {open.map((gap) => (
-                <GapRow key={`${gap.doc} › ${gap.heading}`} gap={gap} decision={decisions.find((d) => d.doc === gap.doc && d.heading === gap.heading)} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} />
+                <GapRow key={`${gap.doc} › ${gap.heading}`} gap={gap} decision={decisions.find((d) => d.doc === gap.doc && d.heading === gap.heading)} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} autonomous={autonomous} />
               ))}
             </ul>
           ) : <p className="hint m-0">Nenhum trecho em aberto.</p>}
@@ -505,7 +505,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                       <EvidenceTable evidence={report.evidence} />
                     </section>
                     {report.gaps ? (
-                      <GapsCard gaps={report.gaps} decisions={detail.gapDecisions ?? []} locked={detail.locked ?? false} canReport={enabled} onPrefill={setText} onAccept={(gap, note) => onAcceptGap({ doc: gap.doc, heading: gap.heading, note })} />
+                      <GapsCard gaps={report.gaps} decisions={detail.gapDecisions ?? []} locked={detail.locked ?? false} canReport={enabled} onPrefill={setText} autonomous={detail.agentsDecide === true} onAccept={(gap, note) => onAcceptGap({ doc: gap.doc, heading: gap.heading, note })} />
                     ) : null}
                     {report.securityFindings?.length ? (
                       <section className="card">

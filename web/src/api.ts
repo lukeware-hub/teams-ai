@@ -213,6 +213,8 @@ export interface RunDetail {
   status: string;
   /** The spec was concluded: the run is read-only. */
   locked?: boolean;
+  /** The owner lets the agents decide blocks: the screen offers no reprocess. */
+  agentsDecide?: boolean;
   phase: number;
   report: Report | null;
   state: { status: string; order: string[]; tasks: TaskRow[] };
