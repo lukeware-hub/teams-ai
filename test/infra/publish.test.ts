@@ -32,8 +32,9 @@ describe('.github/workflows/ci.yml publish job (R9.4)', () => {
     expect(step('Free disk space').run).toContain('/usr/local/lib/android');
   });
 
-  it('runs only when a release is published, after quality, and is the only job that can write packages', () => {
-    expect(ci.on).toEqual({ release: { types: ['published'] } });
+  it('publishes only for a release, after quality, and is the only job that can write packages', () => {
+    expect(ci.on).toEqual({ push: { branches: ['main'] }, release: { types: ['published'] } });
+    expect(publish.if).toBe("github.event_name == 'release'");
     expect(ci.permissions).toEqual({ contents: 'read' });
     expect(publish.needs).toBe('quality');
     expect(publish.permissions).toEqual({ contents: 'read', packages: 'write' });
