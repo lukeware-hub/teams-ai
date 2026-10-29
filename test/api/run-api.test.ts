@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
@@ -388,7 +388,9 @@ describe('start, resume, stop', () => {
   });
 
   it('stores the owner answers to a block, shows them on the run, and refuses a task nobody asked about', async () => {
-    const options = [{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }];
+    // The fixture project is the repository's own folder: its answers must not outlive the test.
+    onTestFinished(() => fs.rm(path.join(HELLO, 'decisions'), { recursive: true, force: true }));
+    const options =[{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }];
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'DECISION_REQUESTED', data: { taskId: 'T1-a', reason: 'no toolchain', question: 'Qual versão do Go?', options } }], state('blocked'), 1);
     const post = (body: unknown) => fetch(`${base()}/api/runs/hello-001-r1/decisions`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     expect((await post({ decisions: [{ taskId: 'T9', answer: 'x' }] })).status).toBe(404);
