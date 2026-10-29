@@ -96,7 +96,7 @@ export interface RoleSettingsInput {
 }
 
 export interface RoleSettings {
-  sandbox: { enabled: boolean; network: { allowedDomains: string[] }; filesystem?: { denyRead?: string[]; denyWrite?: string[] } };
+  sandbox: { enabled: boolean; failIfUnavailable: boolean; allowUnsandboxedCommands: boolean; network: { allowedDomains: string[] }; filesystem?: { denyRead?: string[]; denyWrite?: string[] } };
   permissions: { allow: string[]; deny: string[] };
 }
 
@@ -130,7 +130,9 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   const roleAllow = input.writeDirs ? roleTools.filter((rule) => !(EDIT_TOOLS as readonly string[]).includes(rule)) : roleTools;
   const writeAllow = (input.writeDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`);
   return {
-    sandbox: { enabled: input.sandboxEnabled ?? true, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
+    // A command that fails under the sandbox is never retried outside it: an allow rule would approve that retry, and it
+    // would reach the network and the credential copies of the step. A missing sandbox stops the run, not the command.
+    sandbox: { enabled: input.sandboxEnabled ?? true, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
     permissions: { allow: [...roleAllow, ...writeAllow, ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? []), ...(input.fullAccess ? FULL_ACCESS_ALLOW : [])], deny: [...new Set(deny)] },
   };
 }

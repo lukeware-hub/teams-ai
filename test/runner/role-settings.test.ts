@@ -9,7 +9,7 @@ import { PROTECTED_READ_PATHS, buildRoleSettings, writeRoleSettings } from '../.
 describe('buildRoleSettings', () => {
   it('enables the sandbox with the configured network allowlist', () => {
     const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'] });
-    expect(s.sandbox).toEqual({ enabled: true, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(s.sandbox).toEqual({ enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains: ['registry.npmjs.org'] } });
   });
 
   it('adds absolute deny rules for the orchestrator HOME, which the ~ rules do not reach', () => {
@@ -33,6 +33,11 @@ describe('buildRoleSettings', () => {
       expect(deny, role).not.toContain('Write(.claude/**)'); // not a valid file rule; Claude warns and ignores it
       for (const d of ALWAYS_DENIED) expect(deny, role).toContain(d);
     }
+  });
+
+  it('never lets a step retry a command outside the sandbox, and stops rather than running one without a sandbox', () => {
+    for (const role of ROLES) expect(buildRoleSettings(role, { allowedDomains: [] }).sandbox, role).toMatchObject({ failIfUnavailable: true, allowUnsandboxedCommands: false });
+    expect(buildRoleSettings('dev', { allowedDomains: [], fullAccess: true }).sandbox).toMatchObject({ allowUnsandboxedCommands: false });
   });
 
   it('gives a step with full access any shell command and the web, and keeps every deny rule', () => {
@@ -167,7 +172,7 @@ describe('sandbox.enabled', () => {
   it('turns the sandbox off when the config says so, keeping the permission rules', async () => {
     const { buildRoleSettings } = await import('../../server/runner/role-settings.js');
     const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], stacks: ['node'], sandboxEnabled: false });
-    expect(s.sandbox).toEqual({ enabled: false, network: { allowedDomains: ['registry.npmjs.org'] } });
+    expect(s.sandbox).toEqual({ enabled: false, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains: ['registry.npmjs.org'] } });
     expect(s.permissions.allow).toContain('Bash(npm:*)');
   });
 });
