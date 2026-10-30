@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SKILL_NOTICE } from '../../server/agents/global-rules.js';
 import { PINNED_SKILLS, type PinnedSkill } from '../../server/skills/catalog.js';
 import { buildDynamicPlugin, buildRolePlugins, cleanSkillText, ensureAgentPlugins, prunePinnedSkills, referenceDirs, skillFolders } from '../../server/skills/plugins.js';
 import { assignSkill, createDraftSkill } from '../../server/skills/store.js';
@@ -63,6 +64,14 @@ describe('role plugins', () => {
     await expect(fs.access(path.join(out, 'front'))).rejects.toThrow();
   });
 
+  it('gives an installed skill the notice that the global rules outrank it, right after its frontmatter', async () => {
+    const { root, out } = await syncedCache();
+    await buildRolePlugins(root, out, [alpha, beta, catalog], path.join(root, 'no-languages'));
+    expect(await fs.readFile(path.join(out, 'dev', 'skills', 'brainstorming', 'SKILL.md'), 'utf8')).toBe(
+      `---\nname: brainstorming\ndescription: Explore ideas before coding.\n---\n${SKILL_NOTICE}\n\nThink before you code.\n`,
+    );
+  });
+
   it('installs the claude-automation-recommender skill that the Dev prompt names, from its pinned catalog path', async () => {
     const pinned = PINNED_SKILLS.find((skill) => skill.id === 'claude-code-setup')!;
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
@@ -99,6 +108,7 @@ describe('role plugins', () => {
       await expect(fs.access(path.join(out, role, 'skills', 'go', 'SKILL.md'))).resolves.toBeUndefined();
     }
     await expect(fs.access(path.join(out, 'env', 'skills', 'go', 'SKILL.md'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(out, 'dev', 'skills', 'go', 'SKILL.md'), 'utf8')).toContain(SKILL_NOTICE);
   });
 
   it('does not copy a link out of a pinned repository', async () => {
@@ -157,6 +167,7 @@ describe('per-step plugins', () => {
     await createDraftSkill(root, 'shop', 'dev', { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] });
     expect(await buildDynamicPlugin(root, 'shop', 'dev', out)).toBe(true);
     expect((await fs.readdir(path.join(out, 'skills'))).sort()).toEqual(['form-tokens']);
+    expect(await fs.readFile(path.join(out, 'skills', 'form-tokens', 'SKILL.md'), 'utf8')).toContain(SKILL_NOTICE);
     expect(JSON.parse(await fs.readFile(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('teams-ai-dev-dynamic');
   });
 

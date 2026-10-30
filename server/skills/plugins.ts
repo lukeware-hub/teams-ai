@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SKILL_NOTICE } from '../agents/global-rules.js';
 import { ROLE_TOOL_POLICY } from '../agents/registry.js';
 import { ROLES, type Role } from '../config/roles.js';
 import { PINNED_SKILLS, type PinnedSkill } from './catalog.js';
@@ -58,7 +59,8 @@ async function copySkill(from: string, to: string, name: string): Promise<void> 
   // A link inside a pinned repository could point at a host path, so links are never copied.
   await fs.cp(from, to, { recursive: true, filter: async (entry) => !entry.split(/[\\/]/).includes('.git') && !(await fs.lstat(entry)).isSymbolicLink() });
   const file = path.join(to, 'SKILL.md');
-  await fs.writeFile(file, cleanSkillText(await fs.readFile(file, 'utf8'), name));
+  const text = cleanSkillText(await fs.readFile(file, 'utf8'), name);
+  await fs.writeFile(file, text.replace(FRONTMATTER, (head) => `${head}${SKILL_NOTICE}\n\n`));
 }
 
 /** Where the role plugins live: the image copy when set, otherwise this user's home folder. */
