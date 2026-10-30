@@ -90,14 +90,15 @@ describe('role plugins', () => {
     expect((await fs.readdir(path.join(out, 'dev', 'skills'))).sort()).toEqual(['tdd']);
   });
 
-  it('installs every language skill into the plugin of every role', async () => {
+  it('installs every language skill into the plugin of every role that has the Skill tool, and none into env', async () => {
     const { root, out } = await syncedCache();
     const languages = path.join(root, 'languages');
     await put(path.join(languages, 'go', 'SKILL.md'), '---\nname: go\ndescription: Go errors.\n---\nRead the first error.\n');
     await buildRolePlugins(root, out, [], languages);
-    for (const role of ['dev', 'front', 'po', 'env']) {
+    for (const role of ['dev', 'front', 'po', 'sm', 'test', 'sec', 'devops']) {
       await expect(fs.access(path.join(out, role, 'skills', 'go', 'SKILL.md'))).resolves.toBeUndefined();
     }
+    await expect(fs.access(path.join(out, 'env', 'skills', 'go', 'SKILL.md'))).rejects.toThrow();
   });
 
   it('does not copy a link out of a pinned repository', async () => {
@@ -149,18 +150,24 @@ describe('pruned cache', () => {
 });
 
 describe('per-step plugins', () => {
-  it('gives the step the SM reuses and drafts of its role as a plugin of their own', async () => {
+  it('gives the step the private drafts the SM made for its role as a plugin of their own', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
+    const root = path.join(dir, 'cache');
+    const out = path.join(dir, 'step-plugins');
+    await createDraftSkill(root, 'shop', 'dev', { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] });
+    expect(await buildDynamicPlugin(root, 'shop', 'dev', out)).toBe(true);
+    expect((await fs.readdir(path.join(out, 'skills'))).sort()).toEqual(['form-tokens']);
+    expect(JSON.parse(await fs.readFile(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('teams-ai-dev-dynamic');
+  });
+
+  it('leaves out a reuse that the role plugin already holds', async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-plugins-'));
     const root = path.join(dir, 'cache');
     const out = path.join(dir, 'step-plugins');
     const superpowers = PINNED_SKILLS.find((s) => s.id === 'superpowers')!;
-    await put(path.join(root, 'superpowers', superpowers.commit, 'skills', 'brainstorming', 'SKILL.md'), SKILL_TEXT);
     await assignSkill(root, 'shop', 'dev', superpowers);
-    await createDraftSkill(root, 'shop', 'dev', { id: 'form-tokens', whenToUse: 'tokenized forms', rules: ['Use the design tokens'] });
-    expect(await buildDynamicPlugin(root, 'shop', 'dev', out)).toBe(true);
-    expect((await fs.readdir(path.join(out, 'skills'))).sort()).toEqual(['brainstorming', 'form-tokens']);
-    expect(await fs.readFile(path.join(out, 'skills', 'brainstorming', 'SKILL.md'), 'utf8')).not.toContain('allowed-tools');
-    expect(JSON.parse(await fs.readFile(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('teams-ai-dev-dynamic');
+    expect(await buildDynamicPlugin(root, 'shop', 'dev', out)).toBe(false);
+    await expect(fs.access(out)).rejects.toThrow();
   });
 
   it('writes nothing for a role the SM gave no skill', async () => {

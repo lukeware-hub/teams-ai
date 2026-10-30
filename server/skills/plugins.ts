@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ROLE_TOOL_POLICY } from '../agents/registry.js';
 import { ROLES, type Role } from '../config/roles.js';
 import { PINNED_SKILLS, type PinnedSkill } from './catalog.js';
 import { assignedSkills, skillCacheDir } from './store.js';
@@ -13,6 +14,7 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const exists = (file: string): Promise<boolean> => fs.access(file).then(() => true, () => false);
 const catalogEntry = (id: string): PinnedSkill | undefined => PINNED_SKILLS.find((pinned) => pinned.id === id);
 const catalogSource = (skill: PinnedSkill): string => skill.sourcePath ?? '.';
+const heldByRole = (id: string, role: Role): boolean => PINNED_SKILLS.some((skill) => skill.id === id && !skill.reference && skill.roles.includes(role));
 
 /** The skill text with `name` set to its folder name, and the keys in DROPPED_KEYS removed. */
 export function cleanSkillText(text: string, name: string): string {
@@ -84,7 +86,7 @@ async function writePlugin(dir: string, name: string, role: Role): Promise<void>
   await fs.writeFile(path.join(dir, '.claude-plugin', 'plugin.json'), `${JSON.stringify({ name, version: '1.0.0', description: `Skills installed for the ${role} role` }, null, 2)}\n`);
 }
 
-/** The language skills of the repository (`skills/<language>`), installed for every role. */
+/** The language skills of the repository (`skills/<language>`), installed for every role that has the Skill tool. */
 export const LANGUAGE_SKILLS_DIR = fileURLToPath(new URL('../../skills', import.meta.url));
 
 async function languageSources(languageDir: string): Promise<Array<{ id: string; source: string }>> {
@@ -101,7 +103,7 @@ export async function buildRolePlugins(cacheRoot: string, outRoot: string, catal
   for (const role of ROLES) {
     const target = path.join(outRoot, role);
     const pinned = await syncedOnly(cacheRoot, catalog.filter((skill) => !skill.reference && skill.roles.includes(role)));
-    const sources = [...pinned.map((skill) => ({ id: skill.id, source: sourceOf(cacheRoot, skill) })), ...languages];
+    const sources = [...pinned.map((skill) => ({ id: skill.id, source: sourceOf(cacheRoot, skill) })), ...(ROLE_TOOL_POLICY[role].allowed.includes('Skill') ? languages : [])];
     await fs.rm(target, { recursive: true, force: true });
     if (sources.length === 0) continue;
     const staged = `${target}.tmp-${process.pid}`;
@@ -114,10 +116,10 @@ export async function buildRolePlugins(cacheRoot: string, outRoot: string, catal
 
 /**
  * The reuses and private drafts the SM gave one role of a project, as a plugin folder for one step.
- * Returns false when the role has none, and then writes nothing.
+ * A reuse the role plugin already holds is left out. Returns false when nothing is left, and then writes nothing.
  */
 export async function buildDynamicPlugin(cacheRoot: string, scope: string, role: Role, out: string): Promise<boolean> {
-  const assigned = (await assignedSkills(cacheRoot, scope, role)).filter((skill) => skill.repository.endsWith('/private-skill') || catalogEntry(skill.id));
+  const assigned = (await assignedSkills(cacheRoot, scope, role)).filter((skill) => skill.repository.endsWith('/private-skill') || (catalogEntry(skill.id) && !heldByRole(skill.id, role)));
   if (assigned.length === 0) return false;
   await installSkills(out, assigned.map((skill) => ({
     id: skill.id,
