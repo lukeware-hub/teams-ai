@@ -36,6 +36,7 @@ import { checkScope } from '../validators/diff-guard.js';
 import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
+import { applyGateFixes, gateFixErrors, gateFixes, type GateFix } from './gate-fix.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { blockOptionsPack, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
@@ -118,6 +119,7 @@ export class TaskRunner {
   readonly worktree: string;
   private schemaRetries = 0;
   private specGapRounds = 0;
+  private unchangedRounds = 0;
   private skillRounds = 0;
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
@@ -366,6 +368,14 @@ export class TaskRunner {
     await this.deleteFiles(value.deletedFiles ?? []);
     // Gate artifacts (the JUnit report) are written by the orchestrator, not by the Dev, and are never committed.
     const touched = devChangedFiles(await porcelainNames(this.worktree, this.deps.exec)).filter((f) => f !== this.deps.plan.junitPath && f !== this.deps.plan.coveragePath);
+    // A Dev that changes nothing after its commit failed a gate would fail the same gate again: the SM answers once, and a repeat fails the attempt.
+    if (touched.length === 0 && (await this.repeatsLastCommit())) {
+      const last = tail(this.deps.journal.lastFeedback(this.taskId) ?? '');
+      if (this.unchangedRounds > 0) return this.fail('code', `The Dev changed nothing again after the SM answered. Last feedback:\n${last}`);
+      this.unchangedRounds += 1;
+      return this.specGap(task.def, `Your last attempt changed nothing, so the same commit fails the same gates again. Last feedback:\n${last}\nName the defect: when a gate command is wrong, answer with gateFix; otherwise change the code.`);
+    }
+    this.unchangedRounds = 0;
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
@@ -525,8 +535,36 @@ export class TaskRunner {
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
+    if (value.gateFix) await this.fixGate(value.gateFix, value.assumption);
     await this.feedback(`Spec-gap answer from SM:\nQ: ${question}\nA: ${value.answer}`);
     return this.implement();
+  }
+
+  /** A corrected gate command takes effect only past the plan's own checks; the journal keeps the command it replaces. */
+  private async fixGate(fix: GateFix, reason: string): Promise<void> {
+    const service = this.task.def.service ?? null;
+    const fixes = gateFixes(this.deps.journal.events, service);
+    const plan = applyGateFixes(this.deps.plan, fixes);
+    const errors = gateFixErrors(plan, fix, fixes.filter((f) => f.gate === fix.gate).length);
+    if (errors.length > 0) {
+      await this.feedback(`Gate fix not applied: ${errors.join('; ')}.`);
+      return;
+    }
+    const before = plan.gates.find((g) => g.name === fix.gate)!.command;
+    await this.deps.journal.fact(OrchEvent.GateFixed, { taskId: this.taskId, service, gate: fix.gate, before, after: fix.command, reason });
+    await this.feedback(`Gate ${fix.gate} corrected in the plan: the gates run the new command from now on.`);
+  }
+
+  /** HEAD is the commit whose last gate outcome failed, and no gate was corrected since: the same gate would fail the same way. */
+  private async repeatsLastCommit(): Promise<boolean> {
+    const events = this.deps.journal.events;
+    const at = events.findLastIndex((e) => e.type === OrchEvent.DevCommitted && e.data.taskId === this.taskId);
+    if (at < 0) return false;
+    const since = events.slice(at + 1);
+    if (since.some((e) => e.type === OrchEvent.GateFixed)) return false;
+    const outcome = since.filter((e) => (e.type === OrchEvent.GatePassed || e.type === OrchEvent.GateFailed) && e.data.taskId === this.taskId).at(-1);
+    if (outcome?.type !== OrchEvent.GateFailed) return false;
+    return (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec)) === events[at]!.data.sha;
   }
 
   private async validate(): Promise<void> {

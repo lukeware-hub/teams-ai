@@ -32,6 +32,7 @@ import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step
 import { nextRunnable, runProgress, tasksToBlock, type RunProgress } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
+import { applyGateFixes, gateFixes } from './gate-fix.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
@@ -484,7 +485,7 @@ export class Run {
 
   private gatesFor(view: ServiceView) {
     return async (worktree: string, branch: string) => {
-      const plan = view.plan;
+      const plan = applyGateFixes(view.plan, gateFixes(this.journal.events, view.service));
       const install = await this.installDeps(view, worktree);
       if (install) return { results: [install], blockingFailure: install };
       if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);

@@ -20,6 +20,8 @@ export const OrchEvent = {
   AlreadyOnMain: 'TASK_ALREADY_ON_MAIN',
   GatePassed: 'GATE_PASSED',
   GateFailed: 'GATE_FAILED',
+  /** A blocking gate's command the SM corrected, applied after the plan's own checks; `before` is kept so it can be undone. */
+  GateFixed: 'GATE_FIXED',
   ReviewApproved: 'REVIEW_APPROVED',
   ReviewChanges: 'REVIEW_CHANGES',
   SecurityApproved: 'SECURITY_APPROVED',

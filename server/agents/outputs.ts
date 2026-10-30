@@ -303,8 +303,13 @@ export const DecideOutput = z.object({
 });
 export type DecideOutput = z.infer<typeof DecideOutput>;
 
-/** Spec (orchestrator) §4.5: SM answers a Dev's spec-gap; the assumption is the one-line log entry. */
-export const SpecGapOutput = z.object({ specHash, answer: z.string().min(1), assumption: z.string().min(1) });
+/** Spec (orchestrator) §4.5: SM answers a Dev's spec-gap; the assumption is the one-line log entry. A gateFix corrects a blocking gate command the plan has wrong. */
+export const SpecGapOutput = z.object({
+  specHash,
+  answer: z.string().min(1),
+  assumption: z.string().min(1),
+  gateFix: z.object({ gate: z.string().regex(ID_PATTERNS.SLUG), command: z.string().min(1) }).optional(),
+});
 export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
 
 /** A block the agents do not decide: the SM's question for the owner and the choices the repository can carry out. */

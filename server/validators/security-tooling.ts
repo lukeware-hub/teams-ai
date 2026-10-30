@@ -25,7 +25,7 @@ export function prescribedCommands(kind: StackKind): Record<string, string[]> {
   };
 }
 
-const DISARMED = /\|\|\s*(true|exit\s+0|:)|--exit-code[= ]0\b|--exit-zero\b|--no-fail\b/;
+export const DISARMED = /\|\|\s*(true|exit\s+0|:)|--exit-code[= ]0\b|--exit-zero\b|--no-fail\b/;
 // Only the prescribed prefix is stripped: any other PATH would run worktree binaries next to the shared gate cache.
 const ENV_PREFIX = /^PATH=\$PWD\/\.tools\/bin:\$PATH\s+/;
 const bare = (command: string) => command.trim().replace(ENV_PREFIX, '');

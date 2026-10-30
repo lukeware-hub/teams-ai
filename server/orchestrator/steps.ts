@@ -372,7 +372,8 @@ export function planPack(
 
 export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean }): ContextPackInput {
   const overrule = opts.overrule ? '\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.' : '';
-  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}` };
+  const gateFix = '\n\nWhen the question shows that a blocking gate command in the plan is wrong (the code is right, the command cannot pass, for example a sed that leaves a number empty), answer with gateFix: the gate name and the whole corrected command on one line, keeping the same check. The orchestrator applies it, journaled, and the Dev runs again with it. Leave gateFix out of every other answer, and never write a gate result file by hand.';
+  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}${gateFix}` };
 }
 
 /** The owner's question for a block the agents cannot finish: one question and 2 to 4 choices the repository can carry out. */

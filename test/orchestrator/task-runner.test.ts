@@ -873,6 +873,62 @@ describe('TaskRunner: attempt progress', () => {
   });
 });
 
+describe('TaskRunner: gate fixes and repeated attempts', () => {
+  it('applies the gate correction a spec-gap answer carries, journals it and runs Dev again', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Run the unit tests in one pass', assumption: 'T1: unit-test → one pass', gateFix: { gate: 'unit-test', command: 'npm test -- --run' } });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls === 1 ? ok({ specHash: HASH, status: 'spec-gap', summary: 'gate', changedFiles: [], question: 'unit-test cannot pass as written' }) : devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'spec-gap', 'dev']);
+    expect(journal.events.find((e) => e.type === OrchEvent.GateFixed)!.data).toMatchObject({ taskId: 'T1', service: null, gate: 'unit-test', before: 'npm test', after: 'npm test -- --run' });
+    expect(state().state).toBe('validating');
+  });
+
+  it('refuses a gate correction for a gate the plan does not have, and tells the Dev why', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Skip it', assumption: 'T1: x', gateFix: { gate: 'nope', command: 'npm run nope' } });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls === 1 ? ok({ specHash: HASH, status: 'spec-gap', summary: 'gate', changedFiles: [], question: 'q' }) : devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(journal.events.some((e) => e.type === OrchEvent.GateFixed)).toBe(false);
+    expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('no gate named nope'))).toBe(true);
+  });
+
+  it('a Dev that changes nothing after a validated commit goes to the SM once, and the gates do not run again on that commit', async () => {
+    let gateRuns = 0;
+    const failing: TaskRunnerDeps['gates'] = async () => {
+      gateRuns += 1;
+      const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null, stderrTail: 'boom' });
+      return { results: [g], blockingFailure: g };
+    };
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Change the code', assumption: 'T1: code' });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      if (devCalls === 1) return devDone()(req);
+      return ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], filesRead: ['src/a.ts'], commitMessage: 'feat: T1', deviations: [] });
+    };
+    const r = new TaskRunner('T1', deps({ agent, gates: failing }));
+    await r.advance(); // Dev commits
+    await r.advance(); // gates fail
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    await r.advance(); // Dev changes nothing: the SM answers once, the repeat fails the attempt
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev', 'spec-gap', 'dev']);
+    expect(gateRuns).toBe(1);
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 2 });
+  });
+});
+
 describe('TaskRunner: review profile', () => {
   const risky = (value: number) => ({ decide: async (id: string) => (id === 'pr-risk' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { risk: { type: 'score' as const, value, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) });
   const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
