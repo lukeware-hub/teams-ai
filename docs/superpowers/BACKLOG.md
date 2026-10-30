@@ -74,6 +74,7 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 
 ## Vistos em run, ainda sem causa no código
 
+- [ ] **Commit do scaffold leva dotfiles do ambiente do Dev para a worktree.** Visto em `kayron-hub--platform-local-foundation--run-6`, `T0-scaffold-web-bff-api-r1`: o `DEV_COMMITTED` trouxe 22 arquivos, 14 deles dotfiles (`.bashrc`, `.gitconfig`, `.profile`, `.zshrc`, `.mcp.json`, `.idea`, `.vscode`). A tarefa bloqueou, então nada chegou ao main; se o scaffold passar, esses arquivos seriam mesclados. A causa não foi achada: o HOME do step fica fora da worktree (`server/runner/step-home.ts`), e `commitAll` (`server/git/git.ts:141`) faz `git add` de tudo antes de excluir só os relatórios de gate.
 - [x] **Regras do plano exigem digests `@sha256` de imagens que o sandbox não consegue consultar.** design-tokens-shell run-1 e run-2: 3 tarefas bloqueadas por "faltam os digests reais de node:24-bookworm e distroless". A regra (`planRules`, `server/orchestrator/steps.ts`) e a rede do sandbox se contradizem.
 - [x] **Rede negada para `github.com` e `raw.githubusercontent.com` bloqueia tarefas de front.** design-tokens-shell run-1: fontes não baixáveis; design-domain-components run-1: `origin/main` não atualizável de dentro do step.
 - [x] **Caminho do smoke errado passa pelo validador.** design-tokens-shell run-2: deploy falhou com "Could not find 'smoke/smoke.test.m…'", o plano apontou um arquivo que não existe em main.
