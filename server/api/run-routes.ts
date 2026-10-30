@@ -19,6 +19,7 @@ import { readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
+import { locateTests, testsByRepo, type TestRef } from '../evidence/locate.js';
 import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
 import { teardownProject } from '../deploy/docker-local.js';
@@ -73,6 +74,12 @@ export function githubRepoUrl(remote: string): string | null {
   return m ? `https://github.com/${m[1]}/${m[2]}` : null;
 }
 
+/** Permalink to one line of a file at a commit of a GitHub repository; null when a part does not look right. */
+export function blobUrl(repoUrl: string, commit: string, file: string, line: number): string | null {
+  if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(repoUrl) || !/^[0-9a-f]{40,64}$/.test(commit) || !Number.isInteger(line) || line < 1) return null;
+  return `${repoUrl}/blob/${commit}/${file.split('/').map(encodeURIComponent).join('/')}#L${line}`;
+}
+
 const originOf = (dir: string): Promise<string | null> =>
   execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: dir, timeoutMs: 5_000 }).then((r) => (r.exitCode === 0 ? r.stdout.trim() : null), () => null);
 
@@ -80,6 +87,27 @@ const originOf = (dir: string): Promise<string | null> =>
 async function repoUrlOf(repoDir: string): Promise<string | null> {
   const remote = await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: repoDir, timeoutMs: 5_000 }).catch(() => null);
   return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+}
+
+/** More tests than this in one repository are not located: the search grows with each of them. */
+const MAX_LOCATED_TESTS = 500;
+
+/** The GitHub links of the tests of one repository; a repository that fails gives none, and the log says why. */
+async function testLinksIn(repoDir: string, tests: TestRef[], log?: (line: string) => void): Promise<Array<[string, { url: string; path: string; line: number }]>> {
+  const repoUrl = await repoUrlOf(repoDir);
+  if (repoUrl === null) return [];
+  if (tests.length > MAX_LOCATED_TESTS) log?.(`test links: only the first ${MAX_LOCATED_TESTS} of ${tests.length} tests of ${repoDir} are located`);
+  const found = await locateTests(repoDir, tests.slice(0, MAX_LOCATED_TESTS)).catch((err: Error) => {
+    log?.(`test links skipped in ${repoDir}: ${err.message}`);
+    return null;
+  });
+  if (found === null) return [];
+  const links: Array<[string, { url: string; path: string; line: number }]> = [];
+  for (const [id, place] of found.places) {
+    const url = blobUrl(repoUrl, found.sha, place.path, place.line);
+    if (url !== null) links.push([id, { url, path: place.path, line: place.line }]);
+  }
+  return links;
 }
 
 /** What went wrong in a failed clone and how to fix it, in the owner's words. */
@@ -699,6 +727,21 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           report,
           phase,
         });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/runs/:runId/test-links`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const evs = await events(runsDir(idx), runId);
+        const projectId = String(evs.find((e) => e.type === 'RUN_STARTED')?.data.projectId ?? '');
+        const state = reduceEvents(evs);
+        const ws = workspacePaths(idx.cfg, projectId, deps.home);
+        const groups = testsByRepo(evs, (taskId) => state.tasks.get(taskId)?.def.service);
+        const links = await Promise.all([...groups].map(([service, tests]) => testLinksIn(service === '' ? ws.repo : serviceWorkspace(ws, service).repo, tests, deps.log)));
+        json(200, Object.fromEntries(links.flat()));
       },
     },
     {

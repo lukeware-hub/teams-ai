@@ -115,6 +115,20 @@ describe('RunView', () => {
     render(view({ detail: { ...detail, repoUrl: null } }));
     expect(screen.queryByTestId('github-link')).toBeNull();
   });
+  it('links a test name to its line on GitHub when the server found the place, and keeps the plain name otherwise', () => {
+    const link = { url: 'https://github.com/acme/hello-app/blob/abc/src/sum.test.ts#L3', path: 'src/sum.test.ts', line: 3 };
+    const { unmount } = render(view({ testLinks: { 'sum::[AC-001] adds': link } }));
+    const anchor = screen.getByRole('link', { name: 'Abrir adds no GitHub (src/sum.test.ts:3)' });
+    expect(anchor.getAttribute('href')).toBe(link.url);
+    expect(anchor.getAttribute('target')).toBe('_blank');
+    expect(anchor.getAttribute('rel')).toBe('noreferrer');
+    expect(anchor.getAttribute('title')).toBe('src/sum.test.ts:3');
+    unmount();
+    render(view({ testLinks: { 'sum::[AC-001] adds': { ...link, url: 'javascript:alert(1)' } } }));
+    expect(within(screen.getByTestId('evidence-AC-001')).queryByRole('link')).toBeNull();
+    expect(screen.getByTestId('evidence-AC-001').textContent).toContain('adds');
+  });
+
   it('prints docs/README.md, or explains who writes it when there is none yet', () => {
     const { unmount } = render(view());
     expect(screen.getByTestId('readme-empty').textContent).toContain('sm');

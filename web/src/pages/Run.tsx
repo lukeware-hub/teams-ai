@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
-import { runApi, startedPath, type RunDecision, type RunDetail, type StoredEvent } from '../api.js';
+import { runApi, startedPath, type RunDecision, type RunDetail, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
@@ -15,6 +15,7 @@ import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
 import { type BlockExplanation, type ModelUse, blockExplanation, cascadeBlockers, currentActivity, evidence, explainPhase, finishedEvent, formatDuration, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, problemItems, rootBlockers, runState, stepDoing, stopBefore, stopSummary, taskDetail, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { useTestLinks } from '../run/useTestLinks.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -52,6 +53,9 @@ const TASK_ID_BUTTON = `h-auto flex-none border-0 bg-transparent p-0 text-left t
 const DETAIL_BUTTON = 'secondary h-10 flex-none px-3 text-[0.8125rem] pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5';
 // On narrow screens a title keeps a readable width instead of squeezing beside its id and chips.
 const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
+// A test name that opens its line on GitHub: text colour until hovered, and a row-high touch target.
+const TEST_LINK = 'group inline-flex min-h-6 min-w-0 items-center gap-[0.3rem] text-[0.875rem] text-ink no-underline wrap-anywhere hover:text-accent-text hover:underline';
+const TEST_LINK_ICON = 'flex-none text-ink-faint group-hover:text-accent-text';
 const FACT_ROWS = 'm-0 grid gap-[0.6rem] [&>div]:grid [&>div]:grid-cols-[8.5rem_minmax(0,1fr)] [&>div]:gap-3 max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:wrap-anywhere';
 const SECTION_TITLE = 'mt-0 mb-[0.4rem]';
 const META = 'col-span-full text-[0.75rem] tabular-nums';
@@ -249,7 +253,7 @@ const TEST_RESULT: Record<string, { label: string; tone: string; icon: IconName;
 const testName = (id: string) => id.replace(/^.*?::/, '').replace(/^\[[^\]]+\]\s*/, '');
 
 /** Acceptance-criteria coverage: each criterion with its text and the tests that prove it. */
-function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCriteria']; rows: ReturnType<typeof evidence> }) {
+function EvidenceCard({ criteria, rows, links }: { criteria: RunDetail['acceptanceCriteria']; rows: ReturnType<typeof evidence>; links?: Record<string, TestLink> }) {
   const covered = rows.filter((r) => r.tests.length > 0 && r.tests.every((t) => t.status === 'passed')).length;
   return (
     <section className="card" data-testid="evidence">
@@ -285,15 +289,27 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
                   <ul className="m-0 mt-[0.15rem] grid list-none gap-[0.4rem] p-0">
                     {row.tests.map((x) => {
                       const result = TEST_RESULT[x.status] ?? { label: x.status, tone: 'warn', icon: 'info' as IconName };
+                      const link = links?.[x.id];
+                      const href = safeHttpUrl(link?.url);
+                      const place = href && link ? `${link.path}:${link.line}` : null;
                       return (
-                        <li key={x.id} title={x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
+                        <li key={x.id} title={place ? `${x.id}\n${place}` : x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
                           <Tipped text={result.help ?? 'O teste não rodou ou o resultado não é conhecido.'}>
                             <span className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
                               <Icon name={result.icon} size={12} />
                               {result.label}
                             </span>
                           </Tipped>
-                          <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
+                          {href && place ? (
+                            <a className={TEST_LINK} href={href} target="_blank" rel="noreferrer" title={place} aria-label={`Abrir ${testName(x.id)} no GitHub (${place})`}>
+                              {testName(x.id)}
+                              <span className={TEST_LINK_ICON}>
+                                <Icon name="external" size={12} />
+                              </span>
+                            </a>
+                          ) : (
+                            <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
+                          )}
                           <span className="hint">{x.taskId === 'main' ? 'na main' : `tarefa ${x.taskId}`}</span>
                         </li>
                       );
@@ -559,7 +575,7 @@ const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 // process (interrupted) or an expired Claude session (paused:auth) resume, and a failed verification (verification-failed) restarts its blocked tasks; a quota pause lifts on its own.
 const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed']);
 
-export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
+export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction, testLinks }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction; testLinks?: Record<string, TestLink> }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = finishedEvent(unique);
@@ -953,7 +969,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   ))}
                 </section>
                 {detail.plan ? <PlanCard plan={detail.plan} /> : null}
-                <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} />
+                <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} links={testLinks} />
               </div>
             ),
           },
@@ -1235,6 +1251,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       });
   };
   const { events, ended, error } = useJournal(runId && detail ? `${runApi.runEvents(runId)}${resumes > 0 ? `?resume=${resumes}` : ''}` : null);
+  const testLinks = useTestLinks(runId, events, ended);
   if (loadError)
     return (
       <main>
@@ -1259,6 +1276,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       decideAction={{ onDecide: decide, busy: deciding || reprocessing, error: decideFailure ?? reprocessFailure }}
       stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
       resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure }}
+      testLinks={testLinks}
     />
   );
 }

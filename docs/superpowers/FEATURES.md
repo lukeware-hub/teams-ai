@@ -93,3 +93,13 @@ Pending:
 ## 13. Language skills for the role agents: not adopted now
 
 Status: decided 2026-10-30. The fifteen language skills of the agents-migration repository stay out of teams-ai. Three reasons, from the code and the run data. A step loads a skill when its prompt or role file names it, and the steps set the flag that, according to the Claude Code binary, drops the attachment that would list the skills; none of the five skills already installed was used in about 570 steps. Formatting, vetting and build never failed in 17 runs, and language-level causes are 5 to 15 percent of review findings and extra steps, while most loops come from plan and gate conventions. A 5,000-token skill adds 6 to 17 percent to one implement step, so it pays back only if it prevents 8 to 30 percent of retried attempts. The reopen criteria are in `docs/superpowers/spikes/2026-10-30-language-skills.md`. The defects found in the same review are in `BACKLOG.md`, under "From the language skills spike (2026-10-30)".
+
+## 14. Evidence links: each test opens its line on GitHub
+
+Status: built 2026-10-30, pending the owner's check on the run screen.
+
+- The Evidências card links each test name to its line in the repository of its service, at the commit of origin/main in the clone.
+- The server finds each test with one `git grep` per repository, from the function name or the quoted title with its criterion tag; a test that is not found, or that matches two places, stays plain text.
+- The new route `GET /api/runs/:runId/test-links` answers on demand, so the run screen's seven-second refresh does not search the code.
+- Not done: the commit that a verification ran on is not recorded, so a link follows the current main and a test moved after its run has no link.
+- Not done: only Go was checked on a real run; the other stacks are covered by tests with real git repositories.

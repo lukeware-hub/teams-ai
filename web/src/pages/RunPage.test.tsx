@@ -8,7 +8,7 @@ const run = vi.fn();
 const resumeRun = vi.fn();
 vi.mock('../api.js', async (original) => ({
   ...(await original<typeof import('../api.js')>()),
-  runApi: { run: (id: string) => run(id), resumeRun: (id: string) => resumeRun(id), runEvents: (id: string) => `/api/runs/${id}/events`, step: vi.fn() },
+  runApi: { run: (id: string) => run(id), resumeRun: (id: string) => resumeRun(id), runEvents: (id: string) => `/api/runs/${id}/events`, testLinks: vi.fn(async () => ({})), step: vi.fn() },
 }));
 
 class FakeEventSource {

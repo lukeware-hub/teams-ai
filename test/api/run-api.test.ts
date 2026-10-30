@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
+import { commitAll } from '../../server/git/git.js';
 import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { startApi } from '../../server/api/server.js';
@@ -902,5 +903,76 @@ describe('run detail, events and steps', () => {
     expect(spawns[0]!.args).toEqual(['cli', 'spec', 'readme', '--project', HELLO, '--spec', 'hello-001', '--run-id', runId]);
     expect((await post('/api/runs/hello-001-r1/readme')).status).toBe(409); // the readme run itself is now active
     expect((await post('/api/runs/missing/readme')).status).toBe(404);
+  });
+});
+
+describe('test links', () => {
+  const GO = 'package tests\n\nfunc TestAc_001_Soma(t *testing.T) {\n\tt.Run("[AC-001] soma dois números", func(t *testing.T) {})\n}\n';
+  const line = (text: string, needle: string) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
+  const passed = (classname: string, name: string, acIds: string[]) => ({ id: `${classname}::${name}`, name, classname, status: 'passed', acIds });
+  const gate = (data: Record<string, unknown>) => ({ type: 'GATE_PASSED', data: { gate: 'unit-test', failure: null, ...data } });
+  const links = async (runId: string) => (await fetch(`${base()}/api/runs/${runId}/test-links`)).json();
+
+  /** A clone with its files committed, its origin set to `remote` and origin/main on the commit; answers the commit. */
+  async function cloneWith(dir: string, files: Record<string, string>, remote: string): Promise<string> {
+    await fs.mkdir(dir, { recursive: true });
+    await execCommand({ bin: 'git', args: ['init', '-q'], cwd: dir, timeoutMs: 20_000 });
+    for (const [rel, text] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+      await fs.writeFile(path.join(dir, rel), text);
+    }
+    await commitAll(dir, 'init', { exclude: [] });
+    await execCommand({ bin: 'git', args: ['remote', 'add', 'origin', remote], cwd: dir, timeoutMs: 20_000 });
+    await execCommand({ bin: 'git', args: ['update-ref', 'refs/remotes/origin/main', 'HEAD'], cwd: dir, timeoutMs: 20_000 });
+    return (await execCommand({ bin: 'git', args: ['rev-parse', 'HEAD'], cwd: dir, timeoutMs: 20_000 })).stdout.trim();
+  }
+
+  it('links each acceptance test of a one-repository project to its line on GitHub', async () => {
+    const sha = await cloneWith(path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo'), { 'tests/soma_test.go': GO }, 'https://github.com/acme/hello-app.git');
+    await writeRun(runs, 'hello-001-r1', [
+      started('hello-001-r1'),
+      { type: 'GATE_PASSED', data: { phase: 4, round: 1, gate: 'unit-test', failure: null, junit: [passed('hello-app/tests', 'TestAc_001_Soma/[AC-001]_soma_dois_números', ['AC-001']), passed('hello-app/tests', 'TestHelper', [])] } },
+    ]);
+    expect(await links('hello-001-r1')).toEqual({
+      'hello-app/tests::TestAc_001_Soma/[AC-001]_soma_dois_números': { url: `https://github.com/acme/hello-app/blob/${sha}/tests/soma_test.go#L${line(GO, 't.Run("[AC-001]')}`, path: 'tests/soma_test.go', line: 4 },
+    });
+  });
+
+  it('links each service test to the clone of its own repository and leaves out a service that is not cloned', async () => {
+    const workspace = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'services');
+    const orders = await cloneWith(path.join(workspace, 'orders-api', 'repo'), { 'tests/pedido_test.go': 'package tests\n\nfunc TestAc_002_Pedido(t *testing.T) {}\n' }, 'https://github.com/acme/orders-api.git');
+    const inventory = await cloneWith(path.join(workspace, 'inventory-api', 'repo'), { 'tests/estoque_test.go': 'package tests\n\nfunc TestAc_003_Estoque(t *testing.T) {}\n' }, 'https://github.com/acme/inventory-api.git');
+    await writeRun(runs, 'hello-001-r1', [
+      started('hello-001-r1'),
+      { type: 'TASK_PLANNED', data: { task: { ...task('T1'), service: 'orders-api' } } },
+      { type: 'TASK_PLANNED', data: { task: { ...task('T2'), service: 'billing-api' } } },
+      gate({ taskId: 'T1', junit: [passed('hello-app/tests', 'TestAc_002_Pedido', ['AC-002'])] }),
+      gate({ taskId: 'T2', junit: [passed('hello-app/billing', 'TestAc_004_Cobranca', ['AC-004'])] }),
+      gate({ phase: 4, round: 1, service: 'inventory-api', junit: [passed('hello-app/tests', 'TestAc_003_Estoque', ['AC-003'])] }),
+    ]);
+    expect(await links('hello-001-r1')).toEqual({
+      'hello-app/tests::TestAc_002_Pedido': { url: `https://github.com/acme/orders-api/blob/${orders}/tests/pedido_test.go#L3`, path: 'tests/pedido_test.go', line: 3 },
+      'hello-app/tests::TestAc_003_Estoque': { url: `https://github.com/acme/inventory-api/blob/${inventory}/tests/estoque_test.go#L3`, path: 'tests/estoque_test.go', line: 3 },
+    });
+  });
+
+  it('leaves out a test id that two repositories report', async () => {
+    const workspace = path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'services');
+    await cloneWith(path.join(workspace, 'orders-api', 'repo'), { 'tests/pedido_test.go': 'package tests\n\nfunc TestAc_002_Pedido(t *testing.T) {}\n' }, 'https://github.com/acme/orders-api.git');
+    await cloneWith(path.join(workspace, 'inventory-api', 'repo'), { 'tests/pedido_test.go': 'package tests\n\nfunc TestAc_002_Pedido(t *testing.T) {}\n' }, 'https://github.com/acme/inventory-api.git');
+    await writeRun(runs, 'hello-001-r1', [
+      started('hello-001-r1'),
+      { type: 'TASK_PLANNED', data: { task: { ...task('T1'), service: 'orders-api' } } },
+      gate({ taskId: 'T1', junit: [passed('hello-app/tests', 'TestAc_002_Pedido', ['AC-002'])] }),
+      gate({ phase: 4, round: 1, service: 'inventory-api', junit: [passed('hello-app/tests', 'TestAc_002_Pedido', ['AC-002'])] }),
+    ]);
+    expect(await links('hello-001-r1')).toEqual({});
+  });
+
+  it('answers 404 for an unknown run, and gives no link for a repository that is not on GitHub', async () => {
+    expect((await fetch(`${base()}/api/runs/nope-r1/test-links`)).status).toBe(404);
+    await cloneWith(path.join(home, '.teams-ai', 'workspaces', 'hello-app', 'repo'), { 'tests/soma_test.go': GO }, '/local/path/hello-app');
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), gate({ phase: 4, round: 1, junit: [passed('hello-app/tests', 'TestAc_001_Soma', ['AC-001'])] })]);
+    expect(await links('hello-001-r1')).toEqual({});
   });
 });

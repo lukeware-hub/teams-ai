@@ -206,6 +206,12 @@ export interface Report {
   summary: string;
   gaps?: GapsReport;
 }
+/** The GitHub link of one test: the permalink to its line, and where that line is. */
+export interface TestLink {
+  url: string;
+  path: string;
+  line: number;
+}
 export interface RunDetail {
   runId: string;
   specId: string;
@@ -252,6 +258,7 @@ export const runApi = {
   acceptGap: (runId: string, gap: { doc: string; heading: string; note: string }) => jsonPost(`/runs/${encodeURIComponent(runId)}/gaps/accept`, gap).then((r) => json<{ accepted: boolean }>(r)),
   run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
   step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
+  testLinks: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/test-links`).then((r) => json<Record<string, TestLink>>(r)),
   runEvents: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/events`,
 };
 
