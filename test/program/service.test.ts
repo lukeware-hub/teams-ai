@@ -353,6 +353,15 @@ describe('program service view', () => {
     const gone = (runId: string) => fs.writeFile(path.join(runsDir(), runId, 'pid.gone'), '999999');
     const state = (runId: string, status: string) => fs.writeFile(path.join(runsDir(), runId, 'state.json'), JSON.stringify({ runId, status, tasks: [], tokens: {} }));
 
+    it('is marked interrupted when the owner stopped the run and its stop marker is on disk', async () => {
+      await write([item('s', 'running', 's-r1')]);
+      await journal('s-r1', [started('d-s')]);
+      await state('s-r1', 'running');
+      await gone('s-r1');
+      await fs.writeFile(path.join(runsDir(), 's-r1', 'stop-requested'), '');
+      expect((await service(undefined, false).view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 's-r1' });
+    });
+
     it('is marked interrupted when its process is gone', async () => {
       await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
       await journal('a-r1', [started('d-a')]);
