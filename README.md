@@ -96,6 +96,16 @@ Main parts:
 | License service (repository `lukeware-hub/teams-ai-license`) | Separate service with its own administration and PostgreSQL. Runs on the `teams-ai-net` network. |
 | Supervisor (`server/supervisor`) | Resumes interrupted runs until they finish. |
 
+### Agent skills
+
+Each role agent loads its skills from one plugin folder per role. The folders are built from the skill repositories pinned in `server/skills/catalog.ts` and from the language skills in `skills/`. The Docker image builds them once; a development install builds them when it starts.
+
+- `TEAMS_AI_AGENT_PLUGINS_IMAGE` points at the role plugin folders of the image. When it is set, nothing is built at start.
+- `TEAMS_AI_SKILLS_IMAGE` points at the pinned skill cache of the image. When every pinned skill is there, no network fetch is made.
+- `TEAMS_AI_SYNC_SKILLS=0` stops the git fetch of the pinned skill repositories at start.
+
+A skill loads when a prompt or a role file names it, so each role file names the skills it uses by their full name, such as `teams-ai-dev:test-driven-development`. A skill that the role already holds is not installed a second time. The agents cannot write into the plugin folders.
+
 ## Requirements
 
 - Windows 10 (22H2) or Windows 11, with virtualization enabled in BIOS/UEFI. Recommended: 16 GB RAM and 30 GB free disk.

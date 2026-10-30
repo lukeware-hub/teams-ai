@@ -2,6 +2,8 @@
 
 Status: done (2026-10-06). Roadmap item R10.3.
 
+Superseded on 2026-10-30: native skill loading exists since commit `746b34cc` (2026-10-17), so the statement that no live skill-loading mechanism exists is no longer true.
+
 ## Goal
 
 A live refinement session on a different project (lukeware-kayron-hub, `surgical-case-service` spec) showed the SM

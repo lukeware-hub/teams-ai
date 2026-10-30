@@ -2,6 +2,8 @@
 
 Status: done (2026-10-06). Roadmap item R10.1.
 
+Superseded on 2026-10-30: native skill loading exists since commit `746b34cc` (2026-10-17), so the decision below not to build live skill loading no longer holds. See `docs/superpowers/spikes/2026-10-30-language-skills.md`.
+
 ## Goal
 
 The user asked to improve the teams-ai agents and whether they're actually being used. Three separate things were
