@@ -199,7 +199,7 @@ export function resumedPack(text: string): ContextPack {
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }> },
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }>; languageCheck?: string },
 ): ContextPackInput {
   const prior = (opts.priorFindings ?? []).slice(0, REVIEW_PRIOR_LINES).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} ${f.problem}`);
   if ((opts.priorFindings?.length ?? 0) > REVIEW_PRIOR_LINES) prior.push(`- ... ${(opts.priorFindings?.length ?? 0) - REVIEW_PRIOR_LINES} more`);
@@ -208,7 +208,7 @@ export function reviewPack(
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
-  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nThe compose service healthcheck and its "image: \${TEAMS_AI_IMAGE:-...}" line are the orchestrator's deploy contract (it tags, verifies and rolls back the image through them): never ask to remove them.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\nDiff against origin/main:\n${opts.diff}`;
+  const changeSet = `Changed files:\n${opts.changedFiles.join('\n')}\n\nDiff stat:\n${opts.diffStat}\n\nThe JUnit report (reports/junit.xml) is gate output the orchestrator never commits: do not ask for it.\n\nThe compose service healthcheck and its "image: \${TEAMS_AI_IMAGE:-...}" line are the orchestrator's deploy contract (it tags, verifies and rolls back the image through them): never ask to remove them.\n\nGate test results (the merge gates already ran the suite on this diff; do not re-run it):\n${results.join('\n') || '- none reported'}\n\n${opts.languageCheck ? `${opts.languageCheck}\n\n` : ''}Diff against origin/main:\n${opts.diff}`;
   const shared = common(base, 'review', 'test');
   return { ...shared, principles: [...shared.principles, ...sourceRules(base)], task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, objectives: scopeOf(base.spec), code: opts.code, feedback, changeSet };
 }
@@ -478,7 +478,7 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
 
 export const DOCS_STRUCTURE = [
   'Documentation is a gate; the orchestrator rejects the step unless all three documents pass:',
-  '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), each with real content (English or Portuguese names).',
+  '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), each with real content (English names).',
   '- `runbook` (docs/RUNBOOK.md): headings for start, stop, logs and rollback, each with real content.',
   '- `apiDocs` (docs/API.md): every endpoint named in the spec features or documented in the current docs/API.md, written with its exact path, each endpoint as `METHOD /path` (for example `### GET /orders/{id}`) (only needed when the features name endpoints; an empty `apiDocs` leaves the current file as it is).',
 ].join('\n');

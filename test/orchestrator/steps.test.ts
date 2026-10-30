@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, DOCS_STRUCTURE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -202,6 +202,18 @@ describe('packs', () => {
   it('the review tells the reviewer which findings are plan findings', () => {
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
     expect(reviewPack(base, task, review).feedback).toContain('category "plan"');
+  });
+
+  it('puts the language check before the diff, so the reviewer reads the hints with the change', () => {
+    const review = { diffStat: '', changedFiles: [], diff: '+x', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const hints = 'Language check (hints, not proof): one line.\n- a.ts:1 // criar';
+    expect(reviewPack(base, task, { ...review, languageCheck: hints }).changeSet).toContain(`${hints}\n\nDiff against origin/main:\n+x`);
+    expect(reviewPack(base, task, review).changeSet).not.toContain('Language check');
+  });
+
+  it('asks the readme for English headings only, since the global rules make the documents English too', () => {
+    expect(DOCS_STRUCTURE).toContain('(English names)');
+    expect(DOCS_STRUCTURE).not.toContain('Portuguese names');
   });
 
   it("the review lists the reviewer's earlier findings on the task, and adds nothing without them", () => {

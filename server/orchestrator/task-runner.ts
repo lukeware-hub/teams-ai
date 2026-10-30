@@ -8,6 +8,7 @@ import type { BlockOptionsOutput, DevOutput as DevOutputSchema, OutputOf, Replan
 type DevOutput = z.infer<typeof DevOutputSchema>;
 type ReviewOutput = z.infer<typeof ReviewOutputSchema>;
 import { findCycle, taskPlanIds, type Plan, type PlanTask } from '../contracts/plan.js';
+import { languageCheck } from '../validators/language.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
@@ -672,7 +673,10 @@ export class TaskRunner {
     const diff = await this.boundedDiff();
     // The last two rounds of findings, so the reviewer does not reverse its own requests.
     const priorFindings = this.deps.journal.events.filter((e) => e.type === OrchEvent.ReviewChanges && e.data.taskId === this.taskId).slice(-2).flatMap((e) => e.data.findings as ReviewOutput['findings']);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings });
+    // Rule 1 of the global rules covers the files and the commit messages of the task, so the reviewer gets the hints for both.
+    const languageDiff = await git(this.worktree, ['diff', '-U0', 'origin/main...HEAD'], this.deps.exec);
+    const messages = await git(this.worktree, ['log', '--format=%B', 'origin/main..HEAD'], this.deps.exec);
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages) });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
     const security = this.startSecurity(changed, diffStat, diff, code);

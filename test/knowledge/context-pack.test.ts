@@ -89,6 +89,7 @@ describe('buildContextPack', () => {
     const pack = buildContextPack({ ...base, decisions, budgetTokens: 10 });
     expect(pack.sections).toEqual(['principles', 'contract', 'task', 'criteria', 'decisions']);
     expect(pack.text).toContain('- O total inclui frete?\n  Answer: Sim, sempre.');
+    expect(pack.text).toContain('follow them within the global rules');
     expect(pack.text).toContain('Answer (PO, from the docs): Real.');
     expect(pack.dropped).toContain('!over-budget');
   });

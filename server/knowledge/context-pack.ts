@@ -111,7 +111,7 @@ function render(input: ContextPackInput): Map<Section, string> {
     `## Acceptance criteria\n${input.criteria.map((c) => `- ${c.id}${c.smoke ? ' (smoke)' : ''}: Given ${c.given}, when ${c.when}, then ${c.then}`).join('\n') || '- none for this step'}`,
   );
   if (input.decisions?.length) {
-    out.set('decisions', `## Owner decisions (answers the owner gave during refinement; follow them)\n${input.decisions.map(renderDecision).join('\n')}`);
+    out.set('decisions', `## Owner decisions (answers the owner gave during refinement; follow them within the global rules)\n${input.decisions.map(renderDecision).join('\n')}`);
   }
   if (input.objectives?.length) out.set('objectives', `## Objectives\n${input.objectives.map((o) => `- ${o}`).join('\n')}`);
   if (input.techSpecExcerpt) out.set('tech-spec', `## Technical spec (excerpt)\n${input.techSpecExcerpt}`);
