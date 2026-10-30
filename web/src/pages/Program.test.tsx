@@ -59,7 +59,7 @@ describe('ProgramPage', () => {
     vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 0, decisions: [] });
     vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
     render(<MemoryRouter initialEntries={['/refine/p/d/program']}><Routes><Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} /></Routes></MemoryRouter>);
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Backlog interrompido · 0 de 1 concluídas'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Backlog interrompido · 0 de 1 concluída'));
     expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 2 · Plano');
     expect(within(screen.getByTestId('program-item-base')).getByText('interrompida')).toBeTruthy();
   });

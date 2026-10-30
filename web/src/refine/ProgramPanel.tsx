@@ -6,7 +6,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
-import { action, chip, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
@@ -19,9 +19,10 @@ const ITEM_HELP = {
   partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
   failed: 'A execução desta spec falhou. Veja o motivo abaixo.',
   blocked: 'A spec não pôde seguir. Veja o motivo abaixo.',
+  interrupted: 'O processo parou antes do fim. Abra a run para retomar.',
 } as const;
 const OWNER_HELP: Record<string, string> = { Sistema: 'Quem precisa agir: o sistema, que resolve sozinho ou precisa de um ajuste da plataforma.', Plano: 'Quem precisa agir: o plano ou a spec precisa ser corrigido.', Você: 'Quem precisa agir: você.' };
-const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', partial: 'concluída parcialmente', failed: 'falhou', blocked: 'bloqueada' } as const;
+const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', partial: 'concluída parcialmente', failed: 'falhou', blocked: 'bloqueada', interrupted: 'interrompida' } as const;
 // Same pills as the hub's spec rows; a live spec's dot pulses.
 const PILL = {
   pending: 'status-pill',
@@ -32,9 +33,13 @@ const PILL = {
   partial: 'status-pill tone-warn',
   failed: 'status-pill tone-bad',
   blocked: 'status-pill tone-bad',
+  interrupted: 'status-pill tone-warn',
 } as const;
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
 const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+
+/** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
+const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
 
 /** Why an item failed or waits: what happened, who has to act and what to do, with the orchestrator's own words one click away. */
 export function ItemReason({ status, reason }: { status: ProgramViewItem['status']; reason: string }) {
@@ -123,7 +128,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
     <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status">
       <div className="flex items-center gap-3">
         {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
-        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
+        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
       </div>
       {program && <progress className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
       {(now.length > 0 || link) && (
@@ -158,7 +163,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
           <InfoTip label="Execução do backlog" text={HELP} />
         </div>
         <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums">
-          <span>{done} de {program.items.length} concluídas</span>
+          <span>{done} de {program.items.length} concluída{program.items.length === 1 ? '' : 's'}</span>
           {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
         </p>
       </div>
@@ -183,7 +188,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               {i.reason && <ItemReason status={i.status} reason={i.reason} />}
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents">
-              {i.interrupted ? chip('interrupted') : <Tipped text={ITEM_HELP[i.status]}><span className={PILL[i.status]}>{LABEL[i.status]}</span></Tipped>}
+              <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]}>{LABEL[shownStatus(i)]}</span></Tipped>
               <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end">
                 {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
               </span>

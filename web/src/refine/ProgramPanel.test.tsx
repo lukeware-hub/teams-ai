@@ -65,6 +65,13 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-b')).getByText(/verification-failed: AC-004/)).toBeTruthy();
   });
 
+  it('explains an interrupted row with its own tip, not with a Retomar button the row does not have', () => {
+    renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', interrupted: { runId: 'd-a-r1' } })]));
+    const row = within(screen.getByTestId('program-item-a'));
+    expect(row.getByRole('button', { name: 'O processo parou antes do fim. Abra a run para retomar.' })).toBeTruthy();
+    expect(row.queryByRole('button', { name: /Use Retomar/ })).toBeNull();
+  });
+
   it('offers to run a queued spec now, and marks one already prioritized', () => {
     const onPrioritize = vi.fn();
     render(<MemoryRouter><ProgramPanel program={program([item('a', { status: 'running', runId: 'd-a-r1' }), item('b', { rank: 2 }), item('c', { rank: 3, priority: true })])} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
@@ -123,7 +130,7 @@ describe('ProgramStatus', () => {
 
   it('stops the spinner once the program finished', () => {
     renderStatus(program([item('a', { status: 'done' })], 'finished'));
-    expect(screen.getByRole('status').textContent).toContain('Backlog executado · 1 de 1 concluídas');
+    expect(screen.getByRole('status').textContent).toContain('Backlog executado · 1 de 1 concluída');
     expect(screen.getByRole('status').querySelector('.loading-spinner')).toBeNull();
   });
 
@@ -159,7 +166,7 @@ describe('ProgramStatus', () => {
     const { rerender } = render(<MemoryRouter><ProgramStatus program={program([item('b', { status: 'running', runId: 'd-b-r1', interrupted: { runId: 'd-b-r1' } })])} titles={titles} phases={{}} /></MemoryRouter>);
     expect(screen.getByRole('status').textContent).toContain('Backlog interrompido');
     rerender(<MemoryRouter><ProgramStatus program={program([item('b', { status: 'running', runId: 'd-b-r1' })])} titles={titles} phases={{}} /></MemoryRouter>);
-    expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 1 concluídas');
+    expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 1 concluída');
     expect(screen.getByRole('status').querySelector('.loading-spinner')).not.toBeNull();
   });
 

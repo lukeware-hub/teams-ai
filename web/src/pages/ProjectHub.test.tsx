@@ -428,7 +428,7 @@ describe('the process of the running execution on the project page', () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
     vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 4 } as never);
     render(view({ backlogs: ['hello-001'], processRun: { ...runs[0]!, status: 'interrupted' }, processEvents: [] }));
-    expect(await screen.findByText(/Backlog interrompido · 0 de 1 concluídas/)).toBeTruthy();
+    expect(await screen.findByText(/Backlog interrompido · 0 de 1 concluída/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 4 · Verificação');
   });
   afterEach(() => vi.restoreAllMocks());
