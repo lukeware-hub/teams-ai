@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ALWAYS_DENIED, NESTED_DENIED } from '../agents/registry.js';
 import type { Role } from '../config/config.js';
-import { stackBash, type StackKind } from './stacks.js';
+import { stackBash, stackDomains, type StackKind } from './stacks.js';
 
 /**
  * Settings the orchestrator ships to every agent process via `--settings <file>`.
@@ -21,7 +21,23 @@ export const PROTECTED_READ_PATHS: readonly string[] = [
   '~/.aws/**',
   '~/.ssh/**',
   '~/.claude/.credentials.json',
+  '~/.npmrc',
+  '~/.netrc',
 ];
+
+/** npm commands that publish or hold a token, and edits of the files that hold one. */
+const NPM_WRITE_DENIED = [
+  'Bash(npm publish:*)',
+  'Bash(npm login:*)',
+  'Bash(npm adduser:*)',
+  'Bash(npm token:*)',
+  'Bash(npm owner:*)',
+  'Bash(npm access:*)',
+  'Bash(npm unpublish:*)',
+  'Bash(npm deprecate:*)',
+  'Edit(**/.npmrc)',
+  'Edit(**/.netrc)',
+] as const;
 
 /**
  * `--permission-mode dontAsk` denies every tool that is not allowed here, so editing roles must be
@@ -118,6 +134,7 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
     'Edit(.claude/**)',
     ...ALWAYS_DENIED,
     ...NESTED_DENIED,
+    ...NPM_WRITE_DENIED,
   ];
   // Read rules only stop the Read tool; the sandbox stops every command (`cat`) from opening the credential stores.
   const denyRead = [
@@ -128,14 +145,18 @@ export function buildRoleSettings(role: Role, input: RoleSettingsInput): RoleSet
   ];
   const denyWrite = (input.protectedDirs ?? []).map((d) => d.replace(/\/+$/, ''));
   // dontAsk denies every edit no rule allows, so a step held to some directories gets Edit rules for those in place of the bare file tools.
-  const toolchain = TOOLCHAIN_ROLES.includes(role) ? stackBash(input.stacks ?? []) : [];
+  // A Front on a project stack builds the web frontend, which is Node even when the stack names another language first.
+  const frontNode = role === 'front' && (input.stacks?.length ?? 0) > 0;
+  const kinds: readonly StackKind[] = frontNode ? [...(input.stacks ?? []), 'node'] : (input.stacks ?? []);
+  const toolchain = TOOLCHAIN_ROLES.includes(role) ? stackBash(kinds) : [];
+  const allowedDomains = frontNode ? [...new Set([...input.allowedDomains, ...stackDomains('node', null)])] : [...input.allowedDomains];
   const roleTools = [...ROLE_ALLOW[role], ...toolchain];
   const roleAllow = input.writeDirs ? roleTools.filter((rule) => !(EDIT_TOOLS as readonly string[]).includes(rule)) : roleTools;
   const writeAllow = (input.writeDirs ?? []).map((d) => `Edit(${absoluteRule(d)}/**)`);
   return {
     // A command that fails under the sandbox is never retried outside it: an allow rule would approve that retry, and it
     // would reach the network and the credential copies of the step. A missing sandbox stops the run, not the command.
-    sandbox: { enabled: input.sandboxEnabled ?? true, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains: [...input.allowedDomains] }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
+    sandbox: { enabled: input.sandboxEnabled ?? true, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains }, ...(denyRead.length + denyWrite.length > 0 ? { filesystem: { denyRead, denyWrite } } : {}) },
     permissions: { allow: [...roleAllow, ...writeAllow, ...AGENT_REACH_ALLOW, ...(input.extraAllow ?? []), ...(input.fullAccess ? FULL_ACCESS_ALLOW : [])], deny: [...new Set(deny)] },
   };
 }

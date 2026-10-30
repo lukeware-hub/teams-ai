@@ -71,11 +71,17 @@ describe('buildRoleSettings', () => {
       expect(python, role).not.toEqual(expect.arrayContaining(['Bash(npm:*)', 'Bash(go:*)']));
       expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['java'] }).permissions.allow, role).toEqual(expect.arrayContaining(['Bash(mvn:*)', 'Bash(./gradlew:*)']));
       expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['rust', 'go'] }).permissions.allow, role).toEqual(expect.arrayContaining(['Bash(cargo:*)', 'Bash(go:*)']));
+      // A Front always gets npm and the npm registry, asserted below; Dev and Test get npm only from a node stack.
+      if (role === 'front') continue;
       for (const stacks of [undefined, ['other'], ['python'], ['go'], ['java'], ['rust']] as const) {
         expect(buildRoleSettings(role, { allowedDomains: [], stacks: stacks as undefined }).permissions.allow, `${role} ${stacks}`).not.toContain('Bash(npm:*)');
       }
       expect(buildRoleSettings(role, { allowedDomains: [], stacks: ['node'] }).permissions.allow).toContain('Bash(npm:*)');
     }
+    // The Front of a Go service still builds the Next.js frontend: npm and its registry, and nothing of Go's registries.
+    const front = buildRoleSettings('front', { allowedDomains: ['proxy.golang.org'], stacks: ['go'] });
+    expect(front.permissions.allow).toContain('Bash(npm:*)');
+    expect(front.sandbox.network.allowedDomains).toEqual(expect.arrayContaining(['proxy.golang.org', 'registry.npmjs.org']));
     // A Java step never gets the Python or Go commands, and a Python step never gets Maven.
     const java = buildRoleSettings('dev', { allowedDomains: [], stacks: ['java'] }).permissions.allow;
     expect(java).not.toContain('Bash(python3:*)');
@@ -83,6 +89,24 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [], stacks: ['python'] }).permissions.allow).not.toContain('Bash(mvn:*)');
     // Roles without a toolchain get no stack commands, whatever the stacks.
     expect(buildRoleSettings('devops', { allowedDomains: [], stacks: ['python'] }).permissions.allow).not.toContain('Bash(python3:*)');
+  });
+
+  it('gives a Front on no project stack, such as a design refinement step, neither npm nor the npm registry', () => {
+    const refinement = buildRoleSettings('front', { allowedDomains: [] });
+    expect(refinement.permissions.allow).not.toContain('Bash(npm:*)');
+    expect(refinement.sandbox.network.allowedDomains).toEqual([]);
+  });
+
+  it('denies npm commands that publish or hold a token, and edits of .npmrc and .netrc, to every role', () => {
+    for (const role of ROLES) {
+      const deny = buildRoleSettings(role, { allowedDomains: [] }).permissions.deny;
+      expect(deny, role).toEqual(expect.arrayContaining(['Bash(npm publish:*)', 'Bash(npm login:*)', 'Edit(**/.npmrc)', 'Edit(**/.netrc)']));
+    }
+  });
+
+  it('hides the npmrc and netrc of the orchestrator HOME from every command of the sandbox', () => {
+    const { denyRead } = buildRoleSettings('dev', { allowedDomains: [], hostHome: '/home/node/' }).sandbox.filesystem!;
+    expect(denyRead).toEqual(expect.arrayContaining(['/home/node/.npmrc', '/home/node/.netrc']));
   });
 
   it('forbids every write to the installed skill plugins, by the Edit tool and by any command of the sandbox', () => {
