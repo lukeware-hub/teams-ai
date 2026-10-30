@@ -103,13 +103,13 @@ export function parseAgentFile(text: string, expectedRole: Role): AgentDefinitio
 }
 
 /** Error rules every role follows: think first, search trusted sources, verify the fix. */
-export const ERROR_RULES = `Regras para erros, em todos os papéis:
-Sempre que encontrar um erro:
-1. Pense antes de agir: escreva uma hipótese curta com a causa provável e o plano de correção. Não altere nada antes disso.
-2. Pesquise sempre com o Agent Reach (\`agent-reach\` no Bash) antes de tentar qualquer correção. Priorize documentação oficial, GitHub Issues e Stack Overflow, e soluções recentes compatíveis com a versão usada no projeto.
-3. Aplique a solução e confirme que o erro foi resolvido, rodando de novo o comando, teste ou build.
-4. Nunca inclua segredos, tokens, senhas ou dados de clientes na pesquisa; remova-os da mensagem de erro antes de pesquisar.
-5. Se o erro persistir após 3 tentativas, pare e reporte o que foi tentado.`;
+export const ERROR_RULES = `Error rules, for every role:
+Whenever you meet an error:
+1. Think before acting: write a short hypothesis with the likely cause and the fix plan. Change nothing before that.
+2. Always search with Agent Reach (\`agent-reach\` in Bash) before any fix. Prefer official documentation, GitHub Issues and Stack Overflow, and recent solutions that match the version the project uses.
+3. Apply the fix and confirm the error is gone by running the command, test or build again.
+4. Never put secrets, tokens, passwords or customer data in the search; remove them from the error message before you search.
+5. If the error persists after 3 attempts, stop and report what you tried.`;
 
 /** Shared rules every role follows, whatever its job; appended to each agent prompt. */
 export const QUALITY_RULES = `Quality rules for every role:

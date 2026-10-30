@@ -174,7 +174,7 @@ Found while answering whether to install the agents-migration language skills. E
 
 ### From the global agent rules (2026-10-30)
 
-- [ ] **[minor] Decide the language of `ERROR_RULES`.** `server/agents/registry.ts:105` is the one role-wide prompt block still written in Portuguese. The global rules say code is English and text for people is pt-BR, but not which one an instruction to an agent is. Decide, then move it.
+- [x] **[minor] The language of `ERROR_RULES`.** Done 2026-10-30: the block is in English. Rule 1 covers the technical text the code gives the agents; rule 2 covers only text written for people.
 - [ ] **[minor] The comment above `QUESTION_RULES` is stale.** `server/agents/registry.ts:133` says the agent body travels on the command line, which stopped being true on 2026-10-29, when the body moved into the `--agents` file.
 - [ ] **[minor] Portuguese file names in teams-ai.** `scripts/guia/atualizar-grafo.sh` and the files of `docs/guia/` are named in Portuguese. Rename them only together with the guide graph rebuild (`task guia:grafo`).
 - [ ] **[important] Portuguese identifiers that the platform writes into target repositories.** `server/refine/adjustments.ts:13,80` builds the spec keys `<key>-ajuste-<n>`, and `server/refine/sections.ts:134` reads the owner's heading `Ajuste aprovado:`. A rename breaks existing keys, branches and owner documents, so it needs a compatibility plan first.

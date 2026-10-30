@@ -33,4 +33,5 @@ The agents of teams-ai build software for target projects. Their rules lived in 
 ## Not done
 
 - `docs/guia` is not edited: a change there fails `test/chat/guide.test.ts` until `task guia:grafo` runs with the platform up.
-- `ERROR_RULES` stays in Portuguese, and the Portuguese identifiers the platform writes into target repositories stay as they are. Both are backlog items.
+- `ERROR_RULES` is in English since 2026-10-30: rule 1 covers the technical text the code gives the agents.
+- The Portuguese identifiers the platform writes into target repositories (the `-ajuste` spec keys and the `Ajuste aprovado:` heading) stay as they are. A rename breaks existing keys, branches and owner documents, so it needs a compatibility plan and the owner's decision.
