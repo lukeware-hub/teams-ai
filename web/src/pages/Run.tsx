@@ -483,8 +483,8 @@ type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { k
 
 const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 // Same condition as the project hub's own Retomar button (project-shared.tsx's ACTIVE/resume gating): a dead
-// process (interrupted) or an expired Claude session (paused:auth) resume; a quota pause lifts on its own.
-const RESUMABLE = new Set(['interrupted', 'paused:auth']);
+// process (interrupted) or an expired Claude session (paused:auth) resume, and a failed verification (verification-failed) restarts its blocked tasks; a quota pause lifts on its own.
+const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed']);
 
 export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
@@ -650,6 +650,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             </span>
             {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
             {status === 'interrupted' ? <span data-testid="interrupted-hint" className="hint">o processo não está mais rodando; use Retomar</span> : null}
+            {status === 'verification-failed' ? <span data-testid="verification-hint" className="hint">Retomar reinicia só as tarefas bloqueadas; o que já foi mesclado fica</span> : null}
           </div>
         </div>
         <div className={RUN_UI.actions}>

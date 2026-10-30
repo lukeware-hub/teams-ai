@@ -72,3 +72,20 @@ Status: replaced by the migration (plan 107). The plan step writes its plan with
 Status: in progress. Plan 95 is built: the refinement journal keeps each decision whole, and `scripts/evals/refine-replay.ts` measures the owner's agreement with the recommendation on deliberate answers. Plan 96 is done: a document save states the hash it was typed over, so a save over a file another change moved is refused. Plan 97 is built: every patch proposal states whether it adds or removes structure, journaled only. Plan 98 is built: a Spec Kit step repairs the criteria it left out, and a failed item stops only its own lane. Plan 99 is built: a heal driver starts again a cycle or preparation that a restart or a schema or timeout failure stopped, behind `refine.heal.enabled` (off by default). Plan 100 is built: the stage review pack carries the answers, skips and open questions of the draft and the patches it rejected, read from the journal. Plan 101 is built and measured on a copy of the live draft: the resolver replay and the evidence replay show that no stratum clears the gate on the DEV data, so the master plan's estimates need the owner's decision before the next build (see plan 101). The rules are frozen as `r2`, and the holdout starts at the commit. Plan 105 is built, first slice: every agent carries the question rules, and the Spec Kit asker sees the earlier questions of its item with their answers. Plan 102 is built for the Spec Kit questions: a question that repeats a decided one must name the real difference in `distinctFrom`; otherwise it is repaired once, then dropped and shown in the backlog screen, where the owner can ask for it again. Plan 103 is built: the same guard covers the stage reviews and the full rounds, which drop a repeat of a decided question and show it in the stage panel or the final review, with "Perguntar de novo". Plan 106 is built, in shadow: the ask caps (one per Spec Kit command, stage review and round) are counted on the journal by `scripts/evals/refine-replay.ts`, and not enforced. On the live journal 401 of 598 Spec Kit non-blocking questions would move to recorded decisions, most from plan and tasks at cap 0; the owner decides those caps before enforcement. The effort A/B and the interview-skill change wait for a scratch run. Next, in order: the resolver and the autopilot, each behind a flag and after the owner approves its screen. Plan 107 replaces the Spec Kit preparation with the Superpowers plan step, so the Spec Kit names in the plans above describe the removed engine.
 
 Owner decisions (2026-10-27): autonomy at maximum; only a scope change (adding or cutting functionality, changing backlog priority) always reaches the owner; legal, money and security/access are per-project switches, off by default; Iniciar desenvolvimento stays a manual click. Plan of record: `docs/superpowers/plans/2026-10-27-teams-ai-95-autonomy-measurement.md`.
+
+## 12. Run recovery: retry a failed verification in the same run
+
+Status: built 2026-10-29. Commit `0870f940` (resume and reopen) and the Retomar button on the run screen, approved as a mock the same day. Pending: the full cycle on a real run (run-6 of kayron-hub) with the owner's click.
+
+Done:
+- The resume route accepts `verification-failed`. Retomar restarts only the blocked tasks and journals `RUN_REOPENED`.
+- A reopened run shows as running until its next `RUN_FINISHED`.
+- The run screen shows Retomar with the hint that only the blocked tasks restart.
+
+Decided 2026-10-29:
+- Settings and autonomy kept: agents decide `Sim` for kayron-hub; 3 attempts per task; 3 spec-gap rounds in a row; 2 gate fixes per gate per run; 2 verification rounds; cost is an alert only.
+- Standalone runs do not repair themselves: Retomar is manual. Program runs keep the automatic repair (2).
+
+Pending:
+- The project hub (`project-shared.tsx`) does not offer Retomar for a failed verification yet; the approved mock covers only the run screen.
+- A spec with a refinement session: Retomar does not update its program item; use the program's retry for those.

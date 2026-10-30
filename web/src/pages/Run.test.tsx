@@ -274,7 +274,7 @@ describe('RunView', () => {
       expect(rows[3]!.textContent).toContain('falhou');
       expect(rows[3]!.textContent).toContain('2ª tentativa');
       expect(rows[3]!.textContent).toContain('O que fazer:');
-      expect(rows[3]!.textContent).toContain('resolva os bloqueios');
+      expect(rows[3]!.textContent).toContain('use Retomar');
     });
 
     it('opens a failed phase in a dialog with what happened, who resolves it and the raw reason', () => {
@@ -408,6 +408,15 @@ describe('RunView', () => {
       render(view({ events: ghost, ended: false, detail: { ...detail, status: 'interrupted' } }));
       expect(screen.getByTestId('status').textContent).toContain('interrompida');
       expect(screen.getByTestId('interrupted-hint')).toBeTruthy();
+    });
+
+    it('offers Retomar for a run that failed verification, saying only its blocked tasks restart', () => {
+      const onResume = vi.fn();
+      render(view({ events: ghost, ended: true, detail: { ...detail, status: 'verification-failed' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.getByTestId('resume').textContent).toBe('Retomar');
+      expect(screen.getByTestId('verification-hint').textContent).toContain('só as tarefas bloqueadas');
+      fireEvent.click(screen.getByTestId('resume'));
+      expect(onResume).toHaveBeenCalledTimes(1);
     });
 
     it('offers Retomar for an interrupted run, wired to the action', () => {
