@@ -69,3 +69,38 @@ describe('R11.4 retry: a second run of a spec inherits what an earlier run alrea
     await run.close();
   });
 });
+
+describe('a human retry of a run that already ended', () => {
+  async function ended(runId: string, finished: boolean) {
+    gh = new FakeGh();
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    exec.onArgs('gh', ['repo', 'view'], () => ({ stdout: JSON.stringify({ nameWithOwner: 'o/hello-app', url: remote.origin }) }));
+    const d = deps(exec);
+    const task = parseAnyPlan(plan).tasks[0]!;
+    const prior = await EventStore.open({ file: eventsFile(d.ws, runId), runId, specHash: spec.specHash! });
+    await prior.append({ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } });
+    await prior.append({ type: 'TASK_PLANNED', data: { task } });
+    await prior.append({ type: 'TASK_STATE_CHANGED', data: { taskId: task.id, to: 'blocked' } });
+    if (finished) await prior.append({ type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'x', merged: [], blocked: [], tokens: {} } });
+    await prior.close();
+    return { d, task };
+  }
+
+  it('reopens the run, starts its blocked tasks over and leaves the run running', async () => {
+    const { d, task } = await ended('hello-001-r1', true);
+    const run = await Run.resume(d, 'hello-001-r1');
+    await run.retryBlocked();
+    expect(run.journal.events.map((e) => e.type)).toContain('RUN_REOPENED');
+    expect(run.journal.state.status).toBe('running');
+    expect(run.journal.state.tasks.get(task.id)?.state).toBe('ready');
+    await run.close();
+  });
+
+  it('does not reopen a run that never ended, as an interrupted run is only retried', async () => {
+    const { d } = await ended('hello-001-r1', false);
+    const run = await Run.resume(d, 'hello-001-r1');
+    await run.retryBlocked();
+    expect(run.journal.events.map((e) => e.type)).not.toContain('RUN_REOPENED');
+    await run.close();
+  });
+});

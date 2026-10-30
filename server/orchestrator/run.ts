@@ -250,8 +250,10 @@ export class Run {
     return run;
   }
 
-  /** A human's resume gives every blocked task a fresh start: the cause may be fixed now (live: a Go download the sandbox refused). */
+  /** A human's resume gives every blocked task a fresh start: the cause may be fixed now (live: a Go download the sandbox refused). A finished run is reopened first. */
   async retryBlocked(): Promise<void> {
+    const events = this.journal.events;
+    if (events.findLastIndex((e) => e.type === OrchEvent.RunFinished) > events.findLastIndex((e) => e.type === RunEvent.RunReopened)) await this.journal.fact(RunEvent.RunReopened, { manual: true });
     const blocked = [...this.journal.state.tasks].filter(([, t]) => t.state === 'blocked').map(([id]) => id);
     if (blocked.length > 0) await this.journal.fact(RunEvent.TasksUnblocked, { taskIds: blocked });
   }

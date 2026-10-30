@@ -186,7 +186,9 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   const parsed = parseRunId(runId);
   const specId = String(startedAt?.data.specId ?? parsed?.specId ?? runId);
   const projectId = startedAt ? String(startedAt.data.projectId) : parsed?.projectId ?? null;
-  const finished = [...events].reverse().find((e) => e.type === 'RUN_FINISHED');
+  // A run a human reopened runs again: only a RUN_FINISHED after the last reopening says it ended.
+  const lastFinish = events.findLastIndex((e) => e.type === 'RUN_FINISHED');
+  const finished = lastFinish > events.findLastIndex((e) => e.type === 'RUN_REOPENED') ? events[lastFinish] : undefined;
   const state: StateFile | null = await fs
     .readFile(path.join(runs, runId, 'state.json'), 'utf8')
     .then((t) => JSON.parse(t) as StateFile)

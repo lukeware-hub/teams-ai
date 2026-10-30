@@ -32,6 +32,13 @@ describe('run index', () => {
     await expect(readProject(home)).rejects.toThrow(/project\.json/);
   });
 
+  it('a run a human reopened shows running again until its next RUN_FINISHED', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'verification-failed' } }], state('running'));
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'verification-failed' } }, { type: 'RUN_REOPENED', data: { manual: true } }], state('running'));
+    const rows = await listRuns(deps(), 'hello-app');
+    expect(rows.map((r) => [r.runId, r.status])).toEqual(expect.arrayContaining([['hello-001-r1', 'verification-failed'], ['hello-001-r2', 'running']]));
+  });
+
   it('lists runs newest first with status from state.json, pid liveness and stoppable', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('paused:auth'));

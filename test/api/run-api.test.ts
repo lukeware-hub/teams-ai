@@ -627,7 +627,7 @@ describe('start, resume, stop', () => {
     }
   });
 
-  it('resume is allowed only for paused:auth or interrupted runs', async () => {
+  it('resume is allowed only for paused:auth, interrupted or verification-failed runs', async () => {
     // Each run is the latest of its spec when it is resumed: an earlier run never resumes behind a later one.
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
     onSpawn = async () => {};
@@ -641,6 +641,11 @@ describe('start, resume, stop', () => {
     await writeRun(runs, 'hello-001-r3', [started('hello-001-r3')], state('running'), 901);
     const interrupted = await post('/api/runs/hello-001-r3/resume'); // pid 901 is dead
     expect(interrupted.status).toBe(200);
+    // A run that failed verification resumes too, with the same retry of its blocked tasks.
+    await writeRun(runs, 'hello-001-r4', [started('hello-001-r4'), { type: 'RUN_FINISHED', data: { result: 'verification-failed' } }], state('running'));
+    const retried = await post('/api/runs/hello-001-r4/resume');
+    expect(retried.status).toBe(200);
+    expect(spawns.at(-1)!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r4', '--retry-blocked']);
     expect((await post('/api/runs/missing/resume')).status).toBe(404);
     expect((await post('/api/runs/..%2Fx/resume')).status).toBe(400);
   });

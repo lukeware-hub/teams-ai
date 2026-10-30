@@ -42,6 +42,8 @@ export const RunEvent = {
   TaskReplanned: 'TASK_REPLANNED',
   RunPaused: 'RUN_PAUSED',
   RunResumed: 'RUN_RESUMED',
+  /** A human retries a run that already finished: it runs again, and the earlier RUN_FINISHED stops counting. */
+  RunReopened: 'RUN_REOPENED',
   RunBudgetExhausted: 'RUN_BUDGET_EXHAUSTED',
   RunStopRequested: 'RUN_STOP_REQUESTED',
   FixTasksPlanned: 'FIX_TASKS_PLANNED',
@@ -122,6 +124,11 @@ export function applyEvent(state: RunState, event: ReducibleEvent): void {
         state.status = 'running';
         state.stopOnly = false;
       } else if (state.status !== 'draining') state.status = 'running';
+      return;
+    }
+    case RunEvent.RunReopened: {
+      state.status = 'running';
+      state.stopOnly = false;
       return;
     }
     case RunEvent.RunBudgetExhausted: {

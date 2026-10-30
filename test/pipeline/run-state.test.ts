@@ -91,6 +91,11 @@ describe('reduceEvents', () => {
     expect(draining.status).toBe('draining');
   });
 
+  it('a reopened run is running again, even after a stop drained it', () => {
+    const reopened = reduceEvents([{ type: RunEvent.RunBudgetExhausted, data: {} }, { type: RunEvent.RunReopened, data: { manual: true } }]);
+    expect(reopened.status).toBe('running');
+  });
+
   it('keeps an auth pause when a quota pause follows, so the run never resumes on its own with the login still broken', () => {
     const state = reduceEvents([{ type: RunEvent.RunPaused, data: { reason: 'auth' } }, { type: RunEvent.RunPaused, data: { reason: 'quota' } }]);
     expect(state.status).toBe('paused:auth');
