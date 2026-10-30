@@ -110,7 +110,7 @@ describe('CLAUDE_CODE_OAUTH_TOKEN passthrough (plan 38)', () => {
     const env = { HOME: host, PATH: 'p', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-x' };
     const home = await createStepHome(path.join(dir, 'homes'), env);
     await expect(fs.access(path.join(home, '.claude', '.credentials.json'))).rejects.toThrow();
-    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home }, env);
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home, agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo.' }, agentsPath: path.join(dir, 'dev.agents.json') }, env);
     expect(inv.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-x');
   });
 
@@ -122,12 +122,12 @@ describe('ANTHROPIC_API_KEY (claude.auth api-key, R11.13 slice 12)', () => {
     const env = { HOME: host, PATH: 'p', ANTHROPIC_API_KEY: 'sk-ant-api03-x' };
     const home = await createStepHome(path.join(dir, 'homes'), env);
     await expect(fs.access(path.join(home, '.claude', '.credentials.json'))).rejects.toThrow();
-    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home, apiKey: 'sk-ant-api03-x' }, env);
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', home, apiKey: 'sk-ant-api03-x', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo.' }, agentsPath: path.join(dir, 'dev.agents.json') }, env);
     expect(inv.env.ANTHROPIC_API_KEY).toBe('sk-ant-api03-x');
   });
 
   it('never passes a key from the host env through the allowlist', () => {
-    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's' }, { HOME: host, PATH: 'p', ANTHROPIC_API_KEY: 'sk-from-the-host' });
+    const inv = buildInvocation({ role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: dir, prompt: 'p', jsonSchema: {}, tools: ['Read'], disallowedTools: [], settingsPath: 's', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo.' }, agentsPath: path.join(dir, 'dev.agents.json') }, { HOME: host, PATH: 'p', ANTHROPIC_API_KEY: 'sk-from-the-host' });
     expect(inv.env.ANTHROPIC_API_KEY).toBeUndefined();
   });
 });

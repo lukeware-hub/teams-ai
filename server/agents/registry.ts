@@ -98,6 +98,7 @@ export function parseAgentFile(text: string, expectedRole: Role): AgentDefinitio
   }
   const body = match[2]!.trim();
   if (!body.includes('specHash')) throw new AgentFileError(`${expectedRole}: body must state the specHash echo rule`);
+  if (/pt-BR|Brazilian|Portuguese/.test(body)) throw new AgentFileError(`${expectedRole}: the language rule belongs to GLOBAL_RULES, not to the role file`);
   return { role: expectedRole, description: fields.description!, model: fields.model!, tools, body };
 }
 

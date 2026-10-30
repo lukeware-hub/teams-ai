@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GLOBAL_RULES } from '../../server/agents/global-rules.js';
 import { QUESTION_RULES } from '../../server/agents/registry.js';
 import {
   ENV_ALLOWLIST,
@@ -26,6 +27,8 @@ const base: InvocationInput = {
   tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'Bash'],
   disallowedTools: ['Bash(gh:*)', 'Bash(git push:*)', 'Bash(docker:*)', 'Bash(kubectl:*)'],
   settingsPath: '/home/u/.teams-ai/settings/dev.settings.json',
+  agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo the specHash.' },
+  agentsPath: '/home/u/.teams-ai/settings/home-1/dev.agents.json',
 };
 
 const hostEnv = {
@@ -112,7 +115,7 @@ describe('buildInvocation', () => {
     expect(inv.args[inv.args.indexOf('--agents') + 1]).toBe(agentsPath);
     expect(inv.args.indexOf('--agents')).toBeGreaterThan(inv.args.indexOf('--agent'));
     expect(inv.agentsFile?.path).toBe(agentsPath);
-    expect(JSON.parse(inv.agentsFile!.content)).toEqual({ dev: { description: 'Developer.', prompt: 'Echo the specHash.', tools: ['Read', 'Edit'], model: 'sonnet' } });
+    expect(JSON.parse(inv.agentsFile.content)).toEqual({ dev: { description: 'Developer.', prompt: `${GLOBAL_RULES}\n\nEcho the specHash.`, tools: ['Read', 'Edit'], model: 'sonnet' } });
   });
 
   it('keeps the agent body out of the command line, whatever its size', () => {
@@ -120,12 +123,12 @@ describe('buildInvocation', () => {
     const inv = buildInvocation({ ...base, agentsPath: '/home/u/x/dev.agents.json', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Read'], body } }, hostEnv);
     expect(inv.args.join(' ')).not.toContain('Rule.');
     expect(inv.args.join(' ').length).toBeLessThan(2000);
-    expect(JSON.parse(inv.agentsFile!.content).dev.prompt).toBe(body);
+    expect(JSON.parse(inv.agentsFile.content).dev.prompt).toBe(`${GLOBAL_RULES}\n\n${body}`);
   });
 
-  it('refuses a definition that has no file to be written to', () => {
-    const agentDefinition = { description: 'Developer.', model: 'opus', tools: ['Read'], body: 'Echo.' };
-    expect(() => buildInvocation({ ...base, agentDefinition }, hostEnv)).toThrow(InvocationError);
+  it('refuses a call that has no agent definition, or no file to write it to', () => {
+    expect(() => buildInvocation({ ...base, agentDefinition: undefined as never }, hostEnv)).toThrow(InvocationError);
+    expect(() => buildInvocation({ ...base, agentsPath: '' }, hostEnv)).toThrow(InvocationError);
   });
 
   it("points a step's go command at the platform's module proxy when the platform runs one", () => {
@@ -150,10 +153,6 @@ describe('buildInvocation', () => {
     expect(buildInvocation(base, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBeUndefined();
     expect(buildInvocation({ ...base, cacheTtl: '5m' }, hostEnv).env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe('5m');
     expect(PROMPT_CACHE_TTL).toBe('5m');
-  });
-
-  it('omits --agents when no definition is given', () => {
-    expect(buildInvocation(base, hostEnv).args).not.toContain('--agents');
   });
 
   it('passes --effort only when set', () => {

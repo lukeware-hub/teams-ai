@@ -71,9 +71,8 @@ describe('settings directory protection', () => {
     expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read, Write(.claude/**)\n---\nEcho specHash.`, 'dev')).toThrow(/\.claude/);
   });
 
-  it('every agent prompt requires 100% Brazilian Portuguese for human-readable text', async () => {
-    const agents = await loadAgents(AGENTS_DIR);
-    for (const def of Object.values(agents)) expect(def.body).toMatch(/Brazilian Portuguese \(pt-BR\), 100%/);
+  it('rejects a role file that names a language, since the language rule lives in GLOBAL_RULES', () => {
+    expect(() => parseAgentFile(`---\nname: dev\ndescription: x\nmodel: opus\ntools: Read\n---\nWrite comments in Brazilian Portuguese. Echo specHash.`, 'dev')).toThrow(/GLOBAL_RULES/);
   });
 
   it('every agent prompt carries the shared quality rules and delivery goals', async () => {

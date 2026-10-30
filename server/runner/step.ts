@@ -368,7 +368,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
     hostEnv,
   );
 
-  if (invocation.agentsFile) await fs.writeFile(invocation.agentsFile.path, invocation.agentsFile.content);
+  await fs.writeFile(invocation.agentsFile.path, invocation.agentsFile.content);
   let raw: RawStepResult;
   try {
     raw = await runProcess(deps.binary, invocation, stepCaps(req.kind, deps.caps), deps.onEvent, deps.signal);

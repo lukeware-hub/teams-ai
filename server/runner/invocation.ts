@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { GLOBAL_RULES } from '../agents/global-rules.js';
 import { QUESTION_RULES } from '../agents/registry.js';
 import type { RoleProfile, Role } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
@@ -74,9 +75,9 @@ export interface InvocationInput {
    * The role definition (the agent file's text and tools). It is written to `agentsPath` and passed with `--agents`,
    * so the text never travels in the command line. The step model wins over the agent file's model.
    */
-  agentDefinition?: { description: string; model: string; tools: readonly string[]; body: string };
-  /** Where the definition file goes: outside the worktree, so the product repository cannot change it. Required with agentDefinition. */
-  agentsPath?: string;
+  agentDefinition: { description: string; model: string; tools: readonly string[]; body: string };
+  /** Where the definition file goes: outside the worktree, so the product repository cannot change it. */
+  agentsPath: string;
   /** Per-step empty HOME (outside the worktree); replaces the host HOME and TMPDIR in the child env. */
   home?: string;
   /** Claude Code effort level for this step (spec 10A.5 decision 11); absent means the CLI default. */
@@ -98,7 +99,7 @@ export interface Invocation {
   /** The question rules, then the prompt, written to the child's stdin: a leading `-`/`--` in a context pack must never be parsed as a flag. */
   stdin: string;
   /** The definition file the caller writes at `path` before the child starts, since `--agents` reads it. */
-  agentsFile?: { path: string; content: string };
+  agentsFile: { path: string; content: string };
 }
 
 export class InvocationError extends Error {}
@@ -115,15 +116,11 @@ export function sanitizeEnv(hostEnv: NodeJS.ProcessEnv): Record<string, string> 
 export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessEnv = process.env): Invocation {
   if (input.prompt.trim() === '') throw new InvocationError('prompt must not be empty');
   if (!input.settingsPath || input.settingsPath.trim() === '') throw new InvocationError('settingsPath is required');
-  const args: string[] = ['-p', '--agent', input.role];
-  let agentsFile: { path: string; content: string } | undefined;
-  if (input.agentDefinition) {
-    if (!input.agentsPath) throw new InvocationError('agentsPath is required with agentDefinition');
-    const def = input.agentDefinition;
-    const role = { [input.role]: { description: def.description, prompt: def.body, tools: [...def.tools], model: input.model } };
-    agentsFile = { path: input.agentsPath, content: `${JSON.stringify(role, null, 2)}\n` };
-    args.push('--agents', input.agentsPath);
-  }
+  if (!input.agentDefinition || !input.agentsPath) throw new InvocationError('agentDefinition and agentsPath are required');
+  const def = input.agentDefinition;
+  const role = { [input.role]: { description: def.description, prompt: `${GLOBAL_RULES}\n\n${def.body}`, tools: [...def.tools], model: input.model } };
+  const agentsFile = { path: input.agentsPath, content: `${JSON.stringify(role, null, 2)}\n` };
+  const args: string[] = ['-p', '--agent', input.role, '--agents', input.agentsPath];
   args.push(...ISOLATION_FLAGS);
   args.push('--settings', input.settingsPath);
   args.push('--model', input.model);

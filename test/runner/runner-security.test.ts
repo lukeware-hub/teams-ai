@@ -114,7 +114,7 @@ await import(${JSON.stringify(FAKE.replace(/\\/g, '/'))});`,
 
 describe('H3 gh and docker are off the agent PATH', () => {
   const host = { HOME: '/home/node', PATH: ['/opt/teams-ai-bin', '/usr/local/go/bin', '/usr/local/bin', '/usr/bin'].join(path.delimiter) };
-  const input = { role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: '/w', prompt: 'p', jsonSchema: {}, tools: ['Bash'], disallowedTools: [], settingsPath: '/s.json' } as const;
+  const input = { role: 'dev', model: 'opus', profile: { model: 'opus' }, cwd: '/w', prompt: 'p', jsonSchema: {}, tools: ['Bash'], disallowedTools: [], settingsPath: '/s.json', agentDefinition: { description: 'Developer.', model: 'opus', tools: ['Bash'], body: 'Echo.' }, agentsPath: '/s.agents.json' } as const;
 
   it('an agent step PATH drops the orchestrator-only directory and keeps the others', () => {
     const dirs = buildInvocation(input, host).env.PATH.split(path.delimiter);

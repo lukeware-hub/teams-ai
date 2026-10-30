@@ -17,7 +17,7 @@ afterEach(async () => {
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-const inv = (over: Partial<Invocation> = {}): Invocation => ({ args: ['-p', '--agent', 'dev'], env: { ONLY_THIS: '1' }, cwd: dir, stdin: 'hello prompt', ...over });
+const inv = (over: Partial<Invocation> = {}): Invocation => ({ args: ['-p', '--agent', 'dev'], env: { ONLY_THIS: '1' }, cwd: dir, stdin: 'hello prompt', agentsFile: { path: path.join(dir, 'dev.agents.json'), content: '{}' }, ...over });
 const caps = { timeoutMs: 5_000, maxTurns: 50, killGraceMs: 200 };
 
 describe('runProcess', () => {

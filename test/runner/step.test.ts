@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GLOBAL_RULES } from '../../server/agents/global-rules.js';
+import { STEP_KINDS } from '../../server/agents/outputs.js';
 import { QUESTION_RULES, parseAgentFile } from '../../server/agents/registry.js';
 import { Accounting } from '../../server/budget/accounting.js';
 import type { RawStepResult } from '../../server/runner/process-runner.js';
@@ -292,7 +294,7 @@ describe('runStep', () => {
     await runStep(request({ model: 'sonnet' }), deps);
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     const agents = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8'));
-    expect(agents.dev).toMatchObject({ prompt: devAgent.body, tools: devAgent.tools, model: 'sonnet' });
+    expect(agents.dev).toMatchObject({ prompt: `${GLOBAL_RULES}\n\n${devAgent.body}`, tools: devAgent.tools, model: 'sonnet' });
     expect(captured.argv.join(' ')).not.toContain(devAgent.body);
   });
 
@@ -460,10 +462,19 @@ describe('runStep', () => {
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
     await runStep(request({ kind: 'dev', systemExtra: 'EXTRA RULES' }), deps);
     let captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(`${devAgent.body}\n\nEXTRA RULES`);
+    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(`${GLOBAL_RULES}\n\n${devAgent.body}\n\nEXTRA RULES`);
     await runStep(request({ kind: 'dev' }), deps);
     captured = JSON.parse(await fs.readFile(capture, 'utf8'));
-    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(devAgent.body);
+    expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.prompt).toBe(`${GLOBAL_RULES}\n\n${devAgent.body}`);
+  });
+
+  it.each(STEP_KINDS)('gives the %s step the global rules first in its agent prompt', async (kind) => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const agents = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8'));
+    expect(agents.dev.prompt.startsWith(`${GLOBAL_RULES}\n\n`)).toBe(true);
   });
 
   it('returns an environment failure when the working directory does not exist, without trusting it', async () => {

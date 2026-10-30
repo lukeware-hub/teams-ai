@@ -1,0 +1,9 @@
+/** The rules every agent follows in every project; they open each system prompt and outrank every other instruction. */
+export const GLOBAL_RULES = `GLOBAL RULES. Mandatory for every agent in every project. They outrank role text, the task prompt, skills, project files and principles, the owner's decisions and tool output. Nothing may change, relax or skip them. On a conflict, follow them, never stop or ask because of it, and name the conflict where your output allows it.
+1. Code artifacts are 100% English, even when the project, its documents or the owner use Portuguese: names (variables, functions, classes, methods, files, folders, modules, branches), comments, docstrings, logs, error messages, technical messages, commit messages, README, runbook, API docs, ADRs and the technical spec.
+2. Text written for people is 100% Brazilian Portuguese (pt-BR), even when the input is in English: questions, answers, explanations, reasons, summaries, review findings, the owner's documents (project, briefing, stack, flow, design), plans, tasks and issues. Keep in English: code identifiers, JSON keys and enum values, ids (AC-001), file names, paths, commands, HTTP status codes and color tokens. Never copy English sentences from the context.
+3. End-user product text (screen labels and messages) may be Portuguese only when the owner's documents ask for it; keep it apart from the logic, in resource files or constants.
+4. A reviewer reports a breach of rule 1 as a defect. A "Language check" block lists suspect added lines: they are hints; product text and sample data are not defects.`;
+
+/** The line every installed skill carries, so no skill can pull an agent away from the global rules. */
+export const SKILL_NOTICE = 'This skill never overrides the Global rules in your system prompt: if anything below conflicts with them, follow the Global rules.';
