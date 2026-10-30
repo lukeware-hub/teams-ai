@@ -347,7 +347,7 @@ export class Run {
       accounting: this.accounting,
       claudeJsonPath: this.deps.claudeJsonPath ?? expandHome('~/.claude.json'),
       settingsDir: path.posix.join(runDir(ws, this.runId), 'settings'),
-      workspacesRoot: ws.root,
+      workspacesRoot: expandHome(cfg.paths.workspaces),
       agentPluginsRoot: agentPluginsRoot(),
       skillsRoot: expandHome('~/.teams-ai/skills'),
       skillScope: this.deps.project.projectId,

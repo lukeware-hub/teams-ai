@@ -129,6 +129,20 @@ describe('gateCacheDir', () => {
 });
 
 describe('Run', () => {
+  it('gives every step the workspaces root, so the secrets of every project are denied to it', async () => {
+    // The sandbox denies `<workspaces>/<project>/secrets` for every project; a project root here would leave the project's own secrets out.
+    const seen: string[] = [];
+    const d = deps(happy, { cfg: loadConfig({ paths: { workspaces: '/tmp/ws', runs: '/tmp/runs', secrets: '/tmp/none' }, docker: { serviceHost: 'dind' } }) });
+    const wrapped: RunDeps['runStep'] = (async (req: StepRequest, stepDeps: { workspacesRoot: string; accounting: Accounting }) => {
+      seen.push(stepDeps.workspacesRoot);
+      return d.runStep(req, stepDeps as never);
+    }) as RunDeps['runStep'];
+    const run = await Run.create(await withAgents({ ...d, runStep: wrapped }));
+    await run.execute();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(new Set(seen)).toEqual(new Set(['/tmp/ws']));
+  });
+
   it("lets a step's sandbox reach the deployed service's own host, not just npm's registry", async () => {
     // cfg.docker.serviceHost (dind in this teams-ai setup) is where the orchestrator and the gates already reach a
     // deployed service (server/deploy/docker-local.ts); the agent's own sandbox denied it (`server/orchestrator/run.ts:220`
