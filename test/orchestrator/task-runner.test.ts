@@ -16,6 +16,7 @@ import type { StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { DEFAULT_POLICY, type FailureKind } from '../../server/scheduler/retry-policy.js';
 import { PINNED_SKILLS } from '../../server/skills/catalog.js';
+import { unresolvedReferences, type References, type RefContext } from '../../server/validators/references.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -537,6 +538,36 @@ describe('TaskRunner: reviewing', () => {
     await r.advance();
     await r.advance();
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+  });
+
+  it('accepts a review finding on a file the task deleted and still rejects a file that never existed', async () => {
+    await journal.close();
+    await remote.cleanup();
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(project), 'docs/specs/spec-001/spec.json': JSON.stringify(spec), 'src/old.ts': '// stale\n' });
+    journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'spec-001-r1', specHash: HASH });
+    await journal.fact(RunEvent.TaskPlanned, { task: T1 });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
+    const reviewOn = (file: string) => ok({ specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: ['sum::[AC-001] adds'] }], findings: [{ file, line: 1, severity: 'important', problem: 'a caller still imports the removed module', fix: 'update the caller', acIds: ['AC-001'] }] });
+    let reviews = 0;
+    // The fake runner checks references the way the real step runner does.
+    const agent: Agent = async (req) => {
+      const out = await devDone()(req);
+      if (req.kind === 'dev') return ok({ ...(out as { value: object }).value, deletedFiles: ['src/old.ts'] });
+      if (req.kind !== 'review') return out;
+      const answer = reviewOn(++reviews === 1 ? 'src/ghost.ts' : 'src/old.ts');
+      const errors = unresolvedReferences((req.refs as (v: unknown) => References)(answer.value), await (req.refContext as () => Promise<RefContext>)());
+      return errors.length > 0 ? failed('schema', ...errors) : answer;
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    await r.advance();
+    expect(state().state).toBe('reviewing');
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'reviewing', attempts: 0 });
+    expect(journal.lastFeedback('T1')).toContain('unknown file: src/ghost.ts');
+    await r.advance();
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
+    expect(journal.lastFeedback('T1')).toContain('a caller still imports the removed module');
   });
 });
 

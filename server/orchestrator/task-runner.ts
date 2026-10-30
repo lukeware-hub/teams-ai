@@ -280,11 +280,13 @@ export class TaskRunner {
   private async refContext(): Promise<RefContext> {
     const tracked = (await git(this.worktree, ['ls-files'], this.deps.exec)).split('\n').filter((f) => f !== '');
     const untracked = await porcelainNames(this.worktree, this.deps.exec);
+    // The diff shown to agents holds paths the tree no longer has: deleted files and the old side of renames.
+    const removed = (await git(this.worktree, ['diff', '--name-only', '--no-renames', 'origin/main...HEAD'], this.deps.exec)).split('\n').filter((f) => f !== '');
     return {
       acIds: new Set(this.deps.spec.acceptanceCriteria.map((c) => c.id)),
       taskIds: new Set(this.deps.plan.tasks.map((t) => t.id)),
       // The JUnit report is ignored by most .gitignore files yet present in the worktree; reviewers cite it.
-      files: new Set([...tracked, ...untracked, this.deps.plan.junitPath]),
+      files: new Set([...tracked, ...untracked, ...removed, this.deps.plan.junitPath]),
       tests: new Set(this.junit.map((t) => t.id)),
       adrIds: new Set(this.deps.plan.adrRefs),
     };
