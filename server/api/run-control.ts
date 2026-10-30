@@ -122,7 +122,7 @@ export function defaultRunControl(repoRoot: string): RunControlDeps {
       }
     },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-    cliEntry: () => ({ bin: process.execPath, prefix: [path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(repoRoot, 'server', 'cli.ts')] }),
+    cliEntry: () => ({ bin: process.execPath, prefix: ['--import', 'tsx', path.join(repoRoot, 'server', 'cli.ts')] }),
     repoRoot,
   };
 }

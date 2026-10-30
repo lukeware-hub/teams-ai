@@ -1,3 +1,14 @@
+# The web UI is built in its own stage, so the image never holds web/node_modules: only web/dist is served.
+FROM node:22-bookworm@sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8 AS web
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=optional --no-audit --no-fund
+COPY web/package*.json web/
+RUN --mount=type=cache,target=/root/.npm cd web && npm ci --no-audit --no-fund
+COPY web web
+COPY server server
+RUN npm run --prefix web build
+
 # Base pinned by index digest (node:22-bookworm, read from Docker Hub on 2026-10-04); bump deliberately.
 FROM node:22-bookworm@sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8
 
@@ -34,30 +45,33 @@ RUN set -eu; \
   chmod 755 /opt/teams-ai-bin/gh; \
   rm /tmp/gh.tar.gz
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
-RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
+RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
 # agent-reach is the browser and search CLI the agents call (role settings allow it); pinned to a commit, installed from the repository, not PyPI.
-RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/Panniantong/agent-reach/archive/94f06c1969dfc1834001269d79d3ad0972d9dee6.zip
+RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/Panniantong/agent-reach/archive/94f06c1969dfc1834001269d79d3ad0972d9dee6.zip
 
 
 COPY package*.json ./
-RUN npm ci --omit=optional --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=optional --no-audit --no-fund
 # Version recorded in docs/superpowers/spikes/2026-09-23-cli-findings.md.
-RUN npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm npm install --global @anthropic-ai/claude-code@2.1.295 --no-audit --no-fund
 # The visual check of front screens drives Chromium through playwright-cli; both versions are the ones the pinned skill uses.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-RUN npm install --global @playwright/cli@0.1.22 --no-audit --no-fund \
-  && npx --yes playwright@1.64.0-alpha-1790635538000 install --with-deps chromium \
+# --with-deps pulls Xvfb and its GL stack, which the headless Chromium never uses; the purge drops them with the apt lists.
+RUN --mount=type=cache,target=/root/.npm npm install --global @playwright/cli@0.1.22 --no-audit --no-fund \
+  && npx --yes playwright@1.64.0-alpha-1790635538000 install --with-deps --no-shell chromium \
+  && apt-get purge -y xvfb libgl1 libglx0 libglx-mesa0 libgl1-mesa-dri libllvm15 libz3-4 \
+  && rm -rf /var/lib/apt/lists/* \
   && chmod -R a+rX /opt/ms-playwright
 # playwright-cli opens the chrome channel by default, served here by the pinned Chromium with its sandbox on;
 # the sandbox needs user namespaces, which the teams-ai service allows with seccomp and apparmor unconfined.
+# The guard fails the build when a library the browser needs was purged.
 RUN CH=$(find /opt/ms-playwright -path '*chromium-*' -name chrome -type f | head -n 1) && test -n "$CH" \
+  && ! ldd "$CH" | grep -q 'not found' \
   && mkdir -p /opt/google/chrome && ln -s "$CH" /opt/google/chrome/chrome
 # npm 10.9 (bundled with node 22) crashes in its peer-dependency resolver ("Cannot read properties of
 # null (reading 'edgesOut')") on some current packages, e.g. vitest 4.x; the Dev then cannot install
 # the toolchain it scaffolds. npm 12 resolves them.
-RUN npm install --global npm@12.2.0 --no-audit --no-fund
-COPY web/package*.json web/
-RUN cd web && npm ci --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm npm install --global npm@12.2.0 --no-audit --no-fund
 # Pinned agent skills after Claude Code is on PATH and copied before the rest of the code, so a code change keeps this layer cached; the volume hides $HOME, so the image copy lives here.
 COPY scripts/install-pinned-skills.ts scripts/
 COPY server/exec server/exec
@@ -67,7 +81,7 @@ COPY server/config/roles.ts server/config/roles.ts
 RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills /opt/teams-ai/agent-plugins \
   && chown -R node:node /opt/teams-ai/skills
 COPY . .
-RUN npm run --prefix web build
+COPY --from=web /app/web/dist web/dist
 
 # Mount points owned by `node`: a new named volume takes the owner of the image directory it mounts over.
 RUN mkdir -p /home/node/.teams-ai /home/node/.claude /home/node/.config/gh && chown -R node:node /home/node
@@ -82,4 +96,4 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/').then((r)=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 # The graphify and Agent Reach skills are written at each start, not at build: ~/.claude is a volume that keeps only what it had when first created.
-CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; graphify install --platform claude >/dev/null || echo 'graphify: skill not installed' >&2; agent-reach skill --install >/dev/null || echo 'agent-reach: skill not installed' >&2; exec npm run ui -- --port 8787"]
+CMD ["sh", "-lc", "export PATH=/opt/teams-ai-bin:$PATH; [ -f \"$HOME/.teams-ai/config.json\" ] || { mkdir -p \"$HOME/.teams-ai\" && cp /app/docker/config.json \"$HOME/.teams-ai/config.json\"; }; find \"$HOME/.teams-ai/workspaces\" -name '*.ndjson.lock' -delete 2>/dev/null || true; graphify install --platform claude >/dev/null || echo 'graphify: skill not installed' >&2; agent-reach skill --install >/dev/null || echo 'agent-reach: skill not installed' >&2; exec node --no-warnings=ExperimentalWarning --import tsx server/cli.ts ui --port 8787"]

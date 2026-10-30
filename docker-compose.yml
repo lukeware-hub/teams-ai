@@ -2,6 +2,13 @@
 # Gates and docker-local deploys run as containers of the nested daemon, never on the host daemon (audit H4): what an
 # agent writes (Dockerfile, docker-compose.yml, gate image) cannot reach the host. The data volume is mounted at the same
 # path in both containers, so a bind source the orchestrator names is the same path for the nested daemon.
+# One log policy for every service: three files of 10 MB at most, so the logs of an idle platform stay small.
+x-logging: &x-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 services:
   teams-ai:
     # The registry image; when it cannot be pulled, `docker compose up` builds this tag from source.
@@ -13,12 +20,14 @@ services:
     cpus: 3
     mem_limit: 8g
     restart: unless-stopped
+    logging: *x-logging
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8787/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:8787/healthz']
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+      start_interval: 2s
     depends_on:
       dind:
         condition: service_healthy
@@ -62,16 +71,19 @@ services:
     cpus: 1
     mem_limit: 512m
     restart: unless-stopped
-    command: ['npx', 'tsx', '--no-warnings=ExperimentalWarning', 'server/runner/go-proxy.ts']
+    logging: *x-logging
+    command: ['node', 'server/runner/go-proxy.ts']
     cap_drop:
       - ALL
     expose:
       - '8080'
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8080/').then((r)=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
-      interval: 5s
+      test: ['CMD-SHELL', 'test "$$(curl -s -o /dev/null -w %{http_code} http://127.0.0.1:8080/)" = 404']
+      interval: 30s
       timeout: 5s
-      retries: 20
+      retries: 3
+      start_period: 15s
+      start_interval: 2s
 
   dind:
     image: docker:27-dind-rootless@sha256:e2ac8e8f66ae21a060b0a8e3005c70f6ed9441aabf409434463d1f6eecd38026
@@ -79,6 +91,7 @@ services:
     cpus: 2
     mem_limit: 6g
     restart: unless-stopped
+    logging: *x-logging
     environment:
       DOCKER_TLS_CERTDIR: ''
     # Rootless dockerd needs user namespaces and /proc writes; it is not `privileged` and has no host socket.
@@ -101,10 +114,12 @@ services:
       - dind-data:/home/rootless/.local/share/docker
       - teams-ai-data:/home/node/.teams-ai
     healthcheck:
-      test: ['CMD', 'docker', '-H', 'tcp://127.0.0.1:2375', 'info']
-      interval: 5s
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:2375/_ping']
+      interval: 30s
       timeout: 5s
-      retries: 20
+      retries: 3
+      start_period: 40s
+      start_interval: 2s
 
 networks:
   teams-ai-net:
