@@ -14,7 +14,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, finishedEvent, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { type ModelUse, cascadeBlockers, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, finishedEvent, firstSentence, formatDuration, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -55,6 +55,8 @@ const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
 const FACT_ROWS = 'm-0 grid gap-[0.6rem] [&>div]:grid [&>div]:grid-cols-[8.5rem_minmax(0,1fr)] [&>div]:gap-3 max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:wrap-anywhere';
 const SECTION_TITLE = 'mt-0 mb-[0.4rem]';
 const META = 'col-span-full text-[0.75rem] tabular-nums';
+// The count of a phase's blocked tasks: a text button in the warning tone, like the problems line above it.
+const PHASE_BLOCKS_BUTTON = `${META} inline-flex h-auto min-w-0 items-center justify-start gap-1 justify-self-start border-0 bg-transparent p-0 text-left text-warn underline-offset-[3px] hover:bg-transparent hover:underline pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5`;
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
 const money = (n: number) => `US$ ${n.toFixed(4)}`;
@@ -77,7 +79,7 @@ const TIP = {
   output: 'Texto gerado pelos modelos: código, planos, revisões e respostas.',
   byRole: 'Consumo de cada papel do time de agentes. Decisões automáticas são escolhas rápidas do orquestrador, como qual modelo usar em cada tarefa.',
   byPhase: 'Onde o consumo aconteceu: nas tarefas, nas etapas de especificação, plano e relatório, ou nas decisões automáticas.',
-  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa. Clique numa fase para ver o que foi feito e os problemas que aconteceram.',
+  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa. Clique numa fase para ver o que foi feito e os problemas que aconteceram. O número de bloqueios abre as tarefas paradas na fase.',
   now: 'Os agentes trabalhando neste momento e há quanto tempo. O custo de uma etapa só entra no consumo quando ela termina.',
   owner: 'Sistema: falha do orquestrador, de um agente ou do ambiente. Plano: o plan.json precisa mudar. Você: depende de uma ação sua, como ajustar a spec ou as permissões no GitHub.',
   blocked: 'Tarefas que pararam por um motivo próprio. As que só esperavam por uma delas não aparecem aqui.',
@@ -337,6 +339,26 @@ function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
   );
 }
 
+/** One cause and the tasks it blocked: a task id selects that task, and Ver detalhe explains the cause. */
+function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; taskIds: string[] }; onSelect: (taskId: string) => void; onDetail: (reason: string, opener: HTMLElement) => void }) {
+  return (
+    <li data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
+      <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
+        {group.taskIds.map((id) => (
+          <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={() => onSelect(id)}>
+            {id}
+          </button>
+        ))}
+      </span>
+      <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{explainStop(group.reason)?.title ?? firstSentence(explainBlockReason(group.reason))}</span>
+      <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${group.taskIds.join(', ')}`} onClick={(e) => onDetail(group.reason, e.currentTarget)}>
+        Ver detalhe
+        <Icon name="chevron-right" size={14} />
+      </button>
+    </li>
+  );
+}
+
 const ACTIVITY_TONE: Record<string, string> = { bad: 'text-warn', good: 'text-good' };
 
 /** Plain-language events, oldest first, each with its time and link. */
@@ -479,7 +501,7 @@ export interface ResumeAction {
   error: string | null;
 }
 
-type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string };
+type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'blocks'; phase: number } | { kind: 'cause'; reason: string };
 
 const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 // Same condition as the project hub's own Retomar button (project-shared.tsx's ACTIVE/resume gating): a dead
@@ -509,13 +531,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // from its own TASK_BLOCKED event, instead of waiting for the whole run to stop before anyone can see why.
   const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
   const causes = rootBlockers(blocked);
-  // Tasks blocked for the same reason are one cause, listed once with all their ids.
-  const causeGroups = causes.reduce<Array<{ reason: string; taskIds: string[] }>>((acc, c) => {
-    const group = acc.find((g) => g.reason === c.reason);
-    if (group) group.taskIds.push(c.taskId);
-    else acc.push({ reason: c.reason, taskIds: [c.taskId] });
-    return acc;
-  }, []);
+  const causeGroups = groupCauses(causes);
+  // Every blocked task that blocked in this phase and is still blocked, its own cause or waiting on another.
+  const phaseBlocks = (phase: number) => {
+    const ids = activity.get(phase)?.blockedTaskIds ?? [];
+    return blocked.filter((b) => ids.includes(b.taskId));
+  };
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
   const autonomous = detail.agentsDecide === true;
@@ -589,6 +610,26 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             <pre className={RUN_UI.raw}>{openedPhase.reason}</pre>
           </section>
         ) : null}
+      </Dialog>
+    );
+  }
+  if (opened?.kind === 'blocks') {
+    const own = phaseBlocks(opened.phase);
+    const waiting = cascadeBlockers(own).map((b) => b.taskId);
+    // A task id opens that task below the phases; the dialog closes so the task is in view.
+    const selectTask = (id: string) => {
+      setSelected(id);
+      closeDetail();
+    };
+    detailDialog = (
+      <Dialog title={`Bloqueios em ${phaseTitle(opened.phase)}`} onClose={closeDetail} returnFocus={opened.opener}>
+        <p className="m-0 text-[0.875rem] text-ink-soft">Estas tarefas pararam nesta fase. Cada motivo abaixo para uma ou mais tarefas.</p>
+        <ul className={RUN_UI.boxList}>
+          {groupCauses(rootBlockers(own)).map((g) => (
+            <CauseRow key={g.reason} group={g} onSelect={selectTask} onDetail={(reason) => setOpened({ kind: 'cause', reason, opener: opened.opener })} />
+          ))}
+        </ul>
+        {waiting.length ? <p data-testid="phase-blocks-waiting" className="m-0 text-[0.875rem] text-ink-soft">Tarefas que esperam por elas: {waiting.join(', ')}</p> : null}
       </Dialog>
     );
   }
@@ -823,20 +864,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     ) : null}
                     <ul className={RUN_UI.boxList}>
                       {causeGroups.map((g) => (
-                        <li key={g.reason} data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
-                          <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
-                            {g.taskIds.map((id) => (
-                              <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={() => setSelected(id)}>
-                                {id}
-                              </button>
-                            ))}
-                          </span>
-                          <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{explainStop(g.reason)?.title ?? firstSentence(explainBlockReason(g.reason))}</span>
-                          <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${g.taskIds.join(', ')}`} onClick={openDetail({ kind: 'cause', reason: g.reason })}>
-                            Ver detalhe
-                            <Icon name="chevron-right" size={14} />
-                          </button>
-                        </li>
+                        <CauseRow key={g.reason} group={g} onSelect={setSelected} onDetail={(reason, opener) => setOpened({ kind: 'cause', reason, opener })} />
                       ))}
                     </ul>
                   </section>
@@ -915,6 +943,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                       {phaseList.map((p) => {
                         const [label, tone] = phaseState(p, status, blockedTasks);
                         const problems = activity.get(p.phase)?.items.filter((i) => i.tone === 'bad').length ?? 0;
+                        const blocks = phaseBlocks(p.phase).length;
                         return (
                           <li key={p.phase} data-testid="phase" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[0.35rem] py-[0.6rem] first:pt-0 last:pb-0">
                             {/* The phase name opens its detail: a text button, underlined on hover. */}
@@ -927,6 +956,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                               <span className={`${META} text-warn`} data-testid="phase-problems-count">
                                 {problems === 1 ? '1 problema registrado' : `${problems} problemas registrados`}
                               </span>
+                            ) : null}
+                            {blocks ? (
+                              <button type="button" className={PHASE_BLOCKS_BUTTON} data-testid="phase-blocks-count" aria-label={`Ver os bloqueios de ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'blocks', phase: p.phase })}>
+                                {blocks === 1 ? '1 bloqueio' : `${blocks} bloqueios`}
+                                <Icon name="chevron-right" size={14} />
+                              </button>
                             ) : null}
                             {p.result === 'failed' ? (
                               <div className="col-span-full grid min-w-0 justify-items-start gap-2">

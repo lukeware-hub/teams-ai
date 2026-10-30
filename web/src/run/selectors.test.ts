@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -436,6 +436,33 @@ describe('phase activity', () => {
     ]);
     expect(currentActivity(list)).toMatchObject({ running: [{ stepId: 's2', kind: 'coverage', role: 'po', model: 'm', startedAt: '2026-10-05T10:00:02.000Z' }], last: { text: 'Especificação técnica escrita em docs/tech.md, com 1 ADR' } });
     expect(currentActivity([...list, { ...list[2]!, seq: 9, type: 'STEP_FINISHED', data: { stepId: 's2', ok: true } }]).running).toEqual([]);
+  });
+
+  it('lists each task blocked in a phase under that phase, and a later block moves it', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 3 }],
+        ['TASK_BLOCKED', { taskId: 'T1', reason: 'x' }],
+        ['TASK_BLOCKED', { taskId: 'T2', reason: 'a dependency is blocked' }],
+        ['PHASE_STARTED', { phase: 4 }],
+        ['TASK_BLOCKED', { taskId: 'T2', reason: 'y' }],
+      ]),
+    );
+    expect(out.get(3)!.blockedTaskIds).toEqual(['T1']);
+    expect(out.get(4)!.blockedTaskIds).toEqual(['T2']);
+  });
+
+  it('groups tasks with the same reason into one cause, in order', () => {
+    expect(
+      groupCauses([
+        { taskId: 'T1', reason: 'x' },
+        { taskId: 'T2', reason: 'y' },
+        { taskId: 'T3', reason: 'x' },
+      ]),
+    ).toEqual([
+      { reason: 'x', taskIds: ['T1', 'T3'] },
+      { reason: 'y', taskIds: ['T2'] },
+    ]);
   });
 });
 

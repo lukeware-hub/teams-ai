@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { RunDetail, StoredEvent } from '../api.js';
@@ -483,5 +483,70 @@ describe('RunView phase activity', () => {
     render(view());
     expect(screen.getByTestId('now').textContent).toContain('Nenhum agente trabalhando neste momento.');
     expect(screen.getByTestId('now-last').textContent).toContain('Execução pausada pelo limite de uso dos modelos');
+  });
+});
+
+describe('RunView phase blocks', () => {
+  const ev = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq: 40_000 + seq, at: '2026-10-08T10:00:00.000Z', runId: 'hello-001-r9', specHash: 'h', type, kind: 'fact' as const, data });
+  const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+  const reason = 'Scope violation:\nfrozen files modified: plan.json';
+  const blocking = [
+    planned(1, 'T6'),
+    planned(2, 'T7'),
+    ev(3, 'PHASE_STARTED', { phase: 3 }),
+    ev(4, 'TASK_STATE_CHANGED', { taskId: 'T6', to: 'blocked' }),
+    ev(5, 'TASK_BLOCKED', { taskId: 'T6', reason }),
+    ev(6, 'TASK_STATE_CHANGED', { taskId: 'T7', to: 'blocked' }),
+    ev(7, 'TASK_BLOCKED', { taskId: 'T7', reason: 'a dependency is blocked' }),
+  ];
+  const running = (props: Partial<Parameters<typeof RunView>[0]> = {}) => view({ events: blocking, ended: false, detail: { ...detail, status: 'running' }, ...props });
+
+  it('puts the number of blocked tasks under the problems line of their phase', () => {
+    render(running());
+    const row = screen.getByTestId('phase');
+    expect(row.textContent).toContain('2 problemas registrados2 bloqueios');
+    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('2 bloqueios');
+  });
+
+  it('says 1 bloqueio when a single task is blocked', () => {
+    render(running({ events: blocking.filter((e) => e.data.taskId !== 'T7') }));
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio');
+  });
+
+  it('leaves the line out when no task is blocked', () => {
+    render(view());
+    expect(screen.queryByTestId('phase-blocks-count')).toBeNull();
+  });
+
+  it('shows a block on the phase where it happened, for any phase', () => {
+    render(view({ events: [planned(1, 'T6'), ev(2, 'PHASE_STARTED', { phase: 3 }), ev(3, 'PHASE_STARTED', { phase: 4 }), ev(4, 'TASK_STATE_CHANGED', { taskId: 'T6', to: 'blocked' }), ev(5, 'TASK_BLOCKED', { taskId: 'T6', reason })], ended: false, detail: { ...detail, status: 'running' } }));
+    const [phase3, phase4] = screen.getAllByTestId('phase');
+    expect(phase3!.querySelector('[data-testid="phase-blocks-count"]')).toBeNull();
+    expect(within(phase4!).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio');
+  });
+
+  it('keeps the count once the run has stopped, from the blocked list it finished with', () => {
+    const finished = ev(8, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }, { taskId: 'T7', reason: 'a dependency is blocked' }], tokens: {} });
+    render(running({ events: [...blocking, finished], ended: true, detail: { ...detail, status: 'blocked' } }));
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('2 bloqueios');
+  });
+
+  it('opens the phase blocks in a dialog, with the causes and the tasks waiting on them', () => {
+    render(running());
+    fireEvent.click(screen.getByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' }));
+    const dialog = screen.getByRole('dialog', { name: 'Bloqueios em 3 · Implementação' });
+    expect(within(dialog).getByTestId('cause-group').textContent).toContain('T6');
+    expect(within(dialog).getByTestId('phase-blocks-waiting').textContent).toContain('T7');
+  });
+
+  it('closes the blocks dialog on Escape back to its line, and its Ver detalhe opens the cause', () => {
+    render(running());
+    const trigger = screen.getByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' });
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Ver detalhe do bloqueio de T6' }));
+    expect(screen.getByRole('dialog', { name: 'Por que T6 ficou bloqueada' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 });

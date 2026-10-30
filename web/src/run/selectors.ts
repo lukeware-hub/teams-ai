@@ -535,7 +535,24 @@ export function liveBlocked(events: StoredEvent[], taskIds: Iterable<string>): A
 /** The tasks whose block has its own real cause, filtering out the ones that are only blocked because
  * something upstream failed (a pure dependency cascade, with no diagnostic value of its own). */
 export function rootBlockers(blocked: Array<{ taskId: string; reason: string }>): Array<{ taskId: string; reason: string }> {
-  return blocked.filter((b) => b.reason !== 'a dependency is blocked');
+  return blocked.filter((b) => !isCascade(b));
+}
+
+/** The tasks blocked only because a task they depend on is blocked: they wait, and have no cause of their own. */
+export function cascadeBlockers(blocked: Array<{ taskId: string; reason: string }>): Array<{ taskId: string; reason: string }> {
+  return blocked.filter(isCascade);
+}
+
+const isCascade = (b: { reason: string }) => b.reason === 'a dependency is blocked';
+
+/** Tasks blocked for the same reason are one cause, listed once with all their ids, in order. */
+export function groupCauses(causes: Array<{ taskId: string; reason: string }>): Array<{ reason: string; taskIds: string[] }> {
+  return causes.reduce<Array<{ reason: string; taskIds: string[] }>>((acc, c) => {
+    const group = acc.find((g) => g.reason === c.reason);
+    if (group) group.taskIds.push(c.taskId);
+    else acc.push({ reason: c.reason, taskIds: [c.taskId] });
+    return acc;
+  }, []);
 }
 
 /** One row per merged task's PR, in the order the merge happened - for a run overview link list. */
@@ -564,6 +581,8 @@ export interface ActivityItem {
 export interface PhaseActivity {
   items: ActivityItem[];
   steps: StepRow[];
+  /** The tasks that blocked in this phase, each in the phase where it blocked last. */
+  blockedTaskIds: string[];
 }
 export interface RunningStep {
   stepId: string;
@@ -712,10 +731,11 @@ const hasTask = (d: Record<string, unknown>) => d.taskId !== null && d.taskId !=
 export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity> {
   const out = new Map<number, PhaseActivity>();
   const of = (phase: number) => {
-    if (!out.has(phase)) out.set(phase, { items: [], steps: [] });
+    if (!out.has(phase)) out.set(phase, { items: [], steps: [], blockedTaskIds: [] });
     return out.get(phase)!;
   };
   const stepPhase = new Map<string, number>();
+  const blockedIn = new Map<string, number>();
   let current: number | null = null;
   describeAll(events, (e, item) => {
     const d = e.data;
@@ -726,6 +746,7 @@ export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity>
     if (e.type === 'STEP_FINISHED') phase = stepPhase.get(String(d.stepId)) ?? phase;
     if (phase === null) return;
     const task = hasTask(d);
+    if (e.type === 'TASK_BLOCKED') blockedIn.set(String(d.taskId), phase);
     if (e.type === 'STEP_STARTED' && !task) of(phase).steps.push(startedStep(d));
     if (e.type === 'STEP_FINISHED' && !task) {
       const s = of(phase).steps.find((x) => x.stepId === d.stepId);
@@ -733,6 +754,7 @@ export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity>
     }
     if (item && (!task || PHASE_TASK_EVENTS.has(e.type))) of(phase).items.push(item);
   });
+  for (const [taskId, phase] of blockedIn) of(phase).blockedTaskIds.push(taskId);
   return out;
 }
 
