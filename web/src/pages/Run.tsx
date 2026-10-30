@@ -14,7 +14,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { type ModelUse, cascadeBlockers, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, finishedEvent, firstSentence, formatDuration, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, problemItems, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { type BlockExplanation, type ModelUse, blockExplanation, cascadeBlockers, currentActivity, evidence, explainPhase, finishedEvent, formatDuration, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, problemItems, rootBlockers, runState, stepDoing, stopBefore, stopSummary, taskDetail, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -337,23 +337,76 @@ function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
   );
 }
 
-/** One cause and the tasks it blocked: a task id selects that task, and Ver detalhe explains the cause. */
-function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; taskIds: string[] }; onSelect: (taskId: string) => void; onDetail: (reason: string, opener: HTMLElement) => void }) {
+/** One cause and the tasks it blocked: a task id opens that task, and Ver detalhe explains the cause. */
+function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; taskIds: string[] }; onSelect: (taskId: string, opener: HTMLElement) => void; onDetail: (reason: string, opener: HTMLElement) => void }) {
   return (
     <li data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
       <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
         {group.taskIds.map((id) => (
-          <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={() => onSelect(id)}>
+          <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={(e) => onSelect(id, e.currentTarget)}>
             {id}
           </button>
         ))}
       </span>
-      <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{explainStop(group.reason)?.title ?? firstSentence(explainBlockReason(group.reason))}</span>
+      <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{blockExplanation(group.reason).title}</span>
       <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${group.taskIds.join(', ')}`} onClick={(e) => onDetail(group.reason, e.currentTarget)}>
         Ver detalhe
         <Icon name="chevron-right" size={14} />
       </button>
     </li>
+  );
+}
+
+/** The problem and the solution of a blocked task in plain words; the orchestrator's own text stays folded away. */
+function BlockReason({ block }: { block: BlockExplanation }) {
+  const count = block.findings.length;
+  return (
+    <div className="grid gap-5">
+      {block.problem.length || count ? (
+        <section>
+          <h3 className={SECTION_TITLE}>O problema</h3>
+          {block.problem.map((text, i) => (
+            <p key={i} className="m-0 mb-2">
+              {text}
+            </p>
+          ))}
+          {count ? (
+            <>
+              <p className="m-0 mb-2">A revisão apontou {count === 1 ? '1 ponto' : `${count} pontos`} para corrigir:</p>
+              <ol className="m-0 grid list-decimal gap-3 pl-5">
+                {block.findings.map((f, i) => (
+                  <li key={i}>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[0.8125rem] wrap-anywhere">{f.where}</span>
+                      <span className="rounded-pill bg-surface-muted px-2 py-0.5 text-[0.75rem] text-ink-soft">{f.severity}</span>
+                    </span>
+                    <span className="mt-1 block">{f.problem}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
+        </section>
+      ) : null}
+      <section className="flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-ink [&_svg]:flex-none [&_svg]:text-accent-text">
+        <Icon name="lightbulb" size={20} />
+        <div className="grid min-w-0 gap-2">
+          <h3 className="m-0 text-[0.9375rem] font-semibold text-accent-text">Solução</h3>
+          {count ? (
+            <ol className="m-0 grid list-decimal gap-2 pl-5">
+              {block.findings.map((f, i) => (
+                <li key={i}>{f.fix ?? 'Veja o detalhe técnico.'}</li>
+              ))}
+            </ol>
+          ) : null}
+          <p className="m-0">{block.next}</p>
+        </div>
+      </section>
+      <details>
+        <summary className="cursor-pointer text-[0.8125rem] font-semibold text-accent-text">Ver detalhe técnico</summary>
+        <pre className={`mt-2 ${RUN_UI.raw}`}>{block.raw}</pre>
+      </details>
+    </div>
   );
 }
 
@@ -499,7 +552,7 @@ export interface ResumeAction {
   error: string | null;
 }
 
-type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string };
+type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string } | { kind: 'task'; taskId: string };
 
 const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 // Same condition as the project hub's own Retomar button (project-shared.tsx's ACTIVE/resume gating): a dead
@@ -520,7 +573,6 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const t = tokens(unique);
   const phaseList = phases(unique);
   const activity = phaseActivity(unique);
-  const [selected, setSelected] = useState<string | null>(null);
   // The trigger gets focus back when the dialog closes.
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
   const openDetail = (target: DetailTarget) => (e: ReactMouseEvent<HTMLButtonElement>) => setOpened({ ...target, opener: e.currentTarget });
@@ -614,28 +666,27 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   }
   const openedCause = opened?.kind === 'cause' ? causeGroups.find((g) => g.reason === opened.reason) : undefined;
   if (opened && openedCause) {
-    const why = explainStop(openedCause.reason);
-    const text = explainBlockReason(openedCause.reason);
+    const block = blockExplanation(openedCause.reason, autonomous);
     const ids = openedCause.taskIds;
     detailDialog = (
       <Dialog title={ids.length === 1 ? `Por que ${ids[0]} ficou bloqueada` : `Por que ${ids.length} tarefas ficaram bloqueadas`} onClose={closeDetail} returnFocus={opened.opener}>
-        <Facts rows={[[ids.length === 1 ? 'Tarefa' : 'Tarefas', ids.join(', ')], why ? ['O que aconteceu', why.title] : null, ['Quem resolve', ownerChip(why?.owner ?? 'Sistema')], ['Próximo passo', ownHint(why?.hint ?? 'Leia o motivo abaixo. Quando a causa estiver resolvida, reprocesse a spec.', autonomous)]]} />
-        <section>
-          <h3 className={SECTION_TITLE}>Motivo registrado</h3>
-          <div>
-            {text.split(/\n\s*\n/).map((paragraph, i) => (
-              <p key={i} className="mt-0 mb-[0.6rem] whitespace-pre-line last:mb-0">
-                {paragraph}
-              </p>
-            ))}
-          </div>
-        </section>
-        {text !== openedCause.reason ? (
-          <section>
-            <h3 className={SECTION_TITLE}>Texto técnico</h3>
-            <pre className={RUN_UI.raw}>{openedCause.reason}</pre>
-          </section>
-        ) : null}
+        <Facts rows={[[ids.length === 1 ? 'Tarefa' : 'Tarefas', ids.join(', ')], ['O que aconteceu', block.title], ['Quem resolve', ownerChip(block.owner)]]} />
+        <BlockReason block={block} />
+      </Dialog>
+    );
+  }
+  const openedTask = opened?.kind === 'task' ? opened : undefined;
+  if (openedTask) {
+    const d = taskDetail(unique, openedTask.taskId);
+    const block = d.blockedReason ? blockExplanation(d.blockedReason, autonomous) : null;
+    const title = state.tasks.get(openedTask.taskId)?.def.title;
+    const rows: Array<[string, ReactNode] | null> = [title ? ['Tarefa', title] : null];
+    if (block) rows.push(['O que aconteceu', block.title], ['Quem resolve', ownerChip(block.owner)]);
+    detailDialog = (
+      <Dialog title={openedTask.taskId} onClose={closeDetail} returnFocus={openedTask.opener}>
+        <Facts rows={rows} />
+        {block ? <BlockReason block={block} /> : null}
+        <TaskDetail events={unique} taskId={openedTask.taskId} loadStep={loadStep} />
       </Dialog>
     );
   }
@@ -843,7 +894,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     ) : null}
                     <ul className={RUN_UI.boxList}>
                       {causeGroups.map((g) => (
-                        <CauseRow key={g.reason} group={g} onSelect={setSelected} onDetail={(reason, opener) => setOpened({ kind: 'cause', reason, opener })} />
+                        <CauseRow key={g.reason} group={g} onSelect={(taskId, opener) => setOpened({ kind: 'task', taskId, opener })} onDetail={(reason, opener) => setOpened({ kind: 'cause', reason, opener })} />
                       ))}
                     </ul>
                     {waiting.length ? <p className="hint" data-testid="block-waiting">{waiting.length === 1 ? '1 tarefa espera' : `${waiting.length} tarefas esperam`} por elas: {waiting.join(', ')}</p> : null}
@@ -884,7 +935,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           const tk = state.tasks.get(id)!;
                           return (
                             <li key={id} className="flex flex-wrap items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken">
-                              <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={() => setSelected(id)}>
+                              <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={openDetail({ kind: 'task', taskId: id })}>
                                 {id}
                               </button>
                               <span className="min-w-0 flex-[1_1_16rem] leading-[1.45] text-ink">{tk.def.title}</span>
@@ -902,7 +953,6 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   ))}
                 </section>
                 {detail.plan ? <PlanCard plan={detail.plan} /> : null}
-                {selected ? <TaskDetail events={unique} taskId={selected} loadStep={loadStep} /> : null}
                 <EvidenceCard criteria={detail.acceptanceCriteria} rows={evidence(unique, detail.acceptanceCriteria.map((c) => c.id))} />
               </div>
             ),

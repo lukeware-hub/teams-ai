@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, problemItems, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockExplanation, blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, problemItems, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -157,6 +157,52 @@ describe('stopped run explanations', () => {
     // A repository without a GitHub remote gets its own explanation, not the permissions hint of a rejected merge.
     expect(explainStop('docs merge failed at rebase: gh pr list --head docs/greet-go failed (1): none of the git remotes configured for this repository point to a known GitHub host.')).toMatchObject({ title: 'O repositório não tem um remote do GitHub', owner: 'Você' });
     expect(explainStop('service inventory: rendered .github/workflows/ci.yml is invalid: x')).toEqual(explainStop('rendered .github/workflows/ci.yml is invalid: x'));
+  });
+
+  it('blockExplanation reads each review finding into its place, severity and fix', () => {
+    const reason = 'Review requested changes:\n- apps/frontend/Dockerfile:2 [important] A imagem usa node:26, mas falta a tag. (fix: Registrar a tag no versions.lock.json.)\n- src/app.ts [minor] Nome pouco claro. (fix: Renomear a função.)';
+    expect(blockExplanation(reason)).toEqual({
+      title: 'A revisão de código pediu mudanças',
+      owner: 'Sistema',
+      problem: [],
+      findings: [
+        { where: 'apps/frontend/Dockerfile, linha 2', severity: 'importante', problem: 'A imagem usa node:26, mas falta a tag.', fix: 'Registrar a tag no versions.lock.json.' },
+        { where: 'src/app.ts', severity: 'menor', problem: 'Nome pouco claro.', fix: 'Renomear a função.' },
+      ],
+      next: 'Faça os ajustes pedidos na tarefa e reprocesse a spec.',
+      raw: reason,
+    });
+  });
+
+  it('blockExplanation reads security findings and explains a stalled replan in plain words', () => {
+    const b = blockExplanation('Security review requested changes:\n- src/db.ts:10 [high] injection: consulta montada com texto do usuário. (fix: Usar parâmetros na consulta.)\n\nAttempt progress judged stalled (rule) on a replanned task; blocked instead of spending its remaining attempts.');
+    expect(b.title).toBe('A revisão de segurança pediu mudanças');
+    expect(b.findings).toEqual([{ where: 'src/db.ts, linha 10', severity: 'alto', problem: 'injection: consulta montada com texto do usuário.', fix: 'Usar parâmetros na consulta.' }]);
+    expect(b.problem).toEqual(['As tentativas pararam de avançar. A tarefa já tinha sido refeita uma vez, então foi bloqueada para não gastar as tentativas que faltavam.']);
+  });
+
+  it('blockExplanation translates a scope violation, and gives an unknown reason its first sentence and a plain next step', () => {
+    expect(blockExplanation('Scope violation:\nfrozen files modified: package.json')).toMatchObject({
+      title: 'O Dev mexeu em arquivos fora do escopo da tarefa',
+      problem: ['Violação de escopo: arquivos protegidos foram alterados: package.json'],
+    });
+    expect(blockExplanation('Go 1.27.2 is not in the gate image. Use another version.')).toMatchObject({
+      title: 'Go 1.27.2 is not in the gate image.',
+      problem: [],
+      findings: [],
+      next: 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.',
+    });
+  });
+
+  it('blockExplanation asks no reprocess when the owner lets the agents decide', () => {
+    expect(blockExplanation('Review requested changes:\n- a.ts [critical] falta teste. (fix: Criar o teste.)', true).next).toBe('Os agentes já tentaram resolver sozinhos. Veja o detalhe técnico.');
+  });
+
+  it('explainStop explains the orchestrator blocks that used to show in English', () => {
+    expect(explainStop('Gates failed after rebase (lint):\nerror in a.ts')).toMatchObject({ owner: 'Sistema', title: expect.stringContaining('verificação falhou') });
+    expect(explainStop('filesRead leaves out source files this worktree holds; read each one before changing code: a.ts')).toMatchObject({ title: expect.stringContaining('não leu') });
+    expect(explainStop('a dependency is blocked')).toMatchObject({ title: 'Espera uma tarefa da qual ela depende' });
+    expect(explainStop('Gate unit-test failed (code, exit 1)\n\nstderr (tail):\nboom')).toMatchObject({ owner: 'Sistema', title: 'Uma verificação automática falhou: unit-test' });
   });
 
   it('lastDeployFailure is the latest failure unless a later deploy verified', () => {

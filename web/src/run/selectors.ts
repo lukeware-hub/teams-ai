@@ -415,10 +415,10 @@ const STOP_RULES: StopRule[] = [
   [/produced no changes against origin\/main/, { title: 'O Dev disse que terminou, mas não alterou nada', hint: 'A tarefa não gerou diferença em relação à main. Costuma ser um problema que código não resolve (ex.: um campo faltando no plano); repetir a tarefa só gasta tokens.', owner: 'Sistema' }],
   [/^Scope violation:/, { title: 'O Dev mexeu em arquivos fora do escopo da tarefa', hint: 'A mudança foi rejeitada antes do merge. Revise os caminhos permitidos da tarefa no plano.', owner: 'Sistema' }],
   [/^spec-gap rounds exhausted/, { title: 'O Dev continuou com dúvidas sobre a spec', hint: 'O Scrum Master respondeu três vezes e a dúvida persiste. Esclareça o ponto na spec e inicie uma nova execução.', owner: 'Você' }],
-  [/^Security review requested changes/, { title: 'A revisão de segurança pediu mudanças', hint: 'Os ajustes não passaram depois de todas as tentativas. Veja os achados na tarefa.', owner: 'Sistema' }],
-  [/^Review requested changes/, { title: 'A revisão de código pediu mudanças', hint: 'Os ajustes não passaram depois de todas as tentativas. Veja os achados na tarefa.', owner: 'Sistema' }],
-  [/^Review evidence rejected/, { title: 'A evidência da revisão foi rejeitada', hint: 'O revisor não apresentou evidência válida. Abra a tarefa para ver o motivo.', owner: 'Sistema' }],
-  [/^Rebase conflicts/, { title: 'Conflito de rebase com a main', hint: 'Outra tarefa alterou os mesmos arquivos e o conflito não foi resolvido automaticamente.', owner: 'Sistema' }],
+  [/^Security review requested changes/, { title: 'A revisão de segurança pediu mudanças', hint: 'Faça os ajustes de segurança pedidos na tarefa e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Review requested changes/, { title: 'A revisão de código pediu mudanças', hint: 'Faça os ajustes pedidos na tarefa e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Review evidence rejected/, { title: 'A evidência da revisão foi rejeitada', hint: 'O revisor citou testes que não aparecem no relatório de testes. Veja o texto técnico e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Rebase conflicts/, { title: 'Conflito com uma mudança que já está na main', hint: 'Resolva o conflito nos arquivos listados no texto técnico e reprocesse a spec.', owner: 'Sistema' }],
   [/^Merge (refused|queue)/, { title: 'O merge foi recusado', hint: 'O GitHub ou a fila de merge recusou a mudança várias vezes. Confira permissões e proteção de branch do repositório.', owner: 'Você' }],
   [/^Task token budget exceeded/, { title: 'A tarefa estourou o orçamento de tokens', hint: 'Divida a tarefa em partes menores no plano ou aumente o limite por tarefa.', owner: 'Sistema' }],
   [/^replan (rejected|failed)/, { title: 'O replanejamento da tarefa falhou', hint: 'O Scrum Master não conseguiu dividir a tarefa. Veja o detalhe técnico.', owner: 'Sistema' }],
@@ -426,6 +426,16 @@ const STOP_RULES: StopRule[] = [
   [/required variable|is missing a value|missing secret|não foram? definid|not (?:been )?defined|is not set/i, (_m, text) => ({ title: 'Falta uma credencial ou variável de ambiente', hint: CREDENTIAL_HINT(citedVariables(text)), owner: 'Você' })],
   [/is unhealthy|dependency failed to start/, { title: 'Um container do deploy não ficou saudável', hint: 'Um container do deploy reiniciou ou não passou no healthcheck. As últimas linhas de log dele estão no detalhe técnico, e a próxima tentativa já as recebe.', owner: 'Sistema' }],
   [/no such host|ENOTFOUND|was never published|name does not resolve/i, { title: 'Um serviço de outra spec não está acessível', hint: 'Os testes precisam de um serviço entregue por outra spec que não está no ar. Entregue ou reinicie essa spec primeiro.', owner: 'Você' }],
+  [/^Gates failed after rebase/, { title: 'Uma verificação falhou depois de atualizar a tarefa com a main', hint: 'Veja no texto técnico qual verificação falhou e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Rebase stage failed without conflicts/, { title: 'A tarefa não conseguiu se atualizar com a main', hint: 'O git falhou sem conflito de arquivos. Veja o texto técnico e reprocesse a spec.', owner: 'Sistema' }],
+  [/^The Dev changed nothing again/, { title: 'O Dev não alterou nada, mesmo depois da resposta do Scrum Master', hint: 'Veja no texto técnico a última resposta do Scrum Master e reprocesse a spec.', owner: 'Sistema' }],
+  [/^filesRead leaves out source files/, { title: 'O Dev não leu todos os arquivos que ia alterar', hint: 'Ele precisa ler cada arquivo listado no texto técnico antes de mudar o código. Reprocesse a spec para tentar de novo.', owner: 'Sistema' }],
+  [/^Security review incomplete/, { title: 'A revisão de segurança precisou de uma ferramenta que não está disponível', hint: 'Veja no texto técnico qual ferramenta faltou e reprocesse a spec.', owner: 'Sistema' }],
+  [/^(skill-select failed|skill request repeated)/, { title: 'O ambiente não encontrou a ferramenta que a tarefa pediu', hint: 'Veja no texto técnico qual ferramenta faltou e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Orchestrator step failed/, { title: 'Um passo da execução falhou por erro interno', hint: 'Veja no texto técnico a causa e reprocesse a spec.', owner: 'Sistema' }],
+  [/^Gate (\S+) failed \(\w+, exit -?\d+\)/, (m) => ({ title: `Uma verificação automática falhou: ${m[1]}`, hint: 'Veja no texto técnico quais testes ou checagens quebraram e reprocesse a spec.', owner: 'Sistema' })],
+  [/^Run \S+ of spec .* is still live/, { title: 'Outra execução desta spec ainda está rodando', hint: 'Espere a outra execução terminar ou pare-a, depois reprocesse a spec.', owner: 'Você' }],
+  [/^a dependency is blocked$/, { title: 'Espera uma tarefa da qual ela depende', hint: 'Ela continua parada até a tarefa da qual depende ser resolvida. Resolva a bloqueada primeiro.', owner: 'Sistema' }],
   // An agent's own words, not an orchestrator string (runs hello-001-r4 and r5): last, so no prefix above is shadowed.
   [/frozenPaths/, { title: 'O plano pede arquivos que ele mesmo protege', hint: 'Uma tarefa precisa criar arquivos que estão em frozenPaths. Tire o caminho de frozenPaths no plano da main (ou da tarefa) e reprocesse: sem isso o Dev bloqueia de novo.', owner: 'Plano' }],
   [/security-tools'? gate/i, { title: 'As ferramentas de segurança não rodam no ambiente do gate', hint: 'O gate security-tools falha antes de analisar o código, e os arquivos dele são protegidos: nenhum agente consegue corrigir. Ajuste a imagem ou o instalador do gate e reprocesse a spec.', owner: 'Sistema' }],
@@ -463,6 +473,55 @@ export function explainPhase(row: { phase: number; reason: string | null }, auto
   const reason = row.reason ?? '';
   const why: StopExplanation = explainStop(reason) ?? { title: reason ? firstSentence(reason) : `${phaseTitle(row.phase)} falhou`, hint: row.phase === 5 ? DEPLOY_NEXT_STEP : NEXT_STEP, owner: 'Sistema' };
   return { ...why, hint: ownHint(why.hint, autonomous) };
+}
+
+const SEVERITY_LABEL: Record<string, string> = { critical: 'crítico', high: 'alto', important: 'importante', medium: 'médio', minor: 'menor', low: 'baixo' };
+const PROGRESS_LABEL: Record<string, string> = { stalled: 'pararam de avançar', diverging: 'estavam piorando' };
+const FINDINGS_HEAD = /^(?:Security review|Review) requested changes:\n/;
+const FINDING = /^- (\S+?)(?::(\d+))? \[(\w+)\] ([\s\S]*)$/;
+const FIX = /^([\s\S]*?) \(fix: ([\s\S]*)\)$/;
+const PROGRESS_TAIL = /\n\nAttempt progress judged (\w+) \([^)]*\) on a replanned task; blocked instead of spending its remaining attempts\.$/;
+
+export interface BlockFinding {
+  where: string;
+  severity: string;
+  problem: string;
+  fix: string | null;
+}
+
+/** A blocked task's reason in plain words: what happened, the problem, the next step, and the orchestrator's own text. */
+export interface BlockExplanation {
+  title: string;
+  owner: StopOwner;
+  problem: string[];
+  findings: BlockFinding[];
+  next: string;
+  raw: string;
+}
+
+/** Each "- file:line [severity] problem (fix: …)" line of a review or security block, read into its parts. */
+function parseFindings(body: string): BlockFinding[] {
+  return body.split(/\n(?=- )/).flatMap((item) => {
+    const m = FINDING.exec(item);
+    if (!m) return [];
+    const [, file, line, severity, rest] = m;
+    const fix = FIX.exec(rest!);
+    return [{ where: line ? `${file}, linha ${line}` : file!, severity: SEVERITY_LABEL[severity!] ?? severity!, problem: fix ? fix[1]! : rest!, fix: fix ? fix[2]! : null }];
+  });
+}
+
+/** The plain explanation of a blocked task's reason, for the task and cause dialogs. */
+export function blockExplanation(reason: string, autonomous = false): BlockExplanation {
+  const tail = PROGRESS_TAIL.exec(reason);
+  const main = tail ? reason.slice(0, tail.index) : reason;
+  const head = FINDINGS_HEAD.exec(main);
+  const translated = explainBlockReason(main);
+  const why = explainStop(main) ?? { title: firstSentence(translated), hint: NEXT_STEP, owner: 'Sistema' as StopOwner };
+  const problem = [
+    ...(!head && translated !== main ? [translated] : []),
+    ...(tail ? [`As tentativas ${PROGRESS_LABEL[tail[1]!] ?? 'não avançaram'}. A tarefa já tinha sido refeita uma vez, então foi bloqueada para não gastar as tentativas que faltavam.`] : []),
+  ];
+  return { title: why.title, owner: why.owner, problem, findings: head ? parseFindings(main.slice(head[0].length)) : [], next: ownHint(why.hint, autonomous), raw: reason };
 }
 
 /** One sentence tying a failed run to the tasks that blocked on their own, or null when none did. */

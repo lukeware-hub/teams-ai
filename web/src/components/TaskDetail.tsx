@@ -1,26 +1,28 @@
 import type { StoredEvent } from '../api.js';
 import { safeHttpUrl } from '../safeUrl.js';
-import { explainBlockReason, taskDetail } from '../run/selectors.js';
+import { taskDetail } from '../run/selectors.js';
 import { StepList } from './StepList.js';
 
+/** The pull request and the attempts of one task, shown inside the task dialog. */
 export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]; taskId: string; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }> }) {
   const d = taskDetail(events, taskId);
   return (
-    <section className="card" data-testid={`detail-${taskId}`}>
-      <header>
-        <h2>{taskId}</h2>
-        {d.pr ? (
-          safeHttpUrl(d.pr.url) ? (
-            <a href={safeHttpUrl(d.pr.url)} target="_blank" rel="noreferrer">
-              PR #{d.pr.number}
-            </a>
-          ) : (
-            <span>PR #{d.pr.number}</span>
-          )
-        ) : null}
-        {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
-      </header>
-      {d.blockedReason ? <p className="error">Bloqueada: {explainBlockReason(d.blockedReason)}</p> : null}
+    <div data-testid={`detail-${taskId}`} className="grid gap-5">
+      {d.pr || d.lockHeld ? (
+        <p className="m-0 flex flex-wrap gap-x-3">
+          {d.pr ? (
+            safeHttpUrl(d.pr.url) ? (
+              <a href={safeHttpUrl(d.pr.url)} target="_blank" rel="noreferrer">
+                PR #{d.pr.number}
+              </a>
+            ) : (
+              <span>PR #{d.pr.number}</span>
+            )
+          ) : null}
+          {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
+        </p>
+      ) : null}
+      {d.attempts.length ? null : <p className="hint m-0">Nenhuma tentativa registrada ainda.</p>}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
           <h3>Tentativa {a.attempt}</h3>
@@ -62,6 +64,6 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
           ) : null}
         </div>
       ))}
-    </section>
+    </div>
   );
 }

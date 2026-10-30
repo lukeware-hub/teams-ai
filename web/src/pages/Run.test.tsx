@@ -219,6 +219,39 @@ describe('RunView', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
 
+    it('opens a blocked task in a dialog: the problem and the solution in plain words, then the attempts', () => {
+      const reason = 'Review requested changes:\n- apps/frontend/Dockerfile:2 [important] A imagem base usa node:26.13.0, mas o arquivo de versões não tem Node.js. (fix: Registrar a tag de Node.js no versions.lock.json.)';
+      const blocked = [{ taskId: 'T950-deploy-fix-1-r2', reason }];
+      render(view({ events: [ev(1, 'TASK_BLOCKED', { taskId: 'T950-deploy-fix-1-r2', reason }), ev(2, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked, tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' } }));
+      // Nothing opens below the list any more.
+      expect(screen.queryByTestId('detail-T950-deploy-fix-1-r2')).toBeNull();
+      const trigger = screen.getByRole('button', { name: 'T950-deploy-fix-1-r2' });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole('dialog', { name: 'T950-deploy-fix-1-r2' });
+      expect(within(dialog).getByText('O problema')).toBeTruthy();
+      expect(within(dialog).getByText('A revisão apontou 1 ponto para corrigir:')).toBeTruthy();
+      expect(within(dialog).getByText('apps/frontend/Dockerfile, linha 2')).toBeTruthy();
+      expect(within(dialog).getByText('Solução')).toBeTruthy();
+      expect(within(dialog).getByText('Registrar a tag de Node.js no versions.lock.json.')).toBeTruthy();
+      expect(within(dialog).getByText('Faça os ajustes pedidos na tarefa e reprocesse a spec.')).toBeTruthy();
+      // The orchestrator's own text is kept, folded away.
+      expect(dialog.querySelector('pre')!.textContent).toBe(reason);
+      expect(within(dialog).getByTestId('detail-T950-deploy-fix-1-r2')).toBeTruthy();
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Fechar' }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it('a task with no attempts opens in the dialog with a plain empty state', () => {
+      const task = { id: 'T990', title: 'Preparar a tela inicial', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' };
+      render(view({ events: [ev(1, 'TASK_PLANNED', { task, replan: false })], ended: false, detail: { ...detail, status: 'running' } }));
+      fireEvent.click(screen.getByTestId('task-T990'));
+      const dialog = screen.getByRole('dialog', { name: 'T990' });
+      expect(within(dialog).getByText('Preparar a tela inicial')).toBeTruthy();
+      expect(within(dialog).getByText('Nenhuma tentativa registrada ainda.')).toBeTruthy();
+    });
+
     it('shows a translated scope violation and keeps the raw text apart', () => {
       const reason = 'Scope violation:\nfrozen files modified: package.json';
       render(view({ events: [ev(1, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T3', reason }], tokens: {} })], ended: true, detail: { ...detail, status: 'blocked' } }));
