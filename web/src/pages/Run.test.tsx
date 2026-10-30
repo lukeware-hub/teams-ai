@@ -491,6 +491,12 @@ describe('RunView phase activity', () => {
     expect(screen.getByTestId('now').textContent).toContain('Nenhum agente trabalhando neste momento.');
     expect(screen.getByTestId('now-last').textContent).toContain('Execução pausada pelo limite de uso dos modelos');
   });
+
+  it('the Agora card names the running model as the cost card does', () => {
+    const step = { ...events[2]!, data: { ...events[2]!.data, model: 'claude-haiku-5-5' } };
+    render(view({ detail: { ...detail, status: 'running' }, events: [events[0]!, events[1]!, step] }));
+    expect(screen.getByTestId('now-step').textContent).toContain('Haiku 5.5 · há');
+  });
 });
 
 describe('RunView phase blocks', () => {

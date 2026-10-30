@@ -76,6 +76,42 @@ describe('run selectors', () => {
       { acId: 'AC-002', tests: [] },
     ]);
   });
+  describe('evidence credits only results that count for coverage', () => {
+    const ev = (seq: number, type: string, data: Record<string, unknown>) => ({ ...events[0]!, seq, type, data }) as StoredEvent;
+    const state = (seq: number, taskId: string, to: string) => ev(seq, 'TASK_STATE_CHANGED', { taskId, to });
+    const gate = (seq: number, status: string, data: Record<string, unknown>) => ev(seq, status === 'passed' ? 'GATE_PASSED' : 'GATE_FAILED', { gate: 'unit-test', junit: [{ id: 'x::[AC-009] works', status, acIds: ['AC-009'] }], ...data });
+
+    it('a test seen only in a task later superseded leaves its criterion without tests', () => {
+      expect(evidence([gate(1, 'passed', { taskId: 'T6' }), state(2, 'T6', 'superseded')], ['AC-009'])).toEqual([{ acId: 'AC-009', tests: [] }]);
+    });
+    it('the newest verification round on main replaces the merged tasks results', () => {
+      const evs = [gate(1, 'passed', { taskId: 'T1' }), state(2, 'T1', 'merged'), gate(3, 'failed', { phase: 4, round: 1 })];
+      expect(evidence(evs, ['AC-009'])[0]!.tests).toEqual([{ id: 'x::[AC-009] works', status: 'failed', taskId: 'main' }]);
+      expect(evidence([...evs, gate(4, 'passed', { phase: 4, round: 2, junit: [] })], ['AC-009'])[0]!.tests).toEqual([]);
+    });
+    it('a verification pass that runs again starts from empty, so a test it no longer reports is dropped', () => {
+      const evs = [gate(1, 'passed', { phase: 4, round: 1 }), ev(2, 'VERIFICATION_FAILED', { round: 1 }), gate(3, 'passed', { phase: 4, round: 1, junit: [] })];
+      expect(evidence(evs, ['AC-009'])[0]!.tests).toEqual([]);
+    });
+    it('the same test in two merged tasks keeps the later result', () => {
+      const evs = [gate(1, 'failed', { taskId: 'T1' }), gate(2, 'passed', { taskId: 'T2' }), state(3, 'T1', 'merged'), state(4, 'T2', 'merged')];
+      expect(evidence(evs, ['AC-009'])[0]!.tests).toEqual([{ id: 'x::[AC-009] works', status: 'passed', taskId: 'T2' }]);
+    });
+  });
+  it('a decision is a step only when a model other than the Claude escalation step was called', () => {
+    const decision = (seq: number, attempts: unknown[]) => ({ ...events[0]!, seq, type: 'DECISION_MADE', data: { record: { decisionId: 'pr-risk', attempts, usage: { inputTokens: 0, outputTokens: 0, costUsd: null } } } }) as StoredEvent;
+    const usage = { inputTokens: 40, outputTokens: 4, costUsd: 0.002 };
+    expect(tokens([decision(1, [])])).toMatchObject({ byRole: {}, total: { steps: 0 } });
+    expect(tokens([decision(1, [{ backend: 'jev', usage }])]).byRole.system1).toMatchObject({ inputTokens: 40, costUsd: 0.002, steps: 1 });
+    // The Claude escalation journals its own step, so its decision record adds nothing more.
+    const escalation = [
+      { ...events[0]!, seq: 2, type: 'STEP_STARTED', data: { stepId: 'd1', kind: 'decide', role: 'sm', model: 'claude-haiku-5-5', taskId: null, attempt: 0 } },
+      { ...events[0]!, seq: 3, type: 'STEP_FINISHED', data: { stepId: 'd1', kind: 'decide', taskId: null, attempt: 0, ok: true, usage: { inputTokens: 40, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0.002 } },
+    ] as StoredEvent[];
+    const t = tokens([...escalation, decision(4, [{ backend: 'claude', usage }])]);
+    expect(t.total).toMatchObject({ steps: 1, costUsd: 0.002 });
+    expect(t.byRole.system1).toBeUndefined();
+  });
 });
 
 it('phases 4-6 end on their own events', () => {

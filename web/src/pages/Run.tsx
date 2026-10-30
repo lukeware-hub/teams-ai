@@ -294,7 +294,7 @@ function EvidenceCard({ criteria, rows }: { criteria: RunDetail['acceptanceCrite
                             </span>
                           </Tipped>
                           <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
-                          <span className="hint">tarefa {x.taskId}</span>
+                          <span className="hint">{x.taskId === 'main' ? 'na main' : `tarefa ${x.taskId}`}</span>
                         </li>
                       );
                     })}
@@ -408,7 +408,7 @@ function NowCard({ events }: { events: StoredEvent[] }) {
               <strong>{ROLE_LABEL[s.role] ?? s.role}</strong> {stepDoing(s.kind)}
               {s.taskId ? ` a tarefa ${s.taskId}` : ''}
               <span className="block text-[0.75rem] text-ink-soft tabular-nums">
-                {s.model ? `${s.model} · ` : ''}há {formatDuration(now - Date.parse(s.startedAt))}
+                {s.model ? `${MODEL_NAME[s.model] ?? s.model} · ` : ''}há {formatDuration(now - Date.parse(s.startedAt))}
               </span>
             </li>
           ))}

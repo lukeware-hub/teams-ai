@@ -328,37 +328,45 @@ export function tokens(events: StoredEvent[]) {
       }
     }
     if (e.type === 'DECISION_MADE') {
-      const r = e.data.record as { usage?: { inputTokens: number; outputTokens: number; costUsd: number | null } } | undefined;
-      if (r?.usage) book('decide', 'system1', r.usage, r.usage.costUsd);
+      const r = e.data.record as { attempts?: Array<{ backend: string; usage: { inputTokens: number; outputTokens: number; costUsd: number | null } | null }> } | undefined;
+      // Only a model call costs; a Claude escalation is booked from its own STEP_FINISHED, as the server's accounting does.
+      for (const a of r?.attempts ?? []) if (a.backend !== 'claude' && a.usage) book('decide', 'system1', a.usage, a.usage.costUsd);
     }
   }
   const modelsByRole = Object.fromEntries(Object.entries(modelUses).map(([role, uses]) => [role, [...uses.values()].sort((a, b) => b.steps - a.steps)]));
   return { byPhase, byRole, total, modelsByRole };
 }
 
+type JunitTest = { id: string; status: string; acIds: string[] };
+
+/** Each criterion's tests with their latest result: the newest verification round on main, else only merged tasks. */
 export function evidence(events: StoredEvent[], criteria: string[]) {
-  // latest gate round per task and gate: the same test id from a later event replaces the earlier one
-  const latest = new Map<string, Map<string, { id: string; status: string; acIds: string[] }>>();
+  const state = new Map<string, string>();
+  const latest = new Map<string, JunitTest & { taskId: string }>();
+  const byTask: StoredEvent[] = [];
+  let round: unknown = null;
+  let closed = false;
   for (const e of events) {
+    if (e.type === 'TASK_STATE_CHANGED') state.set(String(e.data.taskId), String(e.data.to));
+    if (e.type === 'VERIFICATION_FAILED' || e.type === 'VERIFICATION_PASSED') closed = true;
     if (e.type !== 'GATE_PASSED' && e.type !== 'GATE_FAILED') continue;
-    const key = `${String(e.data.taskId)}::${String(e.data.gate)}`;
-    const tests = new Map<string, { id: string; status: string; acIds: string[] }>();
-    for (const t of (e.data.junit as Array<{ id: string; status: string; acIds: string[] }> | undefined) ?? []) tests.set(t.id, t);
-    latest.set(key, tests);
-  }
-  return criteria.map((acId) => {
-    const tests: Array<{ id: string; status: string; taskId: string }> = [];
-    const seen = new Set<string>();
-    for (const [key, byId] of latest) {
-      for (const t of byId.values()) {
-        if (t.acIds.includes(acId) && !seen.has(t.id)) {
-          seen.add(t.id);
-          tests.push({ id: t.id, status: t.status, taskId: key.split('::')[0]! });
-        }
-      }
+    if (e.data.phase !== 4) {
+      byTask.push(e);
+      continue;
     }
-    return { acId, tests };
-  });
+    // A new verification pass, or a new round, replaces the previous results.
+    if (closed || e.data.round !== round) latest.clear();
+    closed = false;
+    round = e.data.round;
+    for (const t of (e.data.junit as JunitTest[] | undefined) ?? []) latest.set(t.id, { ...t, taskId: 'main' });
+  }
+  if (round === null) {
+    for (const e of byTask) {
+      if (state.get(String(e.data.taskId)) !== 'merged') continue;
+      for (const t of (e.data.junit as JunitTest[] | undefined) ?? []) latest.set(t.id, { ...t, taskId: String(e.data.taskId) });
+    }
+  }
+  return criteria.map((acId) => ({ acId, tests: [...latest.values()].filter((t) => t.acIds.includes(acId)).map(({ id, status, taskId }) => ({ id, status, taskId })) }));
 }
 
 /** Task-block reasons come straight from the orchestrator in English; translate the ones a user needs
