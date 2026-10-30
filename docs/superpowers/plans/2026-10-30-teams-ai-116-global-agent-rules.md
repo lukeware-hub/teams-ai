@@ -24,8 +24,11 @@ The agents of teams-ai build software for target projects. Their rules lived in 
 ## Verification
 
 - Before the change, on the same tree: root 2983 passed and 1 failed (the guard test of the role files, which the change makes pass); web 555 passed.
-- After the change: root 272 files and 3056 tests passed, 7 skipped (the same skips as before); web 50 files and 555 tests passed; web build passed; `npm run typecheck` passed.
+- After the change, on the pushed tree (5eeadbe6): root 272 files and 3066 tests passed, 7 skipped (the same skips as before); web 50 files and 566 tests passed; web build passed; `npm run typecheck` passed.
 - New tests: `test/agents/global-rules.test.ts`, `test/validators/language.test.ts` (25 cases), `test/infra/agent-funnel.test.ts` (the only callers of the agent spawn are the step runner and one probe), and one `it.each` over every step kind that checks the rules come first.
+- End to end: `test/orchestrator/loop.test.ts` runs a whole plan with the real agent files, real git and the fake claude. Every step writes an agent definition that starts with the global rules, and the reviewer's pack lists the Portuguese the task adds. `test/orchestrator/task-runner.test.ts` checks the same pack with real git.
+- Deployed locally: the image was built from a clean export of 5eeadbe6, and the container was recreated with `docker compose up -d --no-build --no-deps --wait teams-ai`. The container runs the new code, `/healthz` answers 200, and no agent process was running at recreate time. The previous image is kept as `teams-ai:rollback-pre-global-rules`.
+- Not run: the live check with the real model. It spends subscription tokens, so it is optional and waits for the owner's go.
 
 ## Not done
 
