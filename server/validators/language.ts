@@ -1,4 +1,4 @@
-/** Rule 1 of the global rules (code is English): a cheap check over the lines a task adds. The Test reviewer judges each hit. */
+/** The language rule of the global rules (code is English): a cheap check over the lines a task adds. The Test reviewer judges each hit. */
 
 export interface LanguageHit {
   file: string;
@@ -7,14 +7,14 @@ export interface LanguageHit {
   text: string;
 }
 
-const HEADER = 'Language check (hints, not proof): these added lines hold Portuguese words or accents, and rule 1 requires English code. Product text, sample data and quoted words are not defects.';
+const HEADER = 'Language check (hints, not proof): these added lines hold Portuguese words or accents, and the language rule requires English code. Product text, sample data and quoted words are not defects.';
 const MAX_FILES = 12;
 const MAX_LINES = 3;
 const MAX_CHARS = 120;
 const MAX_LINE = 400;
 
-/** Owner documents, locale files, snapshots and lock files; the technical spec and the ADRs (docs/adr) are not exempt. */
-const EXEMPT_PATH = /^docs\/(project|stack|flow|design|briefing)\.md$|^docs\/specs\/[^/]+\/(?!tech-spec\.md$)|(^|\/)_?(locales?|i18n|l10n|translations?|lang|intl)\/|\.(po|pot|arb|resx|xlf|properties|snap|lock|map)$|(^|\/)(__snapshots__|vendor|node_modules)\/|(^|\/)(package-lock\.json|pnpm-lock\.yaml|go\.sum)$/;
+/** Markdown documents (project documents are Brazilian Portuguese), locale files, snapshots and lock files. */
+const EXEMPT_PATH = /\.md$|(^|\/)_?(locales?|i18n|l10n|translations?|lang|intl)\/|\.(po|pot|arb|resx|xlf|properties|snap|lock|map)$|(^|\/)(__snapshots__|vendor|node_modules)\/|(^|\/)(package-lock\.json|pnpm-lock\.yaml|go\.sum)$/;
 
 /** Portuguese accents: ã, õ and ç anywhere; the others only beside a letter, so a bare accent in a table is not flagged. */
 const DIACRITIC = /[ãõçÃÕÇ]|[áàâéêíóôúÁÀÂÉÊÍÓÔÚ][A-Za-z]|[A-Za-z][áàâéêíóôúÁÀÂÉÊÍÓÔÚ]/;

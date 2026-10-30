@@ -211,9 +211,9 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).changeSet).not.toContain('Language check');
   });
 
-  it('asks the readme for English headings only, since the global rules make the documents English too', () => {
-    expect(DOCS_STRUCTURE).toContain('(English names)');
-    expect(DOCS_STRUCTURE).not.toContain('Portuguese names');
+  it('asks the readme for Brazilian Portuguese headings, since the project documents are Brazilian Portuguese', () => {
+    expect(DOCS_STRUCTURE).toContain('in Brazilian Portuguese (for example Executar');
+    expect(DOCS_STRUCTURE).not.toContain('(English names)');
   });
 
   it("the review lists the reviewer's earlier findings on the task, and adds nothing without them", () => {

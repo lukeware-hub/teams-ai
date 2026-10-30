@@ -109,8 +109,9 @@ Status: built 2026-10-30, pending the owner's check on the run screen.
 Status: built 2026-10-30, pending the owner's check on a real run.
 
 - Every agent step of every project receives the global rules first (`server/agents/global-rules.ts`), through the one function that builds the agent invocation; a call without an agent definition fails.
-- Code is English in every project: names, comments, logs, errors, commit messages, README, runbook, API docs, ADRs and the technical spec. Text for people stays Brazilian Portuguese; text the product shows its users follows the owner's documents.
+- Code is English in every project: names, comments, logs, errors and commit messages. Project documents (functional, technical, architectural and operational, including README, runbook, API docs, ADRs and the technical spec) are Brazilian Portuguese. Text for people stays pt-BR; text the product shows its users follows the owner's documents.
+- On 2026-10-30 the owner added rules on accuracy (at least 90% confidence before proposing a solution), official sources, faithful behavior, communication, documentation sync, tests (a 90% coverage target), language and a checklist before finishing. They are in `GLOBAL_RULES`.
 - The language line left the eight role files, and a role file that names a language is rejected.
 - Every installed skill carries a notice that the global rules outrank it.
 - The Test reviewer gets a "Language check" block: the Portuguese found in the task's added lines and commit messages, as hints it judges.
-- Not done: the documents the phases write (README, runbook, API docs, ADRs, technical spec) are not checked by the language check; `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running.
+- Not done: `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running and a valid Claude login. The coverage gate still accepts 80%; the 90% target is an instruction to the agents until the owner decides.

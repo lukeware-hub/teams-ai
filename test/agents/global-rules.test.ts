@@ -14,11 +14,13 @@ describe('global rules', () => {
     expect(GLOBAL_RULES).toContain('100% English');
     expect(GLOBAL_RULES).toContain('outrank');
     expect(GLOBAL_RULES).toContain('Brazilian Portuguese (pt-BR)');
-    expect(GLOBAL_RULES).toContain('A reviewer reports a breach of rule 1 as a defect');
+    expect(GLOBAL_RULES).toContain('A reviewer reports a breach of the language rule as a defect');
+    expect(GLOBAL_RULES).toContain('at least 90% test coverage');
+    expect(GLOBAL_RULES).toContain('8. Before you finish a task');
   });
 
-  it('stay short, so every step pays little for them', () => {
-    expect(GLOBAL_RULES.length).toBeLessThanOrEqual(1500);
+  it('stay within the size a system prompt can carry', () => {
+    expect(GLOBAL_RULES.length).toBeLessThanOrEqual(6000);
   });
 
   it('tell every skill that the global rules outrank it', () => {

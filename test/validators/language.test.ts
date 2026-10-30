@@ -56,10 +56,11 @@ describe('languageHits', () => {
     }
   });
 
-  it('checks the technical spec, the ADRs and the README, which must be English', () => {
-    expect(languageHits(added('docs/specs/shop/tech-spec.md', ['Execução do sistema.']))).toHaveLength(1);
-    expect(languageHits(added('docs/adr/0001-cache.md', ['Decisão: usar cache.']))).toHaveLength(1);
-    expect(languageHits(added('README.md', ['Execução do sistema.']))).toHaveLength(1);
+  it('leaves out the Markdown documents, which are Brazilian Portuguese, and still checks the code', () => {
+    expect(languageHits(added('docs/specs/shop/tech-spec.md', ['Execução do sistema.']))).toEqual([]);
+    expect(languageHits(added('docs/adr/0001-cache.md', ['Decisão: usar cache.']))).toEqual([]);
+    expect(languageHits(added('README.md', ['Execução do sistema.']))).toEqual([]);
+    expect(languageHits(added('server/cache.ts', ['// Decisão: usar cache.']))).toHaveLength(1);
   });
 
   it('names a new file whose name is Portuguese, and does not name a changed file', () => {

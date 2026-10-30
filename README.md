@@ -87,7 +87,7 @@ Main parts:
 | Part | What it does |
 | --- | --- |
 | Orchestrator (`server/orchestrator`) | Event-driven state machine. One `claude -p` process per agent step. The journal is append-only, so nothing is lost if the process stops. |
-| Agents (`server/agents`) | Roles `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` and `env`, each with restricted permissions. Every agent follows the global rules in `server/agents/global-rules.ts` in every project it builds: code in English, text for people in Brazilian Portuguese. |
+| Agents (`server/agents`) | Roles `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` and `env`, each with restricted permissions. Every agent follows the global rules in `server/agents/global-rules.ts` in every project it builds: code in English, project documents and text for people in Brazilian Portuguese, plus the rules on accuracy, official sources, tests and documentation sync. |
 | Execution (`server/exec`, `server/deploy`) | Runs gates (tests, scans) and deploys in a rootless nested Docker, never in your computer's Docker. |
 | Budget (`server/budget`) | Tracks tokens and cost. Pauses when the Claude subscription window is nearly full and resumes on its own. |
 | Decision layer (`server/decide`) | Optional. Answers simple decisions locally before calling Claude. |
