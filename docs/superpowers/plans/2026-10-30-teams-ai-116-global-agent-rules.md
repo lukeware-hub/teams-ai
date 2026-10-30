@@ -19,7 +19,7 @@ The agents of teams-ai build software for target projects. Their rules lived in 
 - Recall is limited: the check catches accented Portuguese and the listed words, and misses Portuguese written in plain ASCII without them. It is a tripwire; the reviewer judges the rest.
 - Injection lives in `buildInvocation`, not in `loadAgents`, so the scripts that call `runStep` without `loadAgents` get the rules too.
 - The CLI may keep the system prompt of a resumed session. No flag was added for it.
-- The check covers task diffs and commit messages. The documents the phases write (README, runbook, API docs, ADRs, technical spec) are not checked by it; they follow the rules through the prompt only. This is an open decision (see BACKLOG, "From the global agent rules").
+- The check covers task diffs and commit messages. The documents the phases write (README, runbook, API docs, ADRs, technical spec) are not checked by it; they follow the rules through the prompt only. Decided on 2026-10-30: they stay out of the check for now (option b), and the backlog item "From the global agent rules" keeps the question open.
 
 ## Verification
 
