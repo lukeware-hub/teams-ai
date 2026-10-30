@@ -491,4 +491,14 @@ describe('pull requests of tasks', () => {
     expect(taskDetail(list, 'T1').pr).toEqual({ number: 14, url: 'https://github.com/o/r/pull/14' });
     expect(mergedPrs(list)).toEqual([{ taskId: 'T1', number: 14, url: 'https://github.com/o/r/pull/14' }]);
   });
+
+  it('lists the merged pull requests newest number first, whatever the merge order', () => {
+    const merged = [
+      ev(1, 'PR_CREATED', { branch: 'task/spec-T1', number: 11, url: 'https://github.com/o/r/pull/11', created: true }),
+      ev(2, 'PR_CREATED', { branch: 'task/spec-T2', number: 12, url: 'https://github.com/o/r/pull/12', created: true }),
+      ev(3, 'PR_MERGED', { taskId: 'T1', pr: 11 }),
+      ev(4, 'PR_MERGED', { taskId: 'T2', pr: 12 }),
+    ];
+    expect(mergedPrs(merged).map((p) => p.number)).toEqual([12, 11]);
+  });
 });
