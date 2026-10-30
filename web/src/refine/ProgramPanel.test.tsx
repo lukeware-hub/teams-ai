@@ -135,6 +135,7 @@ describe('ProgramStatus', () => {
     expect(status.textContent).not.toContain('Agora:');
     expect(status.querySelector('.loading-spinner')).toBeNull();
     expect(status.querySelector('.bg-warn')).not.toBeNull();
+    expect(status.querySelector('.text-warn svg')).not.toBeNull();
     expect(status.querySelector('.motion-safe\\:animate-pulse')).toBeNull();
     expect((within(status).getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-b-r1');
   });
@@ -152,6 +153,14 @@ describe('ProgramStatus', () => {
     renderStatus(program([item('a', { status: 'pending' }), item('b', { rank: 2 })]));
     expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 2 concluídas');
     expect(screen.getByRole('status').textContent).not.toContain('interrompid');
+  });
+
+  it('goes back to Executando the moment the run has its process again', () => {
+    const { rerender } = render(<MemoryRouter><ProgramStatus program={program([item('b', { status: 'running', runId: 'd-b-r1', interrupted: { runId: 'd-b-r1' } })])} titles={titles} phases={{}} /></MemoryRouter>);
+    expect(screen.getByRole('status').textContent).toContain('Backlog interrompido');
+    rerender(<MemoryRouter><ProgramStatus program={program([item('b', { status: 'running', runId: 'd-b-r1' })])} titles={titles} phases={{}} /></MemoryRouter>);
+    expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 1 concluídas');
+    expect(screen.getByRole('status').querySelector('.loading-spinner')).not.toBeNull();
   });
 
   it('does not title a finished program as interrupted', () => {
