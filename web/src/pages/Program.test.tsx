@@ -52,4 +52,15 @@ describe('ProgramPage', () => {
     expect(within(row).getByText(`tenta de novo às ${new Date(retryAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`)).toBeTruthy();
     expect(within(row).getByText('deploy-failed: docker daemon down')).toBeTruthy();
   });
+  it('shows a stopped run as interrupted on the card and in the list', async () => {
+    const stopped: ProgramView = { ...program, items: [{ ...program.items[0]!, interrupted: { runId: 'd-base-r1' } }] };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program: stopped });
+    vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 0, decisions: [] });
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
+    render(<MemoryRouter initialEntries={['/refine/p/d/program']}><Routes><Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} /></Routes></MemoryRouter>);
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Backlog interrompido · 0 de 1 concluídas'));
+    expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 2 · Plano');
+    expect(within(screen.getByTestId('program-item-base')).getByText('interrompida')).toBeTruthy();
+  });
 });

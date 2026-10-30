@@ -137,7 +137,7 @@ function RunProcessSection({ run, events, title }: { run: RunRow; events: Stored
           </div>
           <Link className={action.primary} to={`/runs/${run.runId}`}>Abrir execução</Link>
         </div>
-        <p className="m-0 text-[0.875rem] text-ink-soft">Spec em execução: <b className="font-semibold text-ink">{title ?? run.specId}</b></p>
+        <p className="m-0 text-[0.875rem] text-ink-soft">{run.status === 'interrupted' ? 'Spec interrompida:' : 'Spec em execução:'} <b className="font-semibold text-ink">{title ?? run.specId}</b></p>
         <ol className="m-0 grid list-none gap-2 p-0">
           {order.map((phase) => {
             const row = journal.find((j) => j.phase === phase);

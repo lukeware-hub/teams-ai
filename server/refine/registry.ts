@@ -231,15 +231,17 @@ export class SessionRegistry {
   }
 
   /** R11.4 continuation: retries one failed item of a started program. */
-  async retryProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<Program> {
+  async retryProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<ProgramView> {
     await this.get(projectId, specId);
-    return this.programs.retry(projectId, specId, itemSpecId);
+    await this.programs.retry(projectId, specId, itemSpecId);
+    return (await this.programs.view(projectId, specId))!;
   }
 
-  /** Puts one pending item of a started program ahead of its queue. */
-  async prioritizeProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<Program> {
+  /** Puts one pending item of a started program ahead of its queue; the answer is the view the screens read. */
+  async prioritizeProgramItem(projectId: string, specId: string, itemSpecId: string): Promise<ProgramView> {
     await this.get(projectId, specId);
-    return this.programs.prioritize(projectId, specId, itemSpecId);
+    await this.programs.prioritize(projectId, specId, itemSpecId);
+    return (await this.programs.view(projectId, specId))!;
   }
 
   /**

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { refineApi, runApi, type ProgramView } from '../api.js';
 import { appLinks, ProjectHubView } from './ProjectHub.js';
 
 const project = {
@@ -412,6 +413,25 @@ describe('the process of the running execution on the project page', () => {
     render(view({ processRun: null, processEvents: [] }));
     expect(screen.queryByTestId('run-process')).toBeNull();
   });
+  it('calls the spec of an interrupted run Spec interrompida', () => {
+    render(view({ processRun: { ...runs[0]!, status: 'interrupted' }, processEvents: [] }));
+    expect(within(screen.getByTestId('run-process')).getByText(/Spec interrompida:/)).toBeTruthy();
+    expect(within(screen.getByTestId('run-process')).queryByText(/Spec em execução:/)).toBeNull();
+  });
+  it('keeps Spec em execução for a run that is still live', () => {
+    render(view({ processRun: runs[0], processEvents: [] }));
+    expect(within(screen.getByTestId('run-process')).getByText(/Spec em execução:/)).toBeTruthy();
+  });
+  it('shows the banner of a backlog whose run lost its process as interrupted', async () => {
+    const program: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, interrupted: { runId: 'hello-002-r1' } }] };
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 4 } as never);
+    render(view({ backlogs: ['hello-001'], processRun: { ...runs[0]!, status: 'interrupted' }, processEvents: [] }));
+    expect(await screen.findByText(/Backlog interrompido · 0 de 1 concluídas/)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 4 · Verificação');
+  });
+  afterEach(() => vi.restoreAllMocks());
 });
 
 describe('the attention banner', () => {

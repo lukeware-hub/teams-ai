@@ -82,6 +82,7 @@ Severidade: **crítico** = segredo exposto ou custo sem limite; **importante** =
 
 ## Fechados depois da rodada de correções
 
+- [x] **As telas do backlog mostravam uma run parada como em execução.** `server/program/service.ts` `view()` marca o item em andamento cuja run perdeu o processo (`runRow` em `interrupted` ou `unknown`); `web/src/refine/ProgramPanel.tsx` (`ProgramStatus` e lista) e `web/src/pages/ProjectHub.tsx` (`RunProcessSection`) mostram "interrompida", como a tela da run. `prioritize` e `retry` devolvem a view. Visto em run: kayron-hub run-18, parada por Parar execução, com o card e a lista ainda em "Executando o backlog" e "em execução".
 - [x] **Aviso de rebase sem arquivos gasta uma tentativa.** `server/orchestrator/task-runner.ts`: a falha do estágio de rebase sem conflitos agora é infraestrutura (3 retentativas grátis e o feedback com a causa real).
 - [x] **Testes Go `TestAc_NNN_...` não contavam como prova do critério.** `server/evidence/junit.ts`: o matcher aceita `Test` seguido de `Ac_NNN`; a regra do dev.md também proíbe build tags nos testes que provam critérios. Visto em run: privacy-engine run-1, ai-governance-registry run-1 e signature-approval-pattern run-4.
 - [x] **Gate-cache compartilhado entre projetos.** `server/orchestrator/run.ts` `gateCacheDir`: cada projeto tem o próprio cache (`<gateCache>/gates/<projectId>`); um gate que o agente de um projeto controla já não escreve onde os gates de outro leem. Custo: o banco do scanner é baixado uma vez por projeto.

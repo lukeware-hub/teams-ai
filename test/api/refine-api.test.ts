@@ -348,6 +348,7 @@ describe('refine api', () => {
     expect(retried.status).toBe(200);
     const retriedBody = await retried.json();
     expect(retriedBody.program.items[0]).toMatchObject({ status: 'running', reason: null });
+    expect(retriedBody.program.items[0].prs).toEqual([]); // the program view, as the screen reads it
     expect(retriedBody.program.items[0].runId).not.toBe(body.runId);
     expect(spawns).toHaveLength(2);
 
@@ -374,6 +375,11 @@ describe('refine api', () => {
     again.items[0] = { ...again.items[0], status: 'blocked', reason: 'depends on x, which failed' };
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ refused: 'A spec base está bloqueada no programa: depends on x, which failed. Rode antes a spec da qual ela depende.' });
+    again.items[0] = { ...again.items[0], status: 'pending', reason: null, runId: null, retryAt: undefined };
+    await fs.writeFile(programFile, JSON.stringify(again, null, 2));
+    const ahead = await call('POST', `${url}/program/base/prioritize`);
+    expect(ahead.status).toBe(200);
+    expect((await ahead.json()).program.items[0].prs).toEqual([]); // the program view, as the screen reads it
     const prioritized = await call('POST', `${url}/program/base/prioritize`);
     expect(prioritized.status).toBe(400); // running now, so no longer pending
   });

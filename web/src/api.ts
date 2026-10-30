@@ -422,6 +422,8 @@ export interface ProgramViewItem {
   prs?: Array<{ number: number; url: string }>;
   /** The run waits for the Claude quota or for a new login. */
   pause?: { reason: 'quota' | 'auth'; until?: string };
+  /** The run in flight lost its process: the owner stopped it, or it died. */
+  interrupted?: { runId: string };
   /** Asked to run now: it starts at the next free slot. */
   priority?: boolean;
   /** While waiting after an environment failure: when it starts again. */

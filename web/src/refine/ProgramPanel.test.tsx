@@ -86,6 +86,14 @@ describe('ProgramPanel', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();
   });
+
+  it('shows an interrupted spec with the hub pill, and a running one as before', () => {
+    renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', interrupted: { runId: 'd-a-r1' } }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' })]));
+    const pill = within(screen.getByTestId('program-item-a')).getByText('interrompida');
+    expect(pill.className).toContain('tone-warn');
+    expect(within(screen.getByTestId('program-item-a')).queryByText('em execução')).toBeNull();
+    expect(within(screen.getByTestId('program-item-b')).getByText('em execução')).toBeTruthy();
+  });
 });
 
 describe('ProgramStatus', () => {
@@ -117,6 +125,44 @@ describe('ProgramStatus', () => {
     renderStatus(program([item('a', { status: 'done' })], 'finished'));
     expect(screen.getByRole('status').textContent).toContain('Backlog executado · 1 de 1 concluídas');
     expect(screen.getByRole('status').querySelector('.loading-spinner')).toBeNull();
+  });
+
+  it('says the backlog is interrupted when every spec in flight has lost its process', () => {
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1', interrupted: { runId: 'd-b-r1' } }), item('c', { rank: 3 })]), { 'd-b-r1': 4 });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Backlog interrompido · 1 de 3 concluídas');
+    expect(status.textContent).toContain('Interrompida: Empréstimos · 4 · Verificação');
+    expect(status.textContent).not.toContain('Agora:');
+    expect(status.querySelector('.loading-spinner')).toBeNull();
+    expect(status.querySelector('.bg-warn')).not.toBeNull();
+    expect(status.querySelector('.motion-safe\\:animate-pulse')).toBeNull();
+    expect((within(status).getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-b-r1');
+  });
+
+  it('keeps Executando o backlog while another spec still has its process', () => {
+    renderStatus(program([item('b', { status: 'running', runId: 'd-b-r1', interrupted: { runId: 'd-b-r1' } }), item('c', { rank: 2, status: 'running', runId: 'd-c-r1' })]), { 'd-b-r1': 3, 'd-c-r1': 1 });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Executando o backlog · 0 de 2 concluídas');
+    expect(status.textContent).toContain('Interrompida: Empréstimos · 3 · Implementação');
+    expect(status.textContent).toContain('Agora: Relatórios · 1 · Especificação técnica');
+    expect(status.querySelector('.loading-spinner')).not.toBeNull();
+  });
+
+  it('does not read a program with nothing in flight as interrupted', () => {
+    renderStatus(program([item('a', { status: 'pending' }), item('b', { rank: 2 })]));
+    expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 2 concluídas');
+    expect(screen.getByRole('status').textContent).not.toContain('interrompid');
+  });
+
+  it('does not title a finished program as interrupted', () => {
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1', interrupted: { runId: 'd-b-r1' } })], 'finished'));
+    expect(screen.getByRole('status').textContent).toContain('Backlog executado · 1 de 2 concluídas');
+    expect(screen.getByRole('status').textContent).not.toContain('Backlog interrompido');
+  });
+
+  it('links an interrupted spec that was completing to its completion run', () => {
+    renderStatus(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1', interrupted: { runId: 'd-a-complete-r1' } })]));
+    expect((screen.getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-a-complete-r1');
   });
 });
 

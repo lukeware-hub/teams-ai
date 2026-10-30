@@ -6,7 +6,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
-import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { action, chip, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
@@ -117,22 +117,27 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
   const total = program?.items.length ?? 0;
   const running = program?.status !== 'finished';
   const now = program?.items.filter((i) => i.status === 'running' || i.status === 'completing') ?? [];
+  // A stopped run keeps its item running in the ledger: only the run's own process says it is gone.
+  const interrupted = running && now.length > 0 && now.every((i) => i.interrupted);
   return (
     <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status">
       <div className="flex items-center gap-3">
-        {running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
-        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
+        {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
+        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluídas`}</b>
       </div>
       {program && <progress className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
       {(now.length > 0 || link) && (
         <div className="grid gap-2 text-[0.875rem] text-ink-soft [&_p]:m-0">
-          {now.map((i) => (
-            <p key={i.specId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="size-2 flex-none rounded-full bg-accent-text motion-safe:animate-pulse" aria-hidden="true" />
-              <span>Agora: <b className="font-semibold text-ink">{titles[i.key] ?? i.key}</b>{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}{i.pause && ` · ${pauseText(i.pause)}`}</span>
-              {i.runId && <>· <Link to={`/runs/${i.runId}`}>Acompanhar a run</Link></>}
-            </p>
-          ))}
+          {now.map((i) => {
+            const runId = i.interrupted?.runId ?? i.runId;
+            return (
+              <p key={i.specId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className={i.interrupted ? 'size-2 flex-none rounded-full bg-warn' : 'size-2 flex-none rounded-full bg-accent-text motion-safe:animate-pulse'} aria-hidden="true" />
+                <span>{i.interrupted ? 'Interrompida: ' : 'Agora: '}<b className="font-semibold text-ink">{titles[i.key] ?? i.key}</b>{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}{i.pause && ` · ${pauseText(i.pause)}`}</span>
+                {runId && <>· <Link to={`/runs/${runId}`}>Acompanhar a run</Link></>}
+              </p>
+            );
+          })}
           {link && <p className="mt-1"><Link to={link} className="link-button">Abrir a execução do backlog<Icon name="arrow-right" size={16} /></Link></p>}
         </div>
       )}
@@ -178,7 +183,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
               {i.reason && <ItemReason status={i.status} reason={i.reason} />}
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents">
-              <Tipped text={ITEM_HELP[i.status]}><span className={PILL[i.status]}>{LABEL[i.status]}</span></Tipped>
+              {i.interrupted ? chip('interrupted') : <Tipped text={ITEM_HELP[i.status]}><span className={PILL[i.status]}>{LABEL[i.status]}</span></Tipped>}
               <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end">
                 {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true">—</span>}
               </span>

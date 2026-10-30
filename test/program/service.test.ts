@@ -22,7 +22,7 @@ async function journal(runId: string, events: Array<{ type: string; data: Record
 const started = (specId: string) => ({ type: 'RUN_STARTED', data: { runId: 'x', specId, projectId: 'shop' } });
 const finished = (result: string, extra: Record<string, unknown> = {}) => ({ type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [], tokens: { costUsd: null }, ...extra } });
 
-function service(decider?: ProgramServiceDeps['decider']) {
+function service(decider?: ProgramServiceDeps['decider'], alive = true) {
   const control: RunControlDeps = {
     spawn: (a) => {
       spawned.push({ args: a.args });
@@ -32,7 +32,7 @@ function service(decider?: ProgramServiceDeps['decider']) {
       writeFileSync(path.join(runsDir(), runId, 'events.ndjson'), '');
       return { pid: 4242 };
     },
-    kill: () => true,
+    kill: () => alive,
     sleep: async () => {},
     cliEntry: () => ({ bin: 'node', prefix: ['cli'] }),
     repoRoot: '/repo',
@@ -347,5 +347,96 @@ describe('program service view', () => {
     expect((await s.view('shop', 'd'))!.items[0]!.prs).toHaveLength(1);
     await fs.rm(path.join(runsDir(), 'a-r1'), { recursive: true });
     expect((await s.view('shop', 'd'))!.items[0]!.prs).toHaveLength(1);
+  });
+
+  describe('an item in flight whose process is gone', () => {
+    const gone = (runId: string) => fs.writeFile(path.join(runsDir(), runId, 'pid.gone'), '999999');
+    const state = (runId: string, status: string) => fs.writeFile(path.join(runsDir(), runId, 'state.json'), JSON.stringify({ runId, status, tasks: [], tokens: {} }));
+
+    it('is marked interrupted when its process is gone', async () => {
+      await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
+      await journal('a-r1', [started('d-a')]);
+      await journal('b-r1', [started('d-b')]);
+      await state('a-r1', 'running');
+      await state('b-r1', 'running');
+      await gone('a-r1');
+      await gone('b-r1');
+      const view = await service(undefined, false).view('shop', 'd');
+      expect(view!.items[0]!.interrupted).toEqual({ runId: 'a-r1' });
+      expect(view!.items[1]!.interrupted).toEqual({ runId: 'b-r1' });
+    });
+
+    it('is marked when the run died before its first state snapshot', async () => {
+      await write([item('c', 'running', 'c-r1')]);
+      await journal('c-r1', [started('d-c')]);
+      await gone('c-r1');
+      expect((await service(undefined, false).view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'c-r1' });
+    });
+
+    it('marks the completion run of a completing item, not the run that delivered the spec', async () => {
+      await write([{ ...item('a', 'completing', 'a-r1'), completeRunId: 'a-complete-r1' }]);
+      await journal('a-r1', [started('d-a'), finished('awaiting-validation')]);
+      await journal('a-complete-r1', [started('d-a')]);
+      await gone('a-complete-r1');
+      expect((await service(undefined, false).view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'a-complete-r1' });
+    });
+
+    it('is not marked while its process lives, without a pid file, finished, or outside the flight', async () => {
+      await write([item('e', 'running', 'e-r1'), item('f', 'running', 'f-r1'), item('g', 'running', 'g-r1'), item('i', 'running', null), item('h', 'done', 'h-r1'), item('j', 'pending', 'j-r1'), item('k', 'failed', 'k-r1'), item('l', 'blocked', 'l-r1'), item('m', 'partial', 'm-r1'), item('n', 'waiting', 'n-r1')]);
+      await journal('e-r1', [started('d-e')]);
+      await fs.writeFile(path.join(runsDir(), 'e-r1', 'pid'), '4242');
+      await journal('f-r1', [started('d-f')]);
+      await state('f-r1', 'running');
+      await journal('g-r1', [started('d-g'), finished('awaiting-validation')]);
+      await gone('g-r1');
+      for (const key of ['h', 'j', 'k', 'l', 'm', 'n']) {
+        await journal(`${key}-r1`, [started(`d-${key}`)]);
+        await gone(`${key}-r1`);
+      }
+      const items = (await service().view('shop', 'd'))!.items;
+      expect(items.filter((i) => i.interrupted !== undefined)).toEqual([]);
+    });
+
+    it('reads a run paused for a new login as paused, not as interrupted', async () => {
+      await write([item('j', 'running', 'j-r1')]);
+      await journal('j-r1', [started('d-j'), { type: 'RUN_PAUSED', data: { reason: 'auth' } }]);
+      await state('j-r1', 'paused:auth');
+      await gone('j-r1');
+      const view = await service(undefined, false).view('shop', 'd');
+      expect(view!.items[0]).not.toHaveProperty('interrupted');
+      expect(view!.items[0]!.pause).toEqual({ reason: 'auth' });
+    });
+
+    it('reads a run paused for the quota whose process died as interrupted, as the list does', async () => {
+      await write([item('q', 'running', 'q-r1')]);
+      await journal('q-r1', [started('d-q'), { type: 'RUN_PAUSED', data: { reason: 'quota' } }]);
+      await state('q-r1', 'paused:quota');
+      await gone('q-r1');
+      expect((await service(undefined, false).view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'q-r1' });
+    });
+
+    it('clears the mark once the run has its process back', async () => {
+      await write([item('k', 'running', 'k-r1')]);
+      await journal('k-r1', [started('d-k')]);
+      await state('k-r1', 'running');
+      await gone('k-r1');
+      expect((await service(undefined, false).view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'k-r1' });
+      await fs.rm(path.join(runsDir(), 'k-r1', 'pid.gone'));
+      await fs.writeFile(path.join(runsDir(), 'k-r1', 'pid'), '4242');
+      expect((await service().view('shop', 'd'))!.items[0]).not.toHaveProperty('interrupted');
+    });
+
+    it('keeps the restart answer of outcome after the view retires a dead pid file', async () => {
+      await write([item('l', 'running', 'l-r1')]);
+      await journal('l-r1', [started('d-l')]);
+      await state('l-r1', 'running');
+      const pid = path.join(runsDir(), 'l-r1', 'pid');
+      await fs.writeFile(pid, '999999');
+      const launched = new Date(Date.now() - 3_600_000);
+      await fs.utimes(pid, launched, launched);
+      const s = service(undefined, false);
+      expect((await s.view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'l-r1' });
+      expect(await s.outcome('l-r1')).toEqual({ kind: 'interrupted', restart: true });
+    });
   });
 });

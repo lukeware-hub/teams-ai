@@ -53,8 +53,8 @@ const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecis
   answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
 });
 
-/** An item as the screen reads it: the ledger's item, the pull requests of its runs and, while a run waits, why and until when. */
-export type ProgramItemView = ProgramItem & Pick<RunFacts, 'prs' | 'pause'>;
+/** An item as the screen reads it: the ledger's item, the pull requests of its runs, why and until when a run waits, and whether its process is gone. */
+export type ProgramItemView = ProgramItem & Pick<RunFacts, 'prs' | 'pause'> & { interrupted?: { runId: string } };
 export type ProgramView = Omit<Program, 'items'> & { items: ProgramItemView[] };
 
 export const programFile = (draftRoot: string): string => path.posix.join(draftRoot, 'program.json');
@@ -119,16 +119,26 @@ export class ProgramService {
     return facts;
   }
 
-  /** The ledger with each item's pull requests and, for a run paused by the quota or the login, why and until when. */
+  /** The ledger with each item's pull requests, its pause, and whether its run lost its process. */
   async view(projectId: string, draftId: string): Promise<ProgramView | null> {
     const program = await this.read(projectId, draftId);
     if (program === null) return null;
-    const runs = runsDirOf(await this.index());
+    const idx = await this.index();
+    const runs = runsDirOf(idx);
     const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
       const { prs, pause } = await this.runFacts(item, runs);
-      return { ...item, prs, ...(pause ? { pause } : {}) };
+      const lost = await this.lostRun(item, idx);
+      return { ...item, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
     }));
     return { ...program, items };
+  }
+
+  /** The run of an item in flight whose process is gone, or null: stopped by the owner, died, or never wrote its state. */
+  private async lostRun(item: ProgramItem, idx: IndexDeps): Promise<string | null> {
+    const runId = item.status === 'running' ? item.runId : item.status === 'completing' ? item.completeRunId : null;
+    if (runId === null) return null;
+    const row = await runRow(idx, runId).catch(() => null);
+    return row?.status === 'interrupted' || row?.status === 'unknown' ? runId : null;
   }
 
   /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many asked nobody answered. */
