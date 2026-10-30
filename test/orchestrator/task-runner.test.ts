@@ -504,6 +504,24 @@ describe('TaskRunner: reviewing', () => {
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.changeSet).toContain('src/a.ts');
   });
 
+  it('hands the reviewer the Portuguese the task adds to its files and its commit messages', async () => {
+    const dev: Agent = async (req) => {
+      if (req.kind === 'security') return secApprove();
+      if (req.kind === 'ui-check' || req.kind === 'review') return approve();
+      await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), '// criar o total do carrinho\nexport const total = 1;\n');
+      return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: criar cadastro de usuario', deviations: [] });
+    };
+    const r = new TaskRunner('T1', deps({ agent: dev }));
+    await r.advance();
+    await r.advance();
+    await r.advance();
+    const { changeSet } = agentCalls.find((c) => c.kind === 'review')!.pack;
+    expect(changeSet).toContain('Language check (hints, not proof)');
+    expect(changeSet).toContain('- src/a.ts:1 // criar o total do carrinho');
+    expect(changeSet).toContain('- commit message: feat: criar cadastro de usuario');
+  });
+
   it('returns findings to Dev on changes', async () => {
     const r = await validated(async () => review('changes'));
     await r.advance();

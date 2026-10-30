@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { GLOBAL_RULES } from '../../server/agents/global-rules.js';
 import { loadAgents } from '../../server/agents/registry.js';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
@@ -116,6 +117,28 @@ describe('orchestrator loop with the fake claude', () => {
     // A task's security and review steps run side by side (R11.13 slice 5): only the place of the pair is fixed.
     const paired = (seen: readonly string[]) => seen.map((s) => s.replace(/^(security|review)\//, 'check/'));
     expect(paired(scenario.seen)).toEqual(paired(steps));
+  });
+
+  it('sends the global rules to every agent, and the reviewer the Portuguese the task adds', { timeout: 300_000 }, async () => {
+    const scenario = happyScenario(path.join(remote.root, 'scn-language'));
+    // T1-a's Dev adds a Portuguese comment and writes its commit message in Portuguese.
+    scenario.set('dev', 'T1-a', 1, { output: { specHash: HASH, status: 'done', summary: 'did T1-a', changedFiles: ['src/a/index.ts'], commitMessage: 'feat: criar cadastro de usuario' }, files: { 'src/a/index.ts': '// criar o total do carrinho\nexport const total = 1;\n' } });
+    const run = await Run.create({ ...deps(scenario), agents: await loadAgents(path.resolve('.claude/agents')) });
+    expect(await run.execute()).toBe('complete');
+    await run.close();
+    // Every step wrote its agent definition, and each one starts with the global rules, once.
+    const runs = path.join(remote.root, 'runs');
+    const definitions = (await fs.readdir(runs, { recursive: true })).filter((f) => f.endsWith('.agents.json'));
+    expect(definitions).toHaveLength(scenario.seen.length);
+    for (const file of definitions) {
+      const [agent] = Object.values(JSON.parse(await fs.readFile(path.join(runs, file), 'utf8'))) as Array<{ prompt: string }>;
+      expect(agent!.prompt.startsWith(`${GLOBAL_RULES}\n\n`)).toBe(true);
+      expect(agent!.prompt.split(GLOBAL_RULES)).toHaveLength(2);
+    }
+    // The reviewer's pack lists the Portuguese the task adds, in its files and in its commit message.
+    const prompts = await promptsOf(runs);
+    expect(prompts.some((p) => p.includes('- src/a/index.ts:1 // criar o total do carrinho'))).toBe(true);
+    expect(prompts.some((p) => p.includes('- commit message: feat: criar cadastro de usuario'))).toBe(true);
   });
 
   it('gives the agents the earlier docs that match the spec objectives', { timeout: 300_000 }, async () => {

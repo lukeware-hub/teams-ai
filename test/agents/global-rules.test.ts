@@ -14,6 +14,7 @@ describe('global rules', () => {
     expect(GLOBAL_RULES).toContain('100% English');
     expect(GLOBAL_RULES).toContain('outrank');
     expect(GLOBAL_RULES).toContain('Brazilian Portuguese (pt-BR)');
+    expect(GLOBAL_RULES).toContain('A reviewer reports a breach of rule 1 as a defect');
   });
 
   it('stay short, so every step pays little for them', () => {
