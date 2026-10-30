@@ -18,7 +18,7 @@ import { triageGateFailure } from '../decide/decisions/gate-triage.js';
 import { chooseModelTier, heuristicTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
 import { assessScopeDrift } from '../decide/decisions/scope-drift.js';
-import type { Role } from '../config/config.js';
+import type { AgentSetting, Role } from '../config/config.js';
 import type { TestResult } from '../evidence/junit.js';
 import { verifyClaimedEvidence } from '../evidence/matrix.js';
 import type { Exec } from '../exec/command.js';
@@ -40,6 +40,7 @@ import { applyGateFixes, effectivePlan, gateFixErrors, gateFixes, gateImageError
 import { withMainSnapshot } from './phases/shared.js';
 import { blockOptionsPack, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
+import type { StoredEvent } from '../store/event-store.js';
 import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSkill } from '../skills/store.js';
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
@@ -72,6 +73,8 @@ export interface TaskRunnerDeps {
   tierModel: (role: Role, tier: ModelTier) => string;
   /** R11.13 slice 6: when the decision layer gives no tier, the task's own size picks one (config `routing`); absent means off. */
   routing?: { tiers: 'off' | 'shadow' | 'on'; models: Record<ModelTier, string> };
+  /** The model and effort the user fixed for a role; absent means none is fixed. */
+  agentSetting?: (role: Role) => Promise<AgentSetting | undefined>;
   policy: PolicyConfig;
   /** Tokens the task has used so far, from the run's accounting; absent counts as none. */
   spentTokens?: (taskId: string) => number;
@@ -91,6 +94,8 @@ export interface TaskRunnerDeps {
   testDatabaseUrl?: string | null;
   /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
   deliveredBefore: ReadonlySet<string>;
+  /** The gate corrections earlier runs of this spec version accepted; they apply here but count toward no limit of this run. Absent means none. */
+  priorGateFixes?: readonly StoredEvent[];
   skillsRoot: string;
   /** Runs the skill fetches: a public skill needs no token, so the orchestrator's git exec is not used for it. */
   skillExec?: Exec;
@@ -177,11 +182,13 @@ export class TaskRunner {
     if (!routing || routing.tiers === 'off') return {};
     // The router sizes the implementing step; reviews keep their own role profile.
     const routed = heuristicTier(this.task.def, attempt);
+    // A manual setting for the role wins over the routed model when the step runs.
+    const applied = routing.tiers === 'on' && !(await this.deps.agentSetting?.(role));
     if (this.routedAttempt !== attempt) {
       this.routedAttempt = attempt;
-      await this.deps.journal.fact(OrchEvent.ModelTierChosen, { taskId: this.taskId, attempt, tier: routed.tier, model: routing.models[routed.tier!], applied: routing.tiers === 'on', source: routed.source });
+      await this.deps.journal.fact(OrchEvent.ModelTierChosen, { taskId: this.taskId, attempt, tier: routed.tier, model: routing.models[routed.tier!], applied, source: routed.source });
     }
-    return routing.tiers === 'on' && role !== 'test' ? { model: routing.models[routed.tier!] } : {};
+    return applied && role !== 'test' ? { model: routing.models[routed.tier!] } : {};
   }
 
   private get ctx(): DecideContext {
@@ -299,6 +306,8 @@ export class TaskRunner {
   }
 
   private async implement(): Promise<void> {
+    // A draining run starts no Dev step; the task stays implementing and a resume continues it.
+    if (this.deps.journal.state.status === 'draining') return;
     if (!(await this.ensureWorktree())) return;
     // The scaffold task's job is to create the manifest and lockfile from nothing: on its first attempts the
     // worktree has neither, so the install command fails deterministically (e.g. `npm ci` prints its own usage
@@ -545,7 +554,7 @@ export class TaskRunner {
   private async fixGate(fix: GateFix, reason: string): Promise<void> {
     const service = this.task.def.service ?? null;
     const fixes = gateFixes(this.deps.journal.events, service);
-    const plan = applyGateFixes(this.deps.plan, fixes);
+    const plan = applyGateFixes(this.deps.plan, [...gateFixes(this.deps.priorGateFixes ?? [], service), ...fixes]);
     const errors = gateFixErrors(plan, fix, fixes.filter((f) => f.gate === fix.gate).length);
     if (errors.length > 0) {
       await this.feedback(`Gate fix not applied: ${errors.join('; ')}.`);
@@ -564,7 +573,7 @@ export class TaskRunner {
     }
     const service = this.task.def.service ?? null;
     const events = this.deps.journal.events;
-    const before = effectivePlan(this.deps.plan, events, service).gateImage;
+    const before = effectivePlan(this.deps.plan, [...(this.deps.priorGateFixes ?? []), ...events], service).gateImage;
     const errors = gateImageErrors(before, image, gateImageFixes(events, service).length);
     if (errors.length > 0) {
       await this.feedback(`Gate image not changed: ${errors.join('; ')}.`);

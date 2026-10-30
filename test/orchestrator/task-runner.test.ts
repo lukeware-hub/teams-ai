@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MODELS } from '../../server/config/config.js';
 import type { DecisionOutcome } from '../../server/decide/types.js';
 import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
@@ -221,6 +222,24 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'spec-gap', 'dev']);
     expect(agentCalls[2]!.pack.feedback).toContain('Use UTC everywhere');
     expect(agentCalls[2]!.pack.assumptions).toContain('T1: timezone → UTC');
+  });
+
+  it('a spec-gap answered after a stop request starts no new Dev step and leaves the task implementing', async () => {
+    const agent: Agent = async (req) => {
+      await journal.fact(OrchEvent.StepStarted, { stepId: `s${agentCalls.length}`, kind: req.kind, taskId: 'T1' });
+      if (req.kind === 'dev') return ok({ specHash: HASH, status: 'spec-gap', summary: 'unclear', changedFiles: [], question: 'Which timezone?' });
+      // The stop lands while the SM answers.
+      await journal.fact(RunEvent.RunStopRequested, {});
+      return ok({ specHash: HASH, answer: 'Use UTC everywhere', assumption: 'T1: timezone → UTC' });
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    const stop = journal.events.findIndex((e) => e.type === RunEvent.RunStopRequested);
+    expect(journal.events.slice(stop).some((e) => e.type === OrchEvent.StepStarted)).toBe(false);
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'spec-gap']);
+    expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });
+    expect(r.done).toBe(false);
+    expect(journal.lastFeedback('T1')).toContain('Use UTC everywhere');
   });
 
   it('a blocked Dev blocks the task at once with the reason and the SM asks the owner: no attempt consumed', async () => {
@@ -1079,6 +1098,16 @@ describe('TaskRunner: tier routing', () => {
     expect(agentCalls.find((c) => c.kind === 'dev')!.model).toBe('sonnet');
     expect(agentCalls.find((c) => c.kind === 'review')!.model).toBeUndefined();
     expect(journal.events.filter((e) => e.type === OrchEvent.ModelTierChosen)).toHaveLength(1);
+  });
+
+  it('on with a manual setting for the role journals the choice as not applied and keeps the routed model off the step', async () => {
+    const agentSetting = async (role: string) => (role === 'dev' ? { model: MODELS.opus, effort: 'high' as const } : undefined);
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models }, agentSetting }));
+    await r.advance();
+    expect(agentCalls[0]!.model).toBeUndefined();
+    const chosen = journal.events.filter((e) => e.type === OrchEvent.ModelTierChosen);
+    expect(chosen).toHaveLength(1);
+    expect(chosen[0]!.data).toMatchObject({ tier: 'small', model: 'sonnet', applied: false });
   });
 
   it('defers to the decision layer when it answers', async () => {

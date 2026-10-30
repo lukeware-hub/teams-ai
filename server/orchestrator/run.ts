@@ -44,7 +44,8 @@ import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../en
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
-import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
+import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, sameVersionRunEvents, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
+import type { StoredEvent } from '../store/event-store.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
@@ -183,14 +184,16 @@ export class Run {
   private design: string | null = null;
   private readonly runners = new Map<string, TaskRunner>();
   private readonly inflight = new Map<string, Promise<void>>();
-  /** Observe mode journaled the spent run budget already. */
-  private runBudgetNoted: boolean;
+  /** The tasks, and the run as null, whose spent budget observe mode journaled already. */
+  private readonly budgetNoted: Set<string | null>;
   private readonly deps: RunDeps;
 
   private constructor(
     readonly runId: string,
     readonly journal: Journal,
     rawDeps: RunDeps,
+    /** The gate corrections earlier runs of this spec version accepted: applied here, never journaled again, counted toward no limit of this run. */
+    private readonly priorGateFixes: readonly StoredEvent[],
   ) {
     this.deps = withApiKeySplit(rawDeps);
     const deps = this.deps;
@@ -199,7 +202,7 @@ export class Run {
     this.log = deps.log ?? ((l) => process.stderr.write(`${l}\n`));
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
-    this.runBudgetNoted = journal.events.some((e) => e.type === OrchEvent.BudgetExceeded && e.data.taskId === null);
+    this.budgetNoted = new Set(journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => (e.data.taskId as string | null) ?? null));
     this.rebuildAccounting();
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
@@ -232,7 +235,13 @@ export class Run {
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
     await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec });
-    return new Run(id, journal, deps);
+    return new Run(id, journal, deps, await Run.loadPriorGateFixes(deps, id));
+  }
+
+  /** The GATE_FIXED and GATE_IMAGE_FIXED facts of earlier runs of this same spec version, oldest first. */
+  private static async loadPriorGateFixes(deps: RunDeps, runId: string): Promise<StoredEvent[]> {
+    const fixes = new Set<string>([OrchEvent.GateFixed, OrchEvent.GateImageFixed]);
+    return (await sameVersionRunEvents(deps.ws, deps.spec.specId, runId, deps.spec.specHash!)).flat().filter((e) => fixes.has(e.type));
   }
 
   static async resume(deps: RunDeps, runId: string): Promise<Run> {
@@ -241,7 +250,7 @@ export class Run {
     // The UI marks a run whose process died with `pid.gone`; any resume, CLI or UI, ends that state.
     await fs.rm(path.join(runDir(deps.ws, runId), 'pid.gone'), { force: true });
     const journal = await Run.openJournal(deps, runId);
-    const run = new Run(runId, journal, deps);
+    const run = new Run(runId, journal, deps, await Run.loadPriorGateFixes(deps, runId));
     await reconcile({ journal, ws: deps.ws, exec: deps.exec, ghExec: deps.ghExec, afterMerge: (taskId, branch) => run.afterMergeOnResume(taskId, branch), log: run.log, currentImage: deps.target?.currentImage.bind(deps.target) });
     // `resume` is the human's signal that the login was redone (spec §7 "resume tries again").
     // A hand resume of a stopped run is journaled too: the supervisor reads a stop as intentional only while it is the last lifecycle event.
@@ -444,9 +453,14 @@ export class Run {
     return failed;
   }
 
+  /** A plan as the run executes it: the gate corrections of earlier runs of this spec version, then this run's own. */
+  private effective(plan: Plan, service: string | null): Plan {
+    return effectivePlan(plan, [...this.priorGateFixes, ...this.journal.events], service);
+  }
+
   /** The plan's install command in the gate container, never on the host: the toolchain must be the plan's gateImage, not the orchestrator's. */
   private async installInGate(view: ServiceView, worktree = this.wsOf(view).repo): Promise<GateResult | null> {
-    const p = effectivePlan(view.plan, this.journal.events, view.service);
+    const p = this.effective(view.plan, view.service);
     const where = worktree === this.wsOf(view).repo ? 'deploy' : `install-${path.basename(worktree)}`.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const ctx = { worktree, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-${where}${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
     const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
@@ -470,7 +484,7 @@ export class Run {
 
   private gatesFor(view: ServiceView) {
     return async (worktree: string, branch: string) => {
-      const plan = effectivePlan(view.plan, this.journal.events, view.service);
+      const plan = this.effective(view.plan, view.service);
       const install = await this.installDeps(view, worktree);
       if (install) return { results: [install], blockingFailure: install };
       if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
@@ -601,10 +615,12 @@ export class Run {
       decider,
       tierModel: (_role, tier) => cfg.decisions.modelTiers[tier],
       routing: cfg.routing,
+      agentSetting: async (role) => (await this.manualSettings())[role],
       autonomous: () => this.autonomous(),
       policy: { ...DEFAULT_POLICY, ...cfg.retry },
       spentTokens: (taskId) => this.accounting.tokensOf(this.accounting.total({ taskId })),
-      packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: view.plan, addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
+      priorGateFixes: this.priorGateFixes,
+      packBase: view.service ? () => ({ ...this.packBase(), service: { name: view.service!, plan: this.effective(view.plan, view.service), addresses: Object.fromEntries(Object.entries(this.addresses).filter(([s]) => s !== view.service)), design: this.design } }) : this.packBase,
       deliveredBefore: this.deliveredBefore,
       skillsRoot: expandHome('~/.teams-ai/skills'),
       skillExec: execCommand,
@@ -644,14 +660,14 @@ export class Run {
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
-        const p = effectivePlan(scope?.plan ?? singlePlan(this.plan)!, this.journal.events, scope?.service ?? null);
+        const p = this.effective(scope?.plan ?? singlePlan(this.plan)!, scope?.service ?? null);
         const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
-        const p = effectivePlan(scope?.plan ?? singlePlan(this.plan)!, this.journal.events, scope?.service ?? null);
+        const p = this.effective(scope?.plan ?? singlePlan(this.plan)!, scope?.service ?? null);
         const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p, p.deploy.kind === 'front'), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
@@ -951,8 +967,8 @@ export class Run {
       if (state.status === 'running' && runTokens > cfg.budgets.perRunTokens) {
         if (!cfg.budgets.observeOnly) await this.journal.fact(RunEvent.RunBudgetExhausted, {});
         // Observe mode only records the spent budget, once per run.
-        else if (!this.runBudgetNoted) {
-          this.runBudgetNoted = true;
+        else if (!this.budgetNoted.has(null)) {
+          this.budgetNoted.add(null);
           await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: null, tokens: runTokens, cap: cfg.budgets.perRunTokens });
         }
       }
@@ -1008,8 +1024,12 @@ export class Run {
         const tokens = this.accounting.tokensOf(spent);
         const byCost = perTaskCostUsd !== undefined;
         if ((byCost ? spent.costUsd > perTaskCostUsd : tokens > perTaskTokens) && !runner.done) {
-          if (observeOnly) await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: id, tokens, cap: perTaskTokens, ...(byCost ? { costUsd: spent.costUsd, capUsd: perTaskCostUsd } : {}) });
-          else if (byCost) await runner.budgetExceeded(spent.costUsd, perTaskCostUsd, 'USD');
+          if (observeOnly) {
+            // Observe mode records a task's spent budget once.
+            if (this.budgetNoted.has(id)) return;
+            this.budgetNoted.add(id);
+            await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: id, tokens, cap: perTaskTokens, ...(byCost ? { costUsd: spent.costUsd, capUsd: perTaskCostUsd } : {}) });
+          } else if (byCost) await runner.budgetExceeded(spent.costUsd, perTaskCostUsd, 'USD');
           else await runner.budgetExceeded(tokens, perTaskTokens);
         }
       })

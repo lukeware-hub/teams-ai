@@ -142,4 +142,16 @@ describe('reconcile', () => {
     await journal.fact(OrchEvent.StepStarted, { stepId: 's00003', kind: 'dev', taskId: 'T1' });
     expect((await reconcile(deps())).redo).toEqual(['STEP:s00003']);
   });
+
+  it('closes an interrupted step once, without usage and without an attempt', async () => {
+    await journal.fact(OrchEvent.StepStarted, { stepId: 's00003', kind: 'dev', taskId: 'T1', attempt: 1 });
+    const attempts = journal.state.tasks.get('T1')!.attempts;
+    const finished = () => journal.events.filter((e) => e.type === OrchEvent.StepFinished);
+    await reconcile(deps());
+    expect(finished().map((e) => e.data)).toEqual([{ stepId: 's00003', kind: 'dev', taskId: 'T1', attempt: 1, ok: false, failure: 'interrupted' }]);
+    const count = journal.events.length;
+    expect((await reconcile(deps())).redo).toEqual([]);
+    expect(journal.events).toHaveLength(count);
+    expect(journal.state.tasks.get('T1')!.attempts).toBe(attempts);
+  });
 });

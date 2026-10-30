@@ -282,19 +282,30 @@ describe('runGate', () => {
   describe('the coverage gate (roadmap R10.2)', () => {
     const covCtx: GateContext = { ...ctx, coveragePath: 'reports/coverage-summary.json' };
     const covPath = '/home/u/ws/worktrees/T1-create/reports/coverage-summary.json';
+    // The gate command writes the summary during its run.
+    const writes = (f: ReturnType<typeof files>, summary: string) =>
+      new FakeExec().onArgs('docker', ['run'], () => {
+        f.store.set(covPath, summary);
+        return { stdout: 'ok' };
+      });
 
     it('passes when the command exits 0 and the written summary clears the floor', async () => {
-      const f = files({ [covPath]: '{"linesPct": 83.4}' });
-      const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
-      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: fake.exec, ...f.deps });
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 83.4}').exec, ...f.deps });
       expect(r).toMatchObject({ passed: true, failure: null });
     });
 
     it('fails even on exit 0 when the summary is below the floor', async () => {
-      const f = files({ [covPath]: '{"linesPct": 79.9}' });
-      const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
-      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: fake.exec, ...f.deps });
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 79.9}').exec, ...f.deps });
       expect(r).toMatchObject({ passed: false, failure: 'code' });
+    });
+
+    it('says in stderr that linesPct is below the floor', async () => {
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 77.6}').exec, ...f.deps });
+      expect(r).toMatchObject({ passed: false, failure: 'code' });
+      expect(r.stderrTail).toContain('linesPct 77.6 is below 80');
     });
 
     it('fails closed when the command exits 0 but never wrote the summary (a disarmed or broken command cannot pass this way)', async () => {
@@ -302,12 +313,21 @@ describe('runGate', () => {
       const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
       const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage || true' }), covCtx, { exec: fake.exec, ...f.deps });
       expect(r).toMatchObject({ passed: false, failure: 'code' });
+      expect(r.stderrTail).toContain('coverage: the coverage file is missing');
     });
 
     it('fails closed when the summary is malformed', async () => {
-      const f = files({ [covPath]: 'not json' });
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, 'not json').exec, ...f.deps });
+      expect(r).toMatchObject({ passed: false, failure: 'code' });
+      expect(r.stderrTail).toContain('coverage: the coverage file is not {"linesPct": N}: not json');
+    });
+
+    it('never lets a stale summary from an earlier attempt pass the gate', async () => {
+      const f = files({ [covPath]: '{"linesPct": 90}' });
       const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));
       const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: fake.exec, ...f.deps });
+      expect(f.removed).toContain(covPath);
       expect(r).toMatchObject({ passed: false, failure: 'code' });
     });
 

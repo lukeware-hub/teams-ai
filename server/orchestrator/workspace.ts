@@ -175,7 +175,7 @@ function deliveries(events: readonly StoredEvent[]): PlanTask[] {
  * same definition; a new version checks every task again, since a criterion may change under an unchanged task.
  */
 export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: string, tasks: readonly PlanTask[], specHash: string): Promise<Set<string>> {
-  const same = (await priorRunEvents(ws, specId, runId)).filter((events) => events[0]?.specHash === specHash);
+  const same = await sameVersionRunEvents(ws, specId, runId, specHash);
   const delivered = new Set(same.flatMap((events) => deliveries(events).map((t) => canonicalJson(t))));
   return new Set(tasks.filter((t) => delivered.has(canonicalJson(t))).map((t) => t.id));
 }
@@ -183,6 +183,11 @@ export async function mergedByPriorRuns(ws: Workspace, specId: string, runId: st
 /** The ids of the plan tasks any earlier run of this spec delivered, in any version, so an empty diff on one means its work is on main. */
 export async function deliveredByPriorRuns(ws: Workspace, specId: string, runId: string): Promise<Set<string>> {
   return new Set((await priorRunEvents(ws, specId, runId)).flatMap((events) => deliveries(events).map((t) => t.id)));
+}
+
+/** The journals of every earlier run of this same version of the spec in this project, oldest first. */
+export async function sameVersionRunEvents(ws: Workspace, specId: string, runId: string, specHash: string): Promise<StoredEvent[][]> {
+  return (await priorRunEvents(ws, specId, runId)).filter((events) => events[0]?.specHash === specHash);
 }
 
 /** The journals of every earlier run of this spec in this project, oldest first. */

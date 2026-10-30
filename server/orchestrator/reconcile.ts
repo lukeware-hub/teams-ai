@@ -141,11 +141,12 @@ export async function reconcile(deps: ReconcileDeps): Promise<ReconcileReport> {
   }
 
   const finished = new Set(journal.events.filter((e) => e.type === OrchEvent.StepFinished).map((e) => String(e.data.stepId)));
-  for (const e of journal.events) {
-    if (e.type === OrchEvent.StepStarted && !finished.has(String(e.data.stepId))) {
-      report.redo.push(`STEP:${String(e.data.stepId)}`);
-      deps.log(`reconcile: step ${String(e.data.stepId)} was interrupted; it re-runs without an attempt`);
-    }
+  const orphans = journal.events.filter((e) => e.type === OrchEvent.StepStarted && !finished.has(String(e.data.stepId)));
+  for (const e of orphans) {
+    report.redo.push(`STEP:${String(e.data.stepId)}`);
+    deps.log(`reconcile: step ${String(e.data.stepId)} was interrupted; it re-runs without an attempt`);
+    // Closes the step without usage, so it is not counted as spend.
+    await journal.fact(OrchEvent.StepFinished, { stepId: e.data.stepId, kind: e.data.kind, taskId: e.data.taskId, attempt: e.data.attempt, ok: false, failure: 'interrupted' });
   }
   return report;
 }

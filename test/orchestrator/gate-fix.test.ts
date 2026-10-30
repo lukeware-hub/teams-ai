@@ -49,11 +49,15 @@ describe('gate image fix errors', () => {
     expect(gateImageErrors(GO, 'golang:1.28.0-bookworm', 0)).toEqual([]);
   });
 
-  it('refuses another image, another flavour, a downgrade or the same tag', () => {
+  it('refuses another image, another flavour or a downgrade', () => {
     expect(gateImageErrors(GO, 'node:22-bookworm', 0)).toEqual(['the gate image keeps its repository: golang, not node']);
     expect(gateImageErrors(GO, 'golang:1.27.3-alpine', 0)).toEqual(['the gate image keeps its flavour: -bookworm, not -alpine']);
     expect(gateImageErrors(GO, 'golang:1.27.1-bookworm', 0)).toEqual(['the gate image only moves to a newer version: 1.27.2 to 1.27.1']);
-    expect(gateImageErrors(GO, GO, 0)).toEqual(['the gate image only moves to a newer version: 1.27.2 to 1.27.2']);
+  });
+
+  it('says the gate image already runs the same tag instead of asking for a newer version', () => {
+    expect(gateImageErrors(GO, GO, 0)).toEqual([`the gate image already runs ${GO}`]);
+    expect(gateImageErrors(GO, GO, MAX_GATE_FIXES)).toEqual([`the gate image already runs ${GO}`]);
   });
 
   it('refuses a tag-less, digest-pinned or malformed reference', () => {

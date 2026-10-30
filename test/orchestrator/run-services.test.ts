@@ -38,12 +38,14 @@ const summary = (): ResultSummary => ({ found: true, isError: false, subtype: 's
 
 /** The task whose first Dev answer is a spec gap, so the SM's answer reaches the run. */
 let gapOnce: string | null = null;
+/** A gate correction the SM's spec-gap answer carries, when set. */
+let gapFix: { gate: string; command: string } | null = null;
 
 async function script(req: StepRequest): Promise<StepOutcome<any>> {
   const id = req.taskId!;
   switch (req.kind) {
     case 'spec-gap':
-      return { ok: true, value: { specHash: HASH, answer: 'Move to the patched Go', assumption: `${id}: patched toolchain`, imageFix: { gateImage: 'golang:1.26.9-bookworm' } }, summary: summary() };
+      return { ok: true, value: { specHash: HASH, answer: 'Move to the patched Go', assumption: `${id}: patched toolchain`, imageFix: { gateImage: 'golang:1.26.9-bookworm' }, ...(gapFix ? { gateFix: gapFix } : {}) }, summary: summary() };
     case 'dev':
       if (gapOnce === id) {
         gapOnce = null;
@@ -93,6 +95,7 @@ beforeEach(async () => {
   }
 });
 afterEach(async () => {
+  gapFix = null;
   ghs.clear();
   ghExecs.clear();
   domains.clear();
@@ -173,6 +176,18 @@ describe('Run with a services plan', () => {
     const installs = runs.filter((l) => l.includes('-install ') && l.includes('teams-ai-gate:'));
     expect(installs.some((l) => l.includes('teams-ai-gate:golang-1.26.9-bookworm-'))).toBe(true);
     expect(installs.some((l) => l.includes('teams-ai-gate:node-22-bookworm-'))).toBe(true);
+    await run.close();
+  }, 180_000);
+
+  it("shows the next Dev step of a service the gate command the SM corrected, not the plan's", async () => {
+    gapOnce = 'T2-reserve-stock';
+    gapFix = { gate: 'lint', command: 'npm run lint -- --quiet' };
+    const run = await Run.create(await deps());
+    expect(await run.execute()).toBe('complete');
+    expect(run.journal.events.find((e) => e.type === 'GATE_FIXED')!.data).toMatchObject({ service: 'inventory-api', gate: 'lint', after: 'npm run lint -- --quiet' });
+    const prompt = prompts.get('dev:dev:T2-reserve-stock')!;
+    expect(prompt).toContain('"command":"npm run lint -- --quiet"');
+    expect(prompt).not.toContain('"command":"npm run lint"');
     await run.close();
   }, 180_000);
 

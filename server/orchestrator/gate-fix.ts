@@ -64,6 +64,7 @@ const imageParts = (image: string) => {
 
 /** Why a gate image change must not stand, or nothing when it may: the same image and flavour, a newer version, within the limit. */
 export function gateImageErrors(current: string, next: string, applied: number): string[] {
+  if (next === current) return [`the gate image already runs ${current}`];
   if (!IMAGE_REFERENCE.test(next)) return [`${JSON.stringify(next)} is not a plain image reference`];
   const from = imageParts(current);
   const to = imageParts(next);

@@ -240,6 +240,41 @@ describe('Run', () => {
     await run.close();
   }, 180_000);
 
+  it('journals a task over its budget once in observe mode, also across a resume', async () => {
+    let reviews = 0;
+    const script: Script = async (req) => (req.kind === 'review' && reviews++ === 0 ? { ok: false, failure: 'auth', errors: ['not logged in'], summary: summary({ isError: true }), sandboxDisabled: false } : happy(req));
+    const d = await withAgents(deps(script, { maxParallel: 1 }));
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: true, perTaskTokens: 1, perRunTokens: 1_000_000 } });
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('paused:auth');
+    expect(run.journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => e.data.taskId)).toEqual(['T1']);
+    await run.close();
+    const resumed = await Run.resume(d, run.runId);
+    expect(await resumed.execute()).toBe('complete');
+    expect(resumed.journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => e.data.taskId)).toEqual(['T1', 'T2']);
+    await resumed.close();
+  }, 180_000);
+
+  it('starts a new run of the same spec version with the gate corrections an earlier run accepted, without journaling them again', async () => {
+    // Earlier runs are read only from the workspace of the project that started them.
+    const base = await withAgents(deps(happy));
+    const d = { ...base, ws: { ...base.ws, projectId: project.projectId } };
+    const first = await Run.create(d);
+    await first.journal.fact(OrchEvent.GateFixed, { taskId: 'T1', service: null, gate: 'lint', before: 'npm run lint', after: 'npm run lint -- --quiet', reason: 'test' });
+    await first.close();
+    const docker: string[] = [];
+    const second = await Run.create({ ...d, exec: async (s) => { if (s.bin === 'docker') docker.push(s.args.join(' ')); return d.exec(s); } });
+    expect(await second.execute()).toBe('complete');
+    expect(docker.some((l) => l.endsWith(' sh -c npm run lint -- --quiet'))).toBe(true);
+    expect(docker.some((l) => l.endsWith(' sh -c npm run lint'))).toBe(false);
+    expect(second.journal.events.some((e) => e.type === OrchEvent.GateFixed)).toBe(false);
+    await second.close();
+    // A run of another version of the spec carries none of them.
+    const other = await Run.create({ ...d, spec: { ...spec, specHash: 'f'.repeat(64) } });
+    expect((other as unknown as { priorGateFixes: unknown[] }).priorGateFixes).toEqual([]);
+    await other.close();
+  }, 180_000);
+
   it('charges a task over its budget with a failed attempt', async () => {
     const d = await withAgents(deps(async (req) => (req.kind === 'dev' ? { ...(await happy(req)), summary: summary({ usage: { inputTokens: 60_000, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 } }) } : happy(req)), { maxParallel: 1 }));
     const run = await Run.create(d);

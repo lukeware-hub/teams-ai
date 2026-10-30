@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Gate } from '../contracts/plan.js';
 import { redactSecrets } from '../core/redact.js';
 import { FLUTTER_IMAGE_TAG, androidCommand, androidImageSteps } from './android-toolchain.js';
-import { COVERAGE_GATE, coveragePasses, parseCoverageSummary } from './coverage.js';
+import { COVERAGE_GATE, MIN_LINE_COVERAGE_PCT, coveragePasses, parseCoverageSummary } from './coverage.js';
 import { parseJUnit, parseTap, type TestResult } from '../evidence/junit.js';
 import type { Exec } from './command.js';
 import { stackEnv, type AndroidToolchain } from '../runner/stacks.js';
@@ -258,11 +258,22 @@ function coverageFile(ctx: GateContext): string | null {
   return file;
 }
 
+/** Why the coverage file fails the gate, or null when it clears the floor; the file excerpt is redacted before the cut. */
+function coverageFailure(raw: string | null, secretValues: readonly string[]): string | null {
+  if (raw === null) return 'coverage: the coverage file is missing';
+  const summary = parseCoverageSummary(raw);
+  if (summary === null) return `coverage: the coverage file is not {"linesPct": N}: ${redactSecrets(raw, secretValues).slice(0, 80)}`;
+  return coveragePasses(summary) ? null : `coverage: linesPct ${summary.linesPct} is below ${MIN_LINE_COVERAGE_PCT}`;
+}
+
 export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Promise<GateResult> {
   const started = Date.now();
   const report = junitFile(ctx);
   // A stale report from a previous attempt must never be mistaken for this gate's evidence.
   await deps.removeFile(report);
+  // The same for a coverage summary: one left by an earlier attempt must never pass this gate.
+  const coverage = gate.name === COVERAGE_GATE ? coverageFile(ctx) : null;
+  if (coverage !== null) await deps.removeFile(coverage);
 
   let base: Omit<GateResult, 'name' | 'blocking' | 'passed' | 'junit' | 'failure'>;
   let stdout = '';
@@ -300,12 +311,11 @@ export async function runGate(gate: Gate, ctx: GateContext, deps: GateDeps): Pro
   let finalPassed = passed;
   let failure: GateResult['failure'] = passed ? null : classifyGate({ ...base, oomKilled });
   if (passed && gate.name === COVERAGE_GATE) {
-    const file = coverageFile(ctx);
-    const raw = file !== null ? await deps.readFile(file) : null;
-    const summary = raw !== null ? parseCoverageSummary(raw) : null;
-    if (!coveragePasses(summary)) {
+    const reason = coverageFailure(coverage !== null ? await deps.readFile(coverage) : null, secretValues);
+    if (reason !== null) {
       finalPassed = false;
       failure = 'code';
+      base.stderrTail = clean(base.stderrTail ? `${base.stderrTail}\n${reason}` : reason);
     }
   }
   return { name: gate.name, blocking: gate.blocking, passed: finalPassed, junit, failure, ...base };

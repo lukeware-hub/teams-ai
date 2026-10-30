@@ -438,6 +438,15 @@ describe('phase activity', () => {
     expect(currentActivity([...list, { ...list[2]!, seq: 9, type: 'STEP_FINISHED', data: { stepId: 's2', ok: true } }]).running).toEqual([]);
   });
 
+  it('a resume drops the steps that were open before the stop', () => {
+    const list = evs([
+      ['STEP_STARTED', { stepId: 'old', kind: 'coverage', role: 'po', taskId: null, attempt: 1 }],
+      ['RUN_RESUMED', {}],
+      ['STEP_STARTED', { stepId: 'new', kind: 'plan', role: 'sm', taskId: null, attempt: 1 }],
+    ]);
+    expect(currentActivity(list).running.map((s) => s.stepId)).toEqual(['new']);
+  });
+
   it('lists each task blocked in a phase under that phase, and a later block moves it', () => {
     const out = phaseActivity(
       evs([

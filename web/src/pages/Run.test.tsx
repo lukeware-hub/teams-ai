@@ -244,6 +244,13 @@ describe('RunView', () => {
       expect(progress()).toMatchObject({ merged: '1 de 3 tarefas mescladas', active: null, blocked: '1 bloqueada', segments: ['seg-merged', 'seg-blocked'] });
     });
 
+    it('leaves a replanned task out of the task total', () => {
+      const task = (id: string) => ({ id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' });
+      const events = [ev(1, 'TASK_PLANNED', { task: task('T1'), replan: false }), ev(2, 'TASK_REPLANNED', { taskId: 'T1', replacements: [task('T2')] }), ev(3, 'TASK_STATE_CHANGED', { taskId: 'T2', to: 'merged' })];
+      render(view({ events, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.getByTestId('task-progress').textContent).toBe('1 de 1 tarefas mescladas');
+    });
+
     it("names each task's service in the tasks card", () => {
       const planned = ev(1, 'TASK_PLANNED', { task: { id: 'T1', title: 'T1', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan', service: 'orders-api' }, replan: false });
       render(view({ events: [planned], ended: false, detail: { ...detail, status: 'running' } }));

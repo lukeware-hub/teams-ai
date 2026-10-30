@@ -1,10 +1,13 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
+import { Intent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { renderCi, renderRelease, CI_PATH, RELEASE_PATH } from '../../server/orchestrator/workflows.js';
+import { worktreeDir } from '../../server/orchestrator/workspace.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makePlan, makeProject } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -63,13 +66,17 @@ describe('workflow bootstrap (R8.3)', () => {
     await run.close();
   });
 
-  it('opens no PR when both files already exist', { timeout: 60_000 }, async () => {
+  it('opens no PR when both files already exist and removes the docs worktree', { timeout: 60_000 }, async () => {
     remote = await makeRemote({ 'README.md': 'seed', [CI_PATH]: 'a: 1\n', [RELEASE_PATH]: 'b: 2\n' });
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     const gh = new FakeGh().install(exec);
-    const run = await Run.create(deps(exec), 'hello-001-r1');
+    const d = deps(exec);
+    const run = await Run.create(d, 'hello-001-r1');
     expect(await run.executeWorkflows(plan)).toEqual({ ok: true });
     expect(gh.prs).toHaveLength(0);
+    const branch = 'docs/hello-001-workflows';
+    await expect(fs.access(worktreeDir(d.ws, branch))).rejects.toThrow();
+    expect(run.journal.isConfirmed(Intent.WorktreeRemove, branch)).toBe(true);
     await run.close();
   });
 });

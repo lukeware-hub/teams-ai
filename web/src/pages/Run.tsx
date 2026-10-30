@@ -69,7 +69,7 @@ const steps = (n: number) => `${n} ${n === 1 ? 'etapa' : 'etapas'}`;
 // Journal keys of the token breakdown by phase; any other key shows as recorded.
 const PHASE_LABEL: Record<string, string> = { decide: 'Decisões automáticas', phase: 'Especificação, plano e relatório', phase3: 'Tarefas' };
 // Journal role ids. The id stays beside the name because plan owners and step rows on this screen use it.
-const ROLE_LABEL: Record<string, string> = { dev: 'Desenvolvimento', sm: 'Scrum Master', po: 'Product Owner', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', system1: 'Decisões automáticas' };
+const ROLE_LABEL: Record<string, string> = { dev: 'Desenvolvimento', front: 'Front-end', sm: 'Scrum Master', po: 'Product Owner', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', system1: 'Decisões automáticas' };
 const TIP = {
   merged: 'Tarefas cujo pull request já entrou na branch main. A barra mostra a mesma proporção.',
   steps: 'Cada chamada a um agente (Dev, Scrum Master, revisão, segurança) ou decisão automática conta como uma etapa.',
@@ -126,7 +126,7 @@ const roleName = (role: string) =>
     role
   );
 
-const OWNER_ICON: Record<string, IconName> = { dev: 'code', devops: 'server', test: 'check', sec: 'shield', po: 'clipboard', sm: 'list' };
+const OWNER_ICON: Record<string, IconName> = { dev: 'code', front: 'code', devops: 'server', test: 'check', sec: 'shield', po: 'clipboard', sm: 'list' };
 const ORIGIN_LABEL: Record<string, string> = { fix: 'correção', 'deploy-fix': 'correção de deploy' };
 const ORIGIN_HELP: Record<string, string> = { fix: 'Tarefa criada para corrigir um problema encontrado numa tarefa anterior.', 'deploy-fix': 'Tarefa criada para corrigir uma falha do deploy.' };
 const SERVICE_HELP = 'O serviço do projeto ao qual esta tarefa pertence.';
@@ -546,7 +546,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const before = stop ? stopBefore(status, blocked, autonomous) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
   const prs = mergedPrs(unique);
-  const totalTasks = state.order.length;
+  const totalTasks = state.order.filter((id) => state.tasks.get(id)!.state !== 'superseded').length;
   // Merged is the only finished state, so the bar also shows work in flight and blocked work: otherwise a run
   // sits at "0 de N" for as long as its tasks are being implemented, validated and reviewed.
   const tally = [...state.tasks.values()].reduce((acc, t) => {

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf } from '../../refine/plan-file.js';
 import { repoName } from '../../core/ids.js';
-import { fetch as gitFetch, git, headSha } from '../../git/git.js';
+import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
 import type { Plan } from '../../contracts/plan.js';
 import { Intent, OrchEvent } from '../events.js';
@@ -252,7 +252,13 @@ export async function runWorkflowBootstrap(deps: PhaseDeps, plan: Plan): Promise
       await fs.writeFile(path.join(wt, f.path), f.text);
       wrote += 1;
     }
-    if (wrote === 0) return { ok: true };
+    if (wrote === 0) {
+      // Nothing to merge, so the worktree goes here as a merge would remove it.
+      await journal.intent(Intent.WorktreeRemove, branch, { worktree: wt, repo: deps.ws.repo });
+      await removeWorktree(deps.ws.repo, wt, deps.exec);
+      await journal.confirm(Intent.WorktreeRemove, branch, {});
+      return { ok: true };
+    }
   }
   return commitAndMergeDocs(deps, 7, branch, wt, `ci(${spec.specId}): GitHub Actions workflows`);
 }
