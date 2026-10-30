@@ -103,3 +103,14 @@ Status: built 2026-10-30, pending the owner's check on the run screen.
 - The new route `GET /api/runs/:runId/test-links` answers on demand, so the run screen's seven-second refresh does not search the code.
 - Not done: the commit that a verification ran on is not recorded, so a link follows the current main and a test moved after its run has no link.
 - Not done: only Go was checked on a real run; the other stacks are covered by tests with real git repositories.
+
+## 15. Global agent rules for every project
+
+Status: built 2026-10-30, pending the owner's check on a real run.
+
+- Every agent step of every project receives the global rules first (`server/agents/global-rules.ts`), through the one function that builds the agent invocation; a call without an agent definition fails.
+- Code is English in every project: names, comments, logs, errors, commit messages, README, runbook, API docs, ADRs and the technical spec. Text for people stays Brazilian Portuguese; text the product shows its users follows the owner's documents.
+- The language line left the eight role files, and a role file that names a language is rejected.
+- Every installed skill carries a notice that the global rules outrank it.
+- The Test reviewer gets a "Language check" block: the Portuguese found in the task's added lines and commit messages, as hints it judges.
+- Not done: the documents the phases write (README, runbook, API docs, ADRs, technical spec) are not checked by the language check; `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running.

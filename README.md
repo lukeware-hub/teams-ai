@@ -87,7 +87,7 @@ Main parts:
 | Part | What it does |
 | --- | --- |
 | Orchestrator (`server/orchestrator`) | Event-driven state machine. One `claude -p` process per agent step. The journal is append-only, so nothing is lost if the process stops. |
-| Agents (`server/agents`) | Roles `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` and `env`, each with restricted permissions. |
+| Agents (`server/agents`) | Roles `sm`, `po`, `dev`, `front`, `test`, `sec`, `devops` and `env`, each with restricted permissions. Every agent follows the global rules in `server/agents/global-rules.ts` in every project it builds: code in English, text for people in Brazilian Portuguese. |
 | Execution (`server/exec`, `server/deploy`) | Runs gates (tests, scans) and deploys in a rootless nested Docker, never in your computer's Docker. |
 | Budget (`server/budget`) | Tracks tokens and cost. Pauses when the Claude subscription window is nearly full and resumes on its own. |
 | Decision layer (`server/decide`) | Optional. Answers simple decisions locally before calling Claude. |
@@ -98,7 +98,7 @@ Main parts:
 
 ### Agent skills
 
-Each role agent loads its skills from one plugin folder per role. The folders are built from the skill repositories pinned in `server/skills/catalog.ts` and from the language skills in `skills/`. The Docker image builds them once; a development install builds them when it starts.
+Each role agent loads its skills from one plugin folder per role. The folders are built from the skill repositories pinned in `server/skills/catalog.ts` and from the language skills in `skills/`. The Docker image builds them once; a development install builds them when it starts. Every installed skill carries a notice that the global rules outrank it.
 
 - `TEAMS_AI_AGENT_PLUGINS_IMAGE` points at the role plugin folders of the image. When it is set, nothing is built at start.
 - `TEAMS_AI_SKILLS_IMAGE` points at the pinned skill cache of the image. When every pinned skill is there, no network fetch is made.

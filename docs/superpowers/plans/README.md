@@ -107,6 +107,7 @@ was implemented. Web UI block A (`2026-09-24-run-api-execution-ui-design.md`) is
 | 113 | [`2026-10-28-teams-ai-113-flutter-ci.md`](2026-10-28-teams-ai-113-flutter-ci.md) | Built and merged, 2026-10-28: Flutter CI setup. FEATURES item 2. |
 | 114 | [`2026-10-28-teams-ai-114-agents-in-use.md`](2026-10-28-teams-ai-114-agents-in-use.md) | Built, on the merged main, 2026-10-28: the Settings screen shows the model and effort each role uses now ("Em uso agora"), as a second line under each row. The Chrome check of the screen is still open. FEATURES item 5. |
 | 115 | [`2026-10-29-teams-ai-115-agent-decisions.md`](2026-10-29-teams-ai-115-agent-decisions.md) | Built, 2026-10-29: the per-project switch "Autorizo os agentes a tomar decisões?" (No by default). Yes lets the SM decide a blocked Dev and gives the steps that do not judge the shell and the web; No asks the owner one question with its choices on the run screen. FEATURES item 5. |
+| 116 | [`2026-10-30-teams-ai-116-global-agent-rules.md`](2026-10-30-teams-ai-116-global-agent-rules.md) | Built, 2026-10-30: one set of global rules for every agent and every project (`server/agents/global-rules.ts`, sent first in each agent prompt); English code and commit messages, checked as hints for the reviewer; every installed skill carries a notice. FEATURES item 15. |
 
 Plans 17 and 19 never existed (not a gap in this audit - no file was ever created at those numbers).
 
