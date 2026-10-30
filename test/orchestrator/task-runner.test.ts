@@ -929,6 +929,30 @@ describe('TaskRunner: gate fixes and repeated attempts', () => {
   });
 });
 
+describe('TaskRunner: commits and retries', () => {
+  it('leaves the sandbox placeholders out of the Dev commit', async () => {
+    const agent: Agent = async (req) => {
+      if (req.kind === 'dev') await fs.writeFile(path.join(req.cwd, '.bashrc'), '');
+      return devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(journal.events.find((e) => e.type === OrchEvent.DevCommitted)!.data.changedFiles).toEqual(['src/a.ts']);
+    expect(await git(r.worktree, ['ls-files', '--', '.bashrc'])).toBe('');
+  });
+
+  it('runs Dev again after a human retry, even though an earlier attempt of the task committed', async () => {
+    await journal.intent(Intent.Commit, 'T1:a1', { taskId: 'T1' });
+    await journal.confirm(Intent.Commit, 'T1:a1', { sha: 'earlier' });
+    await journal.fact(RunEvent.TasksUnblocked, { taskIds: ['T1'] });
+    const r = new TaskRunner('T1', deps());
+    await r.advance();
+    expect(agentCalls.map((c) => c.kind)).toEqual(['dev']);
+    expect(state().state).toBe('validating');
+  });
+});
+
 describe('TaskRunner: review profile', () => {
   const risky = (value: number) => ({ decide: async (id: string) => (id === 'pr-risk' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { risk: { type: 'score' as const, value, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) });
   const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));

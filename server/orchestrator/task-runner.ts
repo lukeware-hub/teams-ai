@@ -11,7 +11,7 @@ import { findCycle, taskPlanIds, type Plan, type PlanTask } from '../contracts/p
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
 import { taskBranch } from '../core/ids.js';
-import { devChangedFiles } from './sandbox-placeholders.js';
+import { SANDBOX_PLACEHOLDERS, devChangedFiles } from './sandbox-placeholders.js';
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress, repeatedFailure } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
@@ -321,7 +321,7 @@ export class TaskRunner {
       : null;
     const task = this.task;
     const attempt = task.attempts + 1;
-    const commitKey = `${this.taskId}:a${attempt}`;
+    const commitKey = this.commitKeyFor(attempt);
     if (this.deps.journal.isConfirmed(Intent.Commit, commitKey)) {
       // Crash between the commit confirm and the state change: the work is committed, do not run Dev again.
       return this.transition('validating');
@@ -382,7 +382,7 @@ export class TaskRunner {
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
     const baseSha = await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec);
     await this.deps.journal.intent(Intent.Commit, commitKey, { taskId: this.taskId, worktree: this.worktree, message: value.commitMessage, baseSha });
-    const sha = (await commitAll(this.worktree, value.commitMessage, { exclude: commitExcludes(this.deps.plan.junitPath, this.deps.plan.coveragePath) }, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
+    const sha = (await commitAll(this.worktree, value.commitMessage, { exclude: [...commitExcludes(this.deps.plan.junitPath, this.deps.plan.coveragePath), ...SANDBOX_PLACEHOLDERS] }, this.deps.exec)) ?? (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec));
     await this.deps.journal.confirm(Intent.Commit, commitKey, { sha });
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
     if (changed.length === 0) {
@@ -564,7 +564,15 @@ export class TaskRunner {
     if (since.some((e) => e.type === OrchEvent.GateFixed)) return false;
     const outcome = since.filter((e) => (e.type === OrchEvent.GatePassed || e.type === OrchEvent.GateFailed) && e.data.taskId === this.taskId).at(-1);
     if (outcome?.type !== OrchEvent.GateFailed) return false;
+    // A commit still tracking a sandbox placeholder is owed its removal, so it is not a repeat.
+    if ((await git(this.worktree, ['ls-files', '--', ...SANDBOX_PLACEHOLDERS], this.deps.exec)) !== '') return false;
     return (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec)) === events[at]!.data.sha;
+  }
+
+  /** Intent key of one attempt's commit; a human retry restarts the attempts, so each retry adds a suffix. */
+  private commitKeyFor(attempt: number): string {
+    const retries = this.deps.journal.events.filter((e) => e.type === RunEvent.TasksUnblocked && Array.isArray(e.data.taskIds) && e.data.taskIds.includes(this.taskId)).length;
+    return `${this.taskId}:a${attempt}${retries > 0 ? `:u${retries}` : ''}`;
   }
 
   private async validate(): Promise<void> {

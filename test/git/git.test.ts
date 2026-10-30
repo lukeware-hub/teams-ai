@@ -64,6 +64,15 @@ describe('commitAll', () => {
     expect((await git(repo, ['show', '--name-only', '--format=', 'HEAD'])).split('\n')).toEqual(['src/ok.ts']);
   });
 
+  it('removes an excluded path the branch already tracks, in the commit that follows', async () => {
+    await write(repo, '.bashrc', '');
+    await commitAll(repo, 'chore: earlier');
+    await write(repo, 'src/ok.ts', 'ok');
+    expect(await commitAll(repo, 'feat: ok', { exclude: [...DEFAULT_COMMIT_EXCLUDES, '.bashrc'] })).not.toBeNull();
+    expect(await git(repo, ['ls-files', '--', '.bashrc'])).toBe('');
+    expect(await git(repo, ['ls-files', '--', 'src/ok.ts'])).toBe('src/ok.ts');
+  });
+
   it('commits the .env templates, which hold no secret by convention, while the real .env files stay out (live-run finding)', async () => {
     await write(repo, '.env', 'SECRET=1');
     await write(repo, '.env.production', 'SECRET=2');
