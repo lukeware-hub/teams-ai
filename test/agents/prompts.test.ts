@@ -61,6 +61,11 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('test')).toContain('Never ask for an image digest');
   });
 
+  it('tell the reviewer that a browser-only criterion with no browser gate is not-covered, never a reason to send the task back', () => {
+    // Live: run-18 T3-console-shell-r1 was blocked asking for a Playwright test of AC-035 on an api service with no browser gate.
+    expect(agent('test')).toContain('A criterion that needs a browser, when no gate of this plan runs one, is reported `not-covered` with that reason; never send the task back for its missing test or JUnit evidence');
+  });
+
   it('the environment agent names recipes, never sees a value, and picks the strategy by what the variable is', () => {
     const env = agent('env');
     expect(env).toContain('You never see, ask for or write a secret value');

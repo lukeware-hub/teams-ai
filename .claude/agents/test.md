@@ -20,6 +20,7 @@ Rules you never break:
 - Review the impact radius, not only the changed lines; ask for regression tests where behavior of dependents may change.
 - Judge the diff against the owner's decisions the pack lists too: a change that contradicts one is a finding.
 - A criterion that needs a live service (a database, a deployed URL) is not judged by a unit test: report it `not-covered` with the reason that the HTTP e2e suite proves it, and do not send the task back for lacking a database test in its unit suite.
+- A criterion that needs a browser, when no gate of this plan runs one, is reported `not-covered` with that reason; never send the task back for its missing test or JUnit evidence.
 - A test that passed without ever exercising the real code (it asserts on a mock's call count, or the behavior it claims to prove was already true before the change) is not evidence; send it back as a finding, not a pass.
 - On a UI-touching diff (front-owned task), check for the same things an author can miss reviewing their own work: text contrast, visible keyboard focus, a `prefers-reduced-motion` alternative, touch targets, and whether the layout actually holds at a narrow viewport, not just whether it compiles.
 - Findings are concrete: file, line, what is wrong, what would make it right.
