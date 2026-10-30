@@ -585,6 +585,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // The server turns the delivering run done once its spec is concluded; the journal never records that.
   const result = finished ? String(finished.data.result) : null;
   const status = result === 'awaiting-validation' && detail.status === 'done' ? 'done' : result ?? (detail.status === 'interrupted' ? 'interrupted' : ended || unique.length === 0 ? detail.status : state.status);
+  // A run whose process is gone has no task in flight: the tasks it had running are interrupted, not running.
+  const interruptedRun = status === 'interrupted';
   const until = pausedUntil(unique);
   const t = tokens(unique);
   const phaseList = phases(unique);
@@ -592,7 +594,10 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // The trigger gets focus back when the dialog closes.
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
   const openDetail = (target: DetailTarget) => (e: ReactMouseEvent<HTMLButtonElement>) => setOpened({ ...target, opener: e.currentTarget });
-  const groups = ORDER.map((s) => [s, state.order.filter((id) => state.tasks.get(id)!.state === s)] as const).filter(([, ids]) => ids.length);
+  // Once the process is gone, the tasks in flight form one interrupted group in place of the running ones.
+  const groupOf = (s: string) => (interruptedRun && IN_FLIGHT.has(s) ? 'interrupted' : s);
+  const groupKeys = interruptedRun ? ['interrupted', ...ORDER.filter((s) => !IN_FLIGHT.has(s))] : ORDER;
+  const groups = groupKeys.map((s) => [s, state.order.filter((id) => groupOf(state.tasks.get(id)!.state) === s)] as const).filter(([, ids]) => ids.length);
   // Before the run finishes, RUN_FINISHED.blocked does not exist yet: a task stuck mid-run still shows its own cause,
   // from its own TASK_BLOCKED event, instead of waiting for the whole run to stop before anyone can see why.
   const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
@@ -618,10 +623,10 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // sits at "0 de N" for as long as its tasks are being implemented, validated and reviewed.
   const tally = [...state.tasks.values()].reduce((acc, t) => {
     if (t.state === 'merged') acc.merged += 1;
-    else if (IN_FLIGHT.has(t.state)) acc.active += 1;
+    else if (IN_FLIGHT.has(t.state)) acc[interruptedRun ? 'interrupted' : 'active'] += 1;
     else if (t.state === 'blocked') acc.blocked += 1;
     return acc;
-  }, { merged: 0, active: 0, blocked: 0 });
+  }, { merged: 0, active: 0, interrupted: 0, blocked: 0 });
   const doneTasks = tally.merged;
   const blockedTasks = [...state.tasks.values()].filter((t) => t.state === 'blocked').length;
   const closeDetail = () => setOpened(null);
@@ -780,7 +785,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               aria-valuemin={0}
               aria-valuemax={totalTasks}
               aria-valuenow={doneTasks}
-              aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas`}
+              aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas${tally.interrupted ? `, ${tally.interrupted} interrompidas` : ''}`}
             >
               {tally.merged ? <span className="seg-merged" style={{ flexBasis: `${(tally.merged / totalTasks) * 100}%` }} /> : null}
               {tally.active ? <span className="seg-active" style={{ flexBasis: `${(tally.active / totalTasks) * 100}%` }} /> : null}
@@ -796,6 +801,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               {tally.active ? (
                 <span data-testid="task-active" className="text-accent-text">
                   {tally.active} em andamento
+                </span>
+              ) : null}
+              {tally.interrupted ? (
+                <span data-testid="task-interrupted" className="text-ink-soft">
+                  {tally.interrupted} {tally.interrupted === 1 ? 'interrompida' : 'interrompidas'}
                 </span>
               ) : null}
               {tally.blocked ? (

@@ -13,7 +13,7 @@ import { readUserConfig } from '../../server/onboarding/config-store.js';
 import type { RunAgent } from '../../server/refine/cycle.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
 import { EventStore } from '../../server/store/event-store.js';
-import { makeProject } from '../fixtures/contracts.js';
+import { makePlanTask, makeProject } from '../fixtures/contracts.js';
 import { makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
 // Browser end to end: the real API serves the built UI, the refinement and run routes are the real ones, and only the
@@ -92,6 +92,13 @@ async function startBacklog(): Promise<string> {
   await fs.writeFile(path.join(runDir, 'state.json'), JSON.stringify({ runId, status: 'running', at: new Date().toISOString(), tasks: [], tokens: {} }));
   const store = await EventStore.open({ file: path.join(runDir, 'events.ndjson'), runId, specHash: 'sha256:e2e' });
   await store.append({ type: 'RUN_STARTED', data: { runId, specId: 'base', projectId: 'hello-app' } });
+  // Two tasks in flight, as the owner's run had: one implementing and one reviewing.
+  const task = (id: string) => makePlanTask({ id, criteriaRefs: ['AC-001'], affectedPaths: [`src/${id}`] });
+  await store.append({ type: 'TASK_PLANNED', data: { task: task('T21'), replan: false } });
+  await store.append({ type: 'TASK_PLANNED', data: { task: task('T22'), replan: false } });
+  for (const [taskId, to] of [['T21', 'ready'], ['T21', 'implementing'], ['T22', 'ready'], ['T22', 'implementing'], ['T22', 'validating'], ['T22', 'reviewing']]) {
+    await store.append({ type: 'TASK_STATE_CHANGED', data: { taskId, to } });
+  }
   await store.close();
   return runId;
 }
@@ -195,8 +202,12 @@ describe('a stopped backlog run, end to end in the browser', () => {
 
       // The owner presses Parar execução on the run page.
       await page.goto(runPage);
+      await waitText(page, '[data-testid="task-active"]', '2 em andamento');
       await clickWhenVisible(page, '[data-testid="stop"]');
       await waitText(page, '[data-testid="status"]', 'interrompida');
+      // The two tasks in flight are interrupted now: none is counted as running.
+      await waitText(page, '[data-testid="task-interrupted"]', '2 interrompidas');
+      expect(await page.$('[data-testid="task-active"]')).toBeNull();
 
       // Every screen now says it stopped.
       await page.goto(program);

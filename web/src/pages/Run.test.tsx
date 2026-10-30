@@ -291,6 +291,26 @@ describe('RunView', () => {
       expect(progress()).toMatchObject({ merged: '1 de 3 tarefas mescladas', active: null, blocked: '1 bloqueada', segments: ['seg-merged', 'seg-blocked'] });
     });
 
+    it('counts the tasks in flight of an interrupted run as interrupted, not as running', () => {
+      const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+      const flight = [planned(1, 'T21'), planned(2, 'T22'), planned(3, 'T23'), ev(4, 'TASK_STATE_CHANGED', { taskId: 'T21', to: 'ready' }), ev(5, 'TASK_STATE_CHANGED', { taskId: 'T21', to: 'implementing' }), ev(6, 'TASK_STATE_CHANGED', { taskId: 'T22', to: 'ready' }), ev(7, 'TASK_STATE_CHANGED', { taskId: 'T22', to: 'implementing' }), ev(8, 'TASK_STATE_CHANGED', { taskId: 'T22', to: 'validating' }), ev(9, 'TASK_STATE_CHANGED', { taskId: 'T22', to: 'reviewing' })];
+      render(view({ events: flight, ended: false, detail: { ...detail, status: 'interrupted' } }));
+      expect(screen.getByTestId('task-progress').textContent).toBe('0 de 3 tarefas mescladas');
+      expect(screen.queryByTestId('task-active')).toBeNull();
+      expect(screen.getByTestId('task-interrupted').textContent).toBe('2 interrompidas');
+      expect(screen.getByTestId('group-interrupted').querySelectorAll('li')).toHaveLength(2);
+      expect(screen.queryByTestId('group-implementing')).toBeNull();
+      expect(screen.queryByTestId('group-reviewing')).toBeNull();
+    });
+
+    it('still counts the tasks in flight of a running run as running', () => {
+      const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+      const flight = [planned(1, 'T31'), ev(2, 'TASK_STATE_CHANGED', { taskId: 'T31', to: 'ready' }), ev(3, 'TASK_STATE_CHANGED', { taskId: 'T31', to: 'implementing' })];
+      render(view({ events: flight, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.getByTestId('task-active').textContent).toBe('1 em andamento');
+      expect(screen.queryByTestId('task-interrupted')).toBeNull();
+    });
+
     it('leaves a replanned task out of the task total', () => {
       const task = (id: string) => ({ id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' });
       const events = [ev(1, 'TASK_PLANNED', { task: task('T1'), replan: false }), ev(2, 'TASK_REPLANNED', { taskId: 'T1', replacements: [task('T2')] }), ev(3, 'TASK_STATE_CHANGED', { taskId: 'T2', to: 'merged' })];
