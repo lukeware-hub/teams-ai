@@ -17,7 +17,7 @@ import { sandboxPolicyViolation } from '../runner/sandbox-policy.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { TOOLS_GATE } from '../validators/security-tooling.js';
 import { writeToolsInstaller } from './tools-install.js';
-import { prepareGateImage, runGate, runGates, TAIL_CHARS, type GateContext, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
+import { prepareGateImage, runGate, runGates, type GateContext, type GateExecutor, type GateResult } from '../exec/gate-runner.js';
 import { TEST_GATE, withTestServices } from '../exec/test-services.js';
 import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { INSTALLED_AT, needsInstall } from './install-state.js';
@@ -51,7 +51,7 @@ import { agentPluginsRoot } from '../skills/plugins.js';
 import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
-import { androidToolchainOf, copyCargoRoot, stackDomains, stackEnv, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
+import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -427,45 +427,28 @@ export class Run {
   private async installDeps(view: ServiceView, worktree: string): Promise<GateResult | null> {
     const command = view.plan.commands.install;
     if (!command) return null;
-    // Flutter's and Expo's Android tools exist only in their gate image, so their install runs there, never on the host.
-    if (androidToolchainOf(stackKind(view.plan.stack))) return this.installInGate(view);
     const present = await fs.access(path.join(worktree, 'node_modules')).then(() => true, () => false);
     const marker = path.join(worktree, 'node_modules', INSTALLED_AT);
     const installedAt = await fs.readFile(marker, 'utf8').then((s) => s.trim(), () => null);
     const head = await headSha(worktree, this.deps.exec);
     if (!needsInstall(present, installedAt, head)) return null;
-    const started = Date.now();
     // Tools that `cargo install` put in .tools come from a cache, so they build once, not once per task worktree; the cache is
     // per project, since a project's install command is agent-written and must never plant a binary another project runs.
     const cargoRoot = path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-root', this.deps.ws.projectId);
     const tools = path.join(worktree, '.tools');
     const cargoInstall = /\bcargo install\b/.test(command);
     if (cargoInstall) await copyCargoRoot(cargoRoot, tools).catch(() => undefined);
-    const env = { ...stackEnv(worktree), CARGO_TARGET_DIR: path.join(expandHome(this.deps.cfg.paths.gateCache), 'cargo-install') };
-    const r = await this.deps.exec({ bin: 'sh', args: ['-lc', command], cwd: worktree, env, timeoutMs: buildTimeoutMs(view.plan) });
-    if (cargoInstall && r.exitCode === 0 && !r.timedOut) await copyCargoRoot(tools, cargoRoot).catch(() => undefined);
-    if (r.exitCode === 0 && !r.timedOut) {
-      await fs.writeFile(marker, `${head}\n`).catch(() => undefined);
-      return null;
-    }
-    return {
-      name: 'install',
-      blocking: true,
-      passed: false,
-      exitCode: r.exitCode,
-      timedOut: r.timedOut,
-      durationMs: Date.now() - started,
-      stdoutTail: r.stdout.slice(-TAIL_CHARS),
-      stderrTail: r.stderr.slice(-TAIL_CHARS),
-      junit: null,
-      failure: r.timedOut ? 'infra' : 'code',
-    };
+    const failed = await this.installInGate(view, worktree);
+    if (cargoInstall && !failed) await copyCargoRoot(tools, cargoRoot).catch(() => undefined);
+    if (!failed) await fs.writeFile(marker, `${head}\n`).catch(() => undefined);
+    return failed;
   }
 
-  /** The plan's install command in the offline-by-default gate container, never on the host: an imported plan is not agent-written here. */
-  private async installInGate(view: ServiceView): Promise<GateResult | null> {
+  /** The plan's install command in the gate container, never on the host: the toolchain must be the plan's gateImage, not the orchestrator's. */
+  private async installInGate(view: ServiceView, worktree = this.wsOf(view).repo): Promise<GateResult | null> {
     const p = view.plan;
-    const ctx = { worktree: this.wsOf(view).repo, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-deploy${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
+    const where = worktree === this.wsOf(view).repo ? 'deploy' : `install-${path.basename(worktree)}`.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    const ctx = { worktree, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-${where}${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
     const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
     return r.passed ? null : r;
   }

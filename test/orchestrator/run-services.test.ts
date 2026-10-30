@@ -142,6 +142,12 @@ describe('Run with a services plan', () => {
     // Each task's sandbox reaches its own stack's registries only, and each stack gets its own gate image.
     expect(domains.get('dev:T2-reserve-stock')).toContain('proxy.golang.org');
     expect(domains.get('dev:T1-publish-order')).not.toContain('proxy.golang.org');
+    // The install runs in each stack's gate image, never on the host, so the toolchain matches the plan's gateImage.
+    expect(fake.calls.some((c) => c.bin === 'sh' && c.args.includes('npm ci'))).toBe(false);
+    const installs = fake.lines('docker').filter((l) => l.startsWith('run ') && l.includes('-install ') && l.endsWith(' sh -c npm ci'));
+    expect(installs.length).toBeGreaterThanOrEqual(2);
+    // One container name per task worktree and service, so two tasks installing at once never share one.
+    expect(new Set(installs.map((l) => l.split(' ')[l.split(' ').indexOf('--name') + 1])).size).toBeGreaterThanOrEqual(2);
     const inspected = fake.lines('docker').filter((l) => l.startsWith('image inspect '));
     expect(inspected.some((l) => l.includes('golang-1.26-bookworm'))).toBe(true);
     expect(inspected.some((l) => l.includes('node-22-bookworm'))).toBe(true);
