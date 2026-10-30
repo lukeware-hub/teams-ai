@@ -39,10 +39,11 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('front')).toContain('Use the installed design skills');
     expect(agent('front')).toContain('no live browser unless SERVICE_URL is set');
     expect(agent('dev')).toContain('Use the installed skills');
+    expect(agent('dev')).toContain('teams-ai-dev:test-driven-development');
     expect(agent('dev')).toContain('claude-automation-recommender');
-    expect(agent('sec')).toContain('Use the installed security skills');
-    expect(agent('test')).toContain('Use the installed browser skill');
-    expect(agent('devops')).toContain('Use the installed DevOps skills');
+    expect(agent('sec')).toContain('teams-ai-sec:owasp-audit');
+    expect(agent('test')).toContain('teams-ai-test:playwright-cli');
+    expect(agent('devops')).toContain('teams-ai-devops:terraform');
     expect(agent('sm')).toContain('find-skills');
     for (const role of ['front', 'dev', 'devops']) expect(agent(role)).toContain('skillRequest');
   });
