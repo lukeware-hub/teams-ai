@@ -1,9 +1,9 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { listProjects, listRuns, readProject, SAFE_ID } from '../../server/api/run-index.js';
+import { listProjects, listRuns, readProject, runLiveness, SAFE_ID } from '../../server/api/run-index.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
@@ -23,6 +23,29 @@ afterEach(async () => {
 
 const started = (runId: string) => ({ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } });
 const state = (status: string) => ({ runId: 'x', at: '2026-09-24T10:01:00.000Z', status, tasks: [], tokens: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0.25, steps: 2 } });
+
+describe('the pid of a run judged dead', () => {
+  const RUN = 'hello-app--hello-001--run-7';
+  const pidFileOf = () => path.join(runs, RUN, 'pid');
+
+  it('is retired to pid.gone while it still names the pid judged dead', async () => {
+    await fs.mkdir(path.join(runs, RUN), { recursive: true });
+    await fs.writeFile(pidFileOf(), '4003');
+    expect(await runLiveness(deps(), RUN)).toEqual({ alive: false, interrupted: true });
+    await expect(fs.access(pidFileOf())).rejects.toThrow();
+    await expect(fs.access(`${pidFileOf()}.gone`)).resolves.toBeUndefined();
+  });
+
+  it('is kept when a launch wrote its own pid while the old one was judged', async () => {
+    await fs.mkdir(path.join(runs, RUN), { recursive: true });
+    await fs.writeFile(pidFileOf(), '4001');
+    // The old pid is judged dead, and during that check a new launch writes its own pid.
+    const judge = { ...deps(), isAlive: (pid: number) => { if (pid === 4001) writeFileSync(pidFileOf(), '4002'); return alive.has(pid); } };
+    expect(await runLiveness(judge, RUN)).toEqual({ alive: false, interrupted: true });
+    expect(await fs.readFile(pidFileOf(), 'utf8')).toBe('4002');
+    await expect(fs.access(`${pidFileOf()}.gone`)).rejects.toThrow();
+  });
+});
 
 describe('run index', () => {
   it('readProject parses project.json and every spec', async () => {

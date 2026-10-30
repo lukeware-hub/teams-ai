@@ -113,8 +113,10 @@ export async function writePid(runs: string, runId: string, pid: number): Promis
   await fs.rm(`${pidFile(runs, runId)}.gone`, { force: true });
   await fs.writeFile(pidFile(runs, runId), live?.argv.includes(runId) ? JSON.stringify({ pid, start: live.start }) : String(pid));
 }
-/** The stale pid file becomes `pid.gone`: the run keeps showing interrupted until it is resumed or finished. */
-export async function clearPid(runs: string, runId: string): Promise<void> {
+/** The stale pid file becomes `pid.gone`: the run keeps showing interrupted until it is resumed or finished. A `judged` pid
+ * retires the file only while it still names that pid, so a launch that wrote its own in the meantime keeps it. */
+export async function clearPid(runs: string, runId: string, judged?: number): Promise<void> {
+  if (judged !== undefined && (await readPid(runs, runId)) !== judged) return;
   await fs.rename(pidFile(runs, runId), `${pidFile(runs, runId)}.gone`).catch(() => undefined);
 }
 async function wasInterrupted(runs: string, runId: string): Promise<boolean> {
@@ -175,7 +177,7 @@ export async function runLiveness(deps: IndexDeps, runId: string): Promise<{ ali
   const runs = runsDir(deps);
   const pid = await readPid(runs, runId);
   const alive = pid !== null && deps.isAlive(pid);
-  if (pid !== null && !alive) await clearPid(runs, runId);
+  if (pid !== null && !alive) await clearPid(runs, runId, pid);
   return { alive, interrupted: (pid !== null && !alive) || (pid === null && (await wasInterrupted(runs, runId))) };
 }
 
