@@ -118,6 +118,9 @@ async function createWorktreeUnlocked(repo: string, dir: string, branch: string,
     if ((await currentBranch(dir, exec)) === branch) return;
     throw new GitError(`worktree ${dir} exists on another branch`);
   }
+  // A directory git forgot (a removal that stopped halfway) would make `worktree add` fail on every retry.
+  await makeToolsWritable(dir);
+  await fs.rm(dir, { recursive: true, force: true });
   if (!opts.reset && (await branchExists(repo, branch, exec))) {
     const contained = await run(repo, ['merge-base', '--is-ancestor', branch, base], exec);
     if (contained.exitCode !== 0) {
@@ -128,7 +131,19 @@ async function createWorktreeUnlocked(repo: string, dir: string, branch: string,
   await git(repo, ['worktree', 'add', '--no-track', '-B', branch, dir, base], exec);
 }
 
+/** Go keeps its module cache under .tools read-only, and a directory that cannot be written to cannot be emptied. */
+async function makeToolsWritable(dir: string): Promise<void> {
+  const open = async (d: string): Promise<void> => {
+    const entries = await fs.readdir(d, { withFileTypes: true }).catch(() => null);
+    if (!entries) return;
+    await fs.chmod(d, 0o755).catch(() => undefined);
+    for (const e of entries) if (e.isDirectory()) await open(path.join(d, e.name));
+  };
+  await open(path.join(dir, '.tools'));
+}
+
 export async function removeWorktree(repo: string, dir: string, exec: Exec = execCommand): Promise<void> {
+  await makeToolsWritable(dir);
   return withRepoLock(repo, async () => {
     const r = await run(repo, ['worktree', 'remove', '--force', dir], exec);
     if (r.exitCode !== 0 && !/is not a working tree|No such file|does not exist/i.test(r.stderr)) {

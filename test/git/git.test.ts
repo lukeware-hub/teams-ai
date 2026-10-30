@@ -126,6 +126,27 @@ describe('worktrees', () => {
     await createWorktree(repo, wt, 'task/gone', 'main');
     expect(await git(wt, ['branch', '--show-current'])).toBe('task/gone');
   });
+
+  it('recreates a worktree over a leftover directory git no longer registers', async () => {
+    const wt = path.join(root, 'wt-orphan');
+    await write(wt, 'go.mod', 'module old\n');
+    await write(wt, '.git', 'gitdir: /nowhere/.git/worktrees/wt-orphan\n');
+    await createWorktree(repo, wt, 'task/orphan', 'main');
+    expect(await git(wt, ['branch', '--show-current'])).toBe('task/orphan');
+    await expect(fs.access(path.join(wt, 'go.mod'))).rejects.toThrow();
+  });
+
+  // Go keeps its module cache read-only, and a read-only directory cannot be emptied until it is writable again.
+  it.skipIf(process.platform === 'win32')('removes a worktree whose tools cache is read-only', async () => {
+    const wt = path.join(root, 'wt-readonly');
+    await createWorktree(repo, wt, 'task/readonly', 'main');
+    const mod = path.join(wt, '.tools', 'go', 'pkg', 'mod', 'toolchain');
+    await write(mod, 'VERSION', 'go1.27.2\n');
+    await fs.chmod(path.join(mod, 'VERSION'), 0o444);
+    await fs.chmod(mod, 0o555);
+    await removeWorktree(repo, wt);
+    await expect(fs.access(wt)).rejects.toThrow();
+  });
 });
 
 describe('changedFiles and rebase', () => {
