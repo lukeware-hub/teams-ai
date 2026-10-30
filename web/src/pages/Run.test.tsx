@@ -508,11 +508,18 @@ describe('RunView phase blocks', () => {
   ];
   const running = (props: Partial<Parameters<typeof RunView>[0]> = {}) => view({ events: blocking, ended: false, detail: { ...detail, status: 'running' }, ...props });
 
-  it('puts the number of blocked tasks under the problems line of their phase', () => {
+  it('puts the blocked tasks under their phase, split into own causes and tasks waiting on them', () => {
     render(running());
     const row = screen.getByTestId('phase');
-    expect(row.textContent).toContain('2 problemas registrados2 bloqueios');
-    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('2 bloqueios');
+    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
+    expect(within(row).queryByTestId('phase-problems-count')).toBeNull();
+  });
+
+  it('counts only the problems that are not blocks in the problems line', () => {
+    render(running({ events: [...blocking, ev(8, 'REBASE_REPLAYED', { taskId: 'T1', previous: 'abc', files: ['src/a.ts'] })] }));
+    const row = screen.getByTestId('phase');
+    expect(within(row).getByTestId('phase-problems-count').textContent).toBe('1 problema registrado');
+    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
   });
 
   it('says 1 bloqueio when a single task is blocked', () => {
@@ -535,25 +542,12 @@ describe('RunView phase blocks', () => {
   it('keeps the count once the run has stopped, from the blocked list it finished with', () => {
     const finished = ev(8, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }, { taskId: 'T7', reason: 'a dependency is blocked' }], tokens: {} });
     render(running({ events: [...blocking, finished], ended: true, detail: { ...detail, status: 'blocked' } }));
-    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('2 bloqueios');
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
   });
 
-  it('opens the phase blocks in a dialog, with the causes and the tasks waiting on them', () => {
+  it('has no dialog for the phase blocks: the card lists the tasks that wait on them', () => {
     render(running());
-    fireEvent.click(screen.getByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' }));
-    const dialog = screen.getByRole('dialog', { name: 'Bloqueios em 3 · Implementação' });
-    expect(within(dialog).getByTestId('cause-group').textContent).toContain('T6');
-    expect(within(dialog).getByTestId('phase-blocks-waiting').textContent).toContain('T7');
-  });
-
-  it('closes the blocks dialog on Escape back to its line, and its Ver detalhe opens the cause', () => {
-    render(running());
-    const trigger = screen.getByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' });
-    fireEvent.click(trigger);
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Ver detalhe do bloqueio de T6' }));
-    expect(screen.getByRole('dialog', { name: 'Por que T6 ficou bloqueada' })).toBeTruthy();
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    expect(screen.queryByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' })).toBeNull();
+    expect(screen.getByTestId('block-waiting').textContent).toContain('T7');
   });
 });

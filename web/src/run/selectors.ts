@@ -577,6 +577,8 @@ export interface ActivityItem {
   text: string;
   tone: ActivityTone;
   url: string | null;
+  /** A task stopped here; counted as a block, not a problem. */
+  block?: true;
 }
 export interface PhaseActivity {
   items: ActivityItem[];
@@ -691,7 +693,7 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
       return item(`Tarefa ${String(d.taskId)} movida para a main atual${files.length ? `, com conflitos a resolver em ${files.join(', ')}` : ', sem conflitos a resolver'}`, files.length ? 'bad' : '');
     }
     case 'TASK_BLOCKED':
-      return item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad');
+      return { ...item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad'), block: true };
     case 'SPEC_GAP_ANSWERED':
       return item(`Tarefa ${String(d.taskId)}: os agentes decidiram: ${firstSentence(String(d.answer ?? ''))}`);
     case 'GATE_FIXED':
@@ -757,6 +759,9 @@ export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity>
   for (const [taskId, phase] of blockedIn) of(phase).blockedTaskIds.push(taskId);
   return out;
 }
+
+/** A phase's problems, leaving out the tasks it blocked: those are counted as blocks. */
+export const problemItems = (items: ActivityItem[]) => items.filter((i) => i.tone === 'bad' && !i.block);
 
 /** The agent steps running right now, oldest first, and the last thing that happened. */
 export function currentActivity(events: StoredEvent[]): { running: RunningStep[]; last: ActivityItem | null } {

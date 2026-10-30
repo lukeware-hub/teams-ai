@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, problemItems, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -464,6 +464,18 @@ describe('phase activity', () => {
     );
     expect(out.get(3)!.blockedTaskIds).toEqual(['T1']);
     expect(out.get(4)!.blockedTaskIds).toEqual(['T2']);
+  });
+
+  it('a blocked task is listed in its phase but is not a problem; a rebase conflict is', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 3 }],
+        ['TASK_BLOCKED', { taskId: 'T1', reason: 'x' }],
+        ['REBASE_REPLAYED', { taskId: 'T2', previous: 'abc', files: ['src/a.ts'] }],
+      ]),
+    ).get(3)!;
+    expect(out.items).toHaveLength(2);
+    expect(problemItems(out.items).map((i) => i.text)).toEqual(['Tarefa T2 movida para a main atual, com conflitos a resolver em src/a.ts']);
   });
 
   it('groups tasks with the same reason into one cause, in order', () => {
