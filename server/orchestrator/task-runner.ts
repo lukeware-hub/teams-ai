@@ -36,7 +36,7 @@ import { checkScope } from '../validators/diff-guard.js';
 import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
-import { applyGateFixes, gateFixErrors, gateFixes, type GateFix } from './gate-fix.js';
+import { applyGateFixes, effectivePlan, gateFixErrors, gateFixes, gateImageErrors, gateImageFixes, type GateFix } from './gate-fix.js';
 import { withMainSnapshot } from './phases/shared.js';
 import { blockOptionsPack, devPack, devResumePrompt, replanPack, reviewPack, securityPack, skillSelectPack, sourceFiles, specGapPack, type AgentStepRequest, type PackBase } from './steps.js';
 import { olderLiveRun, worktreeDir, type Workspace } from './workspace.js';
@@ -536,6 +536,7 @@ export class TaskRunner {
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
     if (value.gateFix) await this.fixGate(value.gateFix, value.assumption);
+    if (value.imageFix) await this.fixImage(value.imageFix.gateImage, value.assumption, overrule);
     await this.feedback(`Spec-gap answer from SM:\nQ: ${question}\nA: ${value.answer}`);
     return this.implement();
   }
@@ -555,13 +556,31 @@ export class TaskRunner {
     await this.feedback(`Gate ${fix.gate} corrected in the plan: the gates run the new command from now on.`);
   }
 
+  /** A newer gate image of the same toolchain takes effect only when the owner lets the agents decide; the journal keeps the image it replaces. */
+  private async fixImage(image: string, reason: string, allowed: boolean): Promise<void> {
+    if (!allowed) {
+      await this.feedback('Gate image not changed: the owner decides it.');
+      return;
+    }
+    const service = this.task.def.service ?? null;
+    const events = this.deps.journal.events;
+    const before = effectivePlan(this.deps.plan, events, service).gateImage;
+    const errors = gateImageErrors(before, image, gateImageFixes(events, service).length);
+    if (errors.length > 0) {
+      await this.feedback(`Gate image not changed: ${errors.join('; ')}.`);
+      return;
+    }
+    await this.deps.journal.fact(OrchEvent.GateImageFixed, { taskId: this.taskId, service, before, after: image, reason });
+    await this.feedback(`Gate image changed from ${before} to ${image}: the install and the gates run in it from now on.`);
+  }
+
   /** HEAD is the commit whose last gate outcome failed, and no gate was corrected since: the same gate would fail the same way. */
   private async repeatsLastCommit(): Promise<boolean> {
     const events = this.deps.journal.events;
     const at = events.findLastIndex((e) => e.type === OrchEvent.DevCommitted && e.data.taskId === this.taskId);
     if (at < 0) return false;
     const since = events.slice(at + 1);
-    if (since.some((e) => e.type === OrchEvent.GateFixed)) return false;
+    if (since.some((e) => e.type === OrchEvent.GateFixed || e.type === OrchEvent.GateImageFixed)) return false;
     const outcome = since.filter((e) => (e.type === OrchEvent.GatePassed || e.type === OrchEvent.GateFailed) && e.data.taskId === this.taskId).at(-1);
     if (outcome?.type !== OrchEvent.GateFailed) return false;
     // A commit still tracking a sandbox placeholder is owed its removal, so it is not a repeat.

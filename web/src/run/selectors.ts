@@ -673,6 +673,12 @@ function describe(e: StoredEvent, intent: Record<string, unknown> | undefined): 
     }
     case 'TASK_BLOCKED':
       return item(`Tarefa ${String(d.taskId)} bloqueada: ${firstSentence(explainBlockReason(String(d.reason ?? '')))}`, 'bad');
+    case 'SPEC_GAP_ANSWERED':
+      return item(`Tarefa ${String(d.taskId)}: os agentes decidiram: ${firstSentence(String(d.answer ?? ''))}`);
+    case 'GATE_FIXED':
+      return item(`Tarefa ${String(d.taskId)}: comando da verificação ${String(d.gate)} corrigido (${firstSentence(String(d.reason ?? ''), 80)})`);
+    case 'GATE_IMAGE_FIXED':
+      return item(`Tarefa ${String(d.taskId)}: imagem das verificações trocada de ${String(d.before)} para ${String(d.after)} (${firstSentence(String(d.reason ?? ''), 80)})`);
     case 'RUN_PAUSED':
       return item(d.reason === 'quota' ? `Execução pausada pelo limite de uso dos modelos${d.until ? ` até ${new Date(String(d.until)).toTimeString().slice(0, 5)}` : ''}` : 'Execução pausada: a sessão do Claude expirou', 'bad');
     case 'RUN_RESUMED':
@@ -695,6 +701,8 @@ function describeAll(events: StoredEvent[], visit: (e: StoredEvent, item: Activi
 }
 
 const PHASE_TAG = /^phase(\d+)$/;
+/** The task events a phase's timeline still shows: what merged, what blocked and what the agents decided to unblock. */
+const PHASE_TASK_EVENTS: ReadonlySet<string> = new Set(['PR_MERGED', 'TASK_BLOCKED', 'REBASE_REPLAYED', 'SPEC_GAP_ANSWERED', 'GATE_FIXED', 'GATE_IMAGE_FIXED']);
 const hasTask = (d: Record<string, unknown>) => d.taskId !== null && d.taskId !== undefined && d.taskId !== '';
 
 /**
@@ -723,7 +731,7 @@ export function phaseActivity(events: StoredEvent[]): Map<number, PhaseActivity>
       const s = of(phase).steps.find((x) => x.stepId === d.stepId);
       if (s) finishStep(s, d);
     }
-    if (item && (!task || e.type === 'PR_MERGED' || e.type === 'TASK_BLOCKED' || e.type === 'REBASE_REPLAYED')) of(phase).items.push(item);
+    if (item && (!task || PHASE_TASK_EVENTS.has(e.type))) of(phase).items.push(item);
   });
   return out;
 }

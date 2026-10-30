@@ -903,6 +903,39 @@ describe('TaskRunner: gate fixes and repeated attempts', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('no gate named nope'))).toBe(true);
   });
 
+  describe('a gate image change the spec-gap answer carries', () => {
+    const imageAgent = (imageFix: { gateImage: string }): Agent => {
+      let devCalls = 0;
+      return async (req) => {
+        if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Move to the patched Go', assumption: 'T1: patched toolchain', imageFix });
+        if (req.kind !== 'dev') return devDone()(req);
+        devCalls += 1;
+        return devCalls === 1 ? ok({ specHash: HASH, status: 'spec-gap', summary: 'scan', changedFiles: [], question: 'the scan wants a newer toolchain' }) : devDone()(req);
+      };
+    };
+
+    it('journals the change when the owner lets the agents decide, and tells the Dev', async () => {
+      const r = new TaskRunner('T1', deps({ agent: imageAgent({ gateImage: 'node:22.1-bookworm' }), autonomous: async () => true }));
+      await r.advance();
+      expect(journal.events.find((e) => e.type === OrchEvent.GateImageFixed)!.data).toMatchObject({ taskId: 'T1', service: null, before: 'node:22-bookworm', after: 'node:22.1-bookworm' });
+      expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('node:22.1-bookworm'))).toBe(true);
+    });
+
+    it('does not change the image when the owner decides', async () => {
+      const r = new TaskRunner('T1', deps({ agent: imageAgent({ gateImage: 'node:22.1-bookworm' }) }));
+      await r.advance();
+      expect(journal.events.some((e) => e.type === OrchEvent.GateImageFixed)).toBe(false);
+      expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('Gate image not changed: the owner decides'))).toBe(true);
+    });
+
+    it('refuses an image of another repository, and tells the Dev why', async () => {
+      const r = new TaskRunner('T1', deps({ agent: imageAgent({ gateImage: 'golang:1.27.3-bookworm' }), autonomous: async () => true }));
+      await r.advance();
+      expect(journal.events.some((e) => e.type === OrchEvent.GateImageFixed)).toBe(false);
+      expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('keeps its repository'))).toBe(true);
+    });
+  });
+
   it('a Dev that changes nothing after a validated commit goes to the SM once, and the gates do not run again on that commit', async () => {
     let gateRuns = 0;
     const failing: TaskRunnerDeps['gates'] = async () => {

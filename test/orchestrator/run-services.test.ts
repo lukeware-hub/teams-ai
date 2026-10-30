@@ -36,10 +36,19 @@ const TEST: Record<string, [string, string]> = { 'T1-publish-order': ['AC-001', 
 const JUNIT = '<testsuite name="sum"><testcase classname="sum" name="[AC-001] publishes"/><testcase classname="sum" name="[AC-002] reserves"/></testsuite>';
 const summary = (): ResultSummary => ({ found: true, isError: false, subtype: 'success', numTurns: 1, durationMs: 5, costUsd: 0.001, usage: { inputTokens: 1000, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 }, sessionId: null, resultText: null, structuredOutput: null, structuredSource: null, terminalReason: null, apiErrorStatus: null, rateLimit: null, compactions: 0 });
 
+/** The task whose first Dev answer is a spec gap, so the SM's answer reaches the run. */
+let gapOnce: string | null = null;
+
 async function script(req: StepRequest): Promise<StepOutcome<any>> {
   const id = req.taskId!;
   switch (req.kind) {
+    case 'spec-gap':
+      return { ok: true, value: { specHash: HASH, answer: 'Move to the patched Go', assumption: `${id}: patched toolchain`, imageFix: { gateImage: 'golang:1.26.9-bookworm' } }, summary: summary() };
     case 'dev':
+      if (gapOnce === id) {
+        gapOnce = null;
+        return { ok: true, value: { specHash: HASH, status: 'spec-gap', summary: 'scan', changedFiles: [], question: 'the scan wants a newer toolchain' }, summary: summary() };
+      }
       await fs.mkdir(path.dirname(path.join(req.cwd, FILE[id]!)), { recursive: true });
       await fs.writeFile(path.join(req.cwd, FILE[id]!), `export const done = '${id}';\n`);
       return { ok: true, value: { specHash: HASH, status: 'done', summary: `did ${id}`, changedFiles: [FILE[id]], commitMessage: `feat: ${id}` }, summary: summary() };
@@ -151,6 +160,19 @@ describe('Run with a services plan', () => {
     const inspected = fake.lines('docker').filter((l) => l.startsWith('image inspect '));
     expect(inspected.some((l) => l.includes('golang-1.26-bookworm'))).toBe(true);
     expect(inspected.some((l) => l.includes('node-22-bookworm'))).toBe(true);
+    await run.close();
+  }, 180_000);
+
+  it("runs a service's install and gates in the gate image the SM moved it to, and no other service's", async () => {
+    gapOnce = 'T2-reserve-stock';
+    const cfg = loadConfig({ paths: { workspaces: ws.root, runs: ws.runs, secrets: '/tmp/none' }, agentsDecide: { shop: true } });
+    const run = await Run.create({ ...(await deps()), cfg });
+    expect(await run.execute()).toBe('complete');
+    expect(run.journal.events.find((e) => e.type === 'GATE_IMAGE_FIXED')!.data).toMatchObject({ service: 'inventory-api', before: 'golang:1.26-bookworm', after: 'golang:1.26.9-bookworm' });
+    const runs = fake.lines('docker').filter((l) => l.startsWith('run '));
+    const installs = runs.filter((l) => l.includes('-install ') && l.includes('teams-ai-gate:'));
+    expect(installs.some((l) => l.includes('teams-ai-gate:golang-1.26.9-bookworm-'))).toBe(true);
+    expect(installs.some((l) => l.includes('teams-ai-gate:node-22-bookworm-'))).toBe(true);
     await run.close();
   }, 180_000);
 

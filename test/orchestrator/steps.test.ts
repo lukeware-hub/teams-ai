@@ -380,6 +380,11 @@ describe('specGapPack', () => {
     expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('overrule it');
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('overrule it');
   });
+
+  it('offers the SM an image change for a version bump only when the owner lets the agents decide', () => {
+    expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('imageFix');
+    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('imageFix');
+  });
 });
 
 describe('blockOptionsPack', () => {

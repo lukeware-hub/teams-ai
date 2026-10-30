@@ -309,6 +309,8 @@ export const SpecGapOutput = z.object({
   answer: z.string().min(1),
   assumption: z.string().min(1),
   gateFix: z.object({ gate: z.string().regex(ID_PATTERNS.SLUG), command: z.string().min(1) }).optional(),
+  /** A newer version of the same gate image, when the answer moves the toolchain (a patched Go) and the gates must follow. */
+  imageFix: z.object({ gateImage: z.string().min(1) }).optional(),
 });
 export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Gate } from '../../server/contracts/plan.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
-import { applyGateFixes, gateFixErrors, gateFixes, MAX_GATE_FIXES } from '../../server/orchestrator/gate-fix.js';
+import { applyGateFixes, effectivePlan, gateFixErrors, gateFixes, gateImageErrors, gateImageFixes, MAX_GATE_FIXES } from '../../server/orchestrator/gate-fix.js';
 import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
@@ -19,6 +19,51 @@ describe('gate fixes journaled for a repository', () => {
 
   it('returns the plan itself when nothing was corrected', () => {
     expect(applyGateFixes(plan, [])).toBe(plan);
+  });
+});
+
+const imageFixed = (service: string | null, before: string, after: string) => ({ type: OrchEvent.GateImageFixed, data: { service, before, after, reason: 'test' } });
+
+describe('gate image fixes journaled for a repository', () => {
+  it('keeps the image changes of one repository in order, and the last one wins', () => {
+    const events = [imageFixed(null, 'golang:1.27.2-bookworm', 'golang:1.27.3-bookworm'), imageFixed('api', 'node:22-bookworm', 'node:22.1-bookworm'), imageFixed(null, 'golang:1.27.3-bookworm', 'golang:1.27.4-bookworm')];
+    expect(gateImageFixes(events, null).map((f) => f.after)).toEqual(['golang:1.27.3-bookworm', 'golang:1.27.4-bookworm']);
+    expect(effectivePlan(plan, events, null).gateImage).toBe('golang:1.27.4-bookworm');
+    expect(effectivePlan(plan, events, 'api').gateImage).toBe('node:22.1-bookworm');
+  });
+
+  it('applies command fixes and image fixes together, and returns the plan itself when nothing was fixed', () => {
+    const events = [fixed(null, 'coverage', 'npm run coverage', 'B'), imageFixed(null, plan.gateImage, 'node:22.99-bookworm')];
+    const out = effectivePlan(plan, events, null);
+    expect(out.gates[0]!.command).toBe('B');
+    expect(out.gateImage).toBe('node:22.99-bookworm');
+    expect(effectivePlan(plan, [], null)).toBe(plan);
+  });
+});
+
+describe('gate image fix errors', () => {
+  const GO = 'golang:1.27.2-bookworm';
+
+  it('accepts a newer version of the same image and flavour', () => {
+    expect(gateImageErrors(GO, 'golang:1.27.3-bookworm', 0)).toEqual([]);
+    expect(gateImageErrors(GO, 'golang:1.28.0-bookworm', 0)).toEqual([]);
+  });
+
+  it('refuses another image, another flavour, a downgrade or the same tag', () => {
+    expect(gateImageErrors(GO, 'node:22-bookworm', 0)).toEqual(['the gate image keeps its repository: golang, not node']);
+    expect(gateImageErrors(GO, 'golang:1.27.3-alpine', 0)).toEqual(['the gate image keeps its flavour: -bookworm, not -alpine']);
+    expect(gateImageErrors(GO, 'golang:1.27.1-bookworm', 0)).toEqual(['the gate image only moves to a newer version: 1.27.2 to 1.27.1']);
+    expect(gateImageErrors(GO, GO, 0)).toEqual(['the gate image only moves to a newer version: 1.27.2 to 1.27.2']);
+  });
+
+  it('refuses a tag-less, digest-pinned or malformed reference', () => {
+    expect(gateImageErrors(GO, 'golang', 0)).toEqual(['the gate image needs a version tag such as golang:1.27.3-bookworm']);
+    expect(gateImageErrors(GO, `golang:1.27.3-bookworm@sha256:${'a'.repeat(64)}`, 0)).toEqual(['the gate image needs a version tag such as golang:1.27.3-bookworm']);
+    expect(gateImageErrors(GO, '-golang:1.27.3', 0)).toEqual(['"-golang:1.27.3" is not a plain image reference']);
+  });
+
+  it('refuses a change past the limit', () => {
+    expect(gateImageErrors(GO, 'golang:1.27.3-bookworm', MAX_GATE_FIXES)).toEqual([`the gate image was already changed ${MAX_GATE_FIXES} time(s) in this run`]);
   });
 });
 

@@ -32,7 +32,7 @@ import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step
 import { nextRunnable, runProgress, tasksToBlock, type RunProgress } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
-import { applyGateFixes, gateFixes } from './gate-fix.js';
+import { effectivePlan } from './gate-fix.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
@@ -446,7 +446,7 @@ export class Run {
 
   /** The plan's install command in the gate container, never on the host: the toolchain must be the plan's gateImage, not the orchestrator's. */
   private async installInGate(view: ServiceView, worktree = this.wsOf(view).repo): Promise<GateResult | null> {
-    const p = view.plan;
+    const p = effectivePlan(view.plan, this.journal.events, view.service);
     const where = worktree === this.wsOf(view).repo ? 'deploy' : `install-${path.basename(worktree)}`.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const ctx = { worktree, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-${where}${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
     const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
@@ -470,7 +470,7 @@ export class Run {
 
   private gatesFor(view: ServiceView) {
     return async (worktree: string, branch: string) => {
-      const plan = applyGateFixes(view.plan, gateFixes(this.journal.events, view.service));
+      const plan = effectivePlan(view.plan, this.journal.events, view.service);
       const install = await this.installDeps(view, worktree);
       if (install) return { results: [install], blockingFailure: install };
       if (plan.gates.some((g) => g.name === TOOLS_GATE)) await writeToolsInstaller(worktree);
@@ -644,14 +644,14 @@ export class Run {
       boundaries: async () => (this.deps.graphify ? (await this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => [])).map((n) => n.label) : []),
       target: this.deps.target,
       smoke: async (contextDir, url, gateUrl, gateNetwork, scope) => {
-        const p = scope?.plan ?? singlePlan(this.plan)!;
+        const p = effectivePlan(scope?.plan ?? singlePlan(this.plan)!, this.journal.events, scope?.service ?? null);
         const r = await runSmoke(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-smoke${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : gateReachableUrl(url), { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         // The gate's output is the only clue the fix task gets about why a smoke test is missing or failing.
         const tail = r.ok || !r.result ? '' : `\n\nsmoke gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };
       },
       e2e: async (contextDir, url, gateUrl, gateNetwork, scope) => {
-        const p = scope?.plan ?? singlePlan(this.plan)!;
+        const p = effectivePlan(scope?.plan ?? singlePlan(this.plan)!, this.journal.events, scope?.service ?? null);
         const r = await runE2e(p, scope?.spec ?? this.deps.spec, { worktree: contextDir, image: await this.gateImageOf(p, p.deploy.kind === 'front'), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: 15 * 60_000, secrets: gateSecrets(this.deps.spec, this.deps.secrets, this.environmentNames()), containerName: `teams-ai-${this.runId}-e2e${scope ? `-${scope.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite, ...(gateNetwork ? { network: gateNetwork } : {}) }, gateNetwork ? gateUrl ?? url : url, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) }, scope?.urls);
         const tail = r.ok || !r.result ? '' : `\n\ne2e gate (exit ${r.result.exitCode ?? 'null'}) stderr:\n${r.result.stderrTail}\nstdout:\n${r.result.stdoutTail}`;
         return { ok: r.ok, rows: r.rows, detail: `${r.detail}${tail}` };

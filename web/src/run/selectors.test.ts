@@ -346,6 +346,22 @@ describe('phase activity', () => {
     expect(out.steps).toEqual([]);
   });
 
+  it('says what the agents decided to unblock a task: the answer, the gate command and the gate image', () => {
+    const out = phaseActivity(
+      evs([
+        ['PHASE_STARTED', { phase: 3 }],
+        ['SPEC_GAP_ANSWERED', { taskId: 'T0', question: 'q', answer: 'Use Go 1.27.3 nesta tarefa.', assumption: 'T0: Go patched' }],
+        ['GATE_FIXED', { taskId: 'T0', service: 'web-bff-api', gate: 'coverage', before: 'a', after: 'b', reason: 'sed guloso' }],
+        ['GATE_IMAGE_FIXED', { taskId: 'T0', service: 'web-bff-api', before: 'golang:1.27.2-bookworm', after: 'golang:1.27.3-bookworm', reason: 'Go corrigido' }],
+      ]),
+    ).get(3)!;
+    expect(out.items.map((i) => i.text)).toEqual([
+      'Tarefa T0: os agentes decidiram: Use Go 1.27.3 nesta tarefa.',
+      'Tarefa T0: comando da verificação coverage corrigido (sed guloso)',
+      'Tarefa T0: imagem das verificações trocada de golang:1.27.2-bookworm para golang:1.27.3-bookworm (Go corrigido)',
+    ]);
+  });
+
   it('a services deploy names the service of each step and lists the services verified or restored', () => {
     const out = phaseActivity(
       evs([

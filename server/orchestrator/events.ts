@@ -22,6 +22,7 @@ export const OrchEvent = {
   GateFailed: 'GATE_FAILED',
   /** A blocking gate's command the SM corrected, applied after the plan's own checks; `before` is kept so it can be undone. */
   GateFixed: 'GATE_FIXED',
+  GateImageFixed: 'GATE_IMAGE_FIXED',
   ReviewApproved: 'REVIEW_APPROVED',
   ReviewChanges: 'REVIEW_CHANGES',
   SecurityApproved: 'SECURITY_APPROVED',
