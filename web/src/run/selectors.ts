@@ -766,8 +766,8 @@ export function currentActivity(events: StoredEvent[]): { running: RunningStep[]
     const d = e.data;
     if (e.type === 'STEP_STARTED') open.set(String(d.stepId), { stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, taskId: hasTask(d) ? String(d.taskId) : null, startedAt: e.at });
     if (e.type === 'STEP_FINISHED') open.delete(String(d.stepId));
-    // A stop ends every open step, so a resume starts with none running.
-    if (e.type === 'RUN_RESUMED') open.clear();
+    // A hand resume runs in a new process, so steps open before it are gone.
+    if (e.type === 'RUN_RESUMED' && d.manual === true) open.clear();
     if (item) last = item;
   });
   return { running: [...open.values()], last };

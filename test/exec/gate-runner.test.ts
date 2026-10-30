@@ -323,6 +323,13 @@ describe('runGate', () => {
       expect(r.stderrTail).toContain('coverage: the coverage file is not {"linesPct": N}: not json');
     });
 
+    it('redacts a secret found in a malformed summary before quoting it', async () => {
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), { ...covCtx, secrets: { TOKEN: 'sekret' } }, { exec: writes(f, 'sekret\nnot json').exec, ...f.deps });
+      expect(r.stderrTail).toContain('coverage: the coverage file is not {"linesPct": N}:');
+      expect(r.stderrTail).not.toContain('sekret');
+    });
+
     it('never lets a stale summary from an earlier attempt pass the gate', async () => {
       const f = files({ [covPath]: '{"linesPct": 90}' });
       const fake = new FakeExec().onArgs('docker', ['run'], () => ({ stdout: 'ok' }));

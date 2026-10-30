@@ -76,7 +76,7 @@ describe('workflow bootstrap (R8.3)', () => {
     expect(gh.prs).toHaveLength(0);
     const branch = 'docs/hello-001-workflows';
     await expect(fs.access(worktreeDir(d.ws, branch))).rejects.toThrow();
-    expect(run.journal.isConfirmed(Intent.WorktreeRemove, branch)).toBe(true);
+    expect(run.journal.isConfirmed(Intent.WorktreeRemove, `${branch}@empty`)).toBe(true);
     await run.close();
   });
 });

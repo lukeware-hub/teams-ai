@@ -253,10 +253,11 @@ export async function runWorkflowBootstrap(deps: PhaseDeps, plan: Plan): Promise
       wrote += 1;
     }
     if (wrote === 0) {
-      // Nothing to merge, so the worktree goes here as a merge would remove it.
-      await journal.intent(Intent.WorktreeRemove, branch, { worktree: wt, repo: deps.ws.repo });
+      // Nothing to merge, so the worktree goes here as a merge would remove it. Its own key: the merge path's key stays free.
+      const key = `${branch}@empty`;
+      await journal.intent(Intent.WorktreeRemove, key, { worktree: wt, repo: deps.ws.repo });
       await removeWorktree(deps.ws.repo, wt, deps.exec);
-      await journal.confirm(Intent.WorktreeRemove, branch, {});
+      await journal.confirm(Intent.WorktreeRemove, key, {});
       return { ok: true };
     }
   }

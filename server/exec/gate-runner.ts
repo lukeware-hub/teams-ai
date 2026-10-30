@@ -262,7 +262,7 @@ function coverageFile(ctx: GateContext): string | null {
 function coverageFailure(raw: string | null, secretValues: readonly string[]): string | null {
   if (raw === null) return 'coverage: the coverage file is missing';
   const summary = parseCoverageSummary(raw);
-  if (summary === null) return `coverage: the coverage file is not {"linesPct": N}: ${redactSecrets(raw, secretValues).slice(0, 80)}`;
+  if (summary === null) return `coverage: the coverage file is not {"linesPct": N}: ${redactSecrets(raw, secretValues).replace(/\s+/g, ' ').slice(0, 80)}`;
   return coveragePasses(summary) ? null : `coverage: linesPct ${summary.linesPct} is below ${MIN_LINE_COVERAGE_PCT}`;
 }
 

@@ -438,13 +438,18 @@ describe('phase activity', () => {
     expect(currentActivity([...list, { ...list[2]!, seq: 9, type: 'STEP_FINISHED', data: { stepId: 's2', ok: true } }]).running).toEqual([]);
   });
 
-  it('a resume drops the steps that were open before the stop', () => {
+  it('a hand resume drops the steps that were open before the stop, an automatic quota resume keeps them', () => {
     const list = evs([
       ['STEP_STARTED', { stepId: 'old', kind: 'coverage', role: 'po', taskId: null, attempt: 1 }],
-      ['RUN_RESUMED', {}],
+      ['RUN_RESUMED', { manual: true }],
       ['STEP_STARTED', { stepId: 'new', kind: 'plan', role: 'sm', taskId: null, attempt: 1 }],
     ]);
     expect(currentActivity(list).running.map((s) => s.stepId)).toEqual(['new']);
+    const quota = evs([
+      ['STEP_STARTED', { stepId: 'inflight', kind: 'coverage', role: 'po', taskId: null, attempt: 1 }],
+      ['RUN_RESUMED', {}],
+    ]);
+    expect(currentActivity(quota).running.map((s) => s.stepId)).toEqual(['inflight']);
   });
 
   it('lists each task blocked in a phase under that phase, and a later block moves it', () => {
