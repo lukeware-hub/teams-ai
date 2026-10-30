@@ -547,7 +547,7 @@ describe('TaskRunner: reviewing', () => {
     journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'spec-001-r1', specHash: HASH });
     await journal.fact(RunEvent.TaskPlanned, { task: T1 });
     await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T1', to: 'ready' });
-    const reviewOn = (file: string) => ok({ specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: ['sum::[AC-001] adds'] }], findings: [{ file, line: 1, severity: 'important', problem: 'a caller still imports the removed module', fix: 'update the caller', acIds: ['AC-001'] }] });
+    const reviewOn = (file: string) => ({ specHash: HASH, decision: 'changes', criteria: [{ id: 'AC-001', status: 'failed', evidence: ['sum::[AC-001] adds'] }], findings: [{ file, line: 1, severity: 'important', problem: 'a caller still imports the removed module', fix: 'update the caller', acIds: ['AC-001'] }] });
     let reviews = 0;
     // The fake runner checks references the way the real step runner does.
     const agent: Agent = async (req) => {
@@ -555,8 +555,8 @@ describe('TaskRunner: reviewing', () => {
       if (req.kind === 'dev') return ok({ ...(out as { value: object }).value, deletedFiles: ['src/old.ts'] });
       if (req.kind !== 'review') return out;
       const answer = reviewOn(++reviews === 1 ? 'src/ghost.ts' : 'src/old.ts');
-      const errors = unresolvedReferences((req.refs as (v: unknown) => References)(answer.value), await (req.refContext as () => Promise<RefContext>)());
-      return errors.length > 0 ? failed('schema', ...errors) : answer;
+      const errors = unresolvedReferences((req.refs as (v: unknown) => References)(answer), await (req.refContext as () => Promise<RefContext>)());
+      return errors.length > 0 ? failed('schema', ...errors) : ok(answer);
     };
     const r = new TaskRunner('T1', deps({ agent }));
     await r.advance();
