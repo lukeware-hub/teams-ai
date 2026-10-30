@@ -27,7 +27,7 @@ import { withGitAuth } from '../git/auth.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import type { Report } from '../orchestrator/phases/report.js';
@@ -647,7 +647,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const startedEv = evs.find((e) => e.type === 'RUN_STARTED');
         const specId = String(startedEv?.data.specId ?? '');
         const projectId = String(startedEv?.data.projectId ?? '');
-        const finished = [...evs].reverse().find((e) => e.type === 'RUN_FINISHED') ?? null;
+        const finished = finishOf(evs) ?? null;
         const state = reduceEvents(evs);
         // A process that died leaves no RUN_FINISHED, so the journal alone reads as running forever; the run list asks the pid files.
         const interrupted = finished === null && (await runLiveness(idx, runId)).interrupted;
@@ -717,17 +717,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const w = sse();
         let last = after;
         let tail: { close(): void } | null = null;
+        // A RUN_FINISHED a later reopening cancelled is history: the stream goes on past it.
+        const ending = finishOf(evs);
+        const cancelled = new Set(evs.filter((e) => e.type === 'RUN_FINISHED' && e !== ending).map((e) => e.seq));
         const send = (e: StoredEvent) => {
           last = e.seq;
           w.send('journal', e, String(e.seq));
-          if (e.type === 'RUN_FINISHED') {
+          if (e.type === 'RUN_FINISHED' && !cancelled.has(e.seq)) {
             w.send('end', {});
             tail?.close();
             w.close();
           }
         };
         for (const e of evs) if (e.seq > after) send(e);
-        if (evs.some((e) => e.type === 'RUN_FINISHED')) return;
+        if (ending) return;
         tail = tailJournal(file, last, send, { from: replayed });
         w.onClose(() => tail?.close());
       },

@@ -1065,6 +1065,8 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [stopFailure, setStopFailure] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [resumeFailure, setResumeFailure] = useState<string | null>(null);
+  // The server ends the event stream at the run's finish, so a resumed run needs a new one to show what it does.
+  const [resumes, setResumes] = useState(0);
   useEffect(() => {
     if (runId)
       runApi
@@ -1158,13 +1160,14 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       .then((d) => {
         setResuming(false);
         setDetail(d);
+        setResumes((n) => n + 1);
       })
       .catch((e: Error) => {
         setResuming(false);
         setResumeFailure(e.message);
       });
   };
-  const { events, ended, error } = useJournal(runId && detail ? runApi.runEvents(runId) : null);
+  const { events, ended, error } = useJournal(runId && detail ? `${runApi.runEvents(runId)}${resumes > 0 ? `?resume=${resumes}` : ''}` : null);
   if (loadError)
     return (
       <main>

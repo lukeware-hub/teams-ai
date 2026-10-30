@@ -858,6 +858,17 @@ describe('run detail, events and steps', () => {
     expect((await readSse(`${base()}/api/runs/nope/events`, null, () => true)).status).toBe(404);
   });
 
+  it('a reopened run is running again: the old RUN_FINISHED neither ends its detail nor its event stream', async () => {
+    const earlier = [started('hello-001-r1'), { type: 'RUN_FINISHED', data: { result: 'verification-failed' } }, { type: 'RUN_REOPENED', data: { manual: true } }];
+    await writeRun(runs, 'hello-001-r1', [...earlier, { type: 'PHASE_STARTED', data: { phase: 3 } }], state('running'), 960);
+    alive.add(960);
+    const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(detail.status).toBe('running');
+    expect(detail.finished).toBeNull();
+    const { events } = await readSse(`${base()}/api/runs/hello-001-r1/events`, null, (ev) => ev.length >= 4);
+    expect(events.map((e) => [e.event, e.id])).toEqual([['journal', '1'], ['journal', '2'], ['journal', '3'], ['journal', '4']]);
+  });
+
   it('a corrupt journal is reported as 500 on detail and events', async () => {
     const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
     await fs.appendFile(path.join(dir, 'events.ndjson'), 'not json\n' + eventLines('hello-001-r1', [{ type: 'X' }], 3) + '\n');

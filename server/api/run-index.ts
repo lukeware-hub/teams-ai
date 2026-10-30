@@ -179,6 +179,12 @@ export async function runLiveness(deps: IndexDeps, runId: string): Promise<{ ali
   return { alive, interrupted: (pid !== null && !alive) || (pid === null && (await wasInterrupted(runs, runId))) };
 }
 
+/** A run a human reopened runs again: only a RUN_FINISHED after the last reopening says it ended. */
+export function finishOf<E extends { type: string }>(events: readonly E[]): E | undefined {
+  const lastFinish = events.findLastIndex((e) => e.type === 'RUN_FINISHED');
+  return lastFinish > events.findLastIndex((e) => e.type === 'RUN_REOPENED') ? events[lastFinish] : undefined;
+}
+
 export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
   const runs = runsDir(deps);
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
@@ -186,9 +192,7 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   const parsed = parseRunId(runId);
   const specId = String(startedAt?.data.specId ?? parsed?.specId ?? runId);
   const projectId = startedAt ? String(startedAt.data.projectId) : parsed?.projectId ?? null;
-  // A run a human reopened runs again: only a RUN_FINISHED after the last reopening says it ended.
-  const lastFinish = events.findLastIndex((e) => e.type === 'RUN_FINISHED');
-  const finished = lastFinish > events.findLastIndex((e) => e.type === 'RUN_REOPENED') ? events[lastFinish] : undefined;
+  const finished = finishOf(events);
   const state: StateFile | null = await fs
     .readFile(path.join(runs, runId, 'state.json'), 'utf8')
     .then((t) => JSON.parse(t) as StateFile)
