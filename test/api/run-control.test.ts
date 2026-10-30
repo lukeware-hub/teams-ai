@@ -1,5 +1,6 @@
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isAlive, runCommand, spawnRun, stop, type RunControlDeps } from '../../server/api/run-control.js';
+import { defaultRunControl, isAlive, runCommand, spawnRun, stop, type RunControlDeps } from '../../server/api/run-control.js';
 
 function fake(alive: Set<number>, over: Partial<RunControlDeps> = {}) {
   const spawns: Array<{ bin: string; args: string[]; cwd: string; logFile: string }> = [];
@@ -69,6 +70,9 @@ describe('run control', () => {
     });
     expect(await stop(deps, 4242, 1000)).toBe('terminated');
     expect(await stop(fake(new Set()).deps, 99, 1000)).toBe('gone');
+  });
+  it('starts the CLI in this node with the tsx loader, not through the tsx launcher', () => {
+    expect(defaultRunControl('/repo').cliEntry()).toEqual({ bin: process.execPath, prefix: ['--import', 'tsx', path.join('/repo', 'server', 'cli.ts')] });
   });
   it('adds --draft to a run command when asked', () => {
     const { deps } = fake(new Set());

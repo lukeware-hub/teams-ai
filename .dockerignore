@@ -3,6 +3,7 @@ web/node_modules
 web/dist
 .git
 coverage
+graphify-out
 *.log
 .env*
 config.json

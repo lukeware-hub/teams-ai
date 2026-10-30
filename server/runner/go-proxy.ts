@@ -23,5 +23,5 @@ export function goProxyHandler(upstream = 'https://proxy.golang.org'): http.Requ
   };
 }
 
-// The goproxy service of docker-compose.yml runs this file.
+// The goproxy service of docker-compose.yml runs this file with plain node: keep it to erasable TypeScript.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) http.createServer(goProxyHandler()).listen(Number(process.env.PORT ?? 8080));

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PINNED_SKILLS, type PinnedSkill } from '../../server/skills/catalog.js';
-import { buildDynamicPlugin, buildRolePlugins, cleanSkillText, ensureAgentPlugins, referenceDirs, skillFolders } from '../../server/skills/plugins.js';
+import { buildDynamicPlugin, buildRolePlugins, cleanSkillText, ensureAgentPlugins, prunePinnedSkills, referenceDirs, skillFolders } from '../../server/skills/plugins.js';
 import { assignSkill, createDraftSkill } from '../../server/skills/store.js';
 
 const alpha: PinnedSkill = { id: 'alpha', repository: 'https://github.com/acme/alpha', commit: 'a'.repeat(40), roles: ['dev'], purpose: 'Alpha.', sourcePath: 'skills' };
@@ -117,6 +117,34 @@ describe('role plugins', () => {
     await put(path.join(root, 'alpha', 'a'.repeat(40), 'skills', 'tdd', 'examples', 'SKILL.md'), '---\nname: example\ndescription: Nested.\n---\n');
     const folders = await skillFolders(path.join(root, 'alpha', 'a'.repeat(40), 'skills'));
     expect(folders.map((f) => path.basename(f))).toEqual(['brainstorming', 'tdd']);
+  });
+});
+
+describe('pruned cache', () => {
+  it('keeps the folder a skill reads, its license notices and an empty git marker, and drops the rest of the clone', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-prune-'));
+    const root = path.join(dir, 'cache');
+    const cache = path.join(root, 'nested', 'e'.repeat(40));
+    const nested: PinnedSkill = { ...alpha, id: 'nested', commit: 'e'.repeat(40), sourcePath: 'plugins/x/skills' };
+    await put(path.join(cache, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    await put(path.join(cache, 'LICENSE'), 'MIT\n');
+    await put(path.join(cache, 'README.md'), 'not read by agents\n');
+    await put(path.join(cache, 'plugins', 'x', 'skills', 'a', 'SKILL.md'), '---\nname: a\ndescription: A.\n---\n');
+    await put(path.join(cache, 'plugins', 'x', 'tools', 'run.sh'), 'echo\n');
+    await prunePinnedSkills(root, [nested]);
+    expect((await fs.readdir(cache)).sort()).toEqual(['.git', 'LICENSE', 'plugins']);
+    expect(await fs.readdir(path.join(cache, '.git'))).toEqual([]);
+    expect((await fs.readdir(path.join(cache, 'plugins', 'x'))).sort()).toEqual(['skills']);
+    expect(await fs.readFile(path.join(cache, 'plugins', 'x', 'skills', 'a', 'SKILL.md'), 'utf8')).toContain('name: a');
+  });
+
+  it('leaves a skill without a source path as it is', async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-prune-'));
+    const root = path.join(dir, 'cache');
+    const bare: PinnedSkill = { id: 'bare', repository: 'https://github.com/acme/bare', commit: 'f'.repeat(40), roles: ['dev'], purpose: 'Bare.' };
+    await put(path.join(root, 'bare', 'f'.repeat(40), 'README.md'), 'kept\n');
+    await prunePinnedSkills(root, [bare]);
+    expect(await fs.readFile(path.join(root, 'bare', 'f'.repeat(40), 'README.md'), 'utf8')).toBe('kept\n');
   });
 });
 

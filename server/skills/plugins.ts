@@ -137,3 +137,25 @@ export async function ensureAgentPlugins(cacheRoot: string, env: NodeJS.ProcessE
   if (env.TEAMS_AI_AGENT_PLUGINS_IMAGE) return;
   await buildRolePlugins(cacheRoot, agentPluginsRoot(env));
 }
+
+const NOTICE_FILE = /^(LICENSE|LICENCE|NOTICE|COPYING)([.-][\w.-]*)?$/i;
+
+/**
+ * Keeps in each synced cache only the folder the agents read and its license notices; the rest of the clone goes.
+ * The `.git` folder stays, empty, as the marker that the skill is synced. Moves, never copies, so links survive.
+ */
+export async function prunePinnedSkills(cacheRoot: string, catalog: readonly PinnedSkill[] = PINNED_SKILLS): Promise<void> {
+  for (const skill of catalog) {
+    if (!skill.sourcePath || !(await exists(sourceOf(cacheRoot, skill)))) continue;
+    const cache = skillCacheDir(cacheRoot, skill);
+    const slim = `${cache}.slim`;
+    const notices = (await fs.readdir(cache)).filter((name) => NOTICE_FILE.test(name));
+    await fs.rm(slim, { recursive: true, force: true });
+    await fs.mkdir(path.join(slim, path.dirname(skill.sourcePath)), { recursive: true });
+    await fs.rename(sourceOf(cacheRoot, skill), path.join(slim, skill.sourcePath));
+    for (const name of notices) await fs.rename(path.join(cache, name), path.join(slim, name));
+    await fs.rm(cache, { recursive: true, force: true });
+    await fs.rename(slim, cache);
+    await fs.mkdir(path.join(cache, '.git'));
+  }
+}

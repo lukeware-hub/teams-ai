@@ -1,9 +1,20 @@
+import { spawn } from 'node:child_process';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { goProxyHandler } from '../../server/runner/go-proxy.js';
 
 const servers: http.Server[] = [];
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const server = http.createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
+  });
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const status = (url: string) => fetch(url).then((r) => r.status, () => 0);
 const listen = async (handler: http.RequestListener): Promise<string> => {
   const server = http.createServer(handler);
   servers.push(server);
@@ -30,6 +41,22 @@ describe('goProxyHandler', () => {
     // A module the upstream does not know stays a 404, which the go command reads as "no such version".
     expect((await fetch(`${proxy}/github.com/none/x/@v/v1.0.0.info`)).status).toBe(404);
   });
+
+  it('runs as a plain node script, so the goproxy service needs no tsx', async () => {
+    const port = await freePort();
+    const script = fileURLToPath(new URL('../../server/runner/go-proxy.ts', import.meta.url));
+    const child = spawn(process.execPath, ['--experimental-strip-types', script], { env: { ...process.env, PORT: String(port) }, stdio: 'ignore' });
+    try {
+      let answer = 0;
+      for (let i = 0; i < 50 && answer === 0; i++) {
+        answer = await status(`http://127.0.0.1:${port}/`);
+        if (answer === 0) await sleep(100);
+      }
+      expect(answer).toBe(404);
+    } finally {
+      child.kill();
+    }
+  }, 15_000);
 
   it('answers only the module protocol: anything else is a 404, so the go command checks sums at sum.golang.org itself', async () => {
     let reached = 0;

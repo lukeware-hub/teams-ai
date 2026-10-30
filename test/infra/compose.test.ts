@@ -59,6 +59,13 @@ describe('docker-compose.yml (audit H4)', () => {
       expect(svc.build).toBe('.');
     }
   });
+
+  it('rotates the logs of every service and polls health every 2 s while a service starts', () => {
+    for (const [name, svc] of Object.entries(compose.services)) {
+      expect(svc.logging, name).toEqual({ driver: 'json-file', options: { 'max-size': '10m', 'max-file': '3' } });
+      expect(svc.healthcheck.start_interval, name).toBe('2s');
+    }
+  });
 });
 
 describe('helper images pinned by digest (audit M6)', () => {
