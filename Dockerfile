@@ -77,7 +77,14 @@ COPY scripts/install-pinned-skills.ts scripts/
 COPY server/exec server/exec
 COPY server/skills server/skills
 COPY skills skills
-COPY server/config/roles.ts server/config/roles.ts
+# The script imports these server folders at run time; keep this list in step with its imports.
+COPY server/agents server/agents
+COPY server/config server/config
+COPY server/contracts server/contracts
+COPY server/core server/core
+COPY server/decide server/decide
+COPY server/pipeline server/pipeline
+COPY server/scheduler server/scheduler
 RUN npx tsx --no-warnings=ExperimentalWarning scripts/install-pinned-skills.ts /opt/teams-ai/skills /opt/teams-ai/agent-plugins \
   && chown -R node:node /opt/teams-ai/skills
 COPY . .
