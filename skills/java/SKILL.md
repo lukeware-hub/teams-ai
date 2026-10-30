@@ -30,8 +30,8 @@ description: Use when a Java or JVM build, compile, test, or runtime step fails 
 
 ## Resolution flow
 
-Follow the error flow in the agent rules: check `skills/java/solutions/` first, then search with `agent-reach` (official docs, project issue trackers, Stack Overflow), apply the fix, rerun the failing command, and record the validated result in `skills/java/solutions/`.
+Follow the error flow in the agent rules: search with `agent-reach` (official docs, project issue trackers, Stack Overflow), apply the fix, and rerun the failing command.
 
 ## Solutions
 
-Known fixes live in `skills/java/solutions/`. Copy `_template.md` for a new entry. Update an existing entry instead of duplicating it.
+The `solutions/` folder keeps notes from past runs for people. The agents do not read or write it, so a note there is never applied on its own.

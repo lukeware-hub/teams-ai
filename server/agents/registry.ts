@@ -101,16 +101,14 @@ export function parseAgentFile(text: string, expectedRole: Role): AgentDefinitio
   return { role: expectedRole, description: fields.description!, model: fields.model!, tools, body };
 }
 
-/** Error rules every role follows: check the solutions first, search the web second, record what worked. */
+/** Error rules every role follows: think first, search trusted sources, verify the fix. */
 export const ERROR_RULES = `Regras para erros, em todos os papéis:
 Sempre que encontrar um erro:
 1. Pense antes de agir: escreva uma hipótese curta com a causa provável e o plano de correção. Não altere nada antes disso.
-2. Consulte primeiro a base de soluções da linguagem (skills/<linguagem>/solutions/). Se houver solução registrada, aplique-a.
-3. Se não houver solução registrada, pesquise sempre com o Agent Reach (\`agent-reach\` no Bash) antes de tentar qualquer correção. Priorize documentação oficial, GitHub Issues e Stack Overflow, e soluções recentes compatíveis com a versão usada no projeto.
-4. Aplique a solução e confirme que o erro foi resolvido, rodando de novo o comando, teste ou build.
-5. Registre a solução validada na base de soluções. Se uma solução registrada falhar depois, atualize o registro em vez de criar um duplicado.
-6. Nunca inclua segredos, tokens, senhas ou dados de clientes na pesquisa; remova-os da mensagem de erro antes de pesquisar.
-7. Se o erro persistir após 3 tentativas, pare e reporte o que foi tentado.`;
+2. Pesquise sempre com o Agent Reach (\`agent-reach\` no Bash) antes de tentar qualquer correção. Priorize documentação oficial, GitHub Issues e Stack Overflow, e soluções recentes compatíveis com a versão usada no projeto.
+3. Aplique a solução e confirme que o erro foi resolvido, rodando de novo o comando, teste ou build.
+4. Nunca inclua segredos, tokens, senhas ou dados de clientes na pesquisa; remova-os da mensagem de erro antes de pesquisar.
+5. Se o erro persistir após 3 tentativas, pare e reporte o que foi tentado.`;
 
 /** Shared rules every role follows, whatever its job; appended to each agent prompt. */
 export const QUALITY_RULES = `Quality rules for every role:

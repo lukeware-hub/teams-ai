@@ -8,7 +8,7 @@ description: Use when a Python install, import, test, lint, or runtime step fail
 ## Diagnose
 
 1. Read the last traceback frame that belongs to the project, and the exception line above it.
-2. Record `python --version` and which interpreter runs (`python -c "import sys; print(sys.executable)"`). Many errors are a different interpreter than the project expects.
+2. Record `python --version`. Many errors come from a different interpreter than the project expects, so compare it with the version the project declares.
 3. Check the virtual environment is active and that the package is installed in it (`pip show <package>`).
 4. Reproduce with the exact command, then change one thing at a time.
 
@@ -30,8 +30,8 @@ description: Use when a Python install, import, test, lint, or runtime step fail
 
 ## Resolution flow
 
-Follow the error flow in the agent rules: check `skills/python/solutions/` first, then search with `agent-reach` (official docs, package issue trackers, Stack Overflow), apply the fix, rerun the failing command, and record the validated result in `skills/python/solutions/`.
+Follow the error flow in the agent rules: search with `agent-reach` (official docs, package issue trackers, Stack Overflow), apply the fix, and rerun the failing command.
 
 ## Solutions
 
-Known fixes live in `skills/python/solutions/`. Copy `_template.md` for a new entry. Update an existing entry instead of duplicating it.
+The `solutions/` folder keeps notes from past runs for people. The agents do not read or write it, so a note there is never applied on its own.

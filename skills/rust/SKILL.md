@@ -31,8 +31,8 @@ description: Use when a Rust build, check, test, clippy, or cargo dependency ste
 
 ## Resolution flow
 
-Follow the error flow in the agent rules: check `skills/rust/solutions/` first, then search with `agent-reach` (official docs, crate issue trackers, the Rust users forum), apply the fix, rerun the failing command, and record the validated result in `skills/rust/solutions/`.
+Follow the error flow in the agent rules: search with `agent-reach` (official docs, crate issue trackers, the Rust users forum), apply the fix, and rerun the failing command.
 
 ## Solutions
 
-Known fixes live in `skills/rust/solutions/`. Copy `_template.md` for a new entry. Update an existing entry instead of duplicating it.
+The `solutions/` folder keeps notes from past runs for people. The agents do not read or write it, so a note there is never applied on its own.
