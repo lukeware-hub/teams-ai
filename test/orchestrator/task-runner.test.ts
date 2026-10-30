@@ -510,6 +510,17 @@ describe('TaskRunner: reviewing', () => {
     expect(journal.lastFeedback('T1')).toContain('no test for the empty case');
   });
 
+  it("gives the next review of the task the earlier review's findings", async () => {
+    let reviews = 0;
+    const r = await validated(async () => review(++reviews === 1 ? 'changes' : 'approve'));
+    for (let i = 0; i < 4; i++) await r.advance();
+    expect(state().state).toBe('rebasing');
+    const [first, second] = agentCalls.filter((c) => c.kind === 'review');
+    expect(first!.pack.feedback).not.toContain('Your earlier findings on this task');
+    expect(second!.pack.feedback).toContain('Your earlier findings on this task');
+    expect(second!.pack.feedback).toContain('- src/a.ts:1 no test for the empty case');
+  });
+
   it('runs the security review beside the Test review but counts it only when Test approves', async () => {
     const r = await validated(async () => review('changes'));
     await r.advance();
@@ -1417,6 +1428,43 @@ describe('TaskRunner: skill request', () => {
     expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'skill-select', 'dev']);
     expect(journal.events.some((e) => e.type === OrchEvent.SkillCreated && e.data.id === 'form-tokens')).toBe(true);
     expect(journal.events.some((e) => e.type === OrchEvent.SkillSelected && e.data.action === 'reuse')).toBe(true);
+  });
+
+  describe('a second skill request after the selection', () => {
+    const blocked = (capability: string) => ok({ specHash: HASH, status: 'blocked', reason: `needs ${capability}`, skillRequest: { capability, reason: 'the task needs it' } });
+    const agent = (): Agent => {
+      let devCalls = 0;
+      return async (req) => {
+        if (req.kind === 'skill-select') return ok({ specHash: HASH, action: 'reuse', skill, reason: 'smallest match' });
+        if (req.kind === 'block-options') return ok({ specHash: HASH, question: 'Qual validador?', options: [{ label: 'zod', detail: 'Usa zod.' }, { label: 'ajv', detail: 'Usa ajv.' }] });
+        if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Use the validator already installed.', assumption: 'no new skill' });
+        if (req.kind === 'dev' && ++devCalls <= 2) return blocked(devCalls === 1 ? 'validate JSON Schema' : 'sign webhooks');
+        return devDone()(req);
+      };
+    };
+    const noRepeatFailure = () => {
+      expect(agentCalls.filter((c) => c.kind === 'skill-select')).toHaveLength(1);
+      expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('skill request repeated'))).toBe(false);
+      expect(types()).not.toContain(`fact:${RunEvent.AttemptConsumed}`);
+      expect(journal.events.some((e) => e.type === OrchEvent.SkillRequested && e.data.capability === 'sign webhooks')).toBe(true);
+    };
+
+    it('goes to the owner when the agents do not decide', async () => {
+      const r = new TaskRunner('T1', deps({ agent: agent(), exec }));
+      await r.advance();
+      expect(state().state).toBe('blocked');
+      expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'dev', 'block-options']);
+      noRepeatFailure();
+    });
+
+    it('goes to the SM as a spec gap when the agents decide', async () => {
+      const r = new TaskRunner('T1', deps({ agent: agent(), exec, autonomous: async () => true }));
+      await r.advance();
+      expect(state().state).toBe('validating');
+      expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'skill-select', 'dev', 'spec-gap', 'dev']);
+      expect(agentCalls.find((c) => c.kind === 'spec-gap')!.pack.feedback).toContain(`Paths in frozenPaths (${plan.frozenPaths.join(', ')})`);
+      noRepeatFailure();
+    });
   });
 
   it('rejects a reuse that is not in the pinned catalog', async () => {

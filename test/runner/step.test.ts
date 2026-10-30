@@ -321,32 +321,52 @@ describe('runStep', () => {
     expect(captured.prompt).toBe(`${QUESTION_RULES}\n\nFix it`);
   });
 
-  it('books only the share of a resumed session that the CLI reports cumulatively', async () => {
-    const store = path.join(dir, 'store');
-    const result = (cost: number, apiMs: number) => ({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, duration_api_ms: apiMs, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: cost, usage: { input_tokens: 1, output_tokens: 2 } });
-    withFake({ FAKE_CLAUDE_FIXTURE: await writeStream('first.ndjson', [init, result(0.37, 62_000)]), FAKE_CLAUDE_SESSION: '1' });
-    const first = await runStep(request({ sessionId: 'sess-1', sessionStore: store }), deps);
-    withFake({ FAKE_CLAUDE_FIXTURE: await writeStream('second.ndjson', [init, result(0.55, 84_000)]), FAKE_CLAUDE_SESSION: '1' });
-    const second = await runStep(request({ sessionId: 'sess-1', resume: true, sessionStore: store }), deps);
-    expect(first.summary.costUsd).toBe(0.37);
-    expect(second.summary.costUsd).toBeCloseTo(0.18, 6);
-    expect(second.summary.profile?.durationApiMs).toBe(22_000);
-    expect(deps.accounting.records().map((r) => r.costUsd)).toEqual([0.37, second.summary.costUsd]);
-  });
-
-  it('books only the tokens a resumed session added, and flags totals that went down instead of booking zero', async () => {
-    const store = path.join(dir, 'store');
-    const result = (cost: number, input: number, output: number) => ({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, duration_api_ms: 1_000, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: cost, usage: { input_tokens: input, output_tokens: output } });
+  describe('a resumed session', () => {
+    const store = () => path.join(dir, 'store');
+    const result = (cost: number, apiMs: number, input: number, output: number) => ({ type: 'result', subtype: 'success', is_error: false, duration_ms: 5, duration_api_ms: apiMs, num_turns: 1, result: JSON.stringify(okValue), structured_output: okValue, session_id: 's', total_cost_usd: cost, usage: { input_tokens: input, output_tokens: output } });
     const run = async (name: string, event: object, resume: boolean) => {
       withFake({ FAKE_CLAUDE_FIXTURE: await writeStream(name, [init, event]), FAKE_CLAUDE_SESSION: '1' });
-      return runStep(request({ sessionId: 'sess-1', resume, sessionStore: store }), deps);
+      return runStep(request({ sessionId: 'sess-1', resume, sessionStore: store() }), deps);
     };
-    await run('first.ndjson', result(0.37, 100, 20), false);
-    await run('second.ndjson', result(0.55, 160, 50), true);
-    const third = await run('third.ndjson', result(0.1, 40, 10), true);
-    expect(deps.accounting.records().map((r) => [r.usage.inputTokens, r.usage.outputTokens])).toEqual([[100, 20], [60, 30], [40, 10]]);
-    expect(deps.accounting.records()[2]!.costUsd).toBe(0.1);
-    expect(third.summary.profile?.sessionTotalsReset).toBe(true);
+    const bookedUsage = () => deps.accounting.records().map((r) => [r.usage.inputTokens, r.usage.outputTokens]);
+
+    it('books the cost and API time the CLI added since the last step, and the usage as reported', async () => {
+      const first = await run('first.ndjson', result(0.37, 62_000, 100, 20), false);
+      const second = await run('second.ndjson', result(0.55, 84_000, 40, 10), true);
+      expect(first.summary.costUsd).toBe(0.37);
+      expect(second.summary.costUsd).toBeCloseTo(0.18, 6);
+      expect(second.summary.profile?.durationApiMs).toBe(22_000);
+      expect(second.summary.profile?.sessionTotalsReset).toBeUndefined();
+      expect(deps.accounting.records().map((r) => r.costUsd)).toEqual([0.37, second.summary.costUsd]);
+      expect(bookedUsage()).toEqual([[100, 20], [40, 10]]);
+    });
+
+    it('books a higher usage as reported, never as a difference', async () => {
+      await run('first.ndjson', result(0.37, 62_000, 100, 20), false);
+      await run('second.ndjson', result(0.55, 84_000, 160, 50), true);
+      expect(bookedUsage()).toEqual([[100, 20], [160, 50]]);
+    });
+
+    it('books the reported cost and flags the reset when the session cost went down', async () => {
+      await run('first.ndjson', result(0.37, 62_000, 100, 20), false);
+      const second = await run('second.ndjson', result(0.1, 70_000, 40, 10), true);
+      expect(deps.accounting.records()[1]!.costUsd).toBe(0.1);
+      expect(second.summary.profile?.durationApiMs).toBe(70_000);
+      expect(second.summary.profile?.sessionTotalsReset).toBe(true);
+    });
+  });
+
+  it('lets a step read its role plugin folder and still denies edits under the plugins root', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const pluginsRoot = path.join(dir, 'plugins');
+    await fs.mkdir(path.join(pluginsRoot, 'front'), { recursive: true });
+    await runStep(request({ kind: 'dev', role: 'front' }), { ...deps, agentPluginsRoot: pluginsRoot });
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
+    expect(settings.permissions.allow).toContain(`Read(${absoluteRule(path.join(pluginsRoot, 'front'))}/**)`);
+    expect(settings.permissions.deny).toContain(`Edit(${absoluteRule(pluginsRoot)}/**)`);
+    expect(captured.argv[captured.argv.indexOf('--plugin-dir') + 1]).toBe(path.join(pluginsRoot, 'front'));
   });
 
   it('ends with an environment failure when the step setup throws before the agent runs', async () => {

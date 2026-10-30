@@ -112,7 +112,7 @@ describe('packs', () => {
     const change = { diffStat: '', changedFiles: [], diff: '', code: { source: 'none' as const } };
     expect(ruleOf(reviewPack(withService, own, { ...change, junit: [], profile: 'standard' }))).toBe(rule);
     expect(ruleOf(securityPack(withService, own, change))).toBe(rule);
-    expect(ruleOf(specGapPack(withService, own, { question: 'which status code?' }))).toBe(rule);
+    expect(ruleOf(specGapPack(withService, own, { question: 'which status code?', frozenPaths: [] }))).toBe(rule);
     expect(ruleOf(replanPack(withService, own, { history: [], boundaries: [] }))).toBe(rule);
     expect(ruleOf(devPack(base, own, opts))).toBeUndefined();
   });
@@ -204,11 +204,20 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).feedback).toContain('category "plan"');
   });
 
+  it("the review lists the reviewer's earlier findings on the task, and adds nothing without them", () => {
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const prior = reviewPack(base, task, { ...review, priorFindings: [{ file: 'src/a.ts', line: 4, problem: 'no test for the empty case' }, { file: 'README.md', line: null, problem: 'no Run section' }] }).feedback;
+    expect(prior).toContain('Your earlier findings on this task (the Dev applied them; do not reverse one without saying which and why)');
+    expect(prior).toContain('- src/a.ts:4 no test for the empty case\n- README.md no Run section');
+    expect(reviewPack(base, task, { ...review, priorFindings: [] }).feedback).toBe(reviewPack(base, task, review).feedback);
+    expect(reviewPack(base, task, review).feedback).not.toContain('earlier findings');
+  });
+
   // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.
   it("dev, tech-spec and review packs carry the spec's decisions, and a spec without them adds none", () => {
     const decided: PackBase = { ...base, spec: { ...spec, decisions: [{ question: 'O total inclui frete?', answer: 'Sim.' }] } };
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
-    for (const p of [devPack(decided, task, { code: { source: 'none' }, handoffs: [], feedback: null }), techSpecPack(decided, { feedback: null }), reviewPack(decided, task, review), specGapPack(decided, task, { question: 'Frete conta?' })]) {
+    for (const p of [devPack(decided, task, { code: { source: 'none' }, handoffs: [], feedback: null }), techSpecPack(decided, { feedback: null }), reviewPack(decided, task, review), specGapPack(decided, task, { question: 'Frete conta?', frozenPaths: [] })]) {
       expect(p.decisions).toEqual([{ question: 'O total inclui frete?', answer: 'Sim.' }]);
     }
     expect(devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }).decisions).toBeUndefined();
@@ -377,13 +386,21 @@ describe('packs', () => {
 
 describe('specGapPack', () => {
   it('lets the SM overrule an owner decision only when the owner lets the agents decide', () => {
-    expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('overrule it');
-    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('overrule it');
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('overrule it');
+    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('overrule it');
   });
 
   it('offers the SM an image change for a version bump only when the owner lets the agents decide', () => {
-    expect(specGapPack(base, task, { question: 'Which Go?' }).feedback).not.toContain('imageFix');
-    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true }).feedback).toContain('imageFix');
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('imageFix');
+    expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('imageFix');
+  });
+
+  it('tells the SM that frozen paths are rejected and never overruled, whether or not it may overrule', () => {
+    for (const overrule of [true, false]) {
+      const feedback = specGapPack(base, task, { question: 'Which Go?', overrule, frozenPaths: ['package.json', 'tsconfig.json'] }).feedback;
+      expect(feedback).toContain('Paths in frozenPaths (package.json, tsconfig.json) are rejected by the orchestrator in every task after the scaffold; never tell the Dev to change one, and never overrule this.');
+    }
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('frozenPaths');
   });
 });
 

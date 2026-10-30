@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { E2E_CONTRACT, SMOKE_CONTRACT, e2eSuiteRules } from '../../server/orchestrator/steps.js';
+import { PINNED_SKILLS } from '../../server/skills/catalog.js';
 
 const agent = (name: string) => readFileSync(new URL(`../../.claude/agents/${name}.md`, import.meta.url), 'utf8');
 
@@ -44,6 +45,13 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('devops')).toContain('Use the installed DevOps skills');
     expect(agent('sm')).toContain('find-skills');
     for (const role of ['front', 'dev', 'devops']) expect(agent(role)).toContain('skillRequest');
+  });
+
+  it("name Front's skills as the plugin invokes them, each one a pinned skill of the front role", () => {
+    const ids = [...agent('front').matchAll(/`teams-ai-front:([\w-]+)`/g)].map((match) => match[1]);
+    const front = PINNED_SKILLS.filter((skill) => skill.roles.includes('front')).map((skill) => skill.id);
+    expect(ids).toEqual(['impeccable', 'taste-skill', 'ui-ux-pro-max', 'web-asset-generator', 'playwright-cli']);
+    for (const id of ids) expect(front).toContain(id);
   });
 
   it('tell devops and the reviewer that a digest no one can look up is no blocker: the docs tag pins the image', () => {

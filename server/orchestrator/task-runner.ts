@@ -362,7 +362,9 @@ export class TaskRunner {
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as DevOutput;
     if (value.skillDraft) await this.reviewDraft(owner, task.def, value.skillDraft);
-    if (value.skillRequest) return this.selectSkill(owner, task.def, value.skillRequest);
+    // Only a task's first skill request goes to the SM; a later one is journaled and the status decides.
+    if (value.skillRequest && this.skillRounds === 0) return this.selectSkill(owner, task.def, value.skillRequest);
+    await this.journalSkillRequest(owner, value.skillRequest);
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     if (value.status === 'blocked') {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
@@ -517,7 +519,7 @@ export class TaskRunner {
     await this.deps.journal.fact(OrchEvent.SkillSelected, { taskId: this.taskId, role, action: 'reject', capability: request.capability, reason: selection.reason });
   }
 
-  /** A skill request from a review is journaled only: no step routes it to the SM. */
+  /** A skill request from a review, or a Dev's repeat, is journaled only: no step routes it to the SM. */
   private async journalSkillRequest(role: Role, request: { capability: string; reason: string } | undefined): Promise<void> {
     if (request) await this.deps.journal.fact(OrchEvent.SkillRequested, { taskId: this.taskId, role, ...request });
   }
@@ -540,7 +542,9 @@ export class TaskRunner {
     }
     // The SM only reads the repo. It reads a snapshot of origin/main, so another task's merge cannot rewrite the tree under it.
     const overrule = await this.autonomous();
-    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    // The same frozen paths the scope check rejects for this task; the first spec's scaffold may change them.
+    const frozenPaths = this.deps.firstSpec && this.task.bootstrapsFrozenPaths ? [] : this.deps.plan.frozenPaths;
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule, frozenPaths }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
@@ -664,7 +668,9 @@ export class TaskRunner {
     const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
     const diff = await this.boundedDiff();
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile });
+    // The last two rounds of findings, so the reviewer does not reverse its own requests.
+    const priorFindings = this.deps.journal.events.filter((e) => e.type === OrchEvent.ReviewChanges && e.data.taskId === this.taskId).slice(-2).flatMap((e) => e.data.findings as ReviewOutput['findings']);
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
     const security = this.startSecurity(changed, diffStat, diff, code);

@@ -71,6 +71,7 @@ function scopeOf(spec: Spec): string[] {
 
 /** Longest gate-result list a review pack carries; the rest is a count. */
 const REVIEW_JUNIT_LINES = 200;
+const REVIEW_PRIOR_LINES = 10;
 
 type Common = Pick<
   ContextPackInput,
@@ -198,9 +199,12 @@ export function resumedPack(text: string): ContextPack {
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile },
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }> },
 ): ContextPackInput {
-  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".`;
+  const prior = (opts.priorFindings ?? []).slice(0, REVIEW_PRIOR_LINES).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} ${f.problem}`);
+  if ((opts.priorFindings?.length ?? 0) > REVIEW_PRIOR_LINES) prior.push(`- ... ${(opts.priorFindings?.length ?? 0) - REVIEW_PRIOR_LINES} more`);
+  const history = prior.length > 0 ? `\n\nYour earlier findings on this task (the Dev applied them; do not reverse one without saying which and why):\n${prior.join('\n')}` : '';
+  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".${history}`;
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
@@ -370,11 +374,12 @@ export function planPack(
   };
 }
 
-export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean }): ContextPackInput {
+export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean; frozenPaths: readonly string[] }): ContextPackInput {
   const overrule = opts.overrule ? '\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.' : '';
+  const frozen = opts.frozenPaths.length > 0 ? `\n\nPaths in frozenPaths (${opts.frozenPaths.join(', ')}) are rejected by the orchestrator in every task after the scaffold; never tell the Dev to change one, and never overrule this.` : '';
   const gateFix = '\n\nWhen the question shows that a blocking gate command in the plan is wrong (the code is right, the command cannot pass, for example a sed that leaves a number empty), answer with gateFix: the gate name and the whole corrected command on one line, keeping the same check. The orchestrator applies it, journaled, and the Dev runs again with it. Leave gateFix out of every other answer, and never write a gate result file by hand.';
   const imageFix = opts.overrule ? '\n\nWhen your answer moves the toolchain to a newer version (a patched Go that a dependency scan asks for), also answer with imageFix: the whole new gate image reference, same repository and flavour, for example golang:1.27.2-bookworm to golang:1.27.3-bookworm. The orchestrator then runs the install and the gates in it; without it the Dev\'s new version cannot run there. In the answer, name the files the Dev moves to the same version.' : '';
-  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}${gateFix}${imageFix}` };
+  return { ...common(base, 'spec-gap', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), decisions: base.spec.decisions, feedback: `Dev question (spec gap):\n${opts.question}${overrule}${frozen}${gateFix}${imageFix}` };
 }
 
 /** The owner's question for a block the agents cannot finish: one question and 2 to 4 choices the repository can carry out. */

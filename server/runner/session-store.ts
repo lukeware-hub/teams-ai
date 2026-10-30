@@ -38,7 +38,7 @@ export async function restoreSession(storeDir: string, home: string): Promise<vo
 
 const TOTALS_FILE = 'totals.json';
 
-/** What the CLI reported for the whole session so far; a resumed session reports its cost, API time and usage cumulatively. */
+/** What the CLI reported for the last invocation: cost and API time are cumulative for the session, usage is that invocation's own. */
 export interface SessionTotals {
   costUsd: number;
   durationApiMs: number;

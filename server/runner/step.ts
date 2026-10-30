@@ -18,7 +18,7 @@ import { API_KEY_ENV, createStepHome, hasStaticCredential, hostTokenExpiresAt, r
 import { preflightSandbox, runProcess, type ProcessCaps, type RawStepResult, type RunnerBinary } from './process-runner.js';
 import { FULL_ACCESS_TOOLS, absoluteRule, writeRoleSettings, type RoleSettingsInput } from './role-settings.js';
 import { buildDynamicPlugin, referenceDirs } from '../skills/plugins.js';
-import { isRateLimitRejected, type ResultSummary, type Usage } from './stream-events.js';
+import { isRateLimitRejected, type ResultSummary } from './stream-events.js';
 import { redactSecrets } from '../core/redact.js';
 
 export interface StepRequest {
@@ -296,7 +296,7 @@ async function projectSecretsDirs(workspacesRoot: string): Promise<string[]> {
   return [path.join(workspacesRoot, '*', 'secrets'), ...projects.map((project) => path.join(workspacesRoot, project, 'secrets'))];
 }
 
-/** `total_cost_usd`, `duration_api_ms` and `usage` of a resumed session include the attempts before it: book only this step's share. */
+/** `total_cost_usd` and `duration_api_ms` of a resumed session include the attempts before it: book only this step's share. Its `usage` is already this step's own. */
 async function bookSessionShare(s: ResultSummary, store: string, resume: boolean): Promise<void> {
   // Without a result event the step reports only its own stream, never the session totals.
   if (!s.found) return;
@@ -304,19 +304,12 @@ async function bookSessionShare(s: ResultSummary, store: string, resume: boolean
   const apiMs = s.profile?.durationApiMs ?? 0;
   await writeTotals(store, { costUsd: s.costUsd ?? before?.costUsd ?? 0, durationApiMs: apiMs, usage: s.usage });
   if (!before) return;
-  const usage: Usage = {
-    inputTokens: s.usage.inputTokens - before.usage.inputTokens,
-    outputTokens: s.usage.outputTokens - before.usage.outputTokens,
-    cacheReadTokens: s.usage.cacheReadTokens - before.usage.cacheReadTokens,
-    cacheWriteTokens: s.usage.cacheWriteTokens - before.usage.cacheWriteTokens,
-  };
   const costUsd = s.costUsd === null ? null : Math.round((s.costUsd - before.costUsd) * 1e6) / 1e6;
-  if ([...Object.values(usage), costUsd ?? 0, apiMs - before.durationApiMs].some((n) => n < 0)) {
+  if ((costUsd ?? 0) < 0 || apiMs < before.durationApiMs) {
     // The CLI started its totals over: the reported numbers are this step's own, and the journal says so.
     if (s.profile) s.profile = { ...s.profile, sessionTotalsReset: true };
     return;
   }
-  s.usage = usage;
   s.costUsd = costUsd;
   if (s.profile) s.profile = { ...s.profile, durationApiMs: apiMs - before.durationApiMs };
 }
@@ -337,7 +330,9 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...refs.map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  // dontAsk denies a Read no rule allows, so a skill reads its own plugin files only through these rules.
+  const pluginDirs = await stepPluginDirs(deps, req.role, home);
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
@@ -356,7 +351,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       prompt: req.prompt,
       jsonSchema: toJsonSchema(req.kind),
       tools: agent.tools,
-      pluginDirs: await stepPluginDirs(deps, req.role, home),
+      pluginDirs,
       disallowedTools: [...ALWAYS_DENIED, ...NESTED_DENIED],
       settingsPath,
       home,
