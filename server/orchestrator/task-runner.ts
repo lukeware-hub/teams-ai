@@ -888,8 +888,10 @@ export class TaskRunner {
     }
     const own = this.ownInfraOnly(outcome.value as ReplanOutput);
     // A replacement changes the same repository as the task it replaces, whatever service the agent names.
+    // Its origin is the replaced task's: the SM never sets it.
     const service = this.task.def.service;
-    const value = { ...own, replacements: own.replacements.map(({ service: _, ...r }) => (service ? { ...r, service } : r)) };
+    const origin = this.task.def.origin;
+    const value = { ...own, replacements: own.replacements.map(({ service: _, ...r }) => ({ ...r, origin, ...(service ? { service } : {}) })) };
     // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
     // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
     // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).

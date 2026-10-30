@@ -319,11 +319,11 @@ export const BlockOptionsOutput = z.object({ specHash, question: z.string().min(
 export type BlockOptionsOutput = z.infer<typeof BlockOptionsOutput>;
 
 /** Spec (orchestrator) §4.6: SM splits or changes a task that spent its attempts. */
-export const ReplanOutput = z.object({ specHash, replacements: z.array(PlanTask).min(1).max(3) });
+export const ReplanOutput = z.object({ specHash, replacements: z.array(PlanTask.omit({ origin: true })).min(1).max(3) });
 export type ReplanOutput = z.infer<typeof ReplanOutput>;
 
 /** Spec (phases 4-6) §3: SM plans one round of fix tasks from failed tests and uncovered criteria. */
-export const FixTasksOutput = z.object({ specHash, tasks: z.array(PlanTask).min(1).max(3) });
+export const FixTasksOutput = z.object({ specHash, tasks: z.array(PlanTask.omit({ origin: true })).min(1).max(3) });
 export type FixTasksOutput = z.infer<typeof FixTasksOutput>;
 
 /** Roadmap R11.12: PO proposes a readable English id for a new project or spec (and the project's first spec). */

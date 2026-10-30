@@ -195,6 +195,13 @@ describe('dev output JSON Schema carries the status-dependent requirements', () 
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [] }).success).toBe(false);
     expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task, task, task, task] }).success).toBe(false);
   });
+
+  it('a replan or fix-tasks answer with an origin the SM made up is still valid, since the orchestrator sets origin', () => {
+    const HASH = 'sha256:' + 'a'.repeat(64);
+    const task = { id: 'T900-fix-1-r1', title: 't', description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'replan' };
+    expect(OUTPUT_SCHEMAS.replan.safeParse({ specHash: HASH, replacements: [task] }).success).toBe(true);
+    expect(OUTPUT_SCHEMAS['fix-tasks'].safeParse({ specHash: HASH, tasks: [task] }).success).toBe(true);
+  });
 });
 
 describe('security output', () => {
