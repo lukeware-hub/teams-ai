@@ -74,6 +74,13 @@ export function phaseState(p: PhaseRow, runStatus: string, blockedTasks: number)
   return PHASE_STATE[p.result];
 }
 
+/** The RUN_FINISHED that ends the run: one before the last RUN_REOPENED was cancelled by the retry (the server reads it the same way). */
+export function finishedEvent(events: StoredEvent[]): StoredEvent | undefined {
+  const lastOf = (type: string) => events.map((e) => e.type).lastIndexOf(type);
+  const last = lastOf('RUN_FINISHED');
+  return last > lastOf('RUN_REOPENED') ? events[last] : undefined;
+}
+
 const SUCCESS_RESULTS = new Set(['complete', 'awaiting-validation', 'done']);
 
 /** The round-2 verdict in the server's own wording (phases/verify.ts), plus the ids it names. */
@@ -132,6 +139,17 @@ export function phases(events: StoredEvent[]): PhaseRow[] {
       case 'REPORT_READY':
         end(rows.get(6), e.at, 'done');
         break;
+      case 'RUN_REOPENED': {
+        // A retry restarts the blocked tasks, which is the implementation again; the later phases show once they start again.
+        for (const phase of [...rows.keys()]) if (phase > 3) rows.delete(phase);
+        const implementation = rows.get(3);
+        if (implementation) {
+          Object.assign(implementation, { endedAt: null, result: 'running', reason: null });
+          current = implementation;
+        }
+        deployFailure = null;
+        break;
+      }
       case 'RUN_FINISHED': {
         const result = String(d.result);
         if (SUCCESS_RESULTS.has(result)) end(current, e.at, 'done');

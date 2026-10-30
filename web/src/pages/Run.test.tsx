@@ -141,6 +141,16 @@ describe('RunView', () => {
       ev(2, 'RUN_FINISHED', { result: 'deploy-failed', reason: 'deploy failed at smoke: plan.commands.smoke missing', merged: [], blocked: [], tokens: {} }),
     ];
 
+    it('a retried run shows no stop banner and reads running, whatever the earlier finish said', () => {
+      const retried = [
+        ev(1, 'RUN_FINISHED', { result: 'verification-failed', reason: 'delivery contract not met on main, missing: Dockerfile', merged: [], blocked: [], tokens: {} }),
+        ev(2, 'RUN_REOPENED', { manual: true }),
+      ];
+      render(view({ events: retried, ended: false, detail: { ...detail, status: 'running' } }));
+      expect(screen.queryByTestId('outcome-banner')).toBeNull();
+      expect(screen.getByTestId('status').textContent).not.toContain('verificação falhou');
+    });
+
     it('explains a deploy-failed run: what, why, rollback, owner and next step', () => {
       render(view({ events: deployFailed, ended: true, detail: { ...detail, status: 'deploy-failed' } }));
       expect(screen.getByTestId('status').textContent).toContain('deploy falhou');

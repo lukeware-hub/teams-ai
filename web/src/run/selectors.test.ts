@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../api.js';
-import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
+import { blockedSummary, citedVariables, currentActivity, deployOutcome, evidence, explainPhase, explainStop, finishedEvent, firstSentence, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseTitle, runState, stopSummary, taskDetail, tokens } from './selectors.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -300,6 +300,24 @@ describe('phase rows', () => {
   it('a run stopped by the user leaves its phase interrupted, not failed', () => {
     const out = phases(evs([['PHASE_STARTED', { phase: 3 }], ['RUN_FINISHED', { result: 'drained', reason: null }]]));
     expect(out[0]).toMatchObject({ result: 'stopped', reason: null });
+  });
+
+  const failedVerification: Array<[string, Record<string, unknown>]> =[['PHASE_STARTED', { phase: 3 }], ['PHASE_STARTED', { phase: 4, round: 1 }], ['VERIFICATION_FAILED', { round: 2 }], ['PHASE_STARTED', { phase: 6 }], ['REPORT_READY', {}], ['RUN_FINISHED', { result: 'verification-failed', reason: 'x' }]];
+
+  it('a retry puts the implementation back to running and forgets the later phases until they start again', () => {
+    const out = phases(evs([...failedVerification, ['RUN_REOPENED', { manual: true }]]));
+    expect(out.map((p) => [p.phase, p.result])).toEqual([[3, 'running']]);
+  });
+
+  it('a retried run reads its phases from the retry onward', () => {
+    const out = phases(evs([...failedVerification, ['RUN_REOPENED', { manual: true }], ['PHASE_STARTED', { phase: 4, round: 1 }]]));
+    expect(out.map((p) => [p.phase, p.result])).toEqual([[3, 'done'], [4, 'running']]);
+  });
+
+  it('a RUN_FINISHED before the last RUN_REOPENED no longer ends the run', () => {
+    expect(finishedEvent(evs([...failedVerification, ['RUN_REOPENED', { manual: true }]]))).toBeUndefined();
+    const again = evs([...failedVerification, ['RUN_REOPENED', { manual: true }], ['RUN_FINISHED', { result: 'complete', reason: null }]]);
+    expect(finishedEvent(again)?.data.result).toBe('complete');
   });
 });
 

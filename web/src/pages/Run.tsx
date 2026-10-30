@@ -14,7 +14,7 @@ import { safeHttpUrl } from '../safeUrl.js';
 import { StepList } from '../components/StepList.js';
 import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
-import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
+import { type ModelUse, currentActivity, evidence, explainBlockReason, explainPhase, explainStop, finishedEvent, firstSentence, formatDuration, lastDeployFailure, liveBlocked, mergedPrs, ownHint, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, rootBlockers, runState, stepDoing, stopBefore, stopSummary, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -489,7 +489,7 @@ const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed'])
 export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction }) {
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
-  const finished = [...unique].reverse().find((e) => e.type === 'RUN_FINISHED');
+  const finished = finishedEvent(unique);
   // The journal wins while it streams; before the first event and after the stream ends the server's snapshot is authoritative.
   // Except for 'interrupted': a dead process writes nothing, so the journal alone would read as running forever.
   // Only the server can tell (it checks the pid), and `detail` is re-fetched periodically to pick that up live.
