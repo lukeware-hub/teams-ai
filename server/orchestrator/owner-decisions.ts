@@ -28,6 +28,10 @@ export async function recordOwnerDecisions(root: string, specId: string, answers
 export const ownerAnswer = (decisions: readonly OwnerDecision[], runId: string, taskId: string, question: string): string | null =>
   decisions.find((d) => d.runId === runId && d.taskId === taskId && d.question === question)?.answer ?? null;
 
+/** Each question of a run with the owner's answer to it, or null while it waits: the one pairing the run screen and the chat share. */
+export const pairDecisions = <T extends { taskId: string; runId: string; question: string }>(asked: readonly T[], decisions: readonly OwnerDecision[]): Array<T & { answer: string | null }> =>
+  asked.map((q) => ({ ...q, answer: ownerAnswer(decisions, q.runId, q.taskId, q.question) }));
+
 /** The answers given for this spec version, as assumptions every step reads first; an answer for another version does not carry over. */
 export const ownerDecisionLines = (decisions: readonly OwnerDecision[], specHash: string): string[] =>
   decisions.filter((d) => d.specHash === specHash).map((d) => `Owner decision (binding) for ${d.taskId}: ${d.question} → ${d.answer}`);
