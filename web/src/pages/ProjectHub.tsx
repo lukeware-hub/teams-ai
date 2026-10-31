@@ -212,7 +212,7 @@ export function ProjectHubView(p: {
   }
   if (!p.project) return <main />;
   const pr = p.project;
-  const newestSpec = pr.specs.at(-1)?.specId;
+  const refineSpec = pr.specs.find((s) => s.specId === `${pr.projectId}-001`)?.specId;
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
   const allConcluded = percent === 100;
@@ -406,8 +406,8 @@ export function ProjectHubView(p: {
             <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {p.docs.map((d) => (
                 <li className="flex min-w-0 gap-2" key={d.file} data-testid={`project-doc-${d.file}`}>
-                  {newestSpec ? (
-                    <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${newestSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
+                  {refineSpec ? (
+                    <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${refineSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
                       <span className="wrap-anywhere">{d.file}</span>
                       <Icon name="arrow-right" size={16} />
                     </Link>
@@ -417,7 +417,7 @@ export function ProjectHubView(p: {
                   {d.text === null ? (
                     <span className="hint self-center">Ainda não publicado</span>
                   ) : (
-                    <a className="link-button shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
+                    <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
                       <Icon name="download" size={16} />
                     </a>
                   )}

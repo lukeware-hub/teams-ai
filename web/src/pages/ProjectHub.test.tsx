@@ -118,24 +118,25 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('project-docs')).toBeNull();
   });
 
-  it('links each document to its refinement stage in the newest spec, and downloads only the published ones', () => {
+  it('links each document to its refinement stage in the project spec <projectId>-001, and downloads only the published ones', () => {
     const o = on();
+    const withFirst = { ...project, specs: [{ specId: 'hello-app-001', status: 'done', activeRunId: null }, { specId: 'hello-app-002', status: 'planned', activeRunId: null }] };
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={withFirst} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('link', { name: 'Visualizar project.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-003?etapa=project.md');
-    expect(screen.getByRole('link', { name: 'Visualizar briefing.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-003?etapa=briefing.md');
+    expect(screen.getByRole('link', { name: 'Visualizar project.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-app-001?etapa=project.md');
+    expect(screen.getByRole('link', { name: 'Visualizar briefing.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-app-001?etapa=briefing.md');
     expect(screen.getByRole('link', { name: 'Baixar project.md' }).getAttribute('download')).toBe('project.md');
     expect(screen.queryByRole('link', { name: 'Baixar briefing.md' })).toBeNull();
   });
 
-  it('shows no view link when the project has no spec yet', () => {
+  it('shows no view link when the project has no <projectId>-001 spec', () => {
     const o = on();
     render(
       <MemoryRouter>
-        <ProjectHubView project={{ ...project, specs: [] }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.queryByRole('link', { name: 'Visualizar project.md' })).toBeNull();
