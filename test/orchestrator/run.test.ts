@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadAgents } from '../../server/agents/registry.js';
 import type { Accounting } from '../../server/budget/accounting.js';
 import { loadConfig } from '../../server/config/config.js';
@@ -9,6 +9,7 @@ import { git } from '../../server/git/git.js';
 import { CrashInjected, gateCacheDir, gateSecrets, Run, withInflightClaimed, type RunDeps } from '../../server/orchestrator/run.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import { reduceEvents, RunEvent } from '../../server/pipeline/run-state.js';
+import { TaskRunner } from '../../server/orchestrator/task-runner.js';
 import { nextRunnable } from '../../server/scheduler/scheduler.js';
 import type { StepRequest, StepOutcome } from '../../server/runner/step.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
@@ -201,6 +202,18 @@ describe('Run', () => {
     await run.close();
   }, 180_000);
 
+  it('masks a secret value in the reason of a task whose step failed unexpectedly', async () => {
+    const d = await withAgents(deps(happy, { maxParallel: 1, secrets: { API_TOKEN: 'tok-SECRET-VALUE-42' } }));
+    const crash = vi.spyOn(TaskRunner.prototype, 'advance').mockRejectedValueOnce(new Error('push refused for tok-SECRET-VALUE-42'));
+    const run = await Run.create(d);
+    await run.execute();
+    crash.mockRestore();
+    const reason = String(run.journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason);
+    expect(reason).toContain('[REDACTED]');
+    expect(reason).not.toContain('tok-SECRET-VALUE-42');
+    await run.close();
+  });
+
   it('drains when the run budget is spent: in-flight tasks finish, nothing new starts', async () => {
     const d = await withAgents(deps(happy, { maxParallel: 1 }));
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: false, perTaskTokens: 50_000, perRunTokens: 2_000 } });
@@ -211,6 +224,8 @@ describe('Run', () => {
     // The never-started task stays where the plan left it (ready: no dependencies).
     expect(states).toContain('ready');
     expect(run.journal.events.map((e) => e.type)).toContain('RUN_BUDGET_EXHAUSTED');
+    // The event says how many tokens the run spent and what the cap was, so the record shows how far over it went.
+    expect(run.journal.events.find((e) => e.type === 'RUN_BUDGET_EXHAUSTED')!.data).toMatchObject({ cap: 2_000, tokens: expect.any(Number) });
     await run.close();
   });
 

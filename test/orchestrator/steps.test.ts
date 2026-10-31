@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, DOCS_STRUCTURE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, replanPack, reportPack, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, DOCS_STRUCTURE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, REPLAN_CAUSE_RULE, replanPack, reportPack, SCAFFOLD_REPLAN_RULE, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -115,6 +115,22 @@ describe('packs', () => {
     expect(ruleOf(specGapPack(withService, own, { question: 'which status code?', frozenPaths: [] }))).toBe(rule);
     expect(ruleOf(replanPack(withService, own, { history: [], boundaries: [] }))).toBe(rule);
     expect(ruleOf(devPack(base, own, opts))).toBeUndefined();
+  });
+
+  it('keeps the cause rule in the replan of a scaffold task too', () => {
+    const task = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id] });
+    const pack = replanPack(base, task, { history: ['the install gate failed'], boundaries: [], atomic: true });
+    expect(pack.feedback).toContain(REPLAN_CAUSE_RULE);
+    expect(pack.feedback).toContain(SCAFFOLD_REPLAN_RULE);
+  });
+
+  it('tells the replan to open each replacement with the cause its attempt history states, never another', () => {
+
+    const task = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id] });
+    const pack = replanPack(base, task, { history: ['the install gate failed: go.mod requires go >= 1.27.3'], boundaries: [] });
+    expect(pack.feedback).toContain('the cause exactly as the attempt history states it');
+    expect(pack.feedback).toContain('the install gate failed: go.mod requires go >= 1.27.3');
+    expect(pack.feedback).toContain('cause not recorded');
   });
 
   it('gives a front task of a service the project design doc its repository lacks', () => {

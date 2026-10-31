@@ -13,8 +13,10 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
-import { relatedMessages, stageChatFiles, stageProjectGraph } from './guide.js';
+import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
+import { needsLabels, withRecordPointer } from './answer.js';
+import { withSources } from './sources.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
 const MAX_QUESTION = 2_000;
@@ -61,6 +63,8 @@ export interface ChatDeps {
   newSpec: (projectId: string, specId: string, description: string) => Promise<unknown>;
   /** Builds the project graph the chat queries again from the graphs its repositories already have. */
   refreshProjectGraph?: (projectId: string) => Promise<void>;
+  /** Whether the project is confidential, so the chat may not search the web about it. A check that fails counts as confidential; without a check there is no search. */
+  confidential?: (projectId: string) => Promise<boolean>;
   now?: () => Date;
 }
 
@@ -102,9 +106,14 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const { value, usage } = await this.run(projectId, { context: context.text, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question });
-      const correction = value.correction ? await this.open(projectId, value.correction) : undefined;
-      const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
+      const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
+      let result = await this.run(projectId, input);
+      // A question about what happened gets the labelled answer; one more try at most, so a repeat costs one more question.
+      if (needsLabels(question, result.value.answer)) result = await this.run(projectId, input);
+      const { value, usage, searched } = result;
+      // An answer that searched the web never opens a correction: the text of a page must not steer one.
+      const correction = value.correction && !searched ? await this.open(projectId, value.correction) : undefined;
+      const answer: ChatMessage = { role: 'assistant', text: withRecordPointer(withoutCodes(value.answer)), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
       return answer;
     } finally {
@@ -129,29 +138,43 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined }> {
+  private async run(projectId: string, input: { context: string; name: string; specIds: readonly string[]; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; searched: boolean }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
     const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
+    // The web search needs a check that the project is not confidential; a check that fails, or none, means no search.
+    const webSearch = this.deps.confidential !== undefined && (await this.deps.confidential(projectId).catch(() => true)) === false;
     const root = await this.deps.workspacesRoot();
     const cwd = path.join(root, '_chat', randomUUID());
     await fs.mkdir(cwd, { recursive: true });
     let seq = 0;
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
+      await stageFailureDetails(cwd, input.details);
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, denyRead: await this.privateDirs(root, cwd) },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS), noQuotaWait: true, projectId },
       )) as StepOutcome<ChatOutput>;
       const usage = usageOf(out.summary);
+      const sources = out.summary.webSearchSources ?? [];
+      const queries = out.summary.webSearchQueries ?? [];
+      const searched = queries.length > 0;
+      // The sources are the links the search returned, appended by the server: the model names them, it never writes an address.
+      const answered = (value: ChatOutput): ChatOutput => ({ ...value, answer: withSources(value.answer, sources) });
       if (usage) this.deps.log?.(`chat ${projectId}: ${usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens} tokens read, ${usage.outputTokens} written, ${usage.turns} turns, ${usage.seconds}s, ${usage.costUsd === null ? 'no price' : `US$ ${usage.costUsd.toFixed(4)}`}${out.ok ? '' : ` (${out.failure})`}`);
-      if (out.ok) return { value: out.value, usage };
+      if (sources.length > 0) this.deps.log?.(`chat ${projectId}: web search: ${sources.length} source(s)`);
+      // The rules keep the queries generic: a query that names the project or a spec is logged so the rules can be checked.
+      for (const query of queries) {
+        const named = [projectId, input.name, ...input.specIds].some((name) => name !== '' && query.toLowerCase().includes(name.toLowerCase()));
+        this.deps.log?.(`chat ${projectId}: web search query: ${redactSecrets(query)}${named ? ' (the query names the project or a spec, which the rules forbid)' : ''}`);
+      }
+      if (out.ok) return { value: answered(out.value), usage, searched };
       // An answer in plain prose, with no JSON around it, is still the answer: only a correction proposal is lost.
       const prose = out.failure === 'schema' ? redactSecrets(out.summary.resultText?.trim() ?? '') : '';
       // Broken JSON is not an answer a person can read.
-      if (prose && !/^\s*[{[]|```/.test(prose)) return { value: { specHash, answer: prose, correction: null }, usage };
+      if (prose && !/^\s*[{[]|```/.test(prose)) return { value: answered({ specHash, answer: prose, correction: null }), usage, searched };
       this.deps.log?.(`chat ${projectId}: ${out.failure}: ${out.errors.join('; ')}`);
       throw new ChatUnavailableError(UNAVAILABLE[out.failure] ?? UNAVAILABLE_DEFAULT);
     } finally {

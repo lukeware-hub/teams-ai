@@ -115,3 +115,13 @@ Status: built 2026-10-30, pending the owner's check on a real run.
 - Every installed skill carries a notice that the global rules outrank it.
 - The Test reviewer gets a "Language check" block: the Portuguese found in the task's added lines and commit messages, as hints it judges.
 - Not done: `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running and a valid Claude login. The coverage gate still accepts 80%; the 90% target is an instruction to the agents until the owner decides.
+
+## 16. The chat explains what blocks a spec, from the recorded facts
+
+Status: built 2026-10-31 (plan 117), pending the owner's check on a real run.
+
+- The Help chat reads each spec in play from the journals: the status of its latest run in plain words, the causes of its blocks with the tasks each one holds and the tasks waiting on it, the owner's pending questions, the earlier runs and the run that can resume. A replanned task's cause is the one its failed attempt recorded, never the Scrum Master's guess.
+- Each spec has a detail file the chat can search (`falhas/<spec>.md`); the recorded texts are redacted and clipped before the model reads them.
+- The chat answers a question about a problem in three parts: what is happening, why (the recorded cause and who must act), and what the person can do. A fact the record does not hold is said to be missing, with the record that would hold it.
+- One web search per question, to explain a recorded error, for projects the owner has not marked confidential. The answer lists its sources and never opens a correction.
+- Agent records are more complete: a failed gate keeps its exit code and the end of its output, an environment failure reruns under its own name and keeps its cause, a timed-out step says how it ended, and a replan opens with the recorded cause.

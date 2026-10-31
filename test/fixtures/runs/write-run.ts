@@ -6,13 +6,15 @@ export interface FixtureEvent {
   data?: Record<string, unknown>;
   kind?: 'fact' | 'intent' | 'confirm';
   intentId?: string;
+  /** When the event happened; the fixture's default time when absent. */
+  at?: string;
 }
 
 const HASH = 'sha256:' + 'a'.repeat(64);
 
 export function eventLines(runId: string, events: FixtureEvent[], startSeq = 1, at = '2026-09-24T10:00:00.000Z'): string {
   return events
-    .map((e, i) => JSON.stringify({ seq: startSeq + i, at, runId, specHash: HASH, type: e.type, kind: e.kind ?? 'fact', ...(e.intentId ? { intentId: e.intentId } : {}), data: e.data ?? {} }))
+    .map((e, i) => JSON.stringify({ seq: startSeq + i, at: e.at ?? at, runId, specHash: HASH, type: e.type, kind: e.kind ?? 'fact', ...(e.intentId ? { intentId: e.intentId } : {}), data: e.data ?? {} }))
     .join('\n');
 }
 

@@ -9,4 +9,8 @@ describe('devChangedFiles', () => {
   it('keeps the files the Dev changed, dotfiles included when they are not sandbox placeholders', () => {
     expect(devChangedFiles(['.dockerignore', 'Dockerfile', 'api/migrations/001.sql'])).toEqual(['.dockerignore', 'Dockerfile', 'api/migrations/001.sql']);
   });
+
+  it('drops the build cache the sandbox keeps under .tools, which no commit of a task holds', () => {
+    expect(devChangedFiles(['.tools/go-build/aa/x', 'src/a.ts', '.tools'])).toEqual(['src/a.ts']);
+  });
 });

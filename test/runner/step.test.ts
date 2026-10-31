@@ -217,7 +217,11 @@ describe('runStep', () => {
         },
       });
       expect(outcome.ok).toBe(false);
-      if (!outcome.ok) expect(outcome.failure).toBe('timeout');
+      if (!outcome.ok) {
+        expect(outcome.failure).toBe('timeout');
+        // A step that printed no result still says why it ended, so its feedback and block reason are never empty.
+        expect(outcome.errors[0]).toMatch(/timeout/);
+      }
       expect(deps.accounting.total().outputTokens).toBe(50);
     } finally {
       vi.useRealTimers();
@@ -440,6 +444,24 @@ describe('runStep', () => {
     expect(stepCaps('chat', deps.caps).maxTurns).toBe(6);
     expect(stepCaps('dev', deps.caps).maxTurns).toBe(50);
     expect(stepCaps('chat', { ...deps.caps, maxTurns: 3 }).maxTurns).toBe(3);
+  });
+
+  it('gives a chat step that asks for web search the WebSearch tool and its allow rule, and no fetch', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'chat', role: 'po', agent: { ...devAgent, tools: [] }, webSearch: true }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash,WebSearch');
+    const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
+    expect(settings.permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)', 'WebSearch']);
+  });
+
+  it('gives the web search to a chat step only, whatever a step asks for', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'dev', webSearch: true }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).not.toContain('WebSearch');
   });
 
   it('lets the file tools of a plan step write only under docs/specs/ of its folder, so the inputs and a CLAUDE.md stay out of reach', async () => {
