@@ -357,7 +357,7 @@ describe('ProjectHubView', () => {
     expect(specs.queryByText('hello-000')).toBeNull();
     expect(screen.getByText('1 de 4')).toBeTruthy();
     fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: '' } });
-    fireEvent.change(specs.getByRole('combobox'), { target: { value: 'done' } });
+    fireEvent.change(specs.getByLabelText('Status'), { target: { value: 'done' } });
     expect(specs.getByText('hello-000')).toBeTruthy();
     expect(specs.queryByText('hello-003')).toBeNull();
     fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: 'zzz' } });
@@ -381,6 +381,30 @@ describe('ProjectHubView', () => {
     const groups = Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
     expect(groups).toEqual(['Precisam de você', 'Prontas', 'Concluídas']);
     expect(screen.getByTestId('validate-hello-011')).toBeTruthy();
+  });
+  it('pages the specs ten at a time, and each page shows the group headings of its own rows', () => {
+    const o = on();
+    const many = [
+      { specId: 'hello-000', status: 'awaiting-validation', activeRunId: null },
+      ...Array.from({ length: 10 }, (_, i) => ({ specId: `hello-${String(i + 1).padStart(3, '0')}`, status: 'planned', activeRunId: null })),
+      { specId: 'hello-011', status: 'done', activeRunId: null },
+      { specId: 'hello-012', status: 'done', activeRunId: null },
+    ];
+    const { container } = render(
+      <MemoryRouter>
+        <ProjectHubView project={{ ...project, specs: many }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    const specs = within(screen.getByTestId('project-specs'));
+    const ids = () => specs.queryAllByText(/^hello-\d{3}$/).map((el) => el.textContent);
+    const headings = () => Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
+    expect(ids()).toEqual(many.slice(0, 10).map((s) => s.specId));
+    expect(headings()).toEqual(['Precisam de você', 'Prontas']);
+    expect(specs.getByText('1–10 de 13')).toBeTruthy();
+    fireEvent.click(specs.getByRole('button', { name: 'Próxima página' }));
+    expect(ids()).toEqual(['hello-010', 'hello-011', 'hello-012']);
+    expect(headings()).toEqual(['Prontas', 'Concluídas']);
+    expect(specs.getByText('11–13 de 13')).toBeTruthy();
   });
   it('shows a not-found state with a link back to Projetos', () => {
     render(
