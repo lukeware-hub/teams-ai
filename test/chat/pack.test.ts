@@ -30,3 +30,13 @@ describe('the chat rules', () => {
     expect(rules.endsWith('### Project context\ncontext')).toBe(true);
   });
 });
+
+describe('the two rules the answers keep missing', () => {
+  const rules = chatSystem('context');
+  it('names the record in a sentence that a missing fact must end with', () => {
+    expect(rules).toContain('then name the record by its name: o histórico da execução, o arquivo de falhas da spec, os documentos do projeto ou o guia');
+  });
+  it('gives the three labels to every question about what happened, why, or what to do', () => {
+    expect(rules).toContain('Every question about what happened, why, or what to do gets the three labelled paragraphs');
+  });
+});
