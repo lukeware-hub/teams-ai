@@ -135,7 +135,7 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
     const history = own.filter((r) => r.runId !== run?.runId);
     const situation = situationOf(status, holds, latest);
     const block = await specBlock(idx, spec, situation, run);
-    const digest = run ? (await failuresOf({ spec, root: row.dir, runs: runsDir(idx), run, holds, history, secrets, autonomous, digestMax })) : null;
+    const digest = run ? (await failuresOf({ spec, root: row.dir, runs: runsDir(idx), run, holds, history, runStatuses: own.map((r) => r.status), secrets, autonomous, digestMax })) : null;
     if (digest) details.set(spec.specId, digest.detail);
     blocks.push({ name: plain(spec.objectives[0]!), situation, block, digest: digest?.digest ?? null });
   }

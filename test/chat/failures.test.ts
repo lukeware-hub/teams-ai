@@ -212,4 +212,14 @@ describe('the failures of the runs in the chat context', () => {
     expect(details.get('hello-001')).toContain('Causas da execução anterior número 1');
     expect(details.get('hello-001')).toContain('go.mod requires go >= 1.27.3');
   });
+
+  it('counts every run of the spec by its status, so a question about how many failed has the whole number', async () => {
+    const runs3 = [['hello-001-r1', 'verification-failed'], ['hello-001-r2', 'verification-failed'], ['hello-001-r3', 'deadlocked']] as const;
+    for (const [runId, result] of runs3) await writeRun(runs, runId, [
+      { type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [] } },
+    ]);
+    const { text } = await context();
+    expect(text).toContain('Execuções desta spec: 3 no total (1 travada, 2 verificação falhou).');
+  });
 });

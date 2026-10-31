@@ -10,7 +10,7 @@ import { blockExplanation, explainStop, firstSentence, groupCauses, lastDeployFa
 import { reduceEvents, RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED, type TaskState } from '../pipeline/task-state.js';
 import { loadEvents, type StoredEvent } from '../store/event-store.js';
-import { runLabel } from './status.js';
+import { RUN_STATUS, runLabel } from './status.js';
 import { clip, withoutCodes } from './text.js';
 
 export interface Failures {
@@ -32,6 +32,8 @@ export interface FailureInput {
   holds: RunRow | null;
   /** The other runs of the spec, newest first. */
   history: RunRow[];
+  /** The status of every run of the spec, the latest included. */
+  runStatuses: readonly RunListStatus[];
   /** The known secret values, masked out of every recorded text. */
   secrets: readonly string[];
   /** Whether the agents decide the blocks of this project themselves. */
@@ -221,6 +223,9 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
 
   // Digest: the status first, then what stops the run, then the causes, then the rest.
   const digest: string[] = [`Execução mais recente: número ${run.n}, ${runLabel(run)}, em ${when(run.at)}.`];
+  const tally = new Map<string, number>();
+  for (const status of input.runStatuses) tally.set(RUN_STATUS[status], (tally.get(RUN_STATUS[status]) ?? 0) + 1);
+  digest.push(`Execuções desta spec: ${input.runStatuses.length} no total (${[...tally].map(([label, n]) => `${n} ${label}`).join(', ')}).`);
   if (holds && holds.runId !== run.runId) digest.push(`A execução ${holds.n} é a que segura a spec, mas só a mais recente (número ${run.n}) pode ser retomada.`);
   if (blocked.length) digest.push(`Tarefas bloqueadas: ${blocked.length}.`);
   for (const p of pending.slice(0, 2)) digest.push(`Pergunta pendente de você: ${say(p[1].question, 300)} (tarefa: ${titleOf(p[0])}).`);
