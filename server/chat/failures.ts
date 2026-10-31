@@ -165,14 +165,14 @@ function causesOfRun(events: readonly StoredEvent[] | null): Array<{ reason: str
   }
 }
 
-/** Keeps the lines that fit, in order; the pointer closes the list when some do not. */
-function fit(lines: readonly string[], max: number, pointer: string): string {
+/** Keeps the lines that fit, in order, and reserves room for the pointer; the pointer closes the list when some do not. */
+export function fit(lines: readonly string[], max: number, pointer: string): string {
   const out: string[] = [];
   let size = 0;
   for (const line of lines) {
-    if (size + line.length + 1 > max) {
+    if (size + line.length + 1 + pointer.length + 1 > max) {
       out.push(pointer);
-      break;
+      return out.join('\n');
     }
     out.push(line);
     size += line.length + 1;
