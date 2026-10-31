@@ -415,12 +415,16 @@ export function uiCheckPack(base: PackBase, fronts: readonly PlanTask[], opts: {
   };
 }
 
+/** A replan takes its cause from the attempt history, never from a guess: a wrong cause sends the next attempt the wrong way. */
+export const REPLAN_CAUSE_RULE =
+  'Open each replacement description with the cause exactly as the attempt history states it, in its own words. Never name a different cause, and when the history states none, write "cause not recorded" instead of guessing.';
+
 /** The scaffold task is what makes the plan's gates runnable; split up, none of its pieces can pass them. */
 export const SCAFFOLD_REPLAN_RULE =
   'This is the scaffold task: every gate in the plan (npm run, go test, pytest, cargo test ...) runs against each task on its own, so the toolchain (the manifest such as package.json, go.mod, pyproject.toml or Cargo.toml, the lockfile, configs, gate scripts) must land in ONE task. Replan it as exactly one replacement task, never several.';
 
 export function replanPack(base: PackBase, task: PlanTask, opts: { history: readonly string[]; boundaries: readonly string[]; atomic?: boolean }): ContextPackInput {
-  const constraint = opts.atomic ? `\n\nConstraint:\n- ${SCAFFOLD_REPLAN_RULE}` : '';
+  const constraint = `\n\nConstraint:\n${[REPLAN_CAUSE_RULE, ...(opts.atomic ? [SCAFFOLD_REPLAN_RULE] : [])].map((rule) => `- ${rule}`).join('\n')}`;
   const feedback = `Attempt history:\n${opts.history.map((h, i) => `${i + 1}. ${h}`).join('\n')}\n\nModule boundaries:\n${opts.boundaries.map((b) => `- ${b}`).join('\n')}${constraint}`;
   return { ...common(base, 'replan', 'sm'), task, criteria: criteriaOf(base.spec, task.criteriaRefs), feedback };
 }

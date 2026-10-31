@@ -117,6 +117,14 @@ describe('packs', () => {
     expect(ruleOf(devPack(base, own, opts))).toBeUndefined();
   });
 
+  it('tells the replan to open each replacement with the cause its attempt history states, never another', () => {
+    const task = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id] });
+    const pack = replanPack(base, task, { history: ['the install gate failed: go.mod requires go >= 1.27.3'], boundaries: [] });
+    expect(pack.feedback).toContain('the cause exactly as the attempt history states it');
+    expect(pack.feedback).toContain('the install gate failed: go.mod requires go >= 1.27.3');
+    expect(pack.feedback).toContain('cause not recorded');
+  });
+
   it('gives a front task of a service the project design doc its repository lacks', () => {
     const view = servicePlans(makeServicesPlan(spec)).find((v) => v.service === 'inventory-api')!;
     const withService: PackBase = { ...base, service: { name: 'inventory-api', plan: view.plan, addresses: {}, design: '# Design tokens' } };
