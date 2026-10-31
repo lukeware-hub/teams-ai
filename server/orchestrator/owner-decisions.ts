@@ -24,6 +24,10 @@ export async function recordOwnerDecisions(root: string, specId: string, answers
   await writeFileAtomic(ownerDecisionsFile(root, specId), `${JSON.stringify([...kept, ...answers], null, 2)}\n`);
 }
 
+/** The owner's answer to one question of one run and task, or null while it waits. */
+export const ownerAnswer = (decisions: readonly OwnerDecision[], runId: string, taskId: string, question: string): string | null =>
+  decisions.find((d) => d.runId === runId && d.taskId === taskId && d.question === question)?.answer ?? null;
+
 /** The answers given for this spec version, as assumptions every step reads first; an answer for another version does not carry over. */
 export const ownerDecisionLines = (decisions: readonly OwnerDecision[], specHash: string): string[] =>
   decisions.filter((d) => d.specHash === specHash).map((d) => `Owner decision (binding) for ${d.taskId}: ${d.question} → ${d.answer}`);

@@ -13,7 +13,7 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
-import { relatedMessages, stageChatFiles, stageProjectGraph } from './guide.js';
+import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
@@ -102,7 +102,7 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const { value, usage } = await this.run(projectId, { context: context.text, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question });
+      const { value, usage } = await this.run(projectId, { context: context.text, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question });
       const correction = value.correction ? await this.open(projectId, value.correction) : undefined;
       const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
@@ -129,7 +129,7 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined }> {
+  private async run(projectId: string, input: { context: string; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
     const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
     const root = await this.deps.workspacesRoot();
@@ -138,6 +138,7 @@ export class ChatService {
     let seq = 0;
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
+      await stageFailureDetails(cwd, input.details);
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);

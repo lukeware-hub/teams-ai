@@ -15,7 +15,7 @@ import { buildProjectGraph } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
-import { readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
+import { ownerAnswer, readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -172,7 +172,7 @@ async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: str
   return evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => {
     const taskId = String(e.data.taskId);
     const question = String(e.data.question);
-    const answer = answers.find((a) => a.runId === runId && a.taskId === taskId && a.question === question)?.answer ?? null;
+    const answer = ownerAnswer(answers, runId, taskId, question);
     return { taskId, question, options: e.data.options, answer };
   });
 }

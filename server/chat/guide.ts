@@ -39,6 +39,13 @@ export async function stageProjectGraph(cwd: string, projectGraph: string): Prom
   });
 }
 
+/** Puts the failure record of each spec in the step's working directory, where the chat searches it: `falhas/<spec>.md`. */
+export async function stageFailureDetails(cwd: string, details: ReadonlyMap<string, string>): Promise<void> {
+  if (details.size === 0) return;
+  await fs.mkdir(path.join(cwd, 'falhas'), { recursive: true });
+  for (const [specId, text] of details) await fs.writeFile(path.join(cwd, 'falhas', `${specId}.md`), text);
+}
+
 /** Puts the guide and its graph in the step's working directory, the only place it can read. */
 export async function stageChatFiles(cwd: string, guideDir: string): Promise<void> {
   await fs.mkdir(path.join(cwd, 'guia'), { recursive: true });

@@ -29,7 +29,7 @@ export interface DeployFailure {
 }
 
 /** The latest deploy failure, or null when nothing failed or a later attempt verified. */
-export function lastDeployFailure(events: JournalEvent[]): DeployFailure | null {
+export function lastDeployFailure(events: readonly JournalEvent[]): DeployFailure | null {
   let out: DeployFailure | null = null;
   for (const e of events) {
     if (e.type === 'DEPLOY_FAILED') out = { attempt: Number(e.data.attempt), stage: String(e.data.stage), detail: String(e.data.detail ?? ''), rolledBack: e.data.rolledBack === true, rollbackHealthy: typeof e.data.rollbackHealthy === 'boolean' ? e.data.rollbackHealthy : null, ...(typeof e.data.service === 'string' ? { service: e.data.service } : {}) };
