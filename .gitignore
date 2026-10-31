@@ -205,3 +205,8 @@ graphify-out/cache/ast/v0.9.34/fa6413a64483123dfe4bf1ba510c3cd4c40deb63993cf74e4
 graphify-out/cache/ast/v0.9.34/ff6f755ee494b128e5713fc0fcfd2e9a8eb79fe9bac2c3a05f7649533975ddc5.json
 graphify-out/cache/ast/v0.9.34/ff8090205cf353e6980e75002fa82cdbe1f5bb0d18661d19624061049041368f.json
 graphify-out/cache/ast/v0.9.34/ffdf943ec814446102f54dbf0a56224cceda7d5e3d649a9815368e773080bc0d.json
+
+# impeccable (local review captures and machine-only config)
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/config.local.json
