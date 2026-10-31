@@ -829,7 +829,8 @@ export class TaskRunner {
   private async fail(kind: FailureKind, text: string, gate?: string): Promise<void> {
     const failure: Failure = {
       kind,
-      gate,
+      // An environment failure of the agent has no gate: it reruns under its own name, so the retry is counted and kept.
+      gate: gate ?? (kind === 'environment' ? 'agent-step' : undefined),
       schemaRetriesUsed: this.schemaRetries,
       spentTokens: this.deps.spentTokens?.(this.taskId),
       repeated: repeatedFailure([...this.attemptDeltas(), text]),
@@ -869,7 +870,7 @@ export class TaskRunner {
         return;
       }
       case 'rerun-gate':
-        await this.deps.journal.fact(kind === 'flaky-test' ? RunEvent.FlakyRetry : RunEvent.InfraRetry, { taskId: this.taskId, gate });
+        await this.deps.journal.fact(kind === 'flaky-test' ? RunEvent.FlakyRetry : RunEvent.InfraRetry, { taskId: this.taskId, gate: failure.gate, reason: tail(text) });
         return;
       case 'rerun-step':
         this.schemaRetries += 1;

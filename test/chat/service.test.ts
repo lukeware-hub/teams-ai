@@ -6,6 +6,8 @@ import { loadConfig } from '../../server/config/config.js';
 import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
+import { makePlanTask } from '../fixtures/contracts.js';
+import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -23,7 +25,7 @@ const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as
 
 interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
-function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void> } = {}) {
+function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; confidential?: (projectId: string) => Promise<boolean> } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
@@ -37,6 +39,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
+    confidential: extra.confidential,
   });
   return { service, newSpec, suggestSpecId };
 }
@@ -46,7 +49,7 @@ describe('ChatService.ask', () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Está sendo feito o cumprimento (AC-001).', correction: null }));
     const { service, newSpec } = make(runAgent);
     const reply = await service.ask('hello-app', ' o que está sendo feito? ');
-    expect(reply).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
+    expect(reply!).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po', model: 'haiku' });
     expect(CHAT_MODEL).toBe('haiku');
     expect(runAgent.mock.calls[0]![0].pack.feedback).toContain('o que está sendo feito?');
@@ -85,11 +88,11 @@ describe('ChatService.ask', () => {
     const lines: string[] = [];
     const { service } = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary }), { log: (l) => lines.push(l) });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
-    expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply.usage);
+    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
+    expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply!.usage);
     expect(lines).toEqual(['chat hello-app: 7000 tokens read, 340 written, 3 turns, 14s, US$ 0.0421']);
     const prose = make(async (_req: Req) => ({ ok: false, failure: 'schema', errors: ['no JSON'], summary: { ...summary, costUsd: null, resultText: 'Texto livre.' }, sandboxDisabled: false }));
-    expect((await prose.service.ask('hello-app', 'outra')).usage).toMatchObject({ costUsd: null, turns: 3 });
+    expect((await prose.service.ask('hello-app', 'outra'))!.usage).toMatchObject({ costUsd: null, turns: 3 });
   });
 
   it('brings the older messages that match the question into the prompt, with no search step, and keeps the prompt prefix the same for every question', async () => {
@@ -117,7 +120,7 @@ describe('ChatService.ask', () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Isso não deveria estar sendo feito.', correction: { title: 'Login indevido', whatHappens: 'Cria login', whatShouldHappen: 'Sem login' } }));
     const { service, newSpec, suggestSpecId } = make(runAgent);
     const reply = await service.ask('hello-app', 'tem algo fora do escopo?');
-    expect(reply.correction).toEqual({ title: 'Login indevido', specId: 'fix-greeting' });
+    expect(reply!.correction).toEqual({ title: 'Login indevido', specId: 'fix-greeting' });
     expect(suggestSpecId).toHaveBeenCalledWith('hello-app', expect.stringContaining('Tipo: correção (bug)'));
     expect(newSpec).toHaveBeenCalledWith('hello-app', 'fix-greeting', expect.stringContaining('Sem login'));
     await service.ask('hello-app', 'e agora?');
@@ -128,8 +131,8 @@ describe('ChatService.ask', () => {
     const runAgent = async () => ok({ answer: 'Algo está fora.', correction: { title: 'Fora', whatHappens: 'a', whatShouldHappen: 'b' } });
     const { service } = make(runAgent, { newSpec: async () => { throw new ConflictError('spec fix-greeting already exists on main'); } });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply.text).toBe('Algo está fora.');
-    expect(reply.correction).toEqual({ title: 'Fora', error: 'não consegui criar o rascunho agora. Crie a spec de correção à mão em Projetos.' });
+    expect(reply!.text).toBe('Algo está fora.');
+    expect(reply!.correction).toEqual({ title: 'Fora', error: 'não consegui criar o rascunho agora. Crie a spec de correção à mão em Projetos.' });
     expect(await service.messages('hello-app')).toHaveLength(2);
   });
 
@@ -150,7 +153,7 @@ describe('ChatService.ask', () => {
     const { service, newSpec } = make(prose);
     const reply = await service.ask('hello-app', 'como os serviços conversam?');
     expect(reply).toMatchObject({ role: 'assistant', text: 'Há dois tipos de conversa entre os serviços.' });
-    expect(reply.correction).toBeUndefined();
+    expect(reply!.correction).toBeUndefined();
     expect(newSpec).not.toHaveBeenCalled();
     expect(await service.messages('hello-app')).toHaveLength(2);
   });
@@ -241,8 +244,111 @@ describe('ChatService project graph', () => {
     const log = vi.fn();
     const refresh = vi.fn(async () => { throw new Error('graphify missing'); });
     const reply = await make(vi.fn(async (_req: Req) => answer), { refreshProjectGraph: refresh, log }).service.ask('hello-app', 'e o código?');
-    expect(reply.text).toBe('ok');
+    expect(reply!.text).toBe('ok');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('project graph not built for hello-app: graphify missing'));
+  });
+
+  it('asks for web search only when the project allows it, and says where the answer found its sources', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta (AC-001) com https://invented.example/x.', correction: { title: 'Corrigir', whatHappens: 'a', whatShouldHappen: 'b' } }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }], webSearchQueries: ['erro go'] } }));
+    const { service } = make(runAgent, { confidential: async () => false });
+    const reply = await service.ask('hello-app', 'o que significa este erro?');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: true });
+    expect(reply!.text).toContain('Fontes da pesquisa:');
+    expect(reply!.text).toContain('[Guia](https://ok.example/guia)');
+    expect(reply!.text).not.toContain('invented.example');
+    expect(reply!.correction).toBeUndefined();
+  });
+
+  it('does not search the web when the project does not allow it', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    const { service } = make(runAgent, { confidential: async () => true });
+    await service.ask('hello-app', 'o que está sendo feito?');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
+  });
+
+  it('logs each web query redacted, and says so when a query names the project', async () => {
+    const log = vi.fn();
+    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta.', correction: null }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }], webSearchQueries: ['erro go.mod requires go', 'como o hello app responde'] } }));
+    const { service } = make(runAgent, { confidential: async () => false, log });
+    await service.ask('hello-app', 'o que significa este erro?');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('web search query: erro go.mod requires go'));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('names the project'));
   });
 });
 
+describe('the failure record the chat gets', () => {
+  it('stages each spec record for the chat, and gives the same context to two questions', async () => {
+    await writeRun(path.join(home, 'runs'), 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-gate', title: 'Instalar' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'implementing' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'blocked' } },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-gate', reason: 'Gate install failed (code, exit 1)\n\nstderr (tail):\ngo: go.mod requires go >= 1.27.3' } },
+      { type: 'RUN_FINISHED', data: { result: 'blocked', reason: null, merged: [], blocked: [] } },
+    ]);
+    const seen: Array<{ staged: boolean; system: string }> = [];
+    const runAgent = vi.fn(async (req: Req) => {
+      const staged = await fs.access(path.join(req.cwd, 'falhas', 'hello-001.md')).then(() => true, () => false);
+      seen.push({ staged, system: req.systemExtra ?? '' });
+      return ok({ answer: 'Resposta.', correction: null });
+    });
+    const { service } = make(runAgent);
+    await service.ask('hello-app', 'primeira pergunta');
+    await service.ask('hello-app', 'segunda pergunta');
+    expect(seen.map((s) => s.staged)).toEqual([true, true]);
+    expect(seen[0]!.system).toContain('go.mod requires go >= 1.27.3');
+    expect(seen[0]!.system).toBe(seen[1]!.system);
+  });
+});
+
+describe('the web search the chat may make', () => {
+  it('does not search the web when the confidentiality check fails, or is missing', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    await make(runAgent, { confidential: async () => { throw new Error('registro ilegível'); } }).service.ask('hello-app', 'primeira pergunta');
+    await make(runAgent).service.ask('hello-app', 'segunda pergunta');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
+    expect(runAgent.mock.calls[1]![0]).toMatchObject({ webSearch: false });
+  });
+
+  it('keeps the failure record out of the paths the chat may not read', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    await make(runAgent).service.ask('hello-app', 'o que aconteceu?');
+    const denied: string[] = runAgent.mock.calls[0]![0].denyRead ?? [];
+    expect(denied.some((p) => p.includes('falhas'))).toBe(false);
+  });
+});
+
+describe('the shape of an answer', () => {
+  it('asks once more when a question about what happened came back without its labels', async () => {
+    const replies = [
+      { ok: true, value: { specHash: 'x', answer: 'Resposta sem rótulos.', correction: null }, summary: {} },
+      { ok: true, value: { specHash: 'x', answer: '**O que está acontecendo**: pronto.', correction: null }, summary: {} },
+    ];
+    const runAgent = vi.fn(async (_req: Req) => replies.shift());
+    const { service } = make(runAgent);
+    const reply = await service.ask('hello-app', 'O que devo fazer agora?');
+    expect(runAgent).toHaveBeenCalledTimes(2);
+    expect(reply!.text).toContain('O que está acontecendo');
+  });
+  it('says where the records are kept when the answer says a fact is missing and names no record', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Não há previsão de prazo nos registros.', correction: null }));
+    const { service } = make(runAgent);
+    const reply = await service.ask('hello-app', 'Quanto tempo falta para terminar?');
+    expect(reply!.text).toContain('Onde procurar: o histórico de cada execução');
+  });
+});
+
+describe('clearing the conversation while an answer is coming', () => {
+  it('stops the answer in progress, leaves no record of it, and clears the conversation', async () => {
+    const runAgent = vi.fn((_req: Req, ctx: { signal: AbortSignal }) => new Promise((resolve) => {
+      ctx.signal.addEventListener('abort', () => resolve({ ok: false, failure: 'aborted', errors: [], summary: {}, sandboxDisabled: false }));
+    }));
+    const { service } = make(runAgent as never);
+    const asking = service.ask('hello-app', 'o que está acontecendo?');
+    await vi.waitFor(() => expect(runAgent).toHaveBeenCalled());
+    await service.clear('hello-app');
+    expect(await asking).toBeNull();
+    expect(await service.messages('hello-app')).toEqual([]);
+  });
+});

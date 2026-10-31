@@ -29,7 +29,7 @@ export interface GapContext {
 export type GapsReport = { items: Array<GapItem & { cause: GapCause | null }> } | { unavailable: string };
 
 /** The tasks that blocked a task for real: a dependency block passes on to the task it waits for. */
-function rootBlocks(ids: readonly string[], ctx: GapContext, seen = new Set<string>()): Array<{ taskId: string; reason: string }> {
+export function rootBlocks(ids: readonly string[], ctx: Pick<GapContext, 'tasks' | 'reasonOf'>, seen = new Set<string>()): Array<{ taskId: string; reason: string }> {
   return ids.flatMap((id) => {
     const task = ctx.tasks.get(id);
     if (seen.has(id) || task?.state !== 'blocked') return [];
