@@ -381,6 +381,14 @@ describe('TaskRunner: implementing', () => {
     expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });
   });
 
+  it('re-runs an environment failure of the agent under its own name, without consuming an attempt, and keeps the cause', async () => {
+    const r = new TaskRunner('T1', deps({ agent: async () => failed('environment', 'sandbox tools missing on PATH: bwrap, socat') }));
+    await r.advance();
+    expect(state()).toMatchObject({ attempts: 0, infraRetries: { 'agent-step': 1 } });
+    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data).toMatchObject({ gate: 'agent-step', reason: expect.stringContaining('bwrap, socat') });
+    expect(journal.events.some((e) => String(e.data.reason ?? e.data.text ?? '').includes('gate name'))).toBe(false);
+  });
+
   it('a front-owned task runs the implement step as role front, not dev', async () => {
     const front = makePlanTask({ id: 'T2', criteriaRefs: ['AC-001'], affectedPaths: ['web/src/x.tsx'], owner: 'front' });
     await journal.fact(RunEvent.TaskPlanned, { task: front });
@@ -473,6 +481,8 @@ describe('TaskRunner: validating', () => {
     const r = await implemented({ gates: failing({ exitCode: 137, failure: 'infra' }) });
     await r.advance();
     expect(state()).toMatchObject({ state: 'validating', attempts: 0, infraRetries: { 'unit-test': 1 } });
+    // The retry records why it ran again, so the record holds the cause and not only the count.
+    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data.reason).toContain('unit-test failed (infra, exit 137)');
   });
 
   it('uses the decider triage when the rule says code', async () => {
