@@ -202,3 +202,30 @@ describe('the verification failures of earlier runs', () => {
     expect(text).toContain('go.mod requires go >= 1.27.3');
   });
 });
+
+describe('the causes of a run that were replanned afterwards', () => {
+  it('still names a gate failure of an earlier run whose task was replanned later', async () => {
+    await writeRun(runs, 'hello-001-r1', [
+      started('hello-001-r1'),
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-install', title: 'Instalar' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'implementing' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'blocked' } },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-install', reason: GO_MOD } },
+      { type: 'TASKS_UNBLOCKED', data: { taskIds: ['T1-install'] } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'implementing' } },
+      { type: 'TASK_REPLANNED', data: { taskId: 'T1-install', replacements: [makePlanTask({ id: 'T1-install-r1', title: 'Nova' })] } },
+    ]);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), finished('blocked')]);
+    const { text } = await context();
+    expect(text).toContain('Falhas de verificação em execuções anteriores: número 1:');
+    expect(text).toContain('go.mod requires go >= 1.27.3');
+  });
+
+  it('says in the context where each kind of record is kept, so an answer can name it', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), finished('blocked')]);
+    const { text } = await context();
+    expect(text).toContain('falhas/<spec>.md');
+    expect(text).toContain('histórico de cada execução');
+  });
+});

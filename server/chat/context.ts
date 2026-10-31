@@ -90,7 +90,7 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   const ordered = specs
     .map((spec) => ({ spec, status: rows.get(spec.specId)?.status ?? spec.status }))
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
-  const head = [`## Projeto: ${project.name}`, `Visão: ${withoutCodes(project.vision)}`, '', '## Specs (as entregas planejadas do projeto)'].join('\n');
+  const head = [`## Projeto: ${project.name}`, `Visão: ${withoutCodes(project.vision)}`, 'Onde ficam os registros: o histórico de cada execução (o que aconteceu, em ordem) e o arquivo de falhas de cada spec (falhas/<spec>.md). Se a resposta não estiver em nenhum deles, diga em qual registro ela estaria.', '', '## Specs (as entregas planejadas do projeto)'].join('\n');
   const secrets = [...(await loadSecretValues(expandHome(idx.cfg.paths.secrets, idx.home))), ...(await loadSecretValues(workspacePaths(idx.cfg, projectId, idx.home).secrets))];
   const autonomous = agentsDecideFor(idx.cfg, projectId);
   const playing = ordered.filter(({ status }) => IN_PLAY.has(status)).length;

@@ -158,8 +158,8 @@ function causesOfRun(events: readonly StoredEvent[] | null): Array<{ reason: str
   if (events === null) return [];
   try {
     const facts = readFacts(events);
-    const blocked = [...facts.tasks.values()].filter((t) => t.state === 'blocked');
-    return groupCauses(blocked.map((t) => ({ taskId: t.def.id, reason: facts.reasons.get(t.def.id) ?? NO_REASON })).filter((c) => c.reason !== DEPENDENCY_BLOCKED));
+    // Every recorded block counts, even of a task replanned or unblocked later: the record of the run keeps its causes.
+    return groupCauses([...facts.reasons].map(([taskId, reason]) => ({ taskId, reason })).filter((c) => c.reason !== DEPENDENCY_BLOCKED));
   } catch {
     return [];
   }
