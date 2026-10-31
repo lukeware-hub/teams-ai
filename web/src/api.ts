@@ -86,6 +86,8 @@ export interface ProjectRow {
   /** The shared containers every service reaches by name. */
   platform?: Array<{ name: string; image: string }>;
 }
+/** One of the five main documents as main has it; text is null when main does not have it yet. */
+export interface ProjectDoc { file: string; text: string | null }
 export interface RunRow {
   runId: string;
   specId: string;
@@ -244,6 +246,7 @@ export const runApi = {
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   deleteProject: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
+  docs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/docs`).then((r) => json<{ docs: ProjectDoc[] }>(r)),
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<StartedRun>(r)),
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),

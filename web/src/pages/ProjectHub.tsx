@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
@@ -126,6 +127,8 @@ export function ProjectHubView(p: {
   backlogs?: string[];
   /** Links of the latest delivery; shown only when every spec is concluded. */
   apps?: AppLinks | null;
+  /** The five main documents to download; the section is left out until they load. */
+  docs?: ProjectDoc[] | null;
   error: string | null;
   deleteError: string | null;
   onStart: (specId: string) => void | Promise<void>;
@@ -388,6 +391,35 @@ export function ProjectHubView(p: {
         </section>
       ) : null}
       {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
+      {p.docs?.length ? (
+        <section className={panel} data-testid="project-docs">
+          <div className={section}>
+            <div className={sectionHead}>
+              <div className={sectionTitle}>
+                <span className={sectionIcon}><Icon name="download" size={14} /></span>
+                <h2 className={sectionHeading}>Documentos</h2>
+              </div>
+            </div>
+            <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              {p.docs.map((d) => (
+                <li className="min-w-0" key={d.file} data-testid={`project-doc-${d.file}`}>
+                  {d.text === null ? (
+                    <span className="flex w-full min-w-0 flex-col rounded-md border border-line px-3 py-2">
+                      <strong className="wrap-anywhere">{d.file}</strong>
+                      <span className="hint">Ainda não publicado</span>
+                    </span>
+                  ) : (
+                    <a className="link-button w-full min-w-0 justify-between" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
+                      <span className="wrap-anywhere">{d.file}</span>
+                      <Icon name="download" size={16} />
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
       <section className={panel} data-testid="project-specs">
         <div className={section}>
           <div className={sectionHead}>
@@ -588,6 +620,7 @@ export function ProjectHub() {
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [backlogs, setBacklogs] = useState<string[]>([]);
   const [apps, setApps] = useState<AppLinks | null>(null);
+  const [docs, setDocs] = useState<ProjectDoc[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -629,6 +662,14 @@ export function ProjectHub() {
     }, 5000);
     return () => clearInterval(id);
   }, [refresh]);
+  // The main documents change rarely: they are read when the page opens a project, and an answer for a project left behind is dropped.
+  useEffect(() => {
+    if (!projectId) return;
+    let current = true;
+    setDocs(null);
+    runApi.docs(projectId).then((r) => { if (current) setDocs(r.docs); }, () => undefined);
+    return () => { current = false; };
+  }, [projectId]);
   const act = (fn: () => Promise<unknown>) => async () => {
     setError(null);
     try {
@@ -657,6 +698,7 @@ export function ProjectHub() {
       drafts={drafts}
       backlogs={backlogs}
       apps={apps}
+      docs={docs}
       error={error}
       deleteError={deleteError}
       onStart={(specId) => act(async () => {

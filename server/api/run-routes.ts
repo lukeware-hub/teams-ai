@@ -25,6 +25,8 @@ import { httpGet, type HttpGet } from '../deploy/target.js';
 import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { withGitAuth } from '../git/auth.js';
+import { fetch as fetchRepo, git as runGit, showFile } from '../git/git.js';
+import { BACKLOG_DOCS } from '../contracts/backlog.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
@@ -87,6 +89,18 @@ const originOf = (dir: string): Promise<string | null> =>
 async function repoUrlOf(repoDir: string): Promise<string | null> {
   const remote = await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: repoDir, timeoutMs: 5_000 }).catch(() => null);
   return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+}
+
+/** The paths among `paths` that origin/main has; a git failure is raised, never read as a missing file. */
+async function mainPaths(repo: string, paths: string[]): Promise<Set<string>> {
+  const listed = await runGit(repo, ['ls-tree', '--name-only', 'origin/main', ...paths]);
+  return new Set(listed.split('\n').filter(Boolean));
+}
+
+/** Where a project document sits on main: the briefing at the root, else the newest spec's when only that one exists. */
+function docPath(file: string, present: ReadonlySet<string>, specBriefing: string | null): string {
+  if (file !== 'briefing.md' || present.has('docs/briefing.md') || specBriefing === null || !present.has(specBriefing)) return `docs/${file}`;
+  return specBriefing;
 }
 
 /** More tests than this in one repository are not located: the search grows with each of them. */
@@ -441,6 +455,25 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const idx = await index();
         await projectDir(idx, params.projectId!);
         json(200, await listRuns(idx, params.projectId!));
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/docs`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const projectId = params.projectId!;
+        const dir = await projectDir(idx, projectId);
+        const repo = workspacePaths(idx.cfg, projectId, deps.home).repo;
+        // A failed fetch keeps the last copy of main, so the documents still show.
+        await fetchRepo(repo).catch(() => undefined);
+        const newestSpec = (await readProject(dir)).specs.at(-1)?.specId;
+        const specBriefing = newestSpec !== undefined && SAFE_ID.test(newestSpec) ? `docs/specs/${newestSpec}/briefing.md` : null;
+        const present = await mainPaths(repo, [...BACKLOG_DOCS.map((file) => `docs/${file}`), ...(specBriefing ? [specBriefing] : [])]);
+        json(200, { docs: await Promise.all(BACKLOG_DOCS.map(async (file) => {
+          const at = docPath(file, present, specBriefing);
+          return { file, text: present.has(at) ? await showFile(repo, 'origin/main', at) : null };
+        })) });
       },
     },
     {

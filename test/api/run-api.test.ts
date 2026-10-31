@@ -6,6 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import { commitAll } from '../../server/git/git.js';
 import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
+import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import type { HttpGet } from '../../server/deploy/target.js';
@@ -321,7 +322,56 @@ describe('projects', () => {
   it('404s deleting an unknown project', async () => {
     expect((await del('/api/projects/nobody')).status).toBe(404);
   });
+
+  it('serves the five main documents from origin/main, the briefing from the newest spec when main has none at the root, and null for one main lacks; 404s an unknown project', async () => {
+    await workspaceClone({
+      'docs/project.md': '# Projeto\n',
+      'docs/stack.md': 'stack\n',
+      'docs/design.md': 'design\n',
+      'docs/specs/hello-001/briefing.md': 'briefing da spec\n',
+    });
+    const { docs } = await (await fetch(`${base()}/api/projects/hello-app/docs`)).json();
+    expect(docs).toEqual([
+      { file: 'project.md', text: '# Projeto\n' },
+      { file: 'briefing.md', text: 'briefing da spec\n' },
+      { file: 'stack.md', text: 'stack\n' },
+      { file: 'flow.md', text: null },
+      { file: 'design.md', text: 'design\n' },
+    ]);
+    expect((await fetch(`${base()}/api/projects/nobody/docs`)).status).toBe(404);
+  });
+
+  it('keeps serving the last copy of the documents when the fetch of the clone fails', async () => {
+    await workspaceClone({ 'docs/project.md': '# Projeto\n' });
+    await fs.rm(path.join(home, 'seed'), { recursive: true, force: true });
+    const { docs } = await (await fetch(`${base()}/api/projects/hello-app/docs`)).json();
+    expect(docs[0]).toEqual({ file: 'project.md', text: '# Projeto\n' });
+  });
+
+  it('answers an error, not a list of missing documents, when the clone has no origin/main', async () => {
+    await workspaceClone({ 'docs/project.md': '# Projeto\n' });
+    await fs.rm(path.join(home, 'seed'), { recursive: true, force: true });
+    const repo = workspacePaths((await readUserConfig(home)).cfg, 'hello-app', home).repo;
+    await execCommand({ bin: 'git', args: ['update-ref', '-d', 'refs/remotes/origin/main'], cwd: repo, timeoutMs: 30_000 });
+    expect((await fetch(`${base()}/api/projects/hello-app/docs`)).status).toBe(500);
+  });
 });
+
+/** Puts a clone of a seed repository at the project's workspace; the clone's origin/main holds `files`. */
+async function workspaceClone(files: Record<string, string>): Promise<void> {
+  const repo = workspacePaths((await readUserConfig(home)).cfg, 'hello-app', home).repo;
+  const seed = path.join(home, 'seed');
+  const git = (args: string[], cwd: string) => execCommand({ bin: 'git', args: ['-c', 'user.name=test', '-c', 'user.email=test@example.com', ...args], cwd, timeoutMs: 30_000 });
+  for (const [file, text] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(seed, file)), { recursive: true });
+    await fs.writeFile(path.join(seed, file), text);
+  }
+  await git(['init', '-b', 'main'], seed);
+  await git(['add', '-A'], seed);
+  await git(['commit', '-m', 'docs'], seed);
+  await fs.mkdir(path.dirname(repo), { recursive: true });
+  await git(['clone', seed, repo], path.dirname(repo));
+}
 
 describe('start, resume, stop', () => {
   it('starts a spec from the registered directory that holds it when several directories share the project id', async () => {

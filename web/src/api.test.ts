@@ -1,8 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { refineApi } from './api.js';
+import { refineApi, runApi } from './api.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('runApi.docs', () => {
+  it('gets the five main documents of a project', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ docs: [] }), { status: 200 }));
+    await expect(runApi.docs('shop')).resolves.toEqual({ docs: [] });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain('/projects/shop/docs');
+  });
 });
 
 describe('refineApi.scoreDoc', () => {
