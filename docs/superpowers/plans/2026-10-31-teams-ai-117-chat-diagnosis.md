@@ -74,3 +74,8 @@ Not yet done, against the plan:
 - One answer of 15 in the last round has no labelled paragraphs.
 - The W1 to W4 and W7 fixes still have no live failing run; they are covered by tests only.
 - `/code-review low` not run: the development is not yet 100% by the criteria above.
+
+## Known limitation (accepted 2026-10-31)
+
+- "Quanto tempo falta para terminar?": the answer says the records hold no forecast, but in 3 measured rounds it did not name the record that would hold one (1 of 3 mentioned a record, without tying it to the forecast). A fixed sentence naming a record was rejected: it could name the wrong record, which the no-invention rule forbids. The rule that asks for the record by name stays in the prompt.
+- Otherwise every answer on what happened, why and what to do gives the recorded cause, the owner and the next step; the install cause (`go.mod requires go >= 1.27.3`) appears in 6 of 6 install answers.
