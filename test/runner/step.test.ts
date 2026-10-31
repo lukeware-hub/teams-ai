@@ -456,6 +456,14 @@ describe('runStep', () => {
     expect(settings.permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)', 'WebSearch']);
   });
 
+  it('gives the web search to a chat step only, whatever a step asks for', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    await runStep(request({ kind: 'dev', webSearch: true }), deps);
+    const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+    expect(captured.argv[captured.argv.indexOf('--tools') + 1]).not.toContain('WebSearch');
+  });
+
   it('lets the file tools of a plan step write only under docs/specs/ of its folder, so the inputs and a CLAUDE.md stay out of reach', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

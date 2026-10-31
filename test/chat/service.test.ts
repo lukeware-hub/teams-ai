@@ -6,6 +6,8 @@ import { loadConfig } from '../../server/config/config.js';
 import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
+import { makePlanTask } from '../fixtures/contracts.js';
+import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 let home = '';
@@ -271,5 +273,31 @@ describe('ChatService project graph', () => {
     await service.ask('hello-app', 'o que significa este erro?');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('web search query: erro go.mod requires go'));
     expect(log).toHaveBeenCalledWith(expect.stringContaining('names the project'));
+  });
+});
+
+describe('the failure record the chat gets', () => {
+  it('stages each spec record for the chat, and gives the same context to two questions', async () => {
+    await writeRun(path.join(home, 'runs'), 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-gate', title: 'Instalar' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'implementing' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-gate', to: 'blocked' } },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-gate', reason: 'Gate install failed (code, exit 1)\n\nstderr (tail):\ngo: go.mod requires go >= 1.27.3' } },
+      { type: 'RUN_FINISHED', data: { result: 'blocked', reason: null, merged: [], blocked: [] } },
+    ]);
+    const seen: Array<{ staged: boolean; system: string }> = [];
+    const runAgent = vi.fn(async (req: Req) => {
+      const staged = await fs.access(path.join(req.cwd, 'falhas', 'hello-001.md')).then(() => true, () => false);
+      seen.push({ staged, system: req.systemExtra ?? '' });
+      return ok({ answer: 'Resposta.', correction: null });
+    });
+    const { service } = make(runAgent);
+    await service.ask('hello-app', 'primeira pergunta');
+    await service.ask('hello-app', 'segunda pergunta');
+    expect(seen.map((s) => s.staged)).toEqual([true, true]);
+    expect(seen[0]!.system).toContain('go.mod requires go >= 1.27.3');
+    expect(seen[0]!.system).toBe(seen[1]!.system);
   });
 });

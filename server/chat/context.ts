@@ -8,7 +8,7 @@ import { reduceEvents, type TaskRuntime } from '../pipeline/run-state.js';
 import type { TaskState } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { failuresOf } from './failures.js';
-import { runLabel } from './status.js';
+import { runLabel, TASK_STATE } from './status.js';
 import { withoutCodes } from './text.js';
 
 export { withoutCodes } from './text.js';
@@ -31,18 +31,6 @@ const SPEC_STATUS: Record<string, string> = {
   retired: 'descartada, nunca será feita',
 };
 
-const TASK_STATE: Record<TaskState, string> = {
-  planned: 'aguardando a vez',
-  ready: 'pronta para começar',
-  implementing: 'sendo desenvolvida agora',
-  validating: 'em testes',
-  reviewing: 'em revisão',
-  rebasing: 'sendo atualizada com o código mais novo',
-  merging: 'sendo incorporada ao código principal',
-  merged: 'concluída',
-  blocked: 'bloqueada',
-  superseded: 'substituída por outra',
-};
 
 /** Specs in progress come first, so the cut at the size limit drops the oldest history. */
 const ORDER = ['running', 'paused:quota', 'paused:auth', 'planned', 'refining', 'awaiting-validation', 'done', 'retired'];
@@ -62,9 +50,8 @@ const situationOf = (status: string, holds: RunRow | null, latest: RunRow | null
 };
 
 /** Removes what a lay reader cannot use from a plan's text. */
-const plain = (text: string): string => withoutCodes(text);
 
-const list = (title: string, items: readonly string[]): string[] => (items.length ? [`${title}:`, ...items.map((i) => `- ${plain(i)}`)] : []);
+const list = (title: string, items: readonly string[]): string[] => (items.length ? [`${title}:`, ...items.map((i) => `- ${withoutCodes(i)}`)] : []);
 
 /** The tasks of one run, without the ones a later plan replaced. A journal that does not replay gives none. */
 async function tasksOf(idx: IndexDeps, runId: string): Promise<TaskRuntime[]> {
@@ -78,20 +65,20 @@ async function tasksOf(idx: IndexDeps, runId: string): Promise<TaskRuntime[]> {
 
 /** A replanned task's own text is an agent's note: its title and state are all the chat states. */
 const taskLine = (t: TaskRuntime): string => {
-  if (t.replanned) return `${plain(t.def.title)} (${TASK_STATE[t.state]}, criada ao refazer o plano)`;
-  const description = plain(t.def.description);
+  if (t.replanned) return `${withoutCodes(t.def.title)} (${TASK_STATE[t.state]}, criada ao refazer o plano)`;
+  const description = withoutCodes(t.def.description);
   const cut = description.length > MAX_TASK_TEXT ? `${description.slice(0, MAX_TASK_TEXT)}…` : description;
-  return `${plain(t.def.title)} (${TASK_STATE[t.state]}): ${cut}`;
+  return `${withoutCodes(t.def.title)} (${TASK_STATE[t.state]}): ${cut}`;
 };
 
 const progressOf = (tasks: readonly TaskRuntime[]): string =>
   `Progresso: ${tasks.filter((t) => t.state === 'merged').length} de ${tasks.length} tarefas concluídas, ${tasks.filter((t) => IN_PROGRESS.has(t.state)).length} em andamento`;
 
 async function specBlock(idx: IndexDeps, spec: Spec, situation: string, run: RunRow | null): Promise<string> {
-  const bug = spec.bug ? [`Problema a corrigir: ${plain(spec.bug.actual)}`, `O esperado: ${plain(spec.bug.expected)}`] : [];
+  const bug = spec.bug ? [`Problema a corrigir: ${withoutCodes(spec.bug.actual)}`, `O esperado: ${withoutCodes(spec.bug.expected)}`] : [];
   const tasks = run ? await tasksOf(idx, run.runId) : [];
   return [
-    `### ${plain(spec.objectives[0]!)}`,
+    `### ${withoutCodes(spec.objectives[0]!)}`,
     `Situação: ${situation}`,
     `Nome da spec: ${spec.specId}`,
     ...(run ? [`Execução: número ${run.n} (${runLabel(run)})`, progressOf(tasks)] : []),
@@ -114,7 +101,7 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   const ordered = specs
     .map((spec) => ({ spec, status: rows.get(spec.specId)?.status ?? spec.status }))
     .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
-  const head = [`## Projeto: ${project.name}`, `Visão: ${plain(project.vision)}`, '', '## Specs (as entregas planejadas do projeto)'].join('\n');
+  const head = [`## Projeto: ${project.name}`, `Visão: ${withoutCodes(project.vision)}`, '', '## Specs (as entregas planejadas do projeto)'].join('\n');
   const secrets = [...(await loadSecretValues(expandHome(idx.cfg.paths.secrets, idx.home))), ...(await loadSecretValues(workspacePaths(idx.cfg, projectId, idx.home).secrets))];
   const autonomous = agentsDecideFor(idx.cfg, projectId);
   const playing = ordered.filter(({ status }) => IN_PLAY.has(status)).length;
@@ -124,7 +111,7 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   const blocks: Array<{ name: string; situation: string; block: string; digest: string | null }> = [];
   for (const { spec, status } of ordered) {
     if (!IN_PLAY.has(status)) {
-      others.push(`- ${plain(spec.objectives[0]!)}: ${situationOf(status, null, null)}`);
+      others.push(`- ${withoutCodes(spec.objectives[0]!)}: ${situationOf(status, null, null)}`);
       continue;
     }
     const holds = runs.find((r) => r.runId === rows.get(spec.specId)?.activeRunId) ?? null;
@@ -135,9 +122,9 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
     const history = own.filter((r) => r.runId !== run?.runId);
     const situation = situationOf(status, holds, latest);
     const block = await specBlock(idx, spec, situation, run);
-    const digest = run ? (await failuresOf({ spec, root: row.dir, runs: runsDir(idx), run, holds, history, runStatuses: own.map((r) => r.status), secrets, autonomous, digestMax })) : null;
-    if (digest) details.set(spec.specId, digest.detail);
-    blocks.push({ name: plain(spec.objectives[0]!), situation, block, digest: digest?.digest ?? null });
+    const digest = run ? (await failuresOf({ spec, root: row.dir, runs: runsDir(idx), run, holds, history, runStatuses: own.map((r) => r.status), secrets, autonomous, digestMax }).catch(() => ({ digest: 'O registro desta spec não pôde ser lido agora.', detail: '' }))) : null;
+    if (digest?.detail) details.set(spec.specId, digest.detail);
+    blocks.push({ name: withoutCodes(spec.objectives[0]!), situation, block, digest: digest?.digest ?? null });
   }
   const problems = blocks.filter((b) => b.digest !== null).map((b) => `### Problemas: ${b.name}\n${b.digest}`);
   const problemsSection = problems.length ? [`## Problemas registrados\nFatos gravados pelas execuções. "Registro" é a mensagem original, que pode estar em inglês. Os horários estão em UTC.`, ...problems].join('\n\n') : '';

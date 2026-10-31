@@ -10,7 +10,7 @@ import { blockExplanation, explainStop, firstSentence, groupCauses, lastDeployFa
 import { reduceEvents, RunEvent, type TaskRuntime } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED, type TaskState } from '../pipeline/task-state.js';
 import { loadEvents, type StoredEvent } from '../store/event-store.js';
-import { RUN_STATUS, runLabel } from './status.js';
+import { RUN_STATUS, runLabel, TASK_STATE } from './status.js';
 import { clip, withoutCodes } from './text.js';
 
 export interface Failures {
@@ -55,7 +55,6 @@ const STATUS_NOTE: Partial<Record<RunListStatus, { what: string; title: string; 
 };
 /** The statuses whose stop summary the run screen already words. */
 const STOP_STATUSES: ReadonlySet<RunListStatus> = new Set(['deploy-failed', 'verification-failed', 'phase-failed', 'deadlocked']);
-const IN_PROGRESS: ReadonlySet<TaskState> = new Set(['implementing', 'validating', 'reviewing', 'rebasing', 'merging']);
 const OWNER: Record<StopOwner, string> = { Você: 'você', Sistema: 'o sistema', Plano: 'o plano do projeto' };
 const NO_REASON = 'Motivo não registrado';
 /** Whose words a cause is: a reviewer's finding is an agent's opinion; the other causes are what the system recorded. */
@@ -79,7 +78,7 @@ interface Remade {
 interface Facts {
   tasks: Map<string, TaskRuntime>;
   reasons: Map<string, string>;
-  asked: Map<string, { runId: string; question: string }>;
+  asked: Array<{ taskId: string; runId: string; question: string }>;
   remade: Remade[];
   verification: Record<string, unknown> | null;
   phaseFailed: { phase: number; reason: string } | null;
@@ -92,7 +91,7 @@ interface Facts {
 function readFacts(events: readonly StoredEvent[]): Facts {
   const { tasks } = reduceEvents(events);
   const reasons = new Map<string, string>();
-  const asked = new Map<string, { runId: string; question: string }>();
+  const asked: Facts['asked'] = [];
   const lastAttempt = new Map<string, string>();
   const remade: Remade[] = [];
   let verification: Record<string, unknown> | null = null;
@@ -105,7 +104,7 @@ function readFacts(events: readonly StoredEvent[]): Facts {
       const id = String(d.taskId);
       const replacements = d.replacements as Array<{ id: string; description: string }>;
       remade.push({ taskId: id, cause: lastAttempt.get(id) ?? null, replacements: replacements.map((r) => r.id), descriptions: replacements.map((r) => r.description) });
-    } else if (e.type === OrchEvent.DecisionRequested) asked.set(String(d.taskId), { runId: e.runId, question: String(d.question) });
+    } else if (e.type === OrchEvent.DecisionRequested) asked.push({ taskId: String(d.taskId), runId: e.runId, question: String(d.question) });
     else if (e.type === OrchEvent.VerificationFailed) verification = d;
     else if (e.type === OrchEvent.PhaseFailed) phaseFailed = { phase: Number(d.phase), reason: String(d.reason ?? '') };
   }
@@ -161,6 +160,10 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   }
   const answers = await readOwnerDecisions(input.root, spec.specId);
   const answerOf = (taskId: string, runId: string, question: string) => ownerAnswer(answers, runId, taskId, question);
+  const replacementOf = (taskId: string) => {
+    const state = facts?.tasks.get(taskId)?.state;
+    return state ? `"${titleOf(taskId)}" (${TASK_STATE[state]})` : `"${titleOf(taskId)}"`;
+  };
   const titleOf = (taskId: string) => say(facts?.tasks.get(taskId)?.def.title ?? 'tarefa sem título', 120);
   const reasonOf = (taskId: string) => rule(facts?.reasons.get(taskId) ?? NO_REASON);
 
@@ -203,7 +206,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   }
 
   const pending = facts
-    ? [...facts.asked].filter(([taskId, q]) => q.runId === run.runId && facts.tasks.get(taskId)?.state === 'blocked' && answerOf(taskId, q.runId, q.question) === null)
+    ? facts.asked.filter((q) => q.runId === run.runId && facts.tasks.get(q.taskId)?.state === 'blocked' && answerOf(q.taskId, q.runId, q.question) === null)
     : [];
   const verification = run.status === 'verification-failed' ? facts?.verification ?? null : null;
   const criterionText = (id: string) => {
@@ -228,7 +231,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   digest.push(`Execuções desta spec: ${input.runStatuses.length} no total (${[...tally].map(([label, n]) => `${n} ${label}`).join(', ')}).`);
   if (holds && holds.runId !== run.runId) digest.push(`A execução ${holds.n} é a que segura a spec, mas só a mais recente (número ${run.n}) pode ser retomada.`);
   if (blocked.length) digest.push(`Tarefas bloqueadas: ${blocked.length}.`);
-  for (const p of pending.slice(0, 2)) digest.push(`Pergunta pendente de você: ${say(p[1].question, 300)} (tarefa: ${titleOf(p[0])}).`);
+  for (const p of pending.slice(0, 2)) digest.push(`Pergunta pendente de você: ${say(p.question, 300)} (tarefa: ${titleOf(p.taskId)}).`);
   if (stop) digest.push(`Por que a execução parou: ${sentence(stop.title)} Quem resolve: ${OWNER[stop.owner]}. Próximo passo: ${stop.hint}${stop.raw ? ` Registro: "${quote(stop.raw, 450)}"` : ''}`);
   const ranked = causes.map((c, i) => ({ c, waits: waiting[i]! })).sort((a, b) => b.c.taskIds.length + b.waits - (a.c.taskIds.length + a.waits));
   if (ranked.length) digest.push('Causas dos bloqueios, da que segura mais tarefas:');
@@ -249,7 +252,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   }
   for (const r of (facts?.remade ?? []).slice(0, 2)) {
     const cause = r.cause === null ? 'sem causa registrada' : `causa registrada: "${quote(r.cause, 350)}"`;
-    digest.push(`Refeita pelo plano: "${titleOf(r.taskId)}" (${cause}). Substituída por: "${r.replacements.map(titleOf).join('", "')}".`);
+    digest.push(`Refeita pelo plano: "${titleOf(r.taskId)}" (${cause}). Substituída por: ${r.replacements.map(replacementOf).join(', ')}.`);
   }
   // The digest names the three latest earlier runs; the detail file names all five.
   if (pastRuns.length) digest.push(`Execuções anteriores: ${pastRuns.slice(0, 3).map(pastLine).join('; ')}.`);
@@ -268,13 +271,13 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   }
   if (facts?.remade.length) detail.push('', '## Tarefas refeitas pelo plano');
   for (const r of facts?.remade ?? []) {
-    detail.push('', `### ${titleOf(r.taskId)}`, `Causa registrada (texto original): ${r.cause === null ? 'nenhuma registrada' : say(r.cause, 1800)}`, `Substituída por: ${r.replacements.map(titleOf).join(', ')}.`, `Texto de agente (não é causa registrada): ${r.descriptions.map((d) => say(d, 600)).join(' ')}`);
+    detail.push('', `### ${titleOf(r.taskId)}`, `Causa registrada (texto original): ${r.cause === null ? 'nenhuma registrada' : say(r.cause, 1800)}`, `Substituída por: ${r.replacements.map(replacementOf).join(', ')}.`, `Texto de agente (não é causa registrada): ${r.descriptions.map((d) => say(d, 600)).join(' ')}`);
   }
-  const asked = facts ? [...facts.asked].filter(([, q]) => q.runId === run.runId) : [];
+  const asked = facts ? facts.asked.filter((q) => q.runId === run.runId) : [];
   if (asked.length) detail.push('', '## Perguntas ao dono');
-  for (const [taskId, q] of asked) {
-    const answer = answerOf(taskId, q.runId, q.question);
-    detail.push(`- ${say(q.question, 400)} Tarefa: ${titleOf(taskId)}. Resposta: ${answer === null ? 'ainda não respondida' : say(answer, 400)}.`);
+  for (const q of asked) {
+    const answer = answerOf(q.taskId, q.runId, q.question);
+    detail.push(`- ${say(q.question, 400)} Tarefa: ${titleOf(q.taskId)}. Resposta: ${answer === null ? 'ainda não respondida' : say(answer, 400)}.`);
   }
   if (verification) {
     detail.push('', '## Verificação');

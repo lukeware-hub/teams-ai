@@ -7,6 +7,8 @@ import { buildChatContext } from '../../server/chat/context.js';
 import { recordOwnerDecisions } from '../../server/orchestrator/owner-decisions.js';
 import { makePlanTask } from '../fixtures/contracts.js';
 import { writeRun, type FixtureEvent } from '../fixtures/runs/write-run.js';
+import { RUN_STATUS } from '../../server/chat/status.js';
+import type { RunListStatus } from '../../server/api/run-index.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
 const HASH = `sha256:${'b'.repeat(64)}`;
@@ -221,5 +223,60 @@ describe('the failures of the runs in the chat context', () => {
     ]);
     const { text } = await context();
     expect(text).toContain('Execuções desta spec: 3 no total (1 travada, 2 verificação falhou).');
+  });
+
+  const RESULT_ONLY: ReadonlySet<string> = new Set(['complete', 'done', 'drained', 'blocked', 'deadlocked', 'phase-failed', 'verification-failed', 'deploy-failed', 'launch-failed', 'unknown']);
+  it.each(Object.keys(RUN_STATUS) as RunListStatus[])('names the status %s in its plain words, and says encerrada only for a drained run', async (status) => {
+    const runId = 'hello-001-r1';
+    const started = [{ type: 'RUN_STARTED', data: { runId, specId: 'hello-001', projectId: 'hello-app' } }];
+    if (RESULT_ONLY.has(status)) await writeRun(runs, runId, [...started, { type: 'RUN_FINISHED', data: { result: status, reason: null, merged: [], blocked: [] } }]);
+    else await writeRun(runs, runId, started, { runId, at: '2026-09-24T10:01:00.000Z', status, tasks: [], tokens: {} });
+    const { text } = await context();
+    expect(text).toContain(`Execução: número 1 (${RUN_STATUS[status]})`);
+    if (status !== 'drained') expect(text).not.toContain('encerrada');
+  });
+
+  it('reads a reopened run as running again, and states only the cause it has now', async () => {
+    const events = blockedRun('hello-001-r1').filter((e) => e.type !== 'RUN_FINISHED');
+    await writeRun(runs, 'hello-001-r1', [
+      ...events,
+      { type: 'RUN_FINISHED', data: { result: 'blocked', reason: null, merged: [], blocked: [] } },
+      { type: 'RUN_REOPENED', data: {} },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-setup-r1', reason: 'Scope violation:\nsrc/x.ts' } },
+    ], { runId: 'hello-001-r1', at: '2026-09-24T10:01:00.000Z', status: 'running', tasks: [], tokens: {} });
+    const { text } = await context();
+    expect(text).toContain('O Dev mexeu em arquivos fora do escopo da tarefa');
+    expect(text).not.toContain('go.mod requires');
+  });
+
+  it('says the record of a run cannot be read when its journal is corrupt, without failing', async () => {
+    await writeRun(runs, 'hello-001-r1', [{ type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } }]);
+    await fs.appendFile(path.join(runs, 'hello-001-r1', 'events.ndjson'), '{"seq":2}\n');
+    const { text, details } = await context();
+    expect(text).toContain('não pôde ser lido');
+    expect(details.get('hello-001')).toContain('não pôde ser lido');
+  });
+
+  it('says a run the person stopped was stopped by the person', async () => {
+    await writeRun(runs, 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-stop', title: 'Tarefa parada' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-stop', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-stop', to: 'implementing' } },
+    ], { runId: 'hello-001-r1', at: '2026-09-24T10:01:00.000Z', status: 'running', tasks: [], tokens: {} }, 999999);
+    await fs.writeFile(path.join(runs, 'hello-001-r1', 'stop-requested'), '');
+    const { text } = await context();
+    expect(text).toContain('Execução: número 1 (interrompida, parada por você)');
+  });
+
+  it('keeps every unanswered question of a task, when the same task is asked twice', async () => {
+    await writeRun(runs, 'hello-001-r1', [
+      ...blockedRun('hello-001-r1'),
+      { type: 'DECISION_REQUESTED', data: { taskId: 'T1-setup-r1', specHash: HASH, reason: GO_MOD, question: 'Pergunta antiga?', options: [] } },
+      { type: 'DECISION_REQUESTED', data: { taskId: 'T1-setup-r1', specHash: HASH, reason: GO_MOD, question: 'Pergunta nova?', options: [] } },
+    ]);
+    const { text } = await context();
+    expect(text).toContain('Pergunta pendente de você: Pergunta antiga?');
+    expect(text).toContain('Pergunta pendente de você: Pergunta nova?');
   });
 });

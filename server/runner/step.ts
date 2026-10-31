@@ -334,13 +334,13 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
   // dontAsk denies a Read no rule allows, so a skill reads its own plugin files only through these rules.
   const pluginDirs = await stepPluginDirs(deps, req.role, home);
-  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...(req.webSearch === true ? ['WebSearch'] : []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
+  const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...(req.webSearch === true && req.kind === 'chat' ? ['WebSearch'] : []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const kindTools = KIND_TOOLS[req.kind];
   const scoped = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
-  const searching = req.webSearch === true ? { ...scoped, tools: [...scoped.tools, 'WebSearch'] } : scoped;
+  const searching = req.webSearch === true && req.kind === 'chat' ? { ...scoped, tools: [...scoped.tools, 'WebSearch'] } : scoped;
   const agent = req.fullAccess ? { ...searching, tools: [...new Set([...searching.tools, ...FULL_ACCESS_TOOLS])] } : searching;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
