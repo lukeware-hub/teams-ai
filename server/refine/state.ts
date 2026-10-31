@@ -181,6 +181,10 @@ export interface RefineState {
   featureKey?: string;
   /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
   stages?: boolean;
+  /** Created with the repository flow (plan increment A): the stages gate each other, and the backlog, plans and final review wait for all five. */
+  repositories?: boolean;
+  /** The documents reviewed since their last edit, kept only by a repository session: a human edit takes a document out; an accepted patch or an answer keeps it. */
+  reviewedStages?: DocFile[];
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -367,6 +371,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.questions.push(...v.questions.map((q) => ({ ...q, file: docName(v.file), status: 'pending' as const, answer: null })));
       s.stageAlignment = { ...(s.stageAlignment ?? {}), [v.file]: v.divergences };
       if (s.staleBy) delete s.staleBy[v.file];
+      if (s.repositories === true) s.reviewedStages = [...new Set([...(s.reviewedStages ?? []), docName(v.file)])];
       s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x, file: docName(x.file) })));
       s.status = 'drafting';
       s.status = computeStatus(s);
@@ -479,6 +484,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.mode = (d.mode as RefineState['mode']) ?? null;
       s.stages = d.stages === true;
       if (d.featureKey !== undefined) s.featureKey = String(d.featureKey);
+      if (d.repositories === true) s.repositories = true;
       break;
     case RefineEvent.ConfidentialityAnswered:
       s.confidential = d.confidential === true;
@@ -500,6 +506,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
       markStaleStages(s, docName(d.file));
       markSpeckitStale(s);
+      // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
+      if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.

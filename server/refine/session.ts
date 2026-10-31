@@ -16,7 +16,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
-import { DOC_STAGES } from './doc-stages.js';
+import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { reshapeBackup } from './reshape.js';
 import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
@@ -36,12 +36,15 @@ import { isStarted } from './coverage.js';
 import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
+import { flowIsMermaid } from './sections.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+/** The rollout switches new projects onto the repository flow (plan increment K); until then a session is created without the stamp. */
+export const REPOSITORY_FLOW = false;
 
 export class ConflictError extends Error {}
 /** The draft is held by a run, a start or a discard: the caller tries again later. */
@@ -213,11 +216,13 @@ export class RefineSession {
     return new RefineSession(deps, journal);
   }
 
-  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog'): Promise<RefineSession> {
+  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean } = {}): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
     // A continued spec keeps the backlog key that names its plan file, which its next derivation no longer carries.
     const featureKey = mode === 'continue' ? s.state.derived?.spec.derivedFrom?.backlogKey : undefined;
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}) });
+    // Only a new project takes the repository flow; the stamp is written once, here, and the event without it is the same as before.
+    const repositories = mode === 'new-project' && (options.repositories ?? REPOSITORY_FLOW);
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}) });
     return s;
   }
 
@@ -319,6 +324,27 @@ export class RefineSession {
     return DOC_STAGES.find((file) => !(this.state.doneStages ?? []).includes(file));
   }
 
+  /** In a repository session the documents go in order: only the current stage and the finished ones can be reviewed or suggested. */
+  private guardStage(file: DocFile): void {
+    if (this.state.repositories !== true) return;
+    const why = stageBlocked(this.state.doneStages ?? [], file);
+    if (why) throw new ConflictError(why);
+  }
+
+  /** In a repository session the backlog, the plans and the final review wait until all five documents are done. */
+  private guardStagesDone(): void {
+    if (this.state.repositories !== true) return;
+    const open = DOC_STAGES.filter((file) => !(this.state.doneStages ?? []).includes(file));
+    if (open.length > 0) throw new ConflictError(`Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`);
+  }
+
+  /** Why a document cannot be continued as it is, in plain words; null when it can. */
+  private stageProblem(file: DocFile, text: string): string | null {
+    if (text.trim() === '') return `A etapa ${file} está vazia.`;
+    if (file === 'flow.md' && (text === flowTemplate() || !flowIsMermaid(text))) return 'O flow.md precisa de um diagrama Mermaid com o fluxo do negócio.';
+    return null;
+  }
+
   /** One review of a stage's document, the current one or any other: only that document changes. */
   evaluateStage(file: DocFile): Promise<void> {
     return this.startStage(file, false);
@@ -334,6 +360,7 @@ export class RefineSession {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardRounds();
+    this.guardStage(file);
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedStage(ctl, file, restore).finally(() => {
       this.running = null;
@@ -378,6 +405,13 @@ export class RefineSession {
     if (!target) throw new ConflictError('todas as etapas já foram concluídas');
     if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
     if ((this.state.doneStages ?? []).includes(target)) throw new ConflictError(`a etapa ${target} já foi concluída`);
+    if (this.state.repositories === true) {
+      this.guardStage(target);
+      const why = stageReviewBlock(this.state, target);
+      if (why) throw new ConflictError(why);
+      const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
+      if (problem) throw new ConflictError(problem);
+    }
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 
@@ -385,6 +419,7 @@ export class RefineSession {
   async closeReview(): Promise<void> {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
+    this.guardStagesDone();
     if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
     await this.journal.fact(RefineEvent.ReviewClosed, {});
   }
@@ -418,6 +453,7 @@ export class RefineSession {
   /** "Sugerir": the agent's version of `file` written from flow.md; nothing is saved, the human reviews it in the editor. */
   async suggest(file: SuggestFile): Promise<string> {
     this.guard();
+    this.guardStage(file);
     const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
     if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);
@@ -466,6 +502,7 @@ export class RefineSession {
 
   private async enableBacklogStep(): Promise<void> {
     if (this.state.backlog?.enabled) return;
+    this.guardStagesDone();
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
@@ -483,6 +520,7 @@ export class RefineSession {
   /** "Preparar planos": the constitution, and a spec, plan and tasks for each item of the detailed backlog, or for the single spec. */
   runPlans(): Promise<void> {
     this.guard();
+    this.guardStagesDone();
     const backlog = this.state.backlog;
     if (backlog?.enabled && (!backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec))) {
       throw new ConflictError('Detalhe o backlog antes de preparar os planos: cada item precisa da sua spec.');
@@ -516,6 +554,7 @@ export class RefineSession {
   async evaluate(): Promise<void> {
     this.ensureCanEvaluate();
     this.guardRounds();
+    this.guardStagesDone();
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
     this.running = this.timedChain(ctl).finally(() => {
@@ -771,6 +810,7 @@ export class RefineSession {
    */
   async freezeProgram(): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
+    this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
