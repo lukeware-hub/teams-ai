@@ -398,6 +398,17 @@ describe('the backlog banner on the project page', () => {
     expect(await screen.findByText(/Backlog interrompido · 0 de 1 concluída/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 4 · Verificação');
   });
+  it('puts the runs right after the backlog banner, before the specs', async () => {
+    const program: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, interrupted: { runId: 'hello-002-r1' } }] };
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 4 } as never);
+    render(view({ backlogs: ['hello-001'] }));
+    const banner = await screen.findByText(/Backlog interrompido · 0 de 1 concluída/);
+    const runsHeading = screen.getByRole('heading', { name: 'Execuções' });
+    expect(banner.compareDocumentPosition(runsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(runsHeading.compareDocumentPosition(screen.getByTestId('project-specs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
   afterEach(() => vi.restoreAllMocks());
 });
 

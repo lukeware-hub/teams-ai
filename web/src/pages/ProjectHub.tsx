@@ -245,6 +245,76 @@ export function ProjectHubView(p: {
         </div>
       </header>
       {(p.backlogs ?? []).map((specId) => <BacklogBanner key={specId} projectId={pr.projectId} specId={specId} />)}
+      <section className={panel}>
+        <div className={section}>
+          <div className={sectionTitle}>
+            <span className={sectionIcon}><Icon name="code" size={14} /></span>
+            <h2 className={sectionHeading}>Execuções</h2>
+          </div>
+          {p.runs.length === 0 ? (
+            <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
+          ) : (
+            <>
+              <TableFilters view={runsView} subject="execuções" placeholder="Filtrar por execução ou spec" facetName="Status" />
+              <div className="@container relative -mx-[0.6rem] min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap @max-[44rem]:[&_td]:h-auto @max-[44rem]:[&_td]:whitespace-normal">
+                <table className={`m-0 ${responsiveTable} @min-[60rem]:min-w-[60rem] table-fixed`} id={`runs-${pr.projectId}`}>
+                  <colgroup><col className="w-[13%]" /><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[15%]" /></colgroup>
+                  <thead className={responsiveHead}>
+                    <tr>
+                      <SortHeader view={runsView} column="run" tip={<InfoTip text={HELP.runName} />}>Execução</SortHeader>
+                      <SortHeader view={runsView} column="spec" tip={<InfoTip text={HELP.runSpec} />}>Spec</SortHeader>
+                      <SortHeader view={runsView} column="at" tip={<InfoTip text={HELP.runAt} />}>Quando</SortHeader>
+                      <SortHeader view={runsView} column="status" tip={<InfoTip text={HELP.runStatus} />}>Status</SortHeader>
+                      <SortHeader view={runsView} column="tokens" className="num" tip={<InfoTip text={HELP.tokens} />}>Tokens</SortHeader>
+                      <SortHeader view={runsView} column="cost" className="num" tip={<InfoTip text={HELP.cost} />}>Custo</SortHeader>
+                      <th scope="col"><span className="sr-only">Ações</span></th>
+                    </tr>
+                  </thead>
+                  <tbody className="@max-[44rem]:block">
+                    {runsView.rows.length === 0 ? <tr><td colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
+                    {(showAll ? runsView.rows : runsView.rows.slice(0, RECENT_RUNS)).map((r) => (
+                      <tr key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
+                        <td className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
+                        <td className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
+                        <td className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
+                        <td className={responsiveCell} data-label="Status">{chip(r.status)}</td>
+                        <td className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
+                        <td className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
+                        <td className={responsiveCell}>
+                          <span className="flex flex-wrap justify-end gap-2">
+                            {r.locked ? (
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
+                                <Icon name="lock" size={14} />
+                                Somente leitura
+                              </span>
+                            ) : null}
+                            {r.stoppable && ACTIVE.has(r.status) ? (
+                              <ActionButton className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)} icon={<Icon name="stop" size={14} />}>
+                                Parar
+                              </ActionButton>
+                            ) : null}
+                            {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
+                              <ActionButton className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)} icon={<Icon name="play" size={14} />}>
+                                Retomar
+                              </ActionButton>
+                            ) : null}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {runsView.rows.length > RECENT_RUNS ? (
+                <button type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[6px] pointer-coarse:after:content-['']" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
+                  {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
+                  <Icon name="chevron" size={14} />
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      </section>
       <div className={stats}>
         <div className={`${stat} border-line bg-surface shadow-card`}>
           <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
@@ -432,76 +502,6 @@ export function ProjectHubView(p: {
                 )),
               ])}
             </ul>
-          )}
-        </div>
-      </section>
-      <section className={panel}>
-        <div className={section}>
-          <div className={sectionTitle}>
-            <span className={sectionIcon}><Icon name="code" size={14} /></span>
-            <h2 className={sectionHeading}>Execuções</h2>
-          </div>
-          {p.runs.length === 0 ? (
-            <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
-          ) : (
-            <>
-              <TableFilters view={runsView} subject="execuções" placeholder="Filtrar por execução ou spec" facetName="Status" />
-              <div className="@container relative -mx-[0.6rem] min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap @max-[44rem]:[&_td]:h-auto @max-[44rem]:[&_td]:whitespace-normal">
-                <table className={`m-0 ${responsiveTable} @min-[60rem]:min-w-[60rem] table-fixed`} id={`runs-${pr.projectId}`}>
-                  <colgroup><col className="w-[13%]" /><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[15%]" /></colgroup>
-                  <thead className={responsiveHead}>
-                    <tr>
-                      <SortHeader view={runsView} column="run" tip={<InfoTip text={HELP.runName} />}>Execução</SortHeader>
-                      <SortHeader view={runsView} column="spec" tip={<InfoTip text={HELP.runSpec} />}>Spec</SortHeader>
-                      <SortHeader view={runsView} column="at" tip={<InfoTip text={HELP.runAt} />}>Quando</SortHeader>
-                      <SortHeader view={runsView} column="status" tip={<InfoTip text={HELP.runStatus} />}>Status</SortHeader>
-                      <SortHeader view={runsView} column="tokens" className="num" tip={<InfoTip text={HELP.tokens} />}>Tokens</SortHeader>
-                      <SortHeader view={runsView} column="cost" className="num" tip={<InfoTip text={HELP.cost} />}>Custo</SortHeader>
-                      <th scope="col"><span className="sr-only">Ações</span></th>
-                    </tr>
-                  </thead>
-                  <tbody className="@max-[44rem]:block">
-                    {runsView.rows.length === 0 ? <tr><td colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
-                    {(showAll ? runsView.rows : runsView.rows.slice(0, RECENT_RUNS)).map((r) => (
-                      <tr key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
-                        <td className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
-                        <td className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
-                        <td className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
-                        <td className={responsiveCell} data-label="Status">{chip(r.status)}</td>
-                        <td className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
-                        <td className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
-                        <td className={responsiveCell}>
-                          <span className="flex flex-wrap justify-end gap-2">
-                            {r.locked ? (
-                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
-                                <Icon name="lock" size={14} />
-                                Somente leitura
-                              </span>
-                            ) : null}
-                            {r.stoppable && ACTIVE.has(r.status) ? (
-                              <ActionButton className={action.danger} data-testid={`stop-${r.runId}`} aria-label={`Parar ${r.runId}`} onClick={() => p.onStop(r.runId)} icon={<Icon name="stop" size={14} />}>
-                                Parar
-                              </ActionButton>
-                            ) : null}
-                            {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
-                              <ActionButton className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)} icon={<Icon name="play" size={14} />}>
-                                Retomar
-                              </ActionButton>
-                            ) : null}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {runsView.rows.length > RECENT_RUNS ? (
-                <button type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[6px] pointer-coarse:after:content-['']" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
-                  {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
-                  <Icon name="chevron" size={14} />
-                </button>
-              ) : null}
-            </>
           )}
         </div>
       </section>
