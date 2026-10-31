@@ -382,52 +382,19 @@ describe('project apps', () => {
   });
 });
 
-describe('the process of the running execution on the project page', () => {
+describe('the backlog banner on the project page', () => {
   const o = on();
-  const journal = (seq: number, type: string, data: Record<string, unknown>) => ({ seq, at: '2026-09-24T10:00:00.000Z', runId: 'hello-002-r1', specHash: 'sha256:x', type, kind: 'fact', data });
   const view = (extra: object) => (
     <MemoryRouter>
       <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} {...extra} />
     </MemoryRouter>
   );
-  it('shows the phases of the running execution in order, each with the state its journal gives', () => {
-    const events = [journal(1, 'PHASE_STARTED', { phase: 1, round: 1 }), journal(2, 'PHASE_STARTED', { phase: 2, round: 1 }), journal(3, 'PHASE_STARTED', { phase: 3, round: 1 })];
-    render(view({ processRun: runs[0], processEvents: events }));
-    const section = screen.getByTestId('run-process');
-    expect(within(section).getByRole('link', { name: 'Abrir execução' }).getAttribute('href')).toBe('/runs/hello-002-r1');
-    const items = within(section).getAllByTestId('process-phase');
-    expect(items).toHaveLength(6);
-    expect(items[0]!.textContent).toContain('1 · Especificação técnica');
-    expect(items[0]!.textContent).toContain('concluída');
-    expect(items[2]!.textContent).toContain('em execução');
-    expect(items[3]!.textContent).toContain('aguardando');
-  });
-  it('names the spec being processed by its backlog title, or by its id when the title is unknown', () => {
-    const { unmount } = render(view({ processRun: runs[0], processEvents: [], processTitle: 'Governança de regras e versões' }));
-    expect(within(screen.getByTestId('run-process')).getByText('Governança de regras e versões')).toBeTruthy();
-    unmount();
-    render(view({ processRun: runs[0], processEvents: [] }));
-    expect(within(screen.getByTestId('run-process')).getByText(runs[0]!.specId)).toBeTruthy();
-  });
-  it('shows nothing when no execution is running or stopped', () => {
-    render(view({ processRun: null, processEvents: [] }));
-    expect(screen.queryByTestId('run-process')).toBeNull();
-  });
-  it('calls the spec of an interrupted run Spec interrompida', () => {
-    render(view({ processRun: { ...runs[0]!, status: 'interrupted' }, processEvents: [] }));
-    expect(within(screen.getByTestId('run-process')).getByText(/Spec interrompida:/)).toBeTruthy();
-    expect(within(screen.getByTestId('run-process')).queryByText(/Spec em execução:/)).toBeNull();
-  });
-  it('keeps Spec em execução for a run that is still live', () => {
-    render(view({ processRun: runs[0], processEvents: [] }));
-    expect(within(screen.getByTestId('run-process')).getByText(/Spec em execução:/)).toBeTruthy();
-  });
   it('shows the banner of a backlog whose run lost its process as interrupted', async () => {
     const program: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, interrupted: { runId: 'hello-002-r1' } }] };
     vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
     vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 4 } as never);
-    render(view({ backlogs: ['hello-001'], processRun: { ...runs[0]!, status: 'interrupted' }, processEvents: [] }));
+    render(view({ backlogs: ['hello-001'] }));
     expect(await screen.findByText(/Backlog interrompido · 0 de 1 concluída/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 4 · Verificação');
   });

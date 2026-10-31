@@ -215,7 +215,6 @@ describe('a stopped backlog run, end to end in the browser', () => {
       await waitText(page, '[data-testid="program-item-base"]', 'interrompida');
       await page.goto(`${base()}/projects/hello-app`);
       await waitText(page, '[role="status"]', 'Backlog interrompido');
-      await waitText(page, 'p', 'Spec interrompida: Base');
 
       // The stopped card fits a phone without horizontal scroll.
       await page.setViewport({ width: 390, height: 844 });
