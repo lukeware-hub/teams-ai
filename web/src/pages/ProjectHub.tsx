@@ -212,6 +212,7 @@ export function ProjectHubView(p: {
   }
   if (!p.project) return <main />;
   const pr = p.project;
+  const newestSpec = pr.specs.at(-1)?.specId;
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
   const allConcluded = percent === 100;
@@ -404,15 +405,19 @@ export function ProjectHubView(p: {
             </div>
             <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {p.docs.map((d) => (
-                <li className="min-w-0" key={d.file} data-testid={`project-doc-${d.file}`}>
-                  {d.text === null ? (
-                    <span className="flex w-full min-w-0 flex-col rounded-md border border-line px-3 py-2">
-                      <strong className="wrap-anywhere">{d.file}</strong>
-                      <span className="hint">Ainda não publicado</span>
-                    </span>
-                  ) : (
-                    <a className="link-button w-full min-w-0 justify-between" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
+                <li className="flex min-w-0 gap-2" key={d.file} data-testid={`project-doc-${d.file}`}>
+                  {newestSpec ? (
+                    <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${newestSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
                       <span className="wrap-anywhere">{d.file}</span>
+                      <Icon name="arrow-right" size={16} />
+                    </Link>
+                  ) : (
+                    <strong className="wrap-anywhere min-w-0 flex-1 self-center">{d.file}</strong>
+                  )}
+                  {d.text === null ? (
+                    <span className="hint self-center">Ainda não publicado</span>
+                  ) : (
+                    <a className="link-button shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
                       <Icon name="download" size={16} />
                     </a>
                   )}
