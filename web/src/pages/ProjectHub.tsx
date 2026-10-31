@@ -5,7 +5,7 @@ import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type N
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
-import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
+import { Pagination, SortHeader, TableFilters, usePagination, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
@@ -160,7 +160,9 @@ export function ProjectHubView(p: {
     facetLabel: (status) => LABEL[status] ?? status,
   });
   const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
-  const groupedSpecs = SPEC_GROUPS.map((g) => ({ title: g.title, rows: specsView.rows.filter((s) => groupOf(shownStatus(s)) === g) })).filter((g) => g.rows.length > 0);
+  const groupSpecs = (rows: SpecRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => groupOf(shownStatus(s)) === g) })).filter((g) => g.rows.length > 0);
+  const specsPage = usePagination(groupSpecs(specsView.rows).flatMap((g) => g.rows), `${specsView.query}|${specsView.facet}`);
+  const groupedSpecs = groupSpecs(specsPage.rows);
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -535,6 +537,7 @@ export function ProjectHubView(p: {
               ])}
             </ul>
           )}
+          <Pagination view={specsPage} />
         </div>
       </section>
       {p.drafts.length > 0 ? (

@@ -103,3 +103,58 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
     </div>
   );
 }
+
+export const PAGE_SIZES = [5, 10, 50, 100];
+
+/** Pages through rows, ten at a time by default; the page goes back to the first one when `resetKey` changes. */
+export function usePagination<T>(rows: T[], resetKey: string) {
+  const [size, setSizeValue] = useState(10);
+  const [requested, setPage] = useState(1);
+  const [lastKey, setLastKey] = useState(resetKey);
+  if (lastKey !== resetKey) {
+    setLastKey(resetKey);
+    setPage(1);
+  }
+  const pages = Math.max(1, Math.ceil(rows.length / size));
+  const page = Math.min(requested, pages);
+  return {
+    rows: rows.slice((page - 1) * size, page * size),
+    page,
+    pages,
+    size,
+    total: rows.length,
+    from: rows.length === 0 ? 0 : (page - 1) * size + 1,
+    to: Math.min(page * size, rows.length),
+    setPage,
+    setSize: (next: number) => {
+      setSizeValue(next);
+      setPage(1);
+    },
+  };
+}
+
+type Pages = ReturnType<typeof usePagination<unknown>>;
+
+/** Page size choice, range and previous and next buttons under a list; hidden when every row fits the smallest page. */
+export function Pagination({ view }: { view: Pages }) {
+  if (view.total <= PAGE_SIZES[0]!) return null;
+  return (
+    <nav className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-label="Paginação">
+      <label className="flex items-center gap-2 text-[0.8125rem] text-ink-soft">
+        <span>Itens por página</span>
+        <Select wrapperClassName="w-20" value={view.size} onChange={(e) => view.setSize(Number(e.target.value))}>
+          {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+        </Select>
+      </label>
+      <div className="flex items-center gap-3">
+        <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.total}`}</p>
+        <button type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === 1} onClick={() => view.setPage(view.page - 1)}>
+          <Icon name="arrow-left" size={16} />
+        </button>
+        <button type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === view.pages} onClick={() => view.setPage(view.page + 1)}>
+          <Icon name="arrow-right" size={16} />
+        </button>
+      </div>
+    </nav>
+  );
+}
