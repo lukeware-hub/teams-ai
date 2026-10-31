@@ -185,6 +185,12 @@ export interface RefineState {
   repositories?: boolean;
   /** The documents reviewed since their last edit, kept only by a repository session: a human edit takes a document out; an accepted patch or an answer keeps it. */
   reviewedStages?: DocFile[];
+  /** The documents in the Graphify graph; a later edit of a document takes it out until it is added again. */
+  graphed?: DocFile[];
+  /** The document whose extraction runs now, if any. */
+  graphing?: DocFile | null;
+  /** The last document the extraction could not add, with the reason in plain words; cleared by the next success. */
+  graphError?: { file: DocFile; reason: string } | null;
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -508,6 +514,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       markSpeckitStale(s);
       // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
       if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
+      if (s.graphed) s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -557,6 +564,18 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
+      break;
+    case RefineEvent.DocGraphStarted:
+      s.graphing = docName(d.file);
+      break;
+    case RefineEvent.DocGraphed:
+      s.graphed = [...new Set([...(s.graphed ?? []), docName(d.file)])];
+      s.graphing = null;
+      s.graphError = null;
+      break;
+    case RefineEvent.DocGraphFailed:
+      s.graphing = null;
+      s.graphError = { file: docName(d.file), reason: String(d.reason) };
       break;
     case RefineEvent.DocsScored: {
       // A score without a file list is a full one, as journals from before the per-document score wrote it.

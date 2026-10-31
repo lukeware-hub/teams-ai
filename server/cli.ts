@@ -12,6 +12,7 @@ import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
+import { extractDocs } from './knowledge/doc-graph.js';
 import { mergeProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
@@ -135,6 +136,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
+    // The graph extraction shares the refinement governor, and runs in step homes of its own.
+    extractDocs: (dir, outDir) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),

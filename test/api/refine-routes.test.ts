@@ -16,12 +16,21 @@ describe('refine routes', () => {
 
   it('continues the document named in the body, and refuses a name outside the five', async () => {
     const continueStage = vi.fn(async () => undefined);
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueStage })) } as never, log: vi.fn() });
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueStage, state: {} })) } as never, log: vi.fn() });
     const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/stage/continue'))!;
     const json = vi.fn();
     await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'briefing.md' }), json } as never);
     expect(continueStage).toHaveBeenCalledWith('briefing.md');
     await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'brief.md' }), json } as never)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('answers 202 once a repository session has started the extraction of the stage', async () => {
+    const continueStage = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueStage, state: { repositories: true } })) } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/stage/continue'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'flow.md' }), json } as never);
+    expect(json).toHaveBeenCalledWith(202, { ok: true });
   });
 
   it('closes the final review of a refinement', async () => {

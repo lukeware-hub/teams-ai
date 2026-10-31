@@ -27,6 +27,8 @@ import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
+  /** Extracts the documents of a folder into a graph folder for a repository session (plan increment B). */
+  extractDocs?: (dir: string, outDir: string) => Promise<void>;
   cfg: () => Promise<Config>;
   home?: string;
   runAgent: RunAgent;
@@ -105,7 +107,7 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
       return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

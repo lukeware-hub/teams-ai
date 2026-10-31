@@ -23,7 +23,13 @@ const FIXTURE = new URL('../fixtures/refine/stage-session.state.json', import.me
 const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 const plain = () => RefineSession.create(deps(), 'new-project');
-const stamped = () => RefineSession.create(deps(), 'new-project', { repositories: true });
+/** A graphify stand-in for the stages: one node per document of the folder, so every document counts in the graph. */
+const extractDocs = async (dir: string, outDir: string) => {
+  const files = await fs.readdir(dir);
+  await fs.mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
+  await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], input_tokens: 1, output_tokens: 1 }));
+};
+const stamped = () => RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
 /** The state without the timestamps of the evaluation clock, which differ on every run. */
 const normalize = (state: unknown) => {
   const copy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
@@ -116,10 +122,13 @@ describe('stage order, stamped sessions', () => {
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.continueStage();
+    await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('project.md');
     await expect(s.continueStage('project.md')).resolves.toBeUndefined();
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md', 'project.md']);
     await s.close();
   });
 
@@ -143,6 +152,7 @@ describe('stage order, stamped sessions', () => {
     await expect(s.continueStage()).rejects.toThrow(/Aceite ou rejeite as sugestões da etapa flow\.md/);
     await s.accept(patch!.patchId);
     await expect(s.continueStage()).resolves.toBeUndefined();
+    await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
     await s.close();
   });
@@ -156,6 +166,7 @@ describe('stage order, stamped sessions', () => {
     const question = s.state.questions.find((q) => q.file === 'flow.md' && q.status === 'pending');
     await s.answer(question!.questionId, 'O cliente.');
     await expect(s.continueStage()).resolves.toBeUndefined();
+    await s.settled();
     await s.close();
   });
 
@@ -165,6 +176,7 @@ describe('stage order, stamped sessions', () => {
     script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.continueStage();
+    await s.settled();
     await s.evaluateStage('flow.md');
     expect(() => s.evaluateStage('briefing.md')).toThrow(/Conclua a etapa project\.md/);
     await s.close();

@@ -15,6 +15,7 @@ import type { ProgramEntry } from '../program/controller.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
+import { documentCounts } from '../knowledge/doc-graph.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { reshapeBackup } from './reshape.js';
@@ -109,6 +110,8 @@ export interface SessionDeps {
   autoAnswerFloor?: () => Promise<number | undefined>;
   /** How many backlog items the plan preparation runs at once, read when it starts; one when absent. */
   speckitAgents?: () => Promise<number>;
+  /** Extracts the documents of `dir` into the graph folder `outDir`; required by a repository session, which adds each stage to the graph. */
+  extractDocs?: (dir: string, outDir: string) => Promise<void>;
 }
 /** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
 export function declaredDependencies(state: RefineState): ExternalDependency[] {
@@ -309,6 +312,11 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
+    for (const e of this.journal.events) {
+      if (e.type !== RefineEvent.DocGraphed) continue;
+      tokens.inputTokens += Number(e.data.inputTokens ?? 0);
+      tokens.outputTokens += Number(e.data.outputTokens ?? 0);
+    }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
@@ -336,6 +344,40 @@ export class RefineSession {
     if (this.state.repositories !== true) return;
     const open = DOC_STAGES.filter((file) => !(this.state.doneStages ?? []).includes(file));
     if (open.length > 0) throw new ConflictError(`Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`);
+  }
+
+  /** In a repository session the backlog and the evaluation wait until all five documents are in the Graphify graph. */
+  private guardGraphed(): void {
+    if (this.state.repositories !== true) return;
+    const missing = DOC_STAGES.filter((file) => !(this.state.graphed ?? []).includes(file));
+    if (missing.length > 0) throw new ConflictError(`Adicione os cinco documentos ao Graphify antes: falta ${missing.join(', ')}.`);
+  }
+
+  /** Shows the extraction in the state, then runs it in the background; the session stays busy until the graph has the document or refused it. */
+  private startIndexing(file: DocFile): Promise<void> {
+    const started = this.journal.fact(RefineEvent.DocGraphStarted, { file });
+    this.running = started.then(() => this.indexStage(file)).finally(() => {
+      this.running = null;
+    });
+    return started.then(() => undefined);
+  }
+
+  /** One extraction: the finished documents and this one, as they are now, go to the graph; a failure is journaled for the owner. */
+  private async indexStage(file: DocFile): Promise<void> {
+    try {
+      const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
+      const folder = path.posix.join(staging, 'docs');
+      await fs.rm(folder, { recursive: true, force: true });
+      await fs.mkdir(folder, { recursive: true });
+      for (const doc of [...(this.state.doneStages ?? []), file]) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      await this.deps.extractDocs!(folder, staging);
+      const counts = await documentCounts(staging, file);
+      if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
+      await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
+    } catch (err) {
+      await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   /** Why a document cannot be continued as it is, in plain words; null when it can. */
@@ -411,6 +453,10 @@ export class RefineSession {
       if (why) throw new ConflictError(why);
       const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
       if (problem) throw new ConflictError(problem);
+      if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+      // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
+      await this.startIndexing(target);
+      return;
     }
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
@@ -503,6 +549,7 @@ export class RefineSession {
   private async enableBacklogStep(): Promise<void> {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
+    this.guardGraphed();
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
@@ -555,6 +602,7 @@ export class RefineSession {
     this.ensureCanEvaluate();
     this.guardRounds();
     this.guardStagesDone();
+    this.guardGraphed();
     const ctl = (this.abortCtl = new AbortController());
     // Set at once, so no other action slips in while the floor is read.
     this.running = this.timedChain(ctl).finally(() => {
@@ -635,6 +683,11 @@ export class RefineSession {
       this.running = null;
     });
     await this.running;
+  }
+
+  /** Resolves when the background work of the session (an evaluation, a plan preparation or a document extraction) has ended. */
+  async settled(): Promise<void> {
+    await this.running?.catch(() => undefined);
   }
 
   /** Kills the agent processes of a running evaluation and waits for the cycle to wind down. */

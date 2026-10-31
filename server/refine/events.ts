@@ -86,6 +86,12 @@ export const RefineEvent = {
   /** The PO and the SM stopped answering the open plan questions, whether they finished or were stopped. */
   SpeckitAnswersDone: 'SPECKIT_ANSWERS_DONE',
   /** One System 1 decision of Gate 1; same type and record shape as the run journal, so the eval harness reads both. */
+  /** A stage's validated document went to the Graphify extraction: `{file}`. */
+  DocGraphStarted: 'REFINE_DOC_GRAPH_STARTED',
+  /** The document is in the Graphify graph: `{file, hash, nodes, links, inputTokens, outputTokens}`. */
+  DocGraphed: 'REFINE_DOC_GRAPHED',
+  /** The document could not be added to the graph: `{file, reason}`, in plain words for the owner. */
+  DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
   DecisionMade: 'DECISION_MADE',
 } as const;
 /** The names the journal wrote before the plan preparation was renamed, each with its current name. */
