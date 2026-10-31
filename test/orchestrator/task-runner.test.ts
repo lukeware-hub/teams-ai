@@ -119,7 +119,24 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();
   });
 
+  it('does not count the sandbox build cache under .tools as a change of the Dev', async () => {
+    const cache: Agent = async (req) => {
+      if (req.kind === 'security') return secApprove();
+      if (req.kind === 'ui-check' || req.kind === 'review') return approve();
+      await fs.mkdir(path.join(req.cwd, '.tools', 'go-build', 'aa'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, '.tools', 'go-build', 'aa', 'x'), 'cache\n');
+      await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), '// change\n');
+      return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1', deviations: [] });
+    };
+    const r = new TaskRunner('T1', deps({ agent: cache }));
+    await r.advance();
+    expect(state().state).toBe('validating');
+    expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('Scope violation'))).toBe(false);
+  });
+
   it('deletes files the Dev lists in deletedFiles before committing', async () => {
+
     await journal.close();
     await remote.cleanup();
     remote = await makeRemote({
@@ -478,11 +495,11 @@ describe('TaskRunner: validating', () => {
   });
 
   it('re-runs an infra failure without consuming an attempt', async () => {
-    const r = await implemented({ gates: failing({ exitCode: 137, failure: 'infra' }) });
+    const r = await implemented({ gates: failing({ exitCode: 137, failure: 'infra', stderrTail: 'Cannot connect to the Docker daemon' }) });
     await r.advance();
     expect(state()).toMatchObject({ state: 'validating', attempts: 0, infraRetries: { 'unit-test': 1 } });
     // The retry records why it ran again, so the record holds the cause and not only the count.
-    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data.reason).toContain('unit-test failed (infra, exit 137)');
+    expect(journal.events.find((e) => e.type === RunEvent.InfraRetry)!.data.reason).toContain('Cannot connect to the Docker daemon');
   });
 
   it('uses the decider triage when the rule says code', async () => {

@@ -98,6 +98,7 @@ describe('Phase 4 with blocked work', () => {
     expect(String(fact.data.stderrTail)).toContain('go.mod requires go >= 1.27.3');
     expect(String(fact.data.stderrTail).length).toBeLessThanOrEqual(2000);
     expect(fact.data.stdoutTail).toBe('fetching modules');
+    expect(journal.events.find((e) => e.type === OrchEvent.GatePassed)!.data).not.toHaveProperty('stderrTail');
   });
 
   it('shows the SM every blocked task with its reason', async () => {
