@@ -76,7 +76,8 @@ const GRAPH_WAIT_MS = 60_000;
 /** Answers questions about a project and opens a correction spec when what is built goes against its spec. It never orders the orchestrator. */
 export class ChatService {
   /** One question at a time: another chat's working directory is then never there for this step to read. */
-  private asking = false;
+  /** The question being answered, so clearing the conversation can stop it; its done resolves when the step has ended. */
+  private inFlight: { projectId: string; controller: AbortController; done: Promise<void> } | null = null;
   /** The graph builds in flight, so two questions never build the same project graph at once. */
   private readonly refreshing = new Map<string, Promise<void>>();
 
@@ -91,33 +92,50 @@ export class ChatService {
     return this.deps.store.read(this.slug(projectId));
   }
 
-  clear(projectId: string): Promise<void> {
-    return this.deps.store.clear(this.slug(projectId));
+  /** Clearing stops the answer in progress for this project, waits for its step to end, and then clears the conversation. */
+  async clear(projectId: string): Promise<void> {
+    const flight = this.inFlight;
+    if (flight?.projectId === this.slug(projectId)) {
+      flight.controller.abort();
+      await flight.done;
+    }
+    await this.deps.store.clear(this.slug(projectId));
   }
 
-  async ask(projectId: string, text: string): Promise<ChatMessage> {
+  /** The answer, or null when the conversation was cleared while it was coming. */
+  async ask(projectId: string, text: string): Promise<ChatMessage | null> {
     this.slug(projectId);
     const question = text.trim();
     if (question === '' || question.length > MAX_QUESTION) throw new RangeError(`a pergunta deve ter de 1 a ${MAX_QUESTION} caracteres`);
-    if (this.asking) throw new ConflictError('o chat ainda está respondendo a pergunta anterior. Aguarde a resposta e pergunte de novo.');
-    this.asking = true;
+    if (this.inFlight) throw new ConflictError('o chat ainda está respondendo a pergunta anterior. Aguarde a resposta e pergunte de novo.');
+    const controller = new AbortController();
+    let finish = (): void => undefined;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.inFlight = { projectId, controller, done };
     try {
       const context = await buildChatContext(await this.deps.index(), projectId);
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
       const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
-      let result = await this.run(projectId, input);
+      let result = await this.run(projectId, input, controller.signal);
       // A question about what happened gets the labelled answer; up to two more tries, so a repeat costs at most two more questions.
-      for (let tries = 1; tries < 3 && needsLabels(question, result.value.answer); tries++) result = await this.run(projectId, input);
+      for (let tries = 1; tries < 3 && needsLabels(question, result.value.answer); tries++) result = await this.run(projectId, input, controller.signal);
       const { value, usage, searched } = result;
       // An answer that searched the web never opens a correction: the text of a page must not steer one.
       const correction = value.correction && !searched ? await this.open(projectId, value.correction) : undefined;
       const answer: ChatMessage = { role: 'assistant', text: withRecordPointer(withoutCodes(value.answer)), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
+      if (controller.signal.aborted) return null;
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
       return answer;
+    } catch (err) {
+      if (controller.signal.aborted) return null;
+      throw err;
     } finally {
-      this.asking = false;
+      finish();
+      this.inFlight = null;
     }
   }
 
@@ -138,7 +156,7 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; name: string; specIds: readonly string[]; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; searched: boolean }> {
+  private async run(projectId: string, input: { context: string; name: string; specIds: readonly string[]; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string }, signal: AbortSignal): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; searched: boolean }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
     const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
     // The web search needs a check that the project is not confidential; a check that fails, or none, means no search.
@@ -155,7 +173,7 @@ export class ChatService {
       await stageProjectGraph(cwd, projectGraph);
       const out = (await this.deps.runAgent<'chat'>(
         { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
-        { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.timeout(TIMEOUT_MS), noQuotaWait: true, projectId },
+        { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), signal]), noQuotaWait: true, projectId },
       )) as StepOutcome<ChatOutput>;
       const usage = usageOf(out.summary);
       const sources = out.summary.webSearchSources ?? [];

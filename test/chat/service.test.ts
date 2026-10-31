@@ -49,7 +49,7 @@ describe('ChatService.ask', () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Está sendo feito o cumprimento (AC-001).', correction: null }));
     const { service, newSpec } = make(runAgent);
     const reply = await service.ask('hello-app', ' o que está sendo feito? ');
-    expect(reply).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
+    expect(reply!).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po', model: 'haiku' });
     expect(CHAT_MODEL).toBe('haiku');
     expect(runAgent.mock.calls[0]![0].pack.feedback).toContain('o que está sendo feito?');
@@ -88,11 +88,11 @@ describe('ChatService.ask', () => {
     const lines: string[] = [];
     const { service } = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary }), { log: (l) => lines.push(l) });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
-    expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply.usage);
+    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
+    expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply!.usage);
     expect(lines).toEqual(['chat hello-app: 7000 tokens read, 340 written, 3 turns, 14s, US$ 0.0421']);
     const prose = make(async (_req: Req) => ({ ok: false, failure: 'schema', errors: ['no JSON'], summary: { ...summary, costUsd: null, resultText: 'Texto livre.' }, sandboxDisabled: false }));
-    expect((await prose.service.ask('hello-app', 'outra')).usage).toMatchObject({ costUsd: null, turns: 3 });
+    expect((await prose.service.ask('hello-app', 'outra'))!.usage).toMatchObject({ costUsd: null, turns: 3 });
   });
 
   it('brings the older messages that match the question into the prompt, with no search step, and keeps the prompt prefix the same for every question', async () => {
@@ -120,7 +120,7 @@ describe('ChatService.ask', () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Isso não deveria estar sendo feito.', correction: { title: 'Login indevido', whatHappens: 'Cria login', whatShouldHappen: 'Sem login' } }));
     const { service, newSpec, suggestSpecId } = make(runAgent);
     const reply = await service.ask('hello-app', 'tem algo fora do escopo?');
-    expect(reply.correction).toEqual({ title: 'Login indevido', specId: 'fix-greeting' });
+    expect(reply!.correction).toEqual({ title: 'Login indevido', specId: 'fix-greeting' });
     expect(suggestSpecId).toHaveBeenCalledWith('hello-app', expect.stringContaining('Tipo: correção (bug)'));
     expect(newSpec).toHaveBeenCalledWith('hello-app', 'fix-greeting', expect.stringContaining('Sem login'));
     await service.ask('hello-app', 'e agora?');
@@ -131,8 +131,8 @@ describe('ChatService.ask', () => {
     const runAgent = async () => ok({ answer: 'Algo está fora.', correction: { title: 'Fora', whatHappens: 'a', whatShouldHappen: 'b' } });
     const { service } = make(runAgent, { newSpec: async () => { throw new ConflictError('spec fix-greeting already exists on main'); } });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply.text).toBe('Algo está fora.');
-    expect(reply.correction).toEqual({ title: 'Fora', error: 'não consegui criar o rascunho agora. Crie a spec de correção à mão em Projetos.' });
+    expect(reply!.text).toBe('Algo está fora.');
+    expect(reply!.correction).toEqual({ title: 'Fora', error: 'não consegui criar o rascunho agora. Crie a spec de correção à mão em Projetos.' });
     expect(await service.messages('hello-app')).toHaveLength(2);
   });
 
@@ -153,7 +153,7 @@ describe('ChatService.ask', () => {
     const { service, newSpec } = make(prose);
     const reply = await service.ask('hello-app', 'como os serviços conversam?');
     expect(reply).toMatchObject({ role: 'assistant', text: 'Há dois tipos de conversa entre os serviços.' });
-    expect(reply.correction).toBeUndefined();
+    expect(reply!.correction).toBeUndefined();
     expect(newSpec).not.toHaveBeenCalled();
     expect(await service.messages('hello-app')).toHaveLength(2);
   });
@@ -244,7 +244,7 @@ describe('ChatService project graph', () => {
     const log = vi.fn();
     const refresh = vi.fn(async () => { throw new Error('graphify missing'); });
     const reply = await make(vi.fn(async (_req: Req) => answer), { refreshProjectGraph: refresh, log }).service.ask('hello-app', 'e o código?');
-    expect(reply.text).toBe('ok');
+    expect(reply!.text).toBe('ok');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('project graph not built for hello-app: graphify missing'));
   });
 
@@ -253,10 +253,10 @@ describe('ChatService project graph', () => {
     const { service } = make(runAgent, { confidential: async () => false });
     const reply = await service.ask('hello-app', 'o que significa este erro?');
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: true });
-    expect(reply.text).toContain('Fontes da pesquisa:');
-    expect(reply.text).toContain('[Guia](https://ok.example/guia)');
-    expect(reply.text).not.toContain('invented.example');
-    expect(reply.correction).toBeUndefined();
+    expect(reply!.text).toContain('Fontes da pesquisa:');
+    expect(reply!.text).toContain('[Guia](https://ok.example/guia)');
+    expect(reply!.text).not.toContain('invented.example');
+    expect(reply!.correction).toBeUndefined();
   });
 
   it('does not search the web when the project does not allow it', async () => {
@@ -329,12 +329,26 @@ describe('the shape of an answer', () => {
     const { service } = make(runAgent);
     const reply = await service.ask('hello-app', 'O que devo fazer agora?');
     expect(runAgent).toHaveBeenCalledTimes(2);
-    expect(reply.text).toContain('O que está acontecendo');
+    expect(reply!.text).toContain('O que está acontecendo');
   });
   it('says where the records are kept when the answer says a fact is missing and names no record', async () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Não há previsão de prazo nos registros.', correction: null }));
     const { service } = make(runAgent);
     const reply = await service.ask('hello-app', 'Quanto tempo falta para terminar?');
-    expect(reply.text).toContain('Onde procurar: o histórico de cada execução');
+    expect(reply!.text).toContain('Onde procurar: o histórico de cada execução');
+  });
+});
+
+describe('clearing the conversation while an answer is coming', () => {
+  it('stops the answer in progress, leaves no record of it, and clears the conversation', async () => {
+    const runAgent = vi.fn((_req: Req, ctx: { signal: AbortSignal }) => new Promise((resolve) => {
+      ctx.signal.addEventListener('abort', () => resolve({ ok: false, failure: 'aborted', errors: [], summary: {}, sandboxDisabled: false }));
+    }));
+    const { service } = make(runAgent as never);
+    const asking = service.ask('hello-app', 'o que está acontecendo?');
+    await vi.waitFor(() => expect(runAgent).toHaveBeenCalled());
+    await service.clear('hello-app');
+    expect(await asking).toBeNull();
+    expect(await service.messages('hello-app')).toEqual([]);
   });
 });

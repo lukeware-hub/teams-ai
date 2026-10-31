@@ -79,3 +79,11 @@ Not yet done, against the plan:
 
 - "Quanto tempo falta para terminar?": the answer says the records hold no forecast, but in 3 measured rounds it did not name the record that would hold one (1 of 3 mentioned a record, without tying it to the forecast). A fixed sentence naming a record was rejected: it could name the wrong record, which the no-invention rule forbids. The rule that asks for the record by name stays in the prompt.
 - Otherwise every answer on what happened, why and what to do gives the recorded cause, the owner and the next step; the install cause (`go.mod requires go >= 1.27.3`) appears in 6 of 6 install answers.
+
+## Clearing the conversation stops the answer in progress
+
+Requirement (owner, 2026-10-31): pressing "Limpar conversa" while an answer is still being prepared must stop that answer and clear everything. It must not leave the chat waiting, and sending a new question must not fail with "o chat ainda está respondendo".
+
+- The server keeps the question in progress per project. Clearing aborts its agent step, waits for the step to end, and then clears the saved conversation. A question cancelled this way gets no answer and no record.
+- The web page keeps the clear button enabled while an answer is being prepared, and the confirmation says that the answer in progress will be cancelled. A cancelled question shows nothing and no popup.
+- Tests: the service test clears during an answer and expects no answer and an empty conversation; the web test expects the button enabled during an answer and nothing shown for a cancelled question (confirmed failing with the old disabled rule).
