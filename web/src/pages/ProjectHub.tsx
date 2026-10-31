@@ -244,6 +244,24 @@ export function ProjectHubView(p: {
           ) : null}
         </div>
       </header>
+      <div className={stats}>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
+          <span className={statLabel}>{plural(pr.specs.length, 'spec', 'specs')}</span>
+        </div>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{agentRuns}</span>
+          <span className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
+        </div>
+        <div className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
+          <span className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
+          <span className={statLabel}>em andamento</span>
+        </div>
+        <div className={`${stat} border-line bg-surface shadow-card`}>
+          <span className={`${statValue} text-ink`}>{money(totalCost)}</span>
+          <span className={statLabel}>custo total</span>
+        </div>
+      </div>
       {(p.backlogs ?? []).map((specId) => <BacklogBanner key={specId} projectId={pr.projectId} specId={specId} />)}
       <section className={panel}>
         <div className={section}>
@@ -315,24 +333,6 @@ export function ProjectHubView(p: {
           )}
         </div>
       </section>
-      <div className={stats}>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
-          <span className={statLabel}>{plural(pr.specs.length, 'spec', 'specs')}</span>
-        </div>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{agentRuns}</span>
-          <span className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
-        </div>
-        <div className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
-          <span className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
-          <span className={statLabel}>em andamento</span>
-        </div>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{money(totalCost)}</span>
-          <span className={statLabel}>custo total</span>
-        </div>
-      </div>
       <AttentionBanner runs={p.runs} />
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
