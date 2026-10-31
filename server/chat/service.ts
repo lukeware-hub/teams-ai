@@ -15,6 +15,7 @@ import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
 import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
+import { needsLabels, withRecordPointer } from './answer.js';
 import { withSources } from './sources.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
@@ -105,10 +106,14 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const { value, usage, searched } = await this.run(projectId, { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question });
+      const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
+      let result = await this.run(projectId, input);
+      // A question about what happened gets the labelled answer; one more try at most, so a repeat costs one more question.
+      if (needsLabels(question, result.value.answer)) result = await this.run(projectId, input);
+      const { value, usage, searched } = result;
       // An answer that searched the web never opens a correction: the text of a page must not steer one.
       const correction = value.correction && !searched ? await this.open(projectId, value.correction) : undefined;
-      const answer: ChatMessage = { role: 'assistant', text: withoutCodes(value.answer), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
+      const answer: ChatMessage = { role: 'assistant', text: withRecordPointer(withoutCodes(value.answer)), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
       await this.deps.store.append(projectId, { role: 'user', text: question, at }, answer);
       return answer;
     } finally {
