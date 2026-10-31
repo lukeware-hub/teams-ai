@@ -46,3 +46,23 @@ The owner asked for a chat that explains what really happens and how to proceed,
 - Full gate output is still not kept once its container is removed: a log store is a separate change.
 - The worktree "already exists" failure of a real project repeats and its root cause is not known (see the backlog).
 - The web search queries are checked by the rules and by a log line, not by a code filter.
+
+## Status after the second round (2026-10-31)
+
+Done since the first delivery:
+
+- The web search check is `isConfidential` in `server/chat/confidential.ts`, wired as `ChatDeps.confidential`; a failing or missing check means no search.
+- `failureReport` and `readRun` replace `failuresOf` and `tasksOf`; the report is built in tiers so the facts survive a tight budget; the digest holds a total budget across the specs in play, and a spec left without room keeps a pointer to its record.
+- Each cause says since when it holds its tasks and how many attempts it spent; a question waiting for the owner says it came from an agent; a reopened run is counted; a failed phase reads in plain words; a verification names the gate beside it; the earlier runs' verification failures are named in the digest.
+- `pairDecisions` is the shared pairing for the run screen and the chat.
+- Tests added for every item above, the three record fixes not yet covered, the confidentiality check, the staging of the record and the denied paths. The build cache under `.tools` was seen failing without its fix and passing with it.
+- Full suites on the committed head: root 279 files / 3165 tests passed, 7 skipped; web 50 files / 578 tests passed; web build and typecheck passed; `test:budget` exited 0 with its local over-budget notice.
+- Live: the new image deployed from a clean export; the chat answers 30 golden questions three times (see the results below); the chat page renders at 390 px and 1440 px with no horizontal overflow and no page errors.
+
+Not yet done, against the plan:
+
+- A question about why an install failed does not yet surface the recorded `go.mod requires go >= 1.27.3` cause of run 14 in 3 of 3 answers. The detail file holds it; the digest names only the verification line of run 15.
+- A question with no recorded answer ("quanto tempo falta?") says it is not recorded in 3 of 3 answers but does not name the record that would hold it in any of them.
+- One answer in the first round of 30 had no labelled paragraphs.
+- The fixes W1 to W4 and W7 were not seen in a live failing run; they are covered by tests only.
+- The branch is pushed as a draft; `/code-review low` runs only when the development is complete, so it has not been run on the last commits.
