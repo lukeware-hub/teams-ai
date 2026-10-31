@@ -134,6 +134,12 @@ describe('stopped run explanations', () => {
     expect(explainStop('docker compose config failed: required variable POSTGRES_PASSWORD is missing a value')!.hint).toContain('POSTGRES_PASSWORD');
   });
 
+  it('explains a failed install of the verification gate in its own words, not as a generic failed check', () => {
+    const why = explainStop('Gate install failed (code, exit 1)\n\nstderr (tail):\ngo: go.mod requires go >= 1.27.3 (running go 1.27.2; GOTOOLCHAIN=local)')!;
+    expect(why).toMatchObject({ owner: 'Sistema', title: 'A instalação das dependências falhou na verificação' });
+    expect(why.hint).toContain('versão');
+  });
+
   it('explains an unhealthy container, an unreachable service and a spec waiting for another one', () => {
     expect(explainStop('docker compose up failed: dependency failed to start: container x-postgres-1 is unhealthy')).toMatchObject({ owner: 'Sistema', title: 'Um container do deploy não ficou saudável' });
     expect(explainStop('dial tcp: lookup audit-service on 127.0.0.11:53: no such host')).toMatchObject({ title: 'Um serviço de outra spec não está acessível' });
