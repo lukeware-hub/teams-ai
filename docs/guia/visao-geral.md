@@ -20,5 +20,5 @@ Cada entrega do projeto se chama **spec**. O caminho é sempre o mesmo:
 - **Refinamento**: onde você escreve os documentos, responde as perguntas dos agentes e inicia a execução.
 - **Execução**: acompanha ao vivo as tarefas, o custo e o que está acontecendo. Tem Parar execução e Retomar.
 - **Validação**: onde você aceita a entrega ou relata um problema.
-- **Chat de dúvidas**: tira dúvidas em palavras simples sobre o projeto e sobre como usar o Teams AI. Ele só responde, não dá ordens aos agentes.
+- **Chat de dúvidas**: explica em palavras simples o que está bloqueando o projeto, por quê e como seguir, com base nos registros das execuções. Ele só responde, não dá ordens aos agentes; pode pesquisar na internet uma vez por pergunta, exceto em projetos confidenciais.
 - **Status do ambiente**: mostra se o GitHub, o Claude e as chaves estão conectados.
