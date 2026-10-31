@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { refineApi, runApi, type ProgramView } from '../api.js';
+import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
 import { appLinks, ProjectHubView } from './ProjectHub.js';
 
 const project = {
@@ -52,6 +52,23 @@ describe('ProjectHubView', () => {
     expect(screen.getByTestId('project-platform').textContent).toContain('nats (nats:2.10.22-alpine)');
     rerender(hub({}));
     expect(screen.queryByTestId('project-services')).toBeNull();
+  });
+
+  it('offers the main documents to download, and says which one main does not have yet', () => {
+    const o = on();
+    const hub = (docs: ProjectDoc[] | undefined) => (
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={docs} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(hub([{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]));
+    const link = screen.getByTestId('download-project-md');
+    expect(link.getAttribute('download')).toBe('project.md');
+    expect(link.getAttribute('href')).toBe('data:text/markdown;charset=utf-8,%23%20Hello');
+    expect(screen.queryByTestId('download-briefing-md')).toBeNull();
+    expect(screen.getByTestId('project-doc-briefing.md').textContent).toContain('Ainda não publicado');
+    rerender(hub(undefined));
+    expect(screen.queryByTestId('project-docs')).toBeNull();
   });
 
   it('shows the project header, one action per spec status and per run status', () => {
