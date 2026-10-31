@@ -56,6 +56,8 @@ const STOP_STATUSES: ReadonlySet<RunListStatus> = new Set(['deploy-failed', 'ver
 const IN_PROGRESS: ReadonlySet<TaskState> = new Set(['implementing', 'validating', 'reviewing', 'rebasing', 'merging']);
 const OWNER: Record<StopOwner, string> = { Você: 'você', Sistema: 'o sistema', Plano: 'o plano do projeto' };
 const NO_REASON = 'Motivo não registrado';
+/** Whose words a cause is: a reviewer's finding is an agent's opinion; the other causes are what the system recorded. */
+const originOf = (reason: string): string => (/^(Security review|Review) requested changes|^Review evidence rejected/.test(reason) ? 'agente revisor (opinião de um agente, não fato do sistema)' : 'sistema');
 
 /** The UTC time of a record, to the minute. */
 const when = (at: string | null): string => (at ? `${at.slice(0, 16).replace('T', ' ')} UTC` : 'hora não registrada');
@@ -107,6 +109,18 @@ function readFacts(events: readonly StoredEvent[]): Facts {
   }
   const reason = finishOf(events)?.data.reason;
   return { tasks, reasons, asked, remade, verification, phaseFailed, finishedReason: typeof reason === 'string' && reason !== '' ? reason : null, deploy: lastDeployFailure(events), empty: events.length === 0 };
+}
+
+/** The blocks of one run, grouped by cause; a journal that does not replay gives none. */
+function causesOfRun(events: readonly StoredEvent[] | null): Array<{ reason: string; taskIds: string[] }> {
+  if (events === null) return [];
+  try {
+    const facts = readFacts(events);
+    const blocked = [...facts.tasks.values()].filter((t) => t.state === 'blocked');
+    return groupCauses(blocked.map((t) => ({ taskId: t.def.id, reason: facts.reasons.get(t.def.id) ?? NO_REASON })).filter((c) => c.reason !== DEPENDENCY_BLOCKED));
+  } catch {
+    return [];
+  }
 }
 
 async function eventsOf(runs: string, runId: string): Promise<StoredEvent[] | null> {
@@ -200,7 +214,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
       const past = await eventsOf(input.runs, h.runId);
       const pastReason = past ? finishOf(past)?.data.reason : undefined;
       const title = typeof pastReason === 'string' && pastReason !== '' ? (explainStop(rule(pastReason))?.title ?? firstSentence(rule(pastReason))) : null;
-      return { row: h, title };
+      return { row: h, title, events: past };
     }),
   );
   const pastLine = (p: (typeof pastRuns)[number]) => `número ${p.row.n}, ${runLabel(p.row)}, em ${when(p.row.at)}${p.title ? ` (${say(p.title, 120)})` : ''}`;
@@ -215,7 +229,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   if (ranked.length) digest.push('Causas dos bloqueios, da que segura mais tarefas:');
   for (const [i, { c, waits }] of ranked.slice(0, 3).entries()) {
     const why = blockExplanation(c.reason, autonomous);
-    digest.push(`${i + 1}. ${sentence(why.title)} ${c.taskIds.length} tarefa(s) bloqueada(s) por isto; ${waits} esperam por ela. Quem resolve: ${OWNER[why.owner]}. Próximo passo: ${why.next} Registro: "${quote(c.reason, 350)}"`);
+    digest.push(`${i + 1}. ${sentence(why.title)} Origem: ${originOf(c.reason)}. ${c.taskIds.length} tarefa(s) bloqueada(s) por isto; ${waits} esperam por ela. Quem resolve: ${OWNER[why.owner]}. Próximo passo: ${why.next} Registro: "${quote(c.reason, 350)}"`);
   }
   if (ranked.length > 3) digest.push(`Mais ${ranked.length - 3} causa(s): veja falhas/${spec.specId}.md.`);
   if (unexplained) digest.push(`Tarefas esperando sem causa registrada: ${unexplained}.`);
@@ -244,7 +258,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   if (causes.length) detail.push('', '## Causas dos bloqueios');
   for (const { c, waits } of ranked) {
     const why = blockExplanation(c.reason, autonomous);
-    detail.push('', `### ${sentence(why.title)}`, `Quem resolve: ${OWNER[why.owner]}.`, `Próximo passo: ${why.next}`, `Tarefas bloqueadas por esta causa: ${c.taskIds.map(titleOf).join(', ')}.`, `Tarefas que esperam por ela: ${waits}.`, 'Registro (texto original):', say(c.reason, 1800));
+    detail.push('', `### ${sentence(why.title)}`, `Origem: ${originOf(c.reason)}.`, `Quem resolve: ${OWNER[why.owner]}.`, `Próximo passo: ${why.next}`, `Tarefas bloqueadas por esta causa: ${c.taskIds.map(titleOf).join(', ')}.`, `Tarefas que esperam por ela: ${waits}.`, 'Registro (texto original):', say(c.reason, 1800));
     for (const f of why.findings) detail.push(`- ${say(f.where, 200)} (${f.severity}): ${say(f.problem, 400)}${f.fix ? ` Correção pedida: ${say(f.fix, 400)}` : ''}`);
   }
   if (facts?.remade.length) detail.push('', '## Tarefas refeitas pelo plano');
@@ -264,6 +278,11 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
     for (const m of ((verification.missingDelivery as string[] | undefined) ?? []).slice(0, 20)) detail.push(`- Arquivo de entrega que falta: ${say(m, 200)}.`);
   }
   if (pastRuns.length) detail.push('', '## Execuções anteriores', ...pastRuns.map((p) => `- ${pastLine(p)}.`));
+  // The causes of each earlier run, so a question about its failure finds the recorded text in the file.
+  for (const p of pastRuns) {
+    const groups = causesOfRun(p.events);
+    if (groups.length) detail.push('', `### Causas da execução anterior número ${p.row.n}`, ...groups.map((g) => `- ${sentence(blockExplanation(rule(g.reason), autonomous).title)} Origem: ${originOf(g.reason)}. Tarefas: ${g.taskIds.length}. Registro (texto original): ${say(g.reason, 600)}`));
+  }
   if (events === null || facts === null || facts.empty) {
     const uiLog = await fs.readFile(path.join(input.runs, run.runId, 'ui.log'), 'utf8').catch(() => '');
     detail.push('', '## Registro da execução', events === null || facts === null ? 'O registro de eventos desta execução não pôde ser lido.' : 'Esta execução ainda não registrou nenhum fato.', ...(uiLog ? ['Fim do registro de acompanhamento:', say(uiLog.slice(-2000), 2000)] : []));

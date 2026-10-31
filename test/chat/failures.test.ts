@@ -178,4 +178,38 @@ describe('the failures of the runs in the chat context', () => {
     expect(text).toContain('número 3,');
     expect(text).not.toContain('número 1,');
   });
+
+  it('says where a cause comes from: a finding of a reviewer is an opinion of an agent, a gate failure is the record of the system', async () => {
+    await writeRun(runs, 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-review', title: 'Revisar o endpoint' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-review', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-review', to: 'implementing' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-review', to: 'blocked' } },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-review', reason: 'Review requested changes:\n- src/a.ts:3 [important] A função não trata entrada vazia (fix: validar antes)' } },
+      { type: 'RUN_FINISHED', data: { result: 'blocked', reason: null, merged: [], blocked: [] } },
+    ]);
+    const { text, details } = await context();
+    expect(text).toContain('Origem: agente revisor');
+    expect(details.get('hello-001')).toContain('opinião de um agente');
+  });
+
+  it('names the causes of an earlier run in the detail file, so a question about it finds its record', async () => {
+    await writeRun(runs, 'hello-001-r1', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'TASK_PLANNED', data: { task: makePlanTask({ id: 'T1-install', title: 'Instalar' }) } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'ready' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'implementing' } },
+      { type: 'TASK_STATE_CHANGED', data: { taskId: 'T1-install', to: 'blocked' } },
+      { type: 'TASK_BLOCKED', data: { taskId: 'T1-install', reason: GO_MOD } },
+      { type: 'RUN_FINISHED', data: { result: 'blocked', reason: null, merged: [], blocked: [] } },
+    ]);
+    await writeRun(runs, 'hello-001-r2', [
+      { type: 'RUN_STARTED', data: { runId: 'hello-001-r2', specId: 'hello-001', projectId: 'hello-app' } },
+      { type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'verification failed in round 2: 0 failing tests, 2 uncovered criteria', merged: [], blocked: [] } },
+    ]);
+    const { details } = await context();
+    expect(details.get('hello-001')).toContain('Causas da execução anterior número 1');
+    expect(details.get('hello-001')).toContain('go.mod requires go >= 1.27.3');
+  });
 });

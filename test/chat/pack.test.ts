@@ -10,6 +10,11 @@ describe('the chat rules', () => {
     expect(rules).toContain('If the record does not say it, say so in one sentence');
   });
 
+  it('never turns an agent\x27s suggestion into a question for the person', () => {
+    expect(rules).toContain('Pergunta pendente de você');
+    expect(rules).toContain('not a fact of the system');
+  });
+
   it('ask for the three-part answer to a problem and keep the chat read-only', () => {
     expect(rules).toContain('**O que você pode fazer**');
     expect(rules).toContain('Never give orders');
