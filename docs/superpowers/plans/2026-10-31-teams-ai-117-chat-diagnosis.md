@@ -66,3 +66,11 @@ Not yet done, against the plan:
 - One answer in the first round of 30 had no labelled paragraphs.
 - The fixes W1 to W4 and W7 were not seen in a live failing run; they are covered by tests only.
 - The branch is pushed as a draft; `/code-review low` runs only when the development is complete, so it has not been run on the last commits.
+
+## Status after the third round
+
+- The install cause is now in the answers: the recorded `go.mod requires go >= 1.27.3` cause of an earlier run (a block replanned later kept its cause out of the earlier run's record; fixed) is cited in 6 of 6 install answers, and the digest names the earlier verification failures.
+- A question with no recorded answer names the record that would hold it in 2 of 3 answers (the third says "o registro" without naming it).
+- One answer of 15 in the last round has no labelled paragraphs.
+- The W1 to W4 and W7 fixes still have no live failing run; they are covered by tests only.
+- `/code-review low` not run: the development is not yet 100% by the criteria above.
