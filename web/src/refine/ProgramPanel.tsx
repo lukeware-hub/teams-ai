@@ -126,12 +126,15 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
   const interrupted = running && now.length > 0 && now.every((i) => i.interrupted);
   return (
     <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status">
-      <div className="flex items-center gap-3">
-        {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
-        <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="flex items-center gap-3">
+          {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true"><Icon name="check" size={18} /></span>}
+          <b className="text-[1rem] text-ink">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
+        </div>
+        {link && <Link to={link} className="link-button shrink-0">Abrir a execução do backlog<Icon name="arrow-right" size={16} /></Link>}
       </div>
       {program && <progress className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
-      {(now.length > 0 || link) && (
+      {now.length > 0 && (
         <div className="grid gap-2 text-[0.875rem] text-ink-soft [&_p]:m-0">
           {now.map((i) => {
             const runId = i.interrupted?.runId ?? i.runId;
@@ -143,7 +146,6 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
               </p>
             );
           })}
-          {link && <p className="mt-1"><Link to={link} className="link-button">Abrir a execução do backlog<Icon name="arrow-right" size={16} /></Link></p>}
         </div>
       )}
     </div>
