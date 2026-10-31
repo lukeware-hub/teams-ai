@@ -29,7 +29,7 @@ The owner asked for a chat that explains what really happens and how to proceed,
 ## Verification
 
 - `npm run typecheck`: passed.
-- Root suite (`npx vitest run`): 278 files, 3124 tests passed, 7 skipped (3131), exit 0, at the final commit of the branch.
+- Root suite (`npx vitest run`): 278 files, 3146 tests passed, 7 skipped (3153), exit 0, at the final commit of the branch, after the second review.
 - Web suite (`npm run test:web`): 50 files, 578 tests passed.
 - Web build (`npm run web:build`): passed (`tsc --noEmit` and the Vite build).
 - Guide graph: rebuilt with `task guia:grafo` against the running platform; `test/chat/guide.test.ts` passes. The first rebuild produced English node labels, which the Portuguese search does not match; the second one produced Portuguese labels and was kept.

@@ -49,8 +49,6 @@ const situationOf = (status: string, holds: RunRow | null, latest: RunRow | null
   return 'pronta para executar, sem execução ativa';
 };
 
-/** Removes what a lay reader cannot use from a plan's text. */
-
 const list = (title: string, items: readonly string[]): string[] => (items.length ? [`${title}:`, ...items.map((i) => `- ${withoutCodes(i)}`)] : []);
 
 /** The tasks of one run, without the ones a later plan replaced. A journal that does not replay gives none. */
