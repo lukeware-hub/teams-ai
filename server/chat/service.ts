@@ -108,8 +108,8 @@ export class ChatService {
       const at = (this.deps.now?.() ?? new Date()).toISOString();
       const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
       let result = await this.run(projectId, input);
-      // A question about what happened gets the labelled answer; one more try at most, so a repeat costs one more question.
-      if (needsLabels(question, result.value.answer)) result = await this.run(projectId, input);
+      // A question about what happened gets the labelled answer; up to two more tries, so a repeat costs at most two more questions.
+      for (let tries = 1; tries < 3 && needsLabels(question, result.value.answer); tries++) result = await this.run(projectId, input);
       const { value, usage, searched } = result;
       // An answer that searched the web never opens a correction: the text of a page must not steer one.
       const correction = value.correction && !searched ? await this.open(projectId, value.correction) : undefined;

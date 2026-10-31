@@ -24,3 +24,10 @@ describe('withRecordPointer', () => {
     expect(withRecordPointer('Faltam 15 tarefas.')).toBe('Faltam 15 tarefas.');
   });
 });
+
+describe('the words that say a fact is not in the records', () => {
+  it('counts "não registra" and its plural as a missing fact', () => {
+    expect(withRecordPointer('O contexto não registra uma previsão de prazo.')).toContain('Onde procurar');
+    expect(withRecordPointer('Os registros não registram previsão.')).toContain('Onde procurar');
+  });
+});

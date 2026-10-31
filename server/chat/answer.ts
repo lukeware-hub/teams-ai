@@ -3,7 +3,7 @@ const DIAGNOSIS = /impedimento|causa|falh|investig|fazer|bloque|parou|por que|po
 const COUNTING = /^\s*quant/i;
 const LABEL = 'O que está acontecendo';
 /** A sentence that says a fact is not in the records. */
-const NOT_RECORDED = /\bnão (trazem?|tem|têm|há|existe|consta|está|estão|foi|é possível|consigo|encontrei)(?=[\s.,;:]|$)/i;
+const NOT_RECORDED = /\bnão (trazem?|registram?|informam?|mostram?|tem|têm|há|existe|consta|está|estão|foi|é possível|consigo|encontrei)(?=[\s.,;:]|$)/i;
 /** Names of the records a question's answer can point to. */
 const RECORD_NAME = /histórico|arquivo de falhas|documentos do projeto|o guia|registro completo/i;
 const POINTER = 'Onde procurar: o histórico de cada execução e o arquivo de falhas da spec (falhas/<spec>.md).';
