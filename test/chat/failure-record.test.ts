@@ -192,3 +192,13 @@ describe('the failure record, in detail', () => {
     expect(cause.length).toBeLessThan(900);
   });
 });
+
+describe('the verification failures of earlier runs', () => {
+  it('names them in the digest, so the answer needs no search of the detail file', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1'), ...blockedTask('T1-gate', GO_MOD, 'Gate'), finished('blocked')]);
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), finished('blocked')]);
+    const { text } = await context();
+    expect(text).toContain('Falhas de verificação em execuções anteriores: número 1:');
+    expect(text).toContain('go.mod requires go >= 1.27.3');
+  });
+});

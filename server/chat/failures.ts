@@ -312,6 +312,9 @@ export async function failureReport(input: FailureInput): Promise<Failures> {
       const cause = r.cause === null ? 'sem causa registrada' : `causa registrada: "${quote(r.cause, 350)}"`;
       digest.push(`Refeita pelo plano: "${titleOf(r.taskId)}" (${cause}). Substituída por: ${r.replacements.map(replacementOf).join(', ')}.`);
     }
+    // The verification failures of the earlier runs, named here so a question about them needs no search of the detail file.
+    const earlierGates = pastRuns.slice(0, 5).flatMap((p) => causesOfRun(p.events).filter((g) => /^Gate \S+ failed/.test(g.reason)).slice(0, 1).map((g) => `número ${p.row.n}: "${quote(g.reason, 220)}"`));
+    if (earlierGates.length && tier.history > 0) digest.push(`Falhas de verificação em execuções anteriores: ${earlierGates.slice(0, 2).join('; ')}.`);
     if (pastRuns.length && tier.history > 0) digest.push(`Execuções anteriores: ${pastRuns.slice(0, tier.history).map(pastLine).join('; ')}.`);
     if (facts?.empty) digest.push('Esta execução ainda não registrou nenhum fato.');
     if (record === null || facts === null) digest.push('O registro de eventos desta execução não pôde ser lido.');
