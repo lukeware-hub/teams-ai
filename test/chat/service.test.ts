@@ -263,4 +263,13 @@ describe('ChatService project graph', () => {
     await service.ask('hello-app', 'o que está sendo feito?');
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
   });
+
+  it('logs each web query redacted, and says so when a query names the project', async () => {
+    const log = vi.fn();
+    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta.', correction: null }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }], webSearchQueries: ['erro go.mod requires go', 'como o hello app responde'] } }));
+    const { service } = make(runAgent, { webSearchAllowed: async () => true, log });
+    await service.ask('hello-app', 'o que significa este erro?');
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('web search query: erro go.mod requires go'));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('names the project'));
+  });
 });

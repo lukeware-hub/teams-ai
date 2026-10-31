@@ -106,7 +106,7 @@ export class ChatService {
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
       const webSearch = (await this.deps.webSearchAllowed?.(projectId)) === true;
-      const { value, usage, sources } = await this.run(projectId, { context: context.text, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question, webSearch });
+      const { value, usage, sources } = await this.run(projectId, { context: context.text, name: context.name, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question, webSearch });
       // An answer that read the web never opens a correction: the text of a page must not steer one.
       const correction = value.correction && sources.length === 0 ? await this.open(projectId, value.correction) : undefined;
       const answer: ChatMessage = { role: 'assistant', text: withoutCodes(withSources(value.answer, sources)), at, ...(correction ? { correction } : {}), ...(usage ? { usage } : {}) };
@@ -134,7 +134,7 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string; webSearch: boolean }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; sources: WebSource[] }> {
+  private async run(projectId: string, input: { context: string; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string; webSearch: boolean; name: string }): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; sources: WebSource[] }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
     const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
     const root = await this.deps.workspacesRoot();
@@ -155,6 +155,11 @@ export class ChatService {
       const sources = out.summary.webSearchSources ?? [];
       if (usage) this.deps.log?.(`chat ${projectId}: ${usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens} tokens read, ${usage.outputTokens} written, ${usage.turns} turns, ${usage.seconds}s, ${usage.costUsd === null ? 'no price' : `US$ ${usage.costUsd.toFixed(4)}`}${out.ok ? '' : ` (${out.failure})`}`);
       if (sources.length > 0) this.deps.log?.(`chat ${projectId}: web search: ${sources.length} source(s)`);
+      // The rules keep the queries generic: a query that names the project is logged so the rules can be checked.
+      for (const query of out.summary.webSearchQueries ?? []) {
+        const named = [projectId, input.name].some((name) => name !== '' && query.toLowerCase().includes(name.toLowerCase()));
+        this.deps.log?.(`chat ${projectId}: web search query: ${redactSecrets(query)}${named ? ' (the query names the project, which the rules forbid)' : ''}`);
+      }
       if (out.ok) return { value: out.value, usage, sources };
       // An answer in plain prose, with no JSON around it, is still the answer: only a correction proposal is lost.
       const prose = out.failure === 'schema' ? redactSecrets(out.summary.resultText?.trim() ?? '') : '';

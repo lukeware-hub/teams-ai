@@ -164,4 +164,18 @@ describe('the failures of the runs in the chat context', () => {
     await writeRun(runs, 'hello-001-r1', blockedRun('hello-001-r1'));
     expect((await context()).text).toBe((await context()).text);
   });
+
+  it('keeps the five earlier runs in the detail file, and the three latest in the digest', async () => {
+    for (let n = 1; n <= 6; n++) {
+      await writeRun(runs, `hello-001-r${n}`, [
+        { type: 'RUN_STARTED', data: { runId: `hello-001-r${n}`, specId: 'hello-001', projectId: 'hello-app' } },
+        { type: 'RUN_FINISHED', data: { result: 'verification-failed', reason: 'verification failed in round 2: 0 failing tests, 2 uncovered criteria', merged: [], blocked: [] } },
+      ]);
+    }
+    const { text, details } = await context();
+    expect(details.get('hello-001')).toContain('número 1,');
+    expect(details.get('hello-001')).toContain('número 5,');
+    expect(text).toContain('número 3,');
+    expect(text).not.toContain('número 1,');
+  });
 });

@@ -196,7 +196,7 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
   };
 
   const pastRuns = await Promise.all(
-    history.slice(0, 3).map(async (h) => {
+    history.slice(0, 5).map(async (h) => {
       const past = await eventsOf(input.runs, h.runId);
       const pastReason = past ? finishOf(past)?.data.reason : undefined;
       const title = typeof pastReason === 'string' && pastReason !== '' ? (explainStop(rule(pastReason))?.title ?? firstSentence(rule(pastReason))) : null;
@@ -232,7 +232,8 @@ export async function failuresOf(input: FailureInput): Promise<Failures> {
     const cause = r.cause === null ? 'sem causa registrada' : `causa registrada: "${quote(r.cause, 350)}"`;
     digest.push(`Refeita pelo plano: "${titleOf(r.taskId)}" (${cause}). Substituída por: "${r.replacements.map(titleOf).join('", "')}".`);
   }
-  if (pastRuns.length) digest.push(`Execuções anteriores: ${pastRuns.map(pastLine).join('; ')}.`);
+  // The digest names the three latest earlier runs; the detail file names all five.
+  if (pastRuns.length) digest.push(`Execuções anteriores: ${pastRuns.slice(0, 3).map(pastLine).join('; ')}.`);
   if (facts?.empty) digest.push('Esta execução ainda não registrou nenhum fato.');
   if (events === null || facts === null) digest.push('O registro de eventos desta execução não pôde ser lido.');
   else if (!facts.empty && !stop && !blocked.length && !pending.length) digest.push('Nenhum bloqueio ou falha registrada nesta execução.');

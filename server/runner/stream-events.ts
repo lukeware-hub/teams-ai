@@ -123,6 +123,8 @@ export interface ResultSummary {
   webSearchUrls?: string[];
   /** The title and address of each link the web searches returned, in order. */
   webSearchSources?: Array<{ title: string; url: string }>;
+  /** The queries the web searches of the run sent, in order. */
+  webSearchQueries?: string[];
   compactions: number;
   profile?: StepProfile;
 }
@@ -286,16 +288,21 @@ function linksOf(json: string): Array<{ title: string; url: string }> {
 }
 
 /** The addresses and titles the web searches of the run returned, in order: the only addresses an answer may cite. */
-function searchResults(events: readonly StreamEvent[]): { urls: string[]; sources: Array<{ title: string; url: string }> } {
+function searchResults(events: readonly StreamEvent[]): { urls: string[]; sources: Array<{ title: string; url: string }>; queries: string[] } {
   const searches = new Set<string>();
   const urls = new Set<string>();
+  const queries: string[] = [];
   const sources: Array<{ title: string; url: string }> = [];
   for (const e of events) {
     if (e.type !== 'assistant' && e.type !== 'user') continue;
     const content = (e as { message?: { content?: unknown } }).message?.content;
     if (!Array.isArray(content)) continue;
     for (const block of content as Array<{ type?: string; id?: string; name?: string; tool_use_id?: string; content?: unknown }>) {
-      if (block?.type === 'tool_use' && block.name === 'WebSearch' && typeof block.id === 'string') searches.add(block.id);
+      if (block?.type === 'tool_use' && block.name === 'WebSearch' && typeof block.id === 'string') {
+        searches.add(block.id);
+        const query = (block as { input?: { query?: unknown } }).input?.query;
+        if (typeof query === 'string') queries.push(query);
+      }
       if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && searches.has(block.tool_use_id)) {
         const text = resultText(block.content);
         for (const m of text.matchAll(/https?:\/\/[^\s"'\\)\]>,<]+/g)) urls.add(m[0]);
@@ -303,13 +310,13 @@ function searchResults(events: readonly StreamEvent[]): { urls: string[]; source
       }
     }
   }
-  return { urls: [...urls], sources };
+  return { urls: [...urls], sources, queries };
 }
 
 /** The searched addresses and their titles as summary fields: absent when the run searched nothing, like the skills it used. */
-const searchField = (events: readonly StreamEvent[]): { webSearchUrls?: string[]; webSearchSources?: Array<{ title: string; url: string }> } => {
-  const { urls, sources } = searchResults(events);
-  return { ...(urls.length > 0 ? { webSearchUrls: urls } : {}), ...(sources.length > 0 ? { webSearchSources: sources } : {}) };
+const searchField = (events: readonly StreamEvent[]): { webSearchUrls?: string[]; webSearchSources?: Array<{ title: string; url: string }>; webSearchQueries?: string[] } => {
+  const { urls, sources, queries } = searchResults(events);
+  return { ...(urls.length > 0 ? { webSearchUrls: urls } : {}), ...(sources.length > 0 ? { webSearchSources: sources } : {}), ...(queries.length > 0 ? { webSearchQueries: queries } : {}) };
 };
 
 /** The text of every agent message in the run, in order: the final result can hold only the last part of an answer. */
