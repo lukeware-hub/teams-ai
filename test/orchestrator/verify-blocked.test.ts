@@ -89,6 +89,18 @@ describe('Phase 4 with blocked work', () => {
     if (!res.ok) expect(res.reason).toBe('verification failed in round 2: 0 failing tests, 0 uncovered criteria; gate lint failed');
   });
 
+  it('records the exit code, the time and the end of the output of a failed gate, so the record says why it failed', async () => {
+    const junit = [...gate.junit!, { id: 't::[AC-002] works', name: '[AC-002] works', classname: 't', status: 'passed' as const, acIds: ['AC-002'] }];
+    const install: GateResult = { name: 'install', blocking: true, passed: false, exitCode: 1, timedOut: false, durationMs: 7, stdoutTail: 'fetching modules', stderrTail: `${'x'.repeat(5000)}\ngo: go.mod requires go >= 1.27.3`, junit: [], failure: 'code' };
+    await runPhase4(await setup([], { junit, blocking: install }), 2);
+    const fact = journal.events.find((e) => e.type === OrchEvent.GateFailed && e.data.gate === 'install')!;
+    expect(fact.data).toMatchObject({ exitCode: 1, durationMs: 7, timedOut: false });
+    expect(String(fact.data.stderrTail)).toContain('go.mod requires go >= 1.27.3');
+    expect(String(fact.data.stderrTail).length).toBeLessThanOrEqual(2000);
+    expect(fact.data.stdoutTail).toBe('fetching modules');
+    expect(journal.events.find((e) => e.type === OrchEvent.GatePassed)!.data).not.toHaveProperty('stderrTail');
+  });
+
   it('shows the SM every blocked task with its reason', async () => {
     await runPhase4(await setup([[fix()]]), 1);
     expect(packs[0]).toContain('Blocked tasks (their work never reached main; a fix task redoes what a criterion still needs and never depends on them):\n- T2: the Dev found no way to reach the payment API\n- T3: a dependency is blocked');

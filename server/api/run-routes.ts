@@ -15,7 +15,7 @@ import { buildProjectGraph } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
-import { readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
+import { pairDecisions, readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
@@ -169,12 +169,9 @@ const answersOf = (input: unknown): Array<{ taskId: string; answer: string }> =>
 /** The questions a run asked the owner, each with the answer the owner gave it, if any. */
 async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: string | null, specId: string) {
   const answers = root ? await readOwnerDecisions(root, specId) : [];
-  return evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => {
-    const taskId = String(e.data.taskId);
-    const question = String(e.data.question);
-    const answer = answers.find((a) => a.runId === runId && a.taskId === taskId && a.question === question)?.answer ?? null;
-    return { taskId, question, options: e.data.options, answer };
-  });
+  const asked = evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => ({ taskId: String(e.data.taskId), runId, question: String(e.data.question), options: e.data.options }));
+  // The screen keeps the shape it always had: the run is implied by the page.
+  return pairDecisions(asked, answers).map((d) => ({ taskId: d.taskId, question: d.question, options: d.options, answer: d.answer }));
 }
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {

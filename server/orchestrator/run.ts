@@ -1,4 +1,5 @@
 import type { DecideOutput } from '../agents/outputs.js';
+import { redactSecrets } from '../core/redact.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { AgentDefinition } from '../agents/registry.js';
@@ -965,7 +966,7 @@ export class Run {
       if (state.status === 'paused:quota') await this.journal.fact(RunEvent.RunResumed, {});
       const runTokens = this.accounting.tokensOf(this.accounting.total());
       if (state.status === 'running' && runTokens > cfg.budgets.perRunTokens) {
-        if (!cfg.budgets.observeOnly) await this.journal.fact(RunEvent.RunBudgetExhausted, {});
+        if (!cfg.budgets.observeOnly) await this.journal.fact(RunEvent.RunBudgetExhausted, { tokens: runTokens, cap: cfg.budgets.perRunTokens });
         // Observe mode only records the spent budget, once per run.
         else if (!this.budgetNoted.has(null)) {
           this.budgetNoted.add(null);
@@ -1040,7 +1041,7 @@ export class Run {
         if (!runner.done) {
           const unrecorded = (what: string) => (e: Error) => this.log(`${what} not journaled for ${id}: ${e.message}`);
           await this.journal.fact(RunEvent.TaskStateChanged, { taskId: id, to: 'blocked' }).catch(unrecorded('blocked state'));
-          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: `orchestrator error: ${err.message}` }).catch(unrecorded('block reason'));
+          await this.journal.fact(OrchEvent.TaskBlocked, { taskId: id, reason: `orchestrator error: ${redactSecrets(err.message, this.secretValues())}` }).catch(unrecorded('block reason'));
         }
       })
       .finally(() => this.inflight.delete(id));

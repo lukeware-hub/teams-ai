@@ -174,7 +174,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
       ({ results: own, blockingFailure: fail } = await repo.gates(repo.ws.repo, 'main'));
       if (!fail || !['infra', 'environment', 'flaky-test'].includes(String(fail.failure)) || attempt === 3) break;
     }
-    for (const r of own) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, junit: r.junit ?? [], ...(repo.service ? { service: repo.service } : {}) });
+    for (const r of own) await deps.journal.fact(r.passed ? OrchEvent.GatePassed : OrchEvent.GateFailed, { phase: 4, round, gate: r.name, failure: r.failure, exitCode: r.exitCode, timedOut: r.timedOut, durationMs: r.durationMs, junit: r.junit ?? [], ...(r.passed ? {} : { stdoutTail: tail(r.stdoutTail), stderrTail: tail(r.stderrTail) }), ...(repo.service ? { service: repo.service } : {}) });
     results.push(...own);
     if (fail && !blocking) [blocking, failing] = [fail, repo];
   }

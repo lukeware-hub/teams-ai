@@ -86,7 +86,7 @@
     },
     {
       "id": "refinamento",
-      "label": "Refinamento: preparar a spec",
+      "label": "Refinamento: preparar a spec antes de executar",
       "file_type": "document",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -98,7 +98,7 @@
     },
     {
       "id": "validacao",
-      "label": "Validar a entrega",
+      "label": "Validar a entrega: aceitar ou relatar um problema",
       "file_type": "document",
       "source_file": "validacao.md",
       "source_location": null,
@@ -110,7 +110,7 @@
     },
     {
       "id": "visao_geral",
-      "label": "O que \u00e9 o Teams AI",
+      "label": "O que \u00e9 o Teams AI e como ele funciona",
       "file_type": "document",
       "source_file": "visao-geral.md",
       "source_location": null,
@@ -121,8 +121,8 @@
       "rationale": null
     },
     {
-      "id": "chat_responde_perguntas",
-      "label": "Chat s\u00f3 responde (n\u00e3o d\u00e1 ordens)",
+      "id": "chat_pesquisa_na_internet",
+      "label": "Pesquisa na internet do chat",
       "file_type": "concept",
       "source_file": "chat.md",
       "source_location": null,
@@ -130,11 +130,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "O chat n\u00e3o d\u00e1 ordens aos agentes nem muda o que est\u00e1 sendo feito, porque os agentes seguem apenas as specs e o backlog."
+      "rationale": "S\u00f3 o texto gen\u00e9rico do erro sai do computador; nomes, caminhos e valores do projeto n\u00e3o saem. A pesquisa n\u00e3o ocorre em projetos confidenciais nem enquanto o refinamento n\u00e3o respondeu a pergunta."
     },
     {
       "id": "chat_spec_de_correcao",
-      "label": "Spec de corre\u00e7\u00e3o (rascunho aberto pelo chat)",
+      "label": "Spec de corre\u00e7\u00e3o",
       "file_type": "concept",
       "source_file": "chat.md",
       "source_location": null,
@@ -142,11 +142,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Nada \u00e9 executado at\u00e9 o usu\u00e1rio revisar e iniciar o refinamento."
+      "rationale": "Nada \u00e9 executado at\u00e9 o usu\u00e1rio revisar e iniciar o refinamento. Uma resposta que pesquisou na internet n\u00e3o abre corre\u00e7\u00e3o."
     },
     {
-      "id": "chat_limpar_conversa",
-      "label": "Limpar conversa",
+      "id": "chat_so_responde",
+      "label": "Chat s\u00f3 responde",
       "file_type": "concept",
       "source_file": "chat.md",
       "source_location": null,
@@ -154,11 +154,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": "Os agentes seguem apenas as specs e o backlog, n\u00e3o o chat."
     },
     {
       "id": "criar_projeto_novo_projeto",
-      "label": "Novo projeto",
+      "label": "Criar projeto novo",
       "file_type": "concept",
       "source_file": "criar-projeto.md",
       "source_location": null,
@@ -166,7 +166,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": "O projeto s\u00f3 entra na lista de Projetos quando a primeira execu\u00e7\u00e3o come\u00e7a; enquanto isso aparece em Novos projetos em refinamento."
     },
     {
       "id": "criar_projeto_importar_git",
@@ -181,20 +181,8 @@
       "rationale": null
     },
     {
-      "id": "criar_projeto_id_do_projeto",
-      "label": "ID do projeto (Sugerir ID com IA)",
-      "file_type": "concept",
-      "source_file": "criar-projeto.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "criar_spec_formulario",
-      "label": "Formul\u00e1rio Nova spec",
+      "id": "criar_spec_nova_spec",
+      "label": "Nova spec",
       "file_type": "concept",
       "source_file": "criar-spec.md",
       "source_location": null,
@@ -203,94 +191,10 @@
       "author": null,
       "contributor": null,
       "rationale": null
-    },
-    {
-      "id": "criar_spec_id_da_spec",
-      "label": "ID da spec",
-      "file_type": "concept",
-      "source_file": "criar-spec.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "estados_e_papeis_estados_spec",
-      "label": "Estados de uma spec",
-      "file_type": "concept",
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "estados_e_papeis_estados_tarefa",
-      "label": "Estados de uma tarefa",
-      "file_type": "concept",
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "estados_e_papeis_produto",
-      "label": "Agente Produto (Product Owner)",
-      "file_type": "concept",
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "estados_e_papeis_tecnico",
-      "label": "Agente T\u00e9cnico (Scrum Master)",
-      "file_type": "concept",
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "estados_e_papeis_orquestrador",
-      "label": "Orquestrador",
-      "file_type": "concept",
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "O orquestrador n\u00e3o \u00e9 um agente: \u00e9 o programa que valida o trabalho, roda as verifica\u00e7\u00f5es, abre os pull requests, faz a jun\u00e7\u00e3o do c\u00f3digo e publica, e s\u00f3 segue as specs e o backlog."
     },
     {
       "id": "execucao_fases",
-      "label": "Fases da execu\u00e7\u00e3o (0 a 6)",
-      "file_type": "concept",
-      "source_file": "execucao.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "execucao_parar_retomar",
-      "label": "Parar e Retomar execu\u00e7\u00e3o",
+      "label": "Fases da execu\u00e7\u00e3o",
       "file_type": "concept",
       "source_file": "execucao.md",
       "source_location": null,
@@ -310,7 +214,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": "O limite de uso do Claude acabou; a execu\u00e7\u00e3o continua sozinha quando o limite renovar."
     },
     {
       "id": "execucao_aguardando_login",
@@ -326,7 +230,7 @@
     },
     {
       "id": "execucao_bloqueada",
-      "label": "Bloqueada e Reprocessar",
+      "label": "Bloqueada",
       "file_type": "concept",
       "source_file": "execucao.md",
       "source_location": null,
@@ -337,8 +241,44 @@
       "rationale": null
     },
     {
-      "id": "primeiros_passos_configurar_ambiente",
-      "label": "Configurar este ambiente (tela inicial)",
+      "id": "estados_e_papeis_produto_agente",
+      "label": "Produto (Product Owner)",
+      "file_type": "concept",
+      "source_file": "estados-e-papeis.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Confere objetivos, crit\u00e9rios de aceite e fluxo de neg\u00f3cio e faz perguntas ao usu\u00e1rio."
+    },
+    {
+      "id": "estados_e_papeis_tecnico_agente",
+      "label": "T\u00e9cnico (Scrum Master)",
+      "file_type": "concept",
+      "source_file": "estados-e-papeis.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Confere tecnologias, divide o trabalho em tarefas e acompanha a viabilidade."
+    },
+    {
+      "id": "estados_e_papeis_orquestrador",
+      "label": "Orquestrador",
+      "file_type": "concept",
+      "source_file": "estados-e-papeis.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "N\u00e3o \u00e9 um agente: \u00e9 o programa que valida, roda verifica\u00e7\u00f5es, abre pull requests, faz a jun\u00e7\u00e3o do c\u00f3digo e publica; s\u00f3 segue as specs e o backlog."
+    },
+    {
+      "id": "primeiros_passos_configure_ambiente",
+      "label": "Tela Configure este ambiente",
       "file_type": "concept",
       "source_file": "primeiros-passos.md",
       "source_location": null,
@@ -349,8 +289,20 @@
       "rationale": null
     },
     {
-      "id": "refinamento_documentos",
-      "label": "Documentos do projeto (project, briefing, stack, flow, design)",
+      "id": "problemas_comuns_chat_sem_registro",
+      "label": "Chat diz que n\u00e3o est\u00e1 registrado",
+      "file_type": "concept",
+      "source_file": "problemas-comuns.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": null
+    },
+    {
+      "id": "refinamento_avaliar",
+      "label": "Avaliar",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -361,8 +313,8 @@
       "rationale": null
     },
     {
-      "id": "refinamento_avaliar",
-      "label": "Avaliar e Reavaliar",
+      "id": "refinamento_lista_de_verificacao",
+      "label": "Lista de verifica\u00e7\u00e3o",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -370,7 +322,31 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Os agentes conferem se a descri\u00e7\u00e3o est\u00e1 completa e sem ambiguidade antes de gastar tempo desenvolvendo."
+      "rationale": null
+    },
+    {
+      "id": "refinamento_jev",
+      "label": "Jev",
+      "file_type": "concept",
+      "source_file": "refinamento.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Os pontos que aponta s\u00e3o conselhos; a nota n\u00e3o impede o in\u00edcio da an\u00e1lise. Projetos confidenciais n\u00e3o enviam documentos ao Jev."
+    },
+    {
+      "id": "refinamento_segredos",
+      "label": "Segredos",
+      "file_type": "concept",
+      "source_file": "refinamento.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "N\u00e3o bloqueia a spec; os agentes nunca veem o valor."
     },
     {
       "id": "refinamento_iniciar_analise",
@@ -382,7 +358,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "A an\u00e1lise nunca come\u00e7a sozinha; o usu\u00e1rio decide quando iniciar."
+      "rationale": "A an\u00e1lise nunca come\u00e7a sozinha; o bot\u00e3o fica livre a qualquer momento, exceto durante a avalia\u00e7\u00e3o dos agentes."
     },
     {
       "id": "refinamento_backlog",
@@ -406,43 +382,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "refinamento_jev",
-      "label": "Jev (verifica\u00e7\u00e3o extra por outro servi\u00e7o)",
-      "file_type": "concept",
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Os pontos do Jev s\u00e3o conselhos e a nota n\u00e3o impede o in\u00edcio; projetos confidenciais n\u00e3o enviam documentos ao Jev."
-    },
-    {
-      "id": "refinamento_segredos",
-      "label": "Segredos",
-      "file_type": "concept",
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Segredos n\u00e3o bloqueiam a spec, e os agentes nunca veem o valor."
-    },
-    {
-      "id": "refinamento_limite_rodadas",
-      "label": "Limite de rodadas (TEAMS_AI_REFINE_MAX_ROUNDS)",
-      "file_type": "concept",
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
+      "rationale": "Na primeira etapa (flow.md) o Jev n\u00e3o compara documentos, porque ainda n\u00e3o h\u00e1 documento anterior."
     },
     {
       "id": "validacao_concluir_especificacao",
@@ -479,12 +419,34 @@
       "author": null,
       "contributor": null,
       "rationale": null
+    },
+    {
+      "id": "visao_geral_caminho_entrega",
+      "label": "Caminho de uma entrega",
+      "file_type": "concept",
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": null
     }
   ],
   "edges": [
     {
       "source": "chat",
-      "target": "chat_responde_perguntas",
+      "target": "chat_so_responde",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat",
+      "target": "chat_pesquisa_na_internet",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -503,18 +465,28 @@
       "weight": 1
     },
     {
-      "source": "chat",
-      "target": "chat_limpar_conversa",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
+      "source": "chat_spec_de_correcao",
+      "target": "refinamento",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
       "source_file": "chat.md",
       "source_location": null,
       "weight": 1
     },
     {
-      "source": "chat_spec_de_correcao",
-      "target": "refinamento",
+      "source": "chat_so_responde",
+      "target": "estados_e_papeis_orquestrador",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat",
+      "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -543,58 +515,28 @@
       "weight": 1
     },
     {
-      "source": "criar_projeto_novo_projeto",
-      "target": "criar_projeto_id_do_projeto",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "criar-projeto.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "criar_projeto_novo_projeto",
-      "target": "refinamento_etapas_projeto_novo",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "criar-projeto.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "criar_spec",
-      "target": "criar_spec_formulario",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "criar-spec.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "criar_spec",
-      "target": "criar_spec_id_da_spec",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "criar-spec.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "criar_spec_formulario",
+      "source": "criar_projeto",
       "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
+      "confidence_score": 1,
+      "source_file": "criar-projeto.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "criar_spec",
+      "target": "criar_spec_nova_spec",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
       "source_file": "criar-spec.md",
       "source_location": null,
       "weight": 1
     },
     {
       "source": "criar_spec",
-      "target": "chat_spec_de_correcao",
+      "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -613,8 +555,18 @@
       "weight": 1
     },
     {
+      "source": "criar_spec",
+      "target": "chat",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "criar-spec.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
       "source": "estados_e_papeis",
-      "target": "estados_e_papeis_estados_spec",
+      "target": "estados_e_papeis_produto_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -624,27 +576,7 @@
     },
     {
       "source": "estados_e_papeis",
-      "target": "estados_e_papeis_estados_tarefa",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "estados_e_papeis",
-      "target": "estados_e_papeis_produto",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "estados_e_papeis",
-      "target": "estados_e_papeis_tecnico",
+      "target": "estados_e_papeis_tecnico_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -663,48 +595,8 @@
       "weight": 1
     },
     {
-      "source": "estados_e_papeis_produto",
-      "target": "refinamento_avaliar",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "estados_e_papeis_tecnico",
-      "target": "refinamento_avaliar",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.8,
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "estados_e_papeis_orquestrador",
-      "target": "refinamento_backlog",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.6,
-      "source_file": "estados-e-papeis.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
       "source": "execucao",
       "target": "execucao_fases",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "execucao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "execucao",
-      "target": "execucao_parar_retomar",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -747,44 +639,14 @@
       "target": "validacao",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "execucao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "execucao_aguardando_login",
-      "target": "primeiros_passos",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "execucao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "execucao_aguardando_login",
-      "target": "execucao_parar_retomar",
-      "relation": "conceptually_related_to",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "execucao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "execucao_fases",
-      "target": "estados_e_papeis_estados_tarefa",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.7,
+      "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
       "weight": 1
     },
     {
       "source": "primeiros_passos",
-      "target": "primeiros_passos_configurar_ambiente",
+      "target": "primeiros_passos_configure_ambiente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -793,18 +655,8 @@
       "weight": 1
     },
     {
-      "source": "primeiros_passos_configurar_ambiente",
-      "target": "refinamento_jev",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "primeiros-passos.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
       "source": "problemas_comuns",
-      "target": "execucao_pausada_por_cota",
+      "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -814,7 +666,7 @@
     },
     {
       "source": "problemas_comuns",
-      "target": "execucao_aguardando_login",
+      "target": "primeiros_passos",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -824,7 +676,7 @@
     },
     {
       "source": "problemas_comuns",
-      "target": "execucao_bloqueada",
+      "target": "problemas_comuns_chat_sem_registro",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -833,28 +685,18 @@
       "weight": 1
     },
     {
-      "source": "problemas_comuns",
-      "target": "execucao_parar_retomar",
+      "source": "problemas_comuns_chat_sem_registro",
+      "target": "chat",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "problemas-comuns.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "problemas_comuns",
-      "target": "criar_spec",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
+      "confidence_score": 1,
       "source_file": "problemas-comuns.md",
       "source_location": null,
       "weight": 1
     },
     {
       "source": "refinamento",
-      "target": "refinamento_documentos",
+      "target": "refinamento_avaliar",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -864,7 +706,27 @@
     },
     {
       "source": "refinamento",
-      "target": "refinamento_avaliar",
+      "target": "refinamento_lista_de_verificacao",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "refinamento.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "refinamento",
+      "target": "refinamento_jev",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "refinamento.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "refinamento",
+      "target": "refinamento_segredos",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -903,8 +765,8 @@
       "weight": 1
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_jev",
+      "source": "refinamento_avaliar",
+      "target": "estados_e_papeis_produto_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -913,18 +775,8 @@
       "weight": 1
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_segredos",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "refinamento",
-      "target": "refinamento_limite_rodadas",
+      "source": "refinamento_avaliar",
+      "target": "estados_e_papeis_tecnico_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -937,7 +789,7 @@
       "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
+      "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
       "weight": 1
@@ -947,37 +799,17 @@
       "target": "refinamento_iniciar_analise",
       "relation": "conceptually_related_to",
       "confidence": "INFERRED",
-      "confidence_score": 0.6,
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "refinamento_limite_rodadas",
-      "target": "refinamento_avaliar",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
+      "confidence_score": 0.75,
       "source_file": "refinamento.md",
       "source_location": null,
       "weight": 1
     },
     {
       "source": "refinamento_etapas_projeto_novo",
-      "target": "refinamento_avaliar",
-      "relation": "conceptually_related_to",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "refinamento_jev",
-      "target": "refinamento_documentos",
+      "target": "refinamento_jev",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.8,
+      "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
       "weight": 1
@@ -1023,38 +855,8 @@
       "weight": 1
     },
     {
-      "source": "validacao_cobertura_documentos",
-      "target": "validacao_relatar_problema",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "validacao_concluir_especificacao",
-      "target": "criar_spec",
-      "relation": "conceptually_related_to",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
       "source": "visao_geral",
-      "target": "chat",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "visao_geral",
-      "target": "criar_projeto",
+      "target": "visao_geral_caminho_entrega",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -1104,46 +906,27 @@
     },
     {
       "source": "visao_geral",
-      "target": "primeiros_passos",
+      "target": "chat",
       "relation": "references",
       "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "visao_geral",
+      "target": "estados_e_papeis",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
       "source_file": "visao-geral.md",
       "source_location": null,
       "weight": 1
     }
   ],
-  "hyperedges": [
-    {
-      "id": "spec_lifecycle",
-      "label": "Ciclo de vida de uma spec (descrever, refinar, executar, validar)",
-      "nodes": [
-        "criar_spec_formulario",
-        "refinamento_avaliar",
-        "refinamento_iniciar_analise",
-        "execucao_fases",
-        "validacao_concluir_especificacao"
-      ],
-      "relation": "participate_in",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.9,
-      "source_file": "visao-geral.md"
-    },
-    {
-      "id": "agent_roles",
-      "label": "Pap\u00e9is que produzem e validam o trabalho",
-      "nodes": [
-        "estados_e_papeis_produto",
-        "estados_e_papeis_tecnico",
-        "estados_e_papeis_orquestrador"
-      ],
-      "relation": "participate_in",
-      "confidence": "EXTRACTED",
-      "confidence_score": 0.8,
-      "source_file": "estados-e-papeis.md"
-    }
-  ],
-  "input_tokens": 85009,
-  "output_tokens": 24711,
+  "hyperedges": [],
+  "input_tokens": 85028,
+  "output_tokens": 19968,
   "extracted_sources": []
 }

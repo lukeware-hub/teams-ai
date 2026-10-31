@@ -354,7 +354,7 @@ If the service does not respond, Teams AI stays on that screen until the service
 4. **Validate.** When a run reaches `awaiting-validation`, the service is already deployed (`docker-local`) and the smoke and e2e
    tests passed. Try it, then accept it or report problems. Problems return to Gate 1 as a continuation of the same specification.
 
-The **Help chat** answers questions about the project and about using Teams AI. It searches the user guide in `docs/guia/`.
+The **Help chat** answers questions about the project and about using Teams AI. It searches the user guide in `docs/guia/`, and it reads the recorded failures of each spec. It may run one web search per question to explain a recorded error; a confidential project never gets one.
 When you change a screen or button, update the guide and run `task guia:grafo` to rebuild its search graph.
 
 Run statuses you will see: `running`, `paused:quota`, `paused:auth`, `draining`, `interrupted`, `blocked`, `deadlocked`,
@@ -476,6 +476,7 @@ scripts/   WSL setup, smoke tests, integration and evaluation scripts
 - Agent steps can reach only the package registries of their stack: npm always; PyPI for Python; crates.io for Rust; for Go, the
   platform `goproxy` and `sum.golang.org`.
 - Run the platform with Compose. Outside Compose there is no `goproxy`, and Go modules that redirect to `storage.googleapis.com` fail inside a step.
+- The Help chat's one web search per question is the only web access an agent step has, and it never reaches a confidential project.
 - The UI accepts connections from this computer only (loopback) by default. Read `docs/superpowers/security/2026-10-04-system-audit.md` before exposing it.
 
 ## More documentation

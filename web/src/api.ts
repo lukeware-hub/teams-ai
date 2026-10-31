@@ -582,6 +582,6 @@ export interface ChatMessage {
 const chatUrl = (projectId: string) => `${R}/chat/${encodeURIComponent(projectId)}`;
 export const chatApi = {
   messages: (projectId: string) => fetch(chatUrl(projectId)).then((r) => json<{ messages: ChatMessage[] }>(r)),
-  ask: (projectId: string, text: string) => jsonPost(`/chat/${encodeURIComponent(projectId)}/messages`, { text }).then((r) => json<{ message: ChatMessage }>(r)),
+  ask: (projectId: string, text: string) => jsonPost(`/chat/${encodeURIComponent(projectId)}/messages`, { text }).then((r) => json<{ message: ChatMessage | null }>(r)),
   clear: (projectId: string) => fetch(chatUrl(projectId), { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
 };

@@ -234,3 +234,25 @@ describe('ChatPage', () => {
     expect(await screen.findByText('Nenhum projeto para perguntar ainda.')).toBeTruthy();
   });
 });
+
+describe('clearing while an answer is coming', () => {
+  it('lets the person clear the conversation during an answer, and shows nothing for a question that was cleared', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
+    vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
+    let answer: (v: { message: ChatMessage | null }) => void = () => undefined;
+    vi.spyOn(chatApi, 'ask').mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const clear = vi.spyOn(chatApi, 'clear').mockResolvedValue({ ok: true });
+    page();
+    await screen.findByText('Nenhuma pergunta feita ainda.');
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'o que está sendo feito?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar' }));
+    const clearButton = await screen.findByRole('button', { name: 'Limpar conversa' });
+    expect((clearButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(clearButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'Limpar' }));
+    await waitFor(() => expect(clear).toHaveBeenCalledWith('hello-app'));
+    answer({ message: null });
+    await waitFor(() => expect(screen.queryByText('Não consegui responder')).toBeNull());
+    expect(screen.queryByText('o que está sendo feito?')).toBeNull();
+  });
+});

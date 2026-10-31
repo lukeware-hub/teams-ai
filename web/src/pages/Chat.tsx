@@ -14,7 +14,7 @@ import { emptyState, grouped } from './project-shared.js';
 /** A chat answer costs a fraction of a cent: seven decimals, the precision the CLI reports. */
 const price = (usd: number) => `US$ ${usd.toFixed(7)}`;
 
-const HELP = 'Aqui você só tira dúvidas. O chat não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se o chat achar algo sendo feito que não deveria, ele abre uma spec de correção para você revisar.';
+const HELP = 'Aqui você tira dúvidas sobre o projeto. O chat lê os registros das execuções: o que bloqueia uma spec, por quê, quem precisa agir e o próximo passo. Para explicar um erro registrado, ele pode pesquisar na internet uma vez por pergunta, exceto em projetos confidenciais. Ele não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se achar algo sendo feito que contraria a spec, abre uma spec de correção para você revisar.';
 const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];
 
 // Same panel, heading and callout shapes as the refinement screen.
@@ -120,7 +120,8 @@ export function ChatPage() {
     setRecall(null);
     try {
       const { message } = await chatApi.ask(asked, question);
-      if (current.current !== asked) return;
+      // A question cleared while it was coming has no answer, and nothing to show.
+      if (!message || current.current !== asked) return;
       setMessages((m) => [...(m ?? []), { role: 'user', text: question, at: message.at }, message]);
     } catch (e) {
       if (current.current === asked) {
@@ -208,7 +209,7 @@ export function ChatPage() {
                 Nova spec
                 <Icon name="plus" size={16} />
               </button>
-              <button type="button" className="secondary" disabled={!messages?.length || asking !== null} onClick={() => setConfirmClear(true)}>
+              <button type="button" className="secondary" disabled={asking === null && !messages?.length} onClick={() => setConfirmClear(true)}>
                 Limpar conversa
                 <Icon name="trash" size={16} />
               </button>
@@ -278,7 +279,7 @@ export function ChatPage() {
       ) : null}
       {confirmClear ? (
         <ConfirmDialog title="Limpar conversa" subject={project?.name} confirmLabel="Limpar" onConfirm={clear} onCancel={() => setConfirmClear(false)}>
-          <p>As mensagens deste projeto serão apagadas. As specs de correção que o chat já abriu continuam existindo.</p>
+          <p>As mensagens deste projeto serão apagadas. As specs de correção que o chat já abriu continuam existindo.{asking !== null ? " A resposta que está sendo preparada será cancelada." : ""}</p>
         </ConfirmDialog>
       ) : null}
     </main>
