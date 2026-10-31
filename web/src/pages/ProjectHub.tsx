@@ -212,7 +212,7 @@ export function ProjectHubView(p: {
   }
   if (!p.project) return <main />;
   const pr = p.project;
-  const refineSpec = pr.specs.find((s) => s.specId === `${pr.projectId}-001`)?.specId;
+  const refineSpec = p.backlogs?.[0];
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
   const allConcluded = percent === 100;
