@@ -19,6 +19,12 @@ describe('global rules', () => {
     expect(GLOBAL_RULES).toContain('8. Before you finish a task');
   });
 
+  it('make the five main documents the only source of truth, with the spec, plan and tasks derived from them', () => {
+    expect(GLOBAL_RULES).toContain('the only source of truth of every project');
+    expect(GLOBAL_RULES).toContain('derived from them');
+    expect(GLOBAL_RULES).toContain('the document wins');
+  });
+
   it('stay within the size a system prompt can carry', () => {
     expect(GLOBAL_RULES.length).toBeLessThanOrEqual(6000);
   });
@@ -59,6 +65,10 @@ describe('agent prompts', () => {
       .map((file) => file.replace(/\.md$/, ''))
       .sort();
     expect(files).toEqual([...ROLES].sort());
+  });
+
+  it.each(ROLES)('state in the %s role file that the five main documents are the only source of truth', (role) => {
+    expect(readFileSync(path.join(AGENTS_DIR, `${role}.md`), 'utf8')).toContain('only source of truth');
   });
 
   it('name no language: the language rule lives only in GLOBAL_RULES', () => {

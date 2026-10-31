@@ -119,11 +119,11 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
  * pasting it in would push the pack over its budget.
  */
 export const planRule = (planFile?: string): string =>
-  planFile ? `This spec's implementation plan is ${planFile}: read it, then follow its tasks, their files and their test steps.` : 'This spec has no implementation plan in the repository, so there is no plan to follow for this task.';
+  planFile ? `This spec's implementation plan is ${planFile}: read it, then follow its tasks, their files and their test steps. The plan derives from the five main documents: when it disagrees with one of them, the document wins and the departure goes in deviations.` :'This spec has no implementation plan in the repository, so there is no plan to follow for this task.';
 
 /** The project's five documents in the repository's docs folder, and where the ADRs and tech spec the budget drops live; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>
-  `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's source of truth, and a document wins over the code when they disagree. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
+  `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's only source of truth, and a document wins over the code, the plan and the tech spec when they disagree. The plan, the tech spec and the ADRs derive from these documents and never override them. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
 
 /** What every task that builds or judges code reads first: the implementation plan and the five documents. */
 const sourceRules = (base: PackBase): string[] => [planRule(base.planFile), sourceDocsRule(base.spec.specId)];

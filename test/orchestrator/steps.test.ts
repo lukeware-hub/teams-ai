@@ -165,9 +165,12 @@ describe('packs', () => {
     expect(p.principles).toContain(sourceDocsRule(spec.specId));
     for (const doc of ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', 'briefing.md']) expect(sourceDocsRule(spec.specId)).toContain(doc);
     expect(sourceDocsRule(spec.specId)).not.toContain('specs.md');
+    expect(sourceDocsRule(spec.specId)).toContain('only source of truth');
+    expect(sourceDocsRule(spec.specId)).toContain('a document wins over the code, the plan and the tech spec');
     const known = devPack({ ...base, planFile: 'docs/specs/003-login/implementation-plan.md' }, task, { code: { source: 'none' }, handoffs: [], feedback: null });
     expect(known.principles).toContain(planRule('docs/specs/003-login/implementation-plan.md'));
     expect(planRule('docs/specs/003-login/implementation-plan.md')).toContain('docs/specs/003-login/implementation-plan.md');
+    expect(planRule('docs/specs/003-login/implementation-plan.md')).toContain('the document wins');
   });
 
   it('a spec without a plan is never pointed at the plans of other specs', () => {
