@@ -121,6 +121,8 @@ export interface ResultSummary {
   rateLimit: RateLimitInfo | null;
   /** The addresses a web search of this run returned, in order: the only addresses a suggestion may cite. Kept in memory, never journaled. */
   webSearchUrls?: string[];
+  /** The title and address of each link the web searches returned, in order. */
+  webSearchSources?: Array<{ title: string; url: string }>;
   compactions: number;
   profile?: StepProfile;
 }
@@ -274,10 +276,20 @@ function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCa
 const resultText = (content: unknown): string =>
   typeof content === 'string' ? content : Array.isArray(content) ? content.map((c: { text?: unknown }) => (typeof c?.text === 'string' ? c.text : '')).join('\n') : '';
 
-/** The addresses the web searches of the run returned, in order: the only addresses a suggestion may cite. */
-function searchedUrls(events: readonly StreamEvent[]): string[] {
+/** The links of one search result's list; a list that is not JSON gives none. */
+function linksOf(json: string): Array<{ title: string; url: string }> {
+  try {
+    return (JSON.parse(json) as Array<{ title?: unknown; url?: unknown }>).flatMap((l) => (typeof l.url === 'string' ? [{ title: typeof l.title === 'string' ? l.title : l.url, url: l.url }] : []));
+  } catch {
+    return [];
+  }
+}
+
+/** The addresses and titles the web searches of the run returned, in order: the only addresses an answer may cite. */
+function searchResults(events: readonly StreamEvent[]): { urls: string[]; sources: Array<{ title: string; url: string }> } {
   const searches = new Set<string>();
   const urls = new Set<string>();
+  const sources: Array<{ title: string; url: string }> = [];
   for (const e of events) {
     if (e.type !== 'assistant' && e.type !== 'user') continue;
     const content = (e as { message?: { content?: unknown } }).message?.content;
@@ -285,17 +297,19 @@ function searchedUrls(events: readonly StreamEvent[]): string[] {
     for (const block of content as Array<{ type?: string; id?: string; name?: string; tool_use_id?: string; content?: unknown }>) {
       if (block?.type === 'tool_use' && block.name === 'WebSearch' && typeof block.id === 'string') searches.add(block.id);
       if (block?.type === 'tool_result' && typeof block.tool_use_id === 'string' && searches.has(block.tool_use_id)) {
-        for (const m of resultText(block.content).matchAll(/https?:\/\/[^\s"'\\)\]>,<]+/g)) urls.add(m[0]);
+        const text = resultText(block.content);
+        for (const m of text.matchAll(/https?:\/\/[^\s"'\\)\]>,<]+/g)) urls.add(m[0]);
+        for (const m of text.matchAll(/Links: (\[[^\n]*\])/g)) sources.push(...linksOf(m[1]!));
       }
     }
   }
-  return [...urls];
+  return { urls: [...urls], sources };
 }
 
-/** The searched addresses as a summary field: absent when the run searched nothing, like the skills it used. */
-const searchField = (events: readonly StreamEvent[]): { webSearchUrls?: string[] } => {
-  const urls = searchedUrls(events);
-  return urls.length > 0 ? { webSearchUrls: urls } : {};
+/** The searched addresses and their titles as summary fields: absent when the run searched nothing, like the skills it used. */
+const searchField = (events: readonly StreamEvent[]): { webSearchUrls?: string[]; webSearchSources?: Array<{ title: string; url: string }> } => {
+  const { urls, sources } = searchResults(events);
+  return { ...(urls.length > 0 ? { webSearchUrls: urls } : {}), ...(sources.length > 0 ? { webSearchSources: sources } : {}) };
 };
 
 /** The text of every agent message in the run, in order: the final result can hold only the last part of an answer. */

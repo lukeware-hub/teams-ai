@@ -558,6 +558,8 @@ export interface AgentStepRequest<K extends StepKind> {
   refs?: StepRequest['refs'];
   semantic?: StepRequest['semantic'];
   extraAllow?: readonly string[];
+  /** The step may search the web (see StepRequest.webSearch). */
+  webSearch?: boolean;
   /** Directories the step must not write (a read-only step on a checkout). */
   protectedDirs?: readonly string[];
   /** Directories the step must not read (the chat's project data). */
@@ -658,6 +660,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         taskId: req.taskId,
         attempt: req.attempt,
         extraAllow: req.extraAllow,
+        webSearch: req.webSearch,
         protectedDirs: req.protectedDirs,
         denyRead: req.denyRead,
         systemExtra: req.systemExtra,

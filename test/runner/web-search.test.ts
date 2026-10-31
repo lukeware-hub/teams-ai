@@ -23,6 +23,11 @@ describe('the addresses a web search returned', () => {
     expect(summary.webSearchUrls).toEqual(['https://example.com/prazo']);
   });
 
+  it('keeps the title and the address of each result, so the answer can name its sources', () => {
+    const summary = summarizeStream(runWith('Links: [{"title":"Prazo","url":"https://example.com/prazo"}]'));
+    expect(summary.webSearchSources).toEqual([{ title: 'Prazo', url: 'https://example.com/prazo' }]);
+  });
+
   it('is absent when the run made no search', () => {
     const summary = summarizeStream(parseStreamJson(result));
     expect(summary.webSearchUrls).toBeUndefined();

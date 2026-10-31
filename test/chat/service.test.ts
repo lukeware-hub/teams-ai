@@ -23,7 +23,7 @@ const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as
 
 interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
-function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void> } = {}) {
+function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; webSearchAllowed?: (projectId: string) => Promise<boolean> } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
@@ -37,6 +37,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
+    webSearchAllowed: extra.webSearchAllowed,
   });
   return { service, newSpec, suggestSpecId };
 }
@@ -244,5 +245,22 @@ describe('ChatService project graph', () => {
     expect(reply.text).toBe('ok');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('project graph not built for hello-app: graphify missing'));
   });
-});
 
+  it('asks for web search only when the project allows it, and says where the answer found its sources', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta (AC-001) com https://invented.example/x.', correction: { title: 'Corrigir', whatHappens: 'a', whatShouldHappen: 'b' } }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }] } }));
+    const { service } = make(runAgent, { webSearchAllowed: async () => true });
+    const reply = await service.ask('hello-app', 'o que significa este erro?');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: true });
+    expect(reply.text).toContain('Fontes da pesquisa:');
+    expect(reply.text).toContain('[Guia](https://ok.example/guia)');
+    expect(reply.text).not.toContain('invented.example');
+    expect(reply.correction).toBeUndefined();
+  });
+
+  it('does not search the web when the project does not allow it', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    const { service } = make(runAgent, { webSearchAllowed: async () => false });
+    await service.ask('hello-app', 'o que está sendo feito?');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
+  });
+});
