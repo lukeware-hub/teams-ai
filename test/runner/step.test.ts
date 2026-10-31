@@ -217,7 +217,11 @@ describe('runStep', () => {
         },
       });
       expect(outcome.ok).toBe(false);
-      if (!outcome.ok) expect(outcome.failure).toBe('timeout');
+      if (!outcome.ok) {
+        expect(outcome.failure).toBe('timeout');
+        // A step that printed no result still says why it ended, so its feedback and block reason are never empty.
+        expect(outcome.errors[0]).toMatch(/timeout/);
+      }
       expect(deps.accounting.total().outputTokens).toBe(50);
     } finally {
       vi.useRealTimers();

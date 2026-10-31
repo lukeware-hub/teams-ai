@@ -399,7 +399,8 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   let failure = classifyFailure(raw);
   if (failure) {
     // Agent-controlled text and CLI stderr flow into the event store and UI: never with credentials.
-    const message = redactSecrets(raw.summary.resultText ?? raw.stderr.slice(0, 500));
+    const text = raw.summary.resultText || raw.stderr.slice(0, 500) || `The step ended without a message (${raw.killedBy ?? `exit code ${raw.exitCode ?? 'none'}`}).`;
+    const message = redactSecrets(text);
     if (failure === 'code' && deps.classifyUnknown) {
       const s = raw.summary;
       failure = await deps.classifyUnknown({
