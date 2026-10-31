@@ -1,13 +1,11 @@
-import path from 'node:path';
 import { agentsDecideFor } from '../config/config.js';
 import { listProjects, listRuns, readProject, runsDir, type IndexDeps, type RunRow } from '../api/run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { loadSecretValues } from '../core/secrets.js';
 import { expandHome, workspacePaths } from '../orchestrator/workspace.js';
-import { reduceEvents, type TaskRuntime } from '../pipeline/run-state.js';
+import type { TaskRuntime } from '../pipeline/run-state.js';
 import type { TaskState } from '../pipeline/task-state.js';
-import { loadEvents } from '../store/event-store.js';
-import { failuresOf } from './failures.js';
+import { failureReport, readRun } from './failures.js';
 import { runLabel, TASK_STATE } from './status.js';
 import { withoutCodes } from './text.js';
 
@@ -15,10 +13,12 @@ export { withoutCodes } from './text.js';
 
 const MAX_CHARS = 60_000;
 const MAX_TASK_TEXT = 240;
-/** The problems of every spec in play share this much text; one spec gets up to the per-spec cap. */
+/** The problems of every spec in play share this much text; one spec gets up to the per-spec share. */
 const DIGEST_TOTAL = 10_000;
 const DIGEST_SPEC_MIN = 1_200;
 const DIGEST_SPEC_MAX = 5_000;
+/** A spec left with less than this of the total gets only the pointer to its record. */
+const DIGEST_FLOOR = 300;
 
 const SPEC_STATUS: Record<string, string> = {
   refining: 'em refinamento, ainda não planejada',
@@ -30,7 +30,6 @@ const SPEC_STATUS: Record<string, string> = {
   done: 'concluída',
   retired: 'descartada, nunca será feita',
 };
-
 
 /** Specs in progress come first, so the cut at the size limit drops the oldest history. */
 const ORDER = ['running', 'paused:quota', 'paused:auth', 'planned', 'refining', 'awaiting-validation', 'done', 'retired'];
@@ -51,16 +50,6 @@ const situationOf = (status: string, holds: RunRow | null, latest: RunRow | null
 
 const list = (title: string, items: readonly string[]): string[] => (items.length ? [`${title}:`, ...items.map((i) => `- ${withoutCodes(i)}`)] : []);
 
-/** The tasks of one run, without the ones a later plan replaced. A journal that does not replay gives none. */
-async function tasksOf(idx: IndexDeps, runId: string): Promise<TaskRuntime[]> {
-  const events = await loadEvents(path.join(runsDir(idx), runId, 'events.ndjson')).catch(() => []);
-  try {
-    return [...reduceEvents(events).tasks.values()].filter((t) => t.state !== 'superseded');
-  } catch {
-    return [];
-  }
-}
-
 /** A replanned task's own text is an agent's note: its title and state are all the chat states. */
 const taskLine = (t: TaskRuntime): string => {
   if (t.replanned) return `${withoutCodes(t.def.title)} (${TASK_STATE[t.state]}, criada ao refazer o plano)`;
@@ -72,9 +61,8 @@ const taskLine = (t: TaskRuntime): string => {
 const progressOf = (tasks: readonly TaskRuntime[]): string =>
   `Progresso: ${tasks.filter((t) => t.state === 'merged').length} de ${tasks.length} tarefas concluídas, ${tasks.filter((t) => IN_PROGRESS.has(t.state)).length} em andamento`;
 
-async function specBlock(idx: IndexDeps, spec: Spec, situation: string, run: RunRow | null): Promise<string> {
+function specBlock(spec: Spec, situation: string, run: RunRow | null, tasks: readonly TaskRuntime[]): string {
   const bug = spec.bug ? [`Problema a corrigir: ${withoutCodes(spec.bug.actual)}`, `O esperado: ${withoutCodes(spec.bug.expected)}`] : [];
-  const tasks = run ? await tasksOf(idx, run.runId) : [];
   return [
     `### ${withoutCodes(spec.objectives[0]!)}`,
     `Situação: ${situation}`,
@@ -89,8 +77,11 @@ async function specBlock(idx: IndexDeps, spec: Spec, situation: string, run: Run
   ].join('\n');
 }
 
-/** Everything the chat may know about one project, in plain words and without codes; null when the project is unknown. `details` holds each spec's full record of failures, for the chat to search. */
-export async function buildChatContext(idx: IndexDeps, projectId: string): Promise<{ name: string; text: string; details: Map<string, string> } | null> {
+/**
+ * Everything the chat may know about one project, in plain words and without codes; null when the project is unknown.
+ * `details` holds each spec's full record of failures, for the chat to search; `specIds` names the specs, for the web search check.
+ */
+export async function buildChatContext(idx: IndexDeps, projectId: string): Promise<{ name: string; text: string; details: Map<string, string>; specIds: string[] } | null> {
   const row = (await listProjects(idx)).find((p) => p.projectId === projectId);
   if (!row) return null;
   const { project, specs } = await readProject(row.dir);
@@ -103,7 +94,8 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   const secrets = [...(await loadSecretValues(expandHome(idx.cfg.paths.secrets, idx.home))), ...(await loadSecretValues(workspacePaths(idx.cfg, projectId, idx.home).secrets))];
   const autonomous = agentsDecideFor(idx.cfg, projectId);
   const playing = ordered.filter(({ status }) => IN_PLAY.has(status)).length;
-  const digestMax = Math.min(DIGEST_SPEC_MAX, Math.max(DIGEST_SPEC_MIN, Math.floor(DIGEST_TOTAL / Math.max(1, playing))));
+  const share = Math.min(DIGEST_SPEC_MAX, Math.max(DIGEST_SPEC_MIN, Math.floor(DIGEST_TOTAL / Math.max(1, playing))));
+  let remaining = DIGEST_TOTAL;
   const details = new Map<string, string>();
   const others: string[] = [];
   const blocks: Array<{ name: string; situation: string; block: string; digest: string | null }> = [];
@@ -119,10 +111,19 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
     const run = holds && holds.status === 'interrupted' && latest && latest.n > holds.n ? latest : (holds ?? latest);
     const history = own.filter((r) => r.runId !== run?.runId);
     const situation = situationOf(status, holds, latest);
-    const block = await specBlock(idx, spec, situation, run);
-    const digest = run ? (await failuresOf({ spec, root: row.dir, runs: runsDir(idx), run, holds, history, runStatuses: own.map((r) => r.status), secrets, autonomous, digestMax }).catch(() => ({ digest: 'O registro desta spec não pôde ser lido agora.', detail: '' }))) : null;
-    if (digest?.detail) details.set(spec.specId, digest.detail);
-    blocks.push({ name: withoutCodes(spec.objectives[0]!), situation, block, digest: digest?.digest ?? null });
+    const record = run ? await readRun(runsDir(idx), run.runId) : null;
+    const name = withoutCodes(spec.objectives[0]!);
+    let digest: string | null = null;
+    if (run) {
+      const budget = Math.min(share, remaining);
+      const report = await failureReport({ spec, root: row.dir, runs: runsDir(idx), run, record, holds, history, runStatuses: own.map((r) => r.status), secrets, autonomous, digestMax: budget }).catch(() => ({ digest: 'O registro desta spec não pôde ser lido agora.', detail: '' }));
+      if (report.detail) details.set(spec.specId, report.detail);
+      if (budget >= DIGEST_FLOOR) {
+        digest = report.digest;
+        remaining -= report.digest.length;
+      } else digest = `Há problemas registrados, mas o espaço desta resposta acabou. Detalhes completos: falhas/${spec.specId}.md.`;
+    }
+    blocks.push({ name, situation, block: specBlock(spec, situation, run, record?.tasks ?? []), digest });
   }
   const problems = blocks.filter((b) => b.digest !== null).map((b) => `### Problemas: ${b.name}\n${b.digest}`);
   const problemsSection = problems.length ? [`## Problemas registrados\nFatos gravados pelas execuções. "Registro" é a mensagem original, que pode estar em inglês. Os horários estão em UTC.`, ...problems].join('\n\n') : '';
@@ -138,5 +139,5 @@ export async function buildChatContext(idx: IndexDeps, projectId: string): Promi
   }
   const rest = others.length ? [`### Outras specs (só o nome e a situação)\n${others.join('\n')}`] : [];
   const body = kept.length || rest.length ? [...kept, ...rest].join('\n\n') : '(o projeto ainda não tem specs)';
-  return { name: project.name, text: [head, body, ...(problemsSection ? [problemsSection] : [])].join('\n\n'), details };
+  return { name: project.name, text: [head, body, ...(problemsSection ? [problemsSection] : [])].join('\n\n'), details, specIds: specs.map((s) => s.specId) };
 }

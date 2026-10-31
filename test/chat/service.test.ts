@@ -25,7 +25,7 @@ const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as
 
 interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
-function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; webSearchAllowed?: (projectId: string) => Promise<boolean> } = {}) {
+function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; confidential?: (projectId: string) => Promise<boolean> } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
@@ -39,7 +39,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
-    webSearchAllowed: extra.webSearchAllowed,
+    confidential: extra.confidential,
   });
   return { service, newSpec, suggestSpecId };
 }
@@ -249,8 +249,8 @@ describe('ChatService project graph', () => {
   });
 
   it('asks for web search only when the project allows it, and says where the answer found its sources', async () => {
-    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta (AC-001) com https://invented.example/x.', correction: { title: 'Corrigir', whatHappens: 'a', whatShouldHappen: 'b' } }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }] } }));
-    const { service } = make(runAgent, { webSearchAllowed: async () => true });
+    const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta (AC-001) com https://invented.example/x.', correction: { title: 'Corrigir', whatHappens: 'a', whatShouldHappen: 'b' } }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }], webSearchQueries: ['erro go'] } }));
+    const { service } = make(runAgent, { confidential: async () => false });
     const reply = await service.ask('hello-app', 'o que significa este erro?');
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: true });
     expect(reply.text).toContain('Fontes da pesquisa:');
@@ -261,7 +261,7 @@ describe('ChatService project graph', () => {
 
   it('does not search the web when the project does not allow it', async () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
-    const { service } = make(runAgent, { webSearchAllowed: async () => false });
+    const { service } = make(runAgent, { confidential: async () => true });
     await service.ask('hello-app', 'o que está sendo feito?');
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
   });
@@ -269,7 +269,7 @@ describe('ChatService project graph', () => {
   it('logs each web query redacted, and says so when a query names the project', async () => {
     const log = vi.fn();
     const runAgent = vi.fn(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'Resposta.', correction: null }, summary: { webSearchSources: [{ title: 'Guia', url: 'https://ok.example/guia' }], webSearchQueries: ['erro go.mod requires go', 'como o hello app responde'] } }));
-    const { service } = make(runAgent, { webSearchAllowed: async () => true, log });
+    const { service } = make(runAgent, { confidential: async () => false, log });
     await service.ask('hello-app', 'o que significa este erro?');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('web search query: erro go.mod requires go'));
     expect(log).toHaveBeenCalledWith(expect.stringContaining('names the project'));
@@ -299,5 +299,22 @@ describe('the failure record the chat gets', () => {
     expect(seen.map((s) => s.staged)).toEqual([true, true]);
     expect(seen[0]!.system).toContain('go.mod requires go >= 1.27.3');
     expect(seen[0]!.system).toBe(seen[1]!.system);
+  });
+});
+
+describe('the web search the chat may make', () => {
+  it('does not search the web when the confidentiality check fails, or is missing', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    await make(runAgent, { confidential: async () => { throw new Error('registro ilegível'); } }).service.ask('hello-app', 'primeira pergunta');
+    await make(runAgent).service.ask('hello-app', 'segunda pergunta');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ webSearch: false });
+    expect(runAgent.mock.calls[1]![0]).toMatchObject({ webSearch: false });
+  });
+
+  it('keeps the failure record out of the paths the chat may not read', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
+    await make(runAgent).service.ask('hello-app', 'o que aconteceu?');
+    const denied: string[] = runAgent.mock.calls[0]![0].denyRead ?? [];
+    expect(denied.some((p) => p.includes('falhas'))).toBe(false);
   });
 });

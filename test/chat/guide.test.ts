@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageProjectGraph } from '../../server/chat/guide.js';
+import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from '../../server/chat/guide.js';
 
 const GUIDE = path.resolve('docs/guia');
 const hasGraphify = spawnSync('graphify', ['--version']).status === 0;
@@ -86,5 +86,21 @@ describe('the project code graph the chat queries', () => {
     await stageProjectGraph(cwd, path.join(cwd, 'missing', 'graph.json'));
     await expect(fs.access(path.join(cwd, 'project-graph', 'graph.json'))).rejects.toThrow();
     await fs.rm(cwd, { recursive: true, force: true });
+  });
+});
+
+describe('the failure record the chat searches', () => {
+  it('stages one Markdown file per spec in falhas/, and nothing when there is no record', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-falhas-'));
+    try {
+      await stageFailureDetails(cwd, new Map([['hello-001', '# Falhas registradas']]));
+      expect(await fs.readFile(path.join(cwd, 'falhas', 'hello-001.md'), 'utf8')).toBe('# Falhas registradas');
+      const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-falhas-empty-'));
+      await stageFailureDetails(empty, new Map());
+      await expect(fs.access(path.join(empty, 'falhas'))).rejects.toThrow();
+      await fs.rm(empty, { recursive: true, force: true });
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
   });
 });

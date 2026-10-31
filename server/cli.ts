@@ -32,7 +32,7 @@ import { runRoutes } from './api/run-routes.js';
 import { refineRoutes } from './api/refine-routes.js';
 import { chatRoutes } from './api/chat-routes.js';
 import { ChatService } from './chat/service.js';
-import { webSearchAllowed } from './chat/web-access.js';
+import { isConfidential } from './chat/confidential.js';
 import { ChatStore } from './chat/store.js';
 import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
@@ -181,9 +181,9 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       if (!read) throw new Error('project not found');
       await mergeProjectGraph(graphify, workspacePaths((await readUserConfig()).cfg, projectId), read.project, read.project.services ?? []);
     },
-    webSearchAllowed: async (projectId) => {
+    confidential: async (projectId) => {
       const dir = await projectDirOf(projectId);
-      return dir !== null && webSearchAllowed({ cfg: (await readUserConfig()).cfg, dir, projectId });
+      return dir === null ? true : isConfidential({ cfg: (await readUserConfig()).cfg, dir, projectId });
     },
   });
   const guard = await licenseGuard();
