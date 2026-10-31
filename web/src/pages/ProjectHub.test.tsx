@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
-import { appLinks, ProjectHubView } from './ProjectHub.js';
+import { appLinks, ProjectHub, ProjectHubView } from './ProjectHub.js';
 
 const project = {
   projectId: 'hello-app',
@@ -24,6 +24,53 @@ const runs = [
   { runId: 'hello-000-r1', specId: 'hello-000', projectId: 'hello-app', status: 'complete', at: '2026-09-23T09:00:00.000Z', tokens: 9000, cost: 3.33, stoppable: false },
 ].map(row);
 const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), restart: vi.fn(), validate: vi.fn(), deleteDraft: vi.fn() });
+
+describe('ProjectHub documents', () => {
+  const docsOf = (name: string): ProjectDoc[] => [{ file: 'project.md', text: `# ${name}` }];
+  const hrefOf = (name: string) => `data:text/markdown;charset=utf-8,${encodeURIComponent(`# ${name}`)}`;
+  /** The page at /projects/a, with a button that moves the same mounted page to /projects/b. */
+  function Go() {
+    const navigate = useNavigate();
+    return <button type="button" onClick={() => navigate('/projects/b')}>Ir para b</button>;
+  }
+  const renderHub = () => render(
+    <MemoryRouter initialEntries={['/projects/a']}>
+      <Go />
+      <Routes><Route path="/projects/:projectId" element={<ProjectHub />} /></Routes>
+    </MemoryRouter>,
+  );
+  const mockPage = (docs: (id: string) => Promise<{ docs: ProjectDoc[] }>) => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue([{ ...project, projectId: 'a' }, { ...project, projectId: 'b' }]);
+    vi.spyOn(runApi, 'runs').mockResolvedValue([]);
+    vi.spyOn(refineApi, 'list').mockResolvedValue([]);
+    vi.spyOn(runApi, 'docs').mockImplementation(docs);
+  };
+
+  it('keeps the documents of the project on screen when an answer for the project opened before arrives last', async () => {
+    const answer: Record<string, (docs: ProjectDoc[]) => void> = {};
+    mockPage((id) => new Promise((resolve) => { answer[id] = (docs) => resolve({ docs }); }));
+    renderHub();
+    await waitFor(() => expect(answer.a).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Ir para b' }));
+    await waitFor(() => expect(answer.b).toBeDefined());
+    answer.b!(docsOf('B'));
+    await waitFor(() => expect(screen.getByTestId('download-project-md').getAttribute('href')).toBe(hrefOf('B')));
+    await act(async () => answer.a!(docsOf('A')));
+    expect(screen.getByTestId('download-project-md').getAttribute('href')).toBe(hrefOf('B'));
+  });
+
+  it('drops the documents of the project left while the documents of the new one load', async () => {
+    const answer: Record<string, (docs: ProjectDoc[]) => void> = {};
+    mockPage((id) => (id === 'a' ? Promise.resolve({ docs: docsOf('A') }) : new Promise((resolve) => { answer[id] = (docs) => resolve({ docs }); })));
+    renderHub();
+    await waitFor(() => expect(screen.getByTestId('download-project-md').getAttribute('href')).toBe(hrefOf('A')));
+    fireEvent.click(screen.getByRole('button', { name: 'Ir para b' }));
+    await waitFor(() => expect(screen.queryByTestId('download-project-md')).toBeNull());
+    await waitFor(() => expect(answer.b).toBeDefined());
+    answer.b!(docsOf('B'));
+    await waitFor(() => expect(screen.getByTestId('download-project-md').getAttribute('href')).toBe(hrefOf('B')));
+  });
+});
 
 describe('ProjectHubView', () => {
   it('links to the GitHub repository only when the project has one', () => {

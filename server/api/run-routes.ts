@@ -25,7 +25,7 @@ import { httpGet, type HttpGet } from '../deploy/target.js';
 import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { withGitAuth } from '../git/auth.js';
-import { fetch as fetchRepo, showFile } from '../git/git.js';
+import { fetch as fetchRepo, git as runGit, showFile } from '../git/git.js';
 import { BACKLOG_DOCS } from '../contracts/backlog.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
@@ -91,15 +91,16 @@ async function repoUrlOf(repoDir: string): Promise<string | null> {
   return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
 }
 
-/** A file as origin/main has it at the clone, or null when main does not have it. */
-const mainText = (repo: string, rel: string): Promise<string | null> => showFile(repo, 'origin/main', rel).catch(() => null);
+/** The paths among `paths` that origin/main has; a git failure is raised, never read as a missing file. */
+async function mainPaths(repo: string, paths: string[]): Promise<Set<string>> {
+  const listed = await runGit(repo, ['ls-tree', '--name-only', 'origin/main', ...paths]);
+  return new Set(listed.split('\n').filter(Boolean));
+}
 
-/** A project document as main has it; the briefing is the root one, else the newest spec's. */
-async function mainDoc(repo: string, file: string, newestSpec: string | undefined): Promise<string | null> {
-  if (file !== 'briefing.md') return mainText(repo, `docs/${file}`);
-  const root = await mainText(repo, 'docs/briefing.md');
-  if (root !== null || newestSpec === undefined || !SAFE_ID.test(newestSpec)) return root;
-  return mainText(repo, `docs/specs/${newestSpec}/briefing.md`);
+/** Where a project document sits on main: the briefing at the root, else the newest spec's when only that one exists. */
+function docPath(file: string, present: ReadonlySet<string>, specBriefing: string | null): string {
+  if (file !== 'briefing.md' || present.has('docs/briefing.md') || specBriefing === null || !present.has(specBriefing)) return `docs/${file}`;
+  return specBriefing;
 }
 
 /** More tests than this in one repository are not located: the search grows with each of them. */
@@ -467,7 +468,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         // A failed fetch keeps the last copy of main, so the documents still show.
         await fetchRepo(repo).catch(() => undefined);
         const newestSpec = (await readProject(dir)).specs.at(-1)?.specId;
-        json(200, { docs: await Promise.all(BACKLOG_DOCS.map(async (file) => ({ file, text: await mainDoc(repo, file, newestSpec) }))) });
+        const specBriefing = newestSpec !== undefined && SAFE_ID.test(newestSpec) ? `docs/specs/${newestSpec}/briefing.md` : null;
+        const present = await mainPaths(repo, [...BACKLOG_DOCS.map((file) => `docs/${file}`), ...(specBriefing ? [specBriefing] : [])]);
+        json(200, { docs: await Promise.all(BACKLOG_DOCS.map(async (file) => {
+          const at = docPath(file, present, specBriefing);
+          return { file, text: present.has(at) ? await showFile(repo, 'origin/main', at) : null };
+        })) });
       },
     },
     {

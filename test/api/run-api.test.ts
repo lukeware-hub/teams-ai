@@ -347,6 +347,14 @@ describe('projects', () => {
     const { docs } = await (await fetch(`${base()}/api/projects/hello-app/docs`)).json();
     expect(docs[0]).toEqual({ file: 'project.md', text: '# Projeto\n' });
   });
+
+  it('answers an error, not a list of missing documents, when the clone has no origin/main', async () => {
+    await workspaceClone({ 'docs/project.md': '# Projeto\n' });
+    await fs.rm(path.join(home, 'seed'), { recursive: true, force: true });
+    const repo = workspacePaths((await readUserConfig(home)).cfg, 'hello-app', home).repo;
+    await execCommand({ bin: 'git', args: ['update-ref', '-d', 'refs/remotes/origin/main'], cwd: repo, timeoutMs: 30_000 });
+    expect((await fetch(`${base()}/api/projects/hello-app/docs`)).status).toBe(500);
+  });
 });
 
 /** Puts a clone of a seed repository at the project's workspace; the clone's origin/main holds `files`. */

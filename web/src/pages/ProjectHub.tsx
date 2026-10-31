@@ -662,10 +662,13 @@ export function ProjectHub() {
     }, 5000);
     return () => clearInterval(id);
   }, [refresh]);
-  // The main documents change rarely: they are read once when the page opens.
+  // The main documents change rarely: they are read when the page opens a project, and an answer for a project left behind is dropped.
   useEffect(() => {
     if (!projectId) return;
-    runApi.docs(projectId).then((r) => setDocs(r.docs), () => setDocs(null));
+    let current = true;
+    setDocs(null);
+    runApi.docs(projectId).then((r) => { if (current) setDocs(r.docs); }, () => undefined);
+    return () => { current = false; };
   }, [projectId]);
   const act = (fn: () => Promise<unknown>) => async () => {
     setError(null);
