@@ -118,6 +118,32 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('project-docs')).toBeNull();
   });
 
+  it('links each document to the refinement of <projectId>-001, and downloads only the published ones', () => {
+    const o = on();
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program: null });
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} backlogs={['hello-app-002', 'hello-app-001']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'Visualizar project.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-app-001?etapa=project.md');
+    expect(screen.getByRole('link', { name: 'Visualizar briefing.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-app-001?etapa=briefing.md');
+    expect(screen.getByRole('link', { name: 'Baixar project.md' }).getAttribute('download')).toBe('project.md');
+    expect(screen.queryByRole('link', { name: 'Baixar briefing.md' })).toBeNull();
+  });
+
+  it('shows no view link when the project has no <projectId>-001 backlog', () => {
+    const o = on();
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program: null });
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} backlogs={['hello-app-002']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Visualizar project.md' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Baixar project.md' })).toBeTruthy();
+  });
+
   it('shows the project header, one action per spec status and per run status', () => {
     const o = on();
     render(
