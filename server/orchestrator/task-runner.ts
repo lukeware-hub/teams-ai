@@ -346,7 +346,7 @@ export class TaskRunner {
     const plan = planFile && taskPlanIds(task.def).length ? { file: planFile, ids: taskPlanIds(task.def) } : undefined;
     const env: Record<string, string> = this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {};
     const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
-    const sources = await sourceFiles(this.worktree, planFile, this.deps.spec.specId);
+    const sources = await sourceFiles(this.worktree, planFile, this.deps.spec.specId, this.deps.packBase().taskFile);
     const overrides = await this.stepOverrides(owner, attempt);
     const outcome = await this.deps.runAgent<'dev'>({
       kind: 'dev',

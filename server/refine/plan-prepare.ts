@@ -15,6 +15,10 @@ import { planItems, type PlanItem, type PlanSource } from './plan-items.js';
 import { planFileOf, specSectionOf } from './plan-file.js';
 import { planShapeIssues } from './plan-shape.js';
 import { type PlanStepResult, runPlanStep } from './plan-step.js';
+import { repositoryContextOf } from './architecture-step.js';
+import { taskShapeIssues } from './task-shape.js';
+import { taskPack } from './superpowers-pack.js';
+import { taskFileOf } from './plan-file.js';
 import type { SpeckitStepFailure } from './state.js';
 import { planPack } from './superpowers-pack.js';
 
@@ -53,12 +57,21 @@ export async function planFileFor(draftRoot: string, specId: string): Promise<st
   return fs.access(path.join(draftRoot, file)).then(() => file, () => undefined);
 }
 
-/** Copies a valid plan from the staging folder into the draft's docs, where the docs publish reads it. */
-async function publish(draft: Draft, staging: string, specId: string): Promise<void> {
-  const target = path.join(draft.docs, path.posix.relative('docs', planFileOf(specId)));
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.copyFile(path.join(staging, planFileOf(specId)), target);
+/** The task list of a spec of a draft, when its preparation wrote one: its path in the repository, else undefined. */
+export async function taskFileFor(draftRoot: string, specId: string): Promise<string | undefined> {
+  const file = taskFileOf(specId);
+  return fs.access(path.join(draftRoot, file)).then(() => file, () => undefined);
 }
+
+/** Copies a valid plan from the staging folder into the draft's docs, where the docs publish reads it. */
+async function publish(draft: Draft, staging: string, file: string): Promise<void> {
+  const target = path.join(draft.docs, path.posix.relative('docs', file));
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.copyFile(path.join(staging, file), target);
+}
+
+/** What a task list reads: its plan, so a change to the plan re-writes the tasks it has. */
+const taskBasis = (texts: Record<PlanInput, string>, key: string, plan: string): string => sha256(`${planBasis(texts, key)}\n${plan}`);
 
 /** Drops the plans of specs no longer in the backlog, so no later step or publish reads them. */
 async function pruneSpecs(staging: string, items: readonly PlanItem[]): Promise<void> {
@@ -73,15 +86,70 @@ async function reusable(run: Run, item: PlanItem): Promise<boolean> {
   const earlier = run.earlier.find((step) => step.command === 'plan' && step.itemKey === item.key);
   if (earlier?.basis !== planBasis(run.texts, item.key)) return false;
   const text = await fs.readFile(path.join(run.staging, planFileOf(item.specId)), 'utf8').catch(() => null);
-  return text !== null && planShapeIssues(text, criteriaIds(run.source, item.key)).length === 0;
+  return text !== null && planShapeIssues(text, criteriaIds(run.source, item.key), item.repository).length === 0;
 }
 
 /** Why a plan that did not come out valid stopped its item, in plain words for the owner. */
-function failureOf(item: PlanItem, result: PlanStepResult): SpeckitStepFailure {
+function failureOf(command: 'plan' | 'tasks', item: PlanItem, result: PlanStepResult): SpeckitStepFailure {
   const detail = result.issues.join('; ').slice(0, 1000);
-  if (result.status === 'blocked') return { command: 'plan', itemKey: item.key, kind: 'blocked', reason: `O plano de ${item.key} não foi escrito: ${result.issues[0]}. ${TRY_AGAIN}`, detail };
-  if (result.repairs === 0) return { command: 'plan', itemKey: item.key, kind: 'agent', reason: `O agente não conseguiu escrever o plano de ${item.key}. ${TRY_AGAIN}`, detail };
-  return { command: 'plan', itemKey: item.key, kind: 'plan-shape', reason: `O plano de ${item.key} não passou na checagem de forma. ${TRY_AGAIN}`, detail };
+  const what = command === 'plan' ? `o plano de ${item.key}` : `as tarefas de ${item.key}`;
+  const What = what.charAt(0).toUpperCase() + what.slice(1);
+  if (result.status === 'blocked') return { command, itemKey: item.key, kind: 'blocked', reason: `${What} não ${command === 'plan' ? 'foi escrito' : 'foram escritas'}: ${result.issues[0]}. ${TRY_AGAIN}`, detail };
+  if (result.repairs === 0) return { command, itemKey: item.key, kind: 'agent', reason: `O agente não conseguiu escrever ${what}. ${TRY_AGAIN}`, detail };
+  return { command, itemKey: item.key, kind: 'plan-shape', reason: `${What} não passou na checagem de forma. ${TRY_AGAIN}`, detail };
+}
+
+/** A task list an earlier preparation wrote is kept while its basis (the plan included) is unchanged and its file still passes the check. */
+async function reusableTasks(run: Run, item: PlanItem, plan: string): Promise<boolean> {
+  const earlier = run.earlier.find((step) => step.command === 'tasks' && step.itemKey === item.key);
+  if (earlier?.basis !== taskBasis(run.texts, item.key, plan)) return false;
+  const text = await fs.readFile(path.join(run.staging, taskFileOf(item.specId)), 'utf8').catch(() => null);
+  return text !== null && taskShapeIssues(text, plan, criteriaIds(run.source, item.key), item.repository).length === 0;
+}
+
+/** The task list of one item of a stamped draft: written from its valid plan, checked, and published into the draft's docs. */
+async function writeTasks(run: Run, item: PlanItem, plan: string): Promise<SpeckitStepFailure | undefined> {
+  const { deps, source, texts, staging } = run;
+  const basis = taskBasis(texts, item.key, plan);
+  const criteria = criteriaIds(source, item.key);
+  const specHash = sha256(`tasks\n${item.specId}\n${basis}`);
+  const step = { command: 'tasks', itemKey: item.key };
+  await deps.journal.fact(RefineEvent.SpeckitStepStarted, step);
+  const repository = repositoryContextOf(source, item.repository);
+  const result = await runPlanStep({
+    staging,
+    specId: item.specId,
+    criteria,
+    file: taskFileOf(item.specId),
+    check: (text) => taskShapeIssues(text, plan, criteria, item.repository),
+    pack: (repair) => taskPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, repository, repair }),
+    run: async (pack) =>
+      (await deps.runAgent<'speckit'>(
+        { kind: 'speckit', role: 'test', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
+        { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
+      )) as StepOutcome<SpeckitOutput>,
+  });
+  const file = taskFileOf(item.specId);
+  if (result.status === 'valid') {
+    await publish(deps.draft, staging, file);
+    if (result.repairs > 0) await deps.journal.fact(RefineEvent.SpeckitStepRepaired, { ...step, file, repair: result.repairs });
+    await deps.journal.fact(RefineEvent.SpeckitStepDone, { ...step, files: [file], basis });
+    return undefined;
+  }
+  await deps.journal.fact(RefineEvent.SpeckitStepDone, { ...step, files: [], blocked: true });
+  return failureOf('tasks', item, result);
+}
+
+/** One item's steps: its plan unless an earlier run kept it, then, in a stamped draft, its task list unless that was kept too. */
+async function writeItem(run: Run, item: PlanItem, planKept: boolean): Promise<SpeckitStepFailure | undefined> {
+  if (!planKept) {
+    const failure = await writePlan(run, item);
+    if (failure) return failure;
+  }
+  if (run.source.repositories !== true) return undefined;
+  const plan = await fs.readFile(path.join(run.staging, planFileOf(item.specId)), 'utf8');
+  if (await reusableTasks(run, item, plan)) return undefined;
+  return writeTasks(run, item, plan);
 }
 
 /** One plan: the step runs with its own setting, its file is checked, and a valid one is copied into the draft's docs. */
@@ -99,7 +167,9 @@ async function writePlan(run: Run, item: PlanItem): Promise<SpeckitStepFailure |
     staging,
     specId: item.specId,
     criteria,
-    pack: (repair) => planPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, decisions, history, repair }),
+    file: planFileOf(item.specId),
+    check: (text) => planShapeIssues(text, criteria, item.repository),
+    pack: (repair) => planPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, decisions, history, repair, repository: repositoryContextOf(source, item.repository) }),
     run: async (pack) =>
       (await deps.runAgent<'speckit'>(
         { kind: 'speckit', role: 'dev', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
@@ -108,13 +178,13 @@ async function writePlan(run: Run, item: PlanItem): Promise<SpeckitStepFailure |
   });
   const file = planFileOf(item.specId);
   if (result.status === 'valid') {
-    await publish(deps.draft, staging, item.specId);
+    await publish(deps.draft, staging, planFileOf(item.specId));
     if (result.repairs > 0) await deps.journal.fact(RefineEvent.SpeckitStepRepaired, { ...step, file, repair: result.repairs });
     await deps.journal.fact(RefineEvent.SpeckitStepDone, { ...step, files: [file], basis });
     return undefined;
   }
   await deps.journal.fact(RefineEvent.SpeckitStepDone, { ...step, files: [], blocked: true });
-  return failureOf(item, result);
+  return failureOf('plan', item, result);
 }
 
 /**
@@ -133,14 +203,15 @@ export async function preparePlans(deps: PlanDeps, source: PlanSource): Promise<
   await pruneSpecs(staging, items);
   const kept = new Set<string>();
   for (const item of items) if (await reusable(run, item)) kept.add(item.key);
-  await deps.journal.fact(RefineEvent.SpeckitStarted, { total: items.length, inputHash: hash });
+  // A stamped draft runs two steps per item: the plan, then its task list.
+  await deps.journal.fact(RefineEvent.SpeckitStarted, { total: items.length * (source.repositories === true ? 2 : 1), inputHash: hash });
   if (kept.size > 0) await deps.journal.fact(RefineEvent.SpeckitReused, { steps: items.filter((item) => kept.has(item.key)).map((item) => ({ command: 'plan', itemKey: item.key, basis: planBasis(texts, item.key) })) });
   const failures: SpeckitStepFailure[] = [];
-  const queue = items.filter((item) => !kept.has(item.key));
+  const queue = [...items];
   const worker = async (): Promise<void> => {
     for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
       if (deps.signal?.aborted) return;
-      const failure = await writePlan(run, item);
+      const failure = await writeItem(run, item, kept.has(item.key));
       if (failure) failures.push(failure);
     }
   };

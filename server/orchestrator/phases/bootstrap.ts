@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
-import { planFileOf } from '../../refine/plan-file.js';
+import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -30,6 +30,13 @@ export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docs
   const planFile = deps.packBase().planFile;
   if (planFile && !(await exists(path.join(opts.docsDir, path.posix.relative('docs', planFile))))) {
     const reason = `the implementation plan ${planFile} that the refinement prepared is not in the draft docs`;
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
+  // A spec that names a repository reaches main with its task list too: the builders read it.
+  const taskFile = deps.packBase().taskFile;
+  if (deps.spec.repository !== undefined && (!taskFile || !(await exists(path.join(opts.docsDir, path.posix.relative('docs', taskFile)))))) {
+    const reason = `the task list ${taskFileOf(deps.spec.specId)} of the repository spec ${deps.spec.specId} is not in the draft docs`;
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
     return { ok: false, reason };
   }
@@ -181,7 +188,7 @@ async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 
 /** The source documents a service's repository holds beside its implementation plan. */
-const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefing.md'];
+const SERVICE_DOCS = ['project.md', 'stack.md', 'flow.md', 'design.md', 'briefing.md', 'architecture.json', 'architecture.md'];
 
 /** Publishes the implementation plan and the source documents to a service's repository, through a docs PR as the project's docs go. */
 async function publishServiceDocs(deps: PhaseDeps, service: string, docsDir: string): Promise<PhaseResult> {
@@ -196,10 +203,14 @@ async function publishServiceDocs(deps: PhaseDeps, service: string, docsDir: str
       await fs.mkdir(path.join(wt, 'docs'), { recursive: true });
       await fs.copyFile(path.join(docsDir, file), path.join(wt, 'docs', file));
     }
-    const plan = planFileOf(deps.spec.specId).replace(/^docs\//, '');
-    if (await exists(path.join(docsDir, plan))) {
-      await fs.mkdir(path.dirname(path.join(wt, 'docs', plan)), { recursive: true });
-      await fs.copyFile(path.join(docsDir, plan), path.join(wt, 'docs', plan));
+    // A spec's plan and task list go only to the repository it changes; a spec with no repository keeps the old copy to each service.
+    if (deps.spec.repository === undefined || service === deps.spec.repository) {
+      for (const file of [planFileOf(deps.spec.specId), taskFileOf(deps.spec.specId)]) {
+        const rel = file.replace(/^docs\//, '');
+        if (!(await exists(path.join(docsDir, rel)))) continue;
+        await fs.mkdir(path.dirname(path.join(wt, 'docs', rel)), { recursive: true });
+        await fs.copyFile(path.join(docsDir, rel), path.join(wt, 'docs', rel));
+      }
     }
   }
   return commitAndMergeDocs(sdeps, 0, branch, wt, `docs(${deps.spec.specId}): source documents and implementation plan`);

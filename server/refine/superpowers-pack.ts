@@ -2,7 +2,8 @@ import path from 'node:path';
 import type { SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
-import { planFileOf } from './plan-file.js';
+import type { RepositoryContext } from '../contracts/architecture.js';
+import { planFileOf, taskFileOf } from './plan-file.js';
 import { ADJUST_NOTE, PLAN_INPUTS, questionLedger } from './plan-inputs.js';
 import type { QuestionRow } from './state.js';
 
@@ -20,6 +21,16 @@ export interface PlanPackInput {
   adjust?: boolean;
   /** The problems the previous plan of this step had, when this run repairs it. */
   repair?: string | null;
+  /** The repository the spec changes, in a stamped draft: its plan names it in the header. */
+  repository?: RepositoryContext;
+}
+
+/** The repository block of a pack: what the repository is for and the integrations that reach it. */
+export function repositoryNote(repo: RepositoryContext): string {
+  return [
+    `The spec changes the repository ${repo.name} (${repo.kind ?? 'no suffix'}): ${repo.responsibility}.`,
+    ...(repo.integrations.length > 0 ? [`Its integrations: ${repo.integrations.join('; ')}.`] : []),
+  ].join(' ');
 }
 
 /** The plan of one backlog item: the writing-plans skill runs unattended in the staging folder and writes only the plan file. */
@@ -39,9 +50,38 @@ export function planPack(input: PlanPackInput): ContextPackInput {
     '- Answer status done with `files` holding the plan path, relative to this folder, and a one-sentence `summary`. Answer status blocked, with `reason`, only when the plan cannot be written at all.',
     '- `questions` is always an empty list.',
     '- Write the content in Brazilian Portuguese; keep the template headings, ids, code names and commands as they are.',
+    ...(input.repository ? [`${repositoryNote(input.repository)} The plan header has one more line, **Repository:** ${input.repository.name}, after **Spec:**.`] : []),
     `### Earlier questions of this item (the latest owner answer wins; never ask one of them again, even reworded)\n${questionLedger(input.history ?? [])}`,
     ...(input.repair ? [input.repair] : []),
     ...(input.adjust ? [ADJUST_NOTE] : []),
   ].join('\n\n');
   return { kind: 'speckit', role: 'dev', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000, decisions: input.decisions };
+}
+
+export interface TaskPackInput {
+  specHash: string;
+  /** The folder of the six Markdown inputs, relative to the step's folder. */
+  inputDir: string;
+  specId: string;
+  key: string;
+  title: string;
+  criteria: readonly string[];
+  repository?: RepositoryContext;
+  repair?: string | null;
+}
+
+/** The task list of one spec: QA writes it from the plan in the staging folder, one entry per plan task, each proven by its criteria. */
+export function taskPack(input: TaskPackInput): ContextPackInput {
+  const inputs = PLAN_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
+  const feedback = [
+    `Write the task list of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}". Read the implementation plan docs/specs/${input.specId}/implementation-plan.md in this folder, and the six Markdown inputs read with the Read tool: ${inputs}.`,
+    '- Nobody is present: never stop to ask a question in the chat. No commit, no worktree, no subagent, and no other skill.',
+    `- Write only ${taskFileOf(input.specId)} in this folder, and never change the plan, the inputs or .claude/.`,
+    `- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (docs/specs/${input.specId}/spec.md), **Plan:** (docs/specs/${input.specId}/implementation-plan.md), **Repository:**${input.repository ? ` (${input.repository.name})` : ''}, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.`,
+    '- Every criterion id of the spec must appear in at least one entry. Never invent a criterion, and never invent a business rule: a fact comes from the six files, and the entry cites the file for it.',
+    '- Each entry says which of the spec\'s business rules it keeps, under **Business rules preserved:**, and lists its dependencies under **Dependencies:** as task numbers.',
+    ...(input.repository ? [repositoryNote(input.repository)] : []),
+    ...(input.repair ? [input.repair] : []),
+  ].join('\n\n');
+  return { kind: 'speckit', role: 'test', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000 };
 }

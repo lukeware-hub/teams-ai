@@ -96,6 +96,8 @@ export interface RunDeps {
   bootstrap?: { docsDir: string; owner: string | undefined };
   /** The plan file of this spec, when its refinement prepared one. */
   planFile?: string;
+  /** The spec's task list in the repository, when the refinement wrote one. */
+  taskFile?: string;
   target?: DeployTarget;
   /** Runs gates and smoke; absent means docker over `exec`. */
   gateExecutor?: GateExecutor;
@@ -539,6 +541,7 @@ export class Run {
     retrieval: this.deps.knowledge?.search(this.deps.spec.objectives.join(' '), { k: 5, specId: this.deps.spec.specId }) ?? [],
     budgetTokens: 12_000,
     planFile: this.deps.planFile,
+    taskFile: this.deps.taskFile,
   });
 
   private codeFor(view: ServiceView) {
