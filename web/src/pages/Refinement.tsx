@@ -21,7 +21,7 @@ import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { ClosingDialog } from '../refine/ClosingDialog.js';
 import { ArchitectureCard } from '../refine/ArchitectureCard.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
-import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
+import { canStartRun, ProgramStatus, startInputOf, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -384,7 +384,7 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId, speckitAsked[0]?.questionId, step]);
-  const canStart = canStartRun(st, busy);
+  const canStart = canStartRun(startInputOf(snap), busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
@@ -1368,7 +1368,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
-        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(repositorySession ? { ...snap.state, closing: { ok: snap.closing?.ok === true } } : snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(startInputOf(snap), false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}

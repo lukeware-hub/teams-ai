@@ -64,6 +64,11 @@ export function canStartRun(st: StartInput, busy: boolean): boolean {
   return !busy && canStart(st);
 }
 
+/** The state the start reads: a repository session also needs the closing summary, which the snapshot keeps beside the state. */
+export function startInputOf(snap: { state: StartInput; closing?: { ok: boolean } | null }): StartInput {
+  return snap.state.repositories === true ? { ...snap.state, closing: { ok: snap.closing?.ok === true } } : snap.state;
+}
+
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
 const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
 
