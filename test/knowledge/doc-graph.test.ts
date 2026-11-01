@@ -126,4 +126,9 @@ describe('document graph extraction', () => {
     await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/limite de uso atingido/);
     expect(await fs.readdir(parent).catch(() => [])).toEqual([]);
   });
+
+  it('a long stderr keeps its start, where the first failure is, as well as its end', async () => {
+    failWith = result({ exitCode: 1, stderr: `falha no modelo: cota de uso${'.'.repeat(1000)} recusado ao final` });
+    await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/falha no modelo: cota de uso.* recusado ao final/);
+  });
 });

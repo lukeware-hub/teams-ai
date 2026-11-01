@@ -156,7 +156,11 @@ async function writeItem(run: Run, item: PlanItem, planKept: boolean): Promise<S
   }
   if (run.source.repositories !== true) return undefined;
   const plan = await fs.readFile(path.join(run.staging, planFileOf(item.specId)), 'utf8');
-  if (await reusableTasks(run, item, plan)) return undefined;
+  if (await reusableTasks(run, item, plan)) {
+    // A kept task list is journaled as done again: the new run starts with no steps, and the closing check reads them.
+    await run.deps.journal.fact(RefineEvent.SpeckitStepDone, { command: 'tasks', itemKey: item.key, files: [], basis: taskBasis(run.texts, item.key, plan) });
+    return undefined;
+  }
   return writeTasks(run, item, plan);
 }
 

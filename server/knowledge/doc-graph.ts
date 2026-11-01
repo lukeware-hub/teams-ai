@@ -50,6 +50,9 @@ async function writeIsolation(home: string, dir: string): Promise<void> {
   await fs.writeFile(path.join(home, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, projects: { [dir]: { hasTrustDialogAccepted: true } } }, null, 2));
 }
 
+/** The start and the end of a long stderr: the first failure is often at the start, the refusal at the end. */
+const ends = (text: string): string => (text.length <= 800 ? text : `${text.slice(0, 400)} … ${text.slice(-400)}`);
+
 /** Extracts the documents of `dir` into `outDir`, in a HOME of its own and with every tool denied. */
 export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: string, parentDir: string): Promise<void> {
   const home = await createStepHome(parentDir, deps.hostEnv);
@@ -70,7 +73,7 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
     } finally {
       release();
     }
-    if (result.exitCode !== 0 || result.timedOut) throw new DocGraphError(`A extração dos documentos falhou: ${result.stderr.slice(-400)}`);
+    if (result.exitCode !== 0 || result.timedOut) throw new DocGraphError(`A extração dos documentos falhou: ${ends(result.stderr)}`);
   } finally {
     await syncBackCredentials(home, deps.hostEnv);
     await removeStepHome(home);
