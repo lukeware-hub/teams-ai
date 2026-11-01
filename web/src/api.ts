@@ -469,6 +469,14 @@ export interface RefineState {
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
   doneStages?: string[];
+  /** The documents reviewed since their last human edit, in a repository session. */
+  reviewedStages?: string[];
+  /** The documents in the Graphify graph after their last edit, in a repository session. */
+  graphed?: string[];
+  /** The document whose graph extraction runs now, if any. */
+  graphing?: string | null;
+  /** The last graph extraction that failed, with the reason in plain words. */
+  graphError?: { file: string; reason: string } | null;
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: string[];
   /** The owner moved on from the final review to the backlog. */
@@ -497,6 +505,8 @@ export interface Snapshot {
   seq?: number;
   /** The round after which Reavaliar stops. */
   limits?: { max: number };
+  /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
+  stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
 }
 export interface DraftRow {
   projectId: string;

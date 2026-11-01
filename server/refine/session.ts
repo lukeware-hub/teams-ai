@@ -166,6 +166,8 @@ export interface Snapshot {
   architectureStale: boolean;
   /** The closing summary of a repository session; absent for other sessions. */
   closing?: ClosingSummary;
+  /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
+  stageProblems: Record<DocFile, string | null>;
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
@@ -342,7 +344,7 @@ export class RefineSession {
     }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   /** The rounds the current stage has used count against its limit. */

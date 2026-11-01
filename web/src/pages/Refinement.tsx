@@ -28,6 +28,7 @@ import { currentStage, previousStage, stageViews } from '../refine/stage-view.js
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
+import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
@@ -571,6 +572,21 @@ export function RefinementView(p: ViewProps) {
     </div>
   ) : null;
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
+  /** The five checks of a stage, from the state and the snapshot's format problem. */
+  const stageLines = (file: DocFile) => {
+    const graphError = st.graphError?.file === file ? st.graphError.reason : null;
+    return stageChecklist({
+      reviewed: st.reviewedStages?.includes(file) ?? false,
+      openQuestions: docQuestions(st, file).filter((q) => q.blocking).length,
+      pendingSuggestions: docPatches(st, file).length,
+      formatProblem: snap.stageProblems?.[file] ?? null,
+      graphed: st.graphed?.includes(file) ?? false,
+      graphing: st.graphing === file,
+      graphError,
+    });
+  };
+  /** The first failing check of a stage: what the disabled Continuar names. Null when the stage can continue. */
+  const stageBlock = (file: DocFile): StageCheck | null => firstFailing(stageLines(file));
   const docsPanel = (
     <section className={panelCard}>
       <div className={panelHeading}>
@@ -655,7 +671,7 @@ export function RefinementView(p: ViewProps) {
           {onStage ? (
             <>
               <ActionButton data-testid="stage-evaluate" disabled={locked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
-              <ActionButton data-testid="stage-continue" className="primary" disabled={locked} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
+              <ActionButton data-testid="stage-continue" className="primary" disabled={locked || stageBlock(onStage) !== null} title={stageBlock(onStage)?.hint ?? undefined} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
             </>
           ) : (
             <ActionButton data-testid="stage-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
@@ -979,6 +995,7 @@ export function RefinementView(p: ViewProps) {
     const discarded = st.discarded.filter((d) => d.file.split('/').pop() === file);
     const count = pendingCount(st, file);
     const jevBlocked = stageSession && st.confidential === undefined;
+    const checks = stageLines(file);
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
@@ -1050,6 +1067,19 @@ export function RefinementView(p: ViewProps) {
             )}
           </DocScoreInset>
           {alignment && <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{alignment}</p>}
+          {newProject && (
+            <ol className="m-0 grid list-none gap-2 p-0" aria-label="Lista de verificação da etapa" data-testid="stage-checklist">
+              {checks.map((check) => (
+                <li key={check.id} className="flex items-start gap-2 text-[0.8125rem] text-ink-soft" data-testid={`check-${check.id}`} data-ok={check.ok}>
+                  <Icon name={check.ok ? 'check' : 'info'} size={16} />
+                  <span>
+                    {check.id === 'graphed' ? graphLabel({ graphed: check.ok, graphing: st.graphing === file }, null) : check.label}
+                    {!check.ok && check.hint ? ` — ${check.hint}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
           {!locked && questions[0] && questionCard(questions[0], questions.length)}
           {!locked && patches.map(patchCard)}
