@@ -21,6 +21,8 @@ export interface PlanPackInput {
   adjust?: boolean;
   /** The problems the previous plan of this step had, when this run repairs it. */
   repair?: string | null;
+  /** The part of the document graph about the spec, when the graph has something. */
+  graphContext?: string;
   /** The repository the spec changes, in a stamped draft: its plan names it in the header. */
   repository?: RepositoryContext;
 }
@@ -55,6 +57,8 @@ export function planPack(input: PlanPackInput): ContextPackInput {
     '- Answer status done with `files` holding the plan path, relative to this folder, and a one-sentence `summary`. Answer status blocked, with `reason`, only when the plan cannot be written at all.',
     '- `questions` is always an empty list.',
     '- Write the content in Brazilian Portuguese; keep the template headings, ids, code names and commands as they are.',
+    ...(input.graphContext ? [`### Graph context
+${input.graphContext}`] : []),
     ...(input.repository ? [`${repositoryNote(input.repository)} The plan header has one more line, **Repository:** ${input.repository.name}, after **Spec:**.`] : []),
     `### Earlier questions of this item (the latest owner answer wins; never ask one of them again, even reworded)\n${questionLedger(input.history ?? [])}`,
     ...(input.repair ? [input.repair] : []),
@@ -73,6 +77,8 @@ export interface TaskPackInput {
   criteria: readonly string[];
   repository?: RepositoryContext;
   repair?: string | null;
+  /** The part of the document graph about the spec, when the graph has something. */
+  graphContext?: string;
 }
 
 /** The task list of one spec: QA writes it from the plan in the staging folder, one entry per plan task, each proven by its criteria. */
@@ -85,6 +91,8 @@ export function taskPack(input: TaskPackInput): ContextPackInput {
     `- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (docs/specs/${input.specId}/spec.md), **Plan:** (docs/specs/${input.specId}/implementation-plan.md), **Repository:**${input.repository ? ` (${input.repository.name})` : ''}, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.`,
     '- Every criterion id of the spec must appear in at least one entry. Never invent a criterion, and never invent a business rule: a fact comes from the six files, and the entry cites the file for it.',
     '- Each entry says which of the spec\'s business rules it keeps, under **Business rules preserved:**, and lists its dependencies under **Dependencies:** as task numbers.',
+    ...(input.graphContext ? [`### Graph context
+${input.graphContext}`] : []),
     ...(input.repository ? [repositoryNote(input.repository)] : []),
     ...(input.repair ? [input.repair] : []),
   ].join('\n\n');

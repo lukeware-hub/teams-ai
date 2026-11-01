@@ -673,7 +673,7 @@ export class RefineSession {
   private async timedPlans(ctl: AbortController): Promise<void> {
     try {
       const agents = (await this.deps.speckitAgents?.()) ?? 1;
-      const hash = await preparePlans({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal, agents }, this.state);
+      const hash = await preparePlans({ draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, signal: ctl.signal, agents, docGraphContext: this.deps.docGraphContext }, this.state);
       await this.journal.fact(RefineEvent.PlansPrepared, { inputHash: hash });
     } catch (err) {
       const reason = err instanceof OwnerError ? err.message : `${PREPARATION_STAGE} parou por um erro interno. ${TRY_AGAIN}`;
@@ -726,6 +726,7 @@ export class RefineSession {
         validateDocs: this.deps.validateDocs,
         scoreDocs: this.deps.scoreDocs,
         decider: this.deps.decider,
+        docGraphContext: this.deps.docGraphContext,
         autoAnswerFloor,
       },
       cycle,

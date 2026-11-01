@@ -32,13 +32,21 @@ export interface PlanDeps {
   signal?: AbortSignal;
   /** How many plans are written at once; one when absent. */
   agents?: number;
+  /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
+  docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
 }
+
+/** What the plan and task packs ask the graph for: the spec's own part of the system. */
+const PLAN_GRAPH_QUESTION = 'the repositories, modules and integrations that the spec changes';
+const PLAN_GRAPH_TOKENS = 3_000;
 
 interface Run {
   deps: PlanDeps;
   source: PlanSource;
   texts: Record<PlanInput, string>;
   staging: string;
+  /** The graph context the packs carry; empty when the graph has nothing about the spec. */
+  graph: string;
   /** The steps the earlier preparation finished, read before this one clears them. */
   earlier: ReadonlyArray<{ command: string; itemKey?: string; basis?: string }>;
 }
@@ -122,7 +130,7 @@ async function writeTasks(run: Run, item: PlanItem, plan: string): Promise<Speck
     criteria,
     file: taskFileOf(item.specId),
     check: (text) => taskShapeIssues(text, plan, criteria, item.repository),
-    pack: (repair) => taskPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, repository, repair }),
+    pack: (repair) => taskPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, repository, repair, graphContext: run.graph }),
     run: async (pack) =>
       (await deps.runAgent<'speckit'>(
         { kind: 'speckit', role: 'test', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
@@ -169,7 +177,7 @@ async function writePlan(run: Run, item: PlanItem): Promise<SpeckitStepFailure |
     criteria,
     file: planFileOf(item.specId),
     check: (text) => planShapeIssues(text, criteria, item.repository),
-    pack: (repair) => planPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, decisions, history, repair, repository: repositoryContextOf(source, item.repository) }),
+    pack: (repair) => planPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, decisions, history, repair, repository: repositoryContextOf(source, item.repository), graphContext: run.graph }),
     run: async (pack) =>
       (await deps.runAgent<'speckit'>(
         { kind: 'speckit', role: 'dev', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
@@ -197,7 +205,8 @@ export async function preparePlans(deps: PlanDeps, source: PlanSource): Promise<
   const hash = planInputsHash(texts);
   const items = planItems(deps.draft.specId, source);
   const staging = planStagingDir(deps.draft);
-  const run: Run = { deps, source, texts, staging, earlier: deps.journal.state.speckit?.steps ?? [] };
+  const graph = deps.docGraphContext ? await deps.docGraphContext(path.posix.join(deps.draft.root, 'doc-graph'), PLAN_GRAPH_QUESTION, PLAN_GRAPH_TOKENS) : '';
+  const run: Run = { deps, source, texts, staging, earlier: deps.journal.state.speckit?.steps ?? [], graph };
   await writePlanInputs(deps.draft, texts);
   await fs.mkdir(staging, { recursive: true });
   await pruneSpecs(staging, items);

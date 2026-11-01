@@ -58,6 +58,8 @@ export interface CycleDeps {
   draft: Draft;
   journal: CycleJournal;
   runAgent: RunAgent;
+  /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
+  docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   frontAgent?: RunAgent;
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];

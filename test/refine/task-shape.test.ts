@@ -103,6 +103,12 @@ describe('task list shape', () => {
 });
 
 describe('task pack', () => {
+  it('carries the graph context about the spec when the graph has something', () => {
+    const pack = taskPack({ specHash: 'h', inputDir: 'speckit-input', specId: 'shop-001', key: 'cart', title: 'Carrinho', criteria: CRITERIA, graphContext: 'Nó: shop-api' });
+    expect(pack.feedback).toContain('### Graph context\nNó: shop-api');
+    expect(taskPack({ specHash: 'h', inputDir: 'speckit-input', specId: 'shop-001', key: 'cart', title: 'Carrinho', criteria: CRITERIA }).feedback).not.toContain('Graph context');
+  });
+
   it('asks for one entry per plan task, with the repository it changes', () => {
     const pack = taskPack({
       specHash: 'h',

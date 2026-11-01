@@ -67,6 +67,8 @@ export function specPack(input: {
   rejection: Readonly<Record<string, readonly string[] | undefined>>;
   /** R11.7.4: for an adjustment, the started specs it changes, oldest first. */
   adjusts?: Readonly<Record<string, readonly Spec[] | undefined>>;
+  /** The part of the document graph about the batch, when the graph has something. */
+  graphContext?: string;
   /** The repository of each item of a stamped draft, with the integrations that reach it. */
   repositories?: Readonly<Record<string, RepositoryContext | undefined>>;
 }): ContextPackInput {
@@ -90,7 +92,7 @@ export function specPack(input: {
       ...(input.rejection[i.key]?.length ? ['Your last attempt for this item was rejected; fix every point:', input.rejection[i.key]!.map((r) => `- ${r}`).join('\n')] : []),
     ].join('\n');
   });
-  const feedback = [SPEC_RULES, '### docs/project.md', input.docs['project.md'], '# Items', ...items, '# Cited sections', ...[...cited].flatMap(([h, t]) => [h, t])].join('\n\n');
+  const feedback = [SPEC_RULES, ...(input.graphContext ? ['### Graph context', input.graphContext] : []), '### docs/project.md', input.docs['project.md'], '# Items', ...items, '# Cited sections', ...[...cited].flatMap(([h, t]) => [h, t])].join('\n\n');
   return { kind: 'spec', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('spec'), criteria: [], feedback, budgetTokens: 16_000 };
 }
 
