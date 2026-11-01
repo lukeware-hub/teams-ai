@@ -1,6 +1,18 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Architecture, repositoryContext, type RepoKind } from '../contracts/architecture.js';
+import { loadEvents } from '../store/event-store.js';
+
+/** The run statuses that stop a spec: its run needs the owner. */
+export const BLOCKED_RUN: ReadonlySet<string> = new Set(['blocked', 'deadlocked', 'phase-failed']);
+
+/** One event of a run's journal as the dashboard lists it. */
+export interface HistoryEvent {
+  at: string;
+  type: string;
+  runId: string;
+  specId: string;
+}
 
 /** A repository's state, from the worst of its specs: blocked, running, waiting, refining, done; empty without specs. */
 export type RepoStatus = 'blocked' | 'running' | 'waiting' | 'refining' | 'done' | 'empty';
@@ -16,6 +28,8 @@ export interface RepoSpec {
   dependsOn: string[];
   plan: boolean;
   tasks: number;
+  /** The spec's run needs the owner: a run blocked, deadlocked or failed in its phase. */
+  blocked: boolean;
 }
 
 export interface RepoSource {
@@ -46,7 +60,7 @@ export interface RepoDetail extends RepoCard {
 export function statusOf(rows: readonly RepoSpec[]): RepoStatus {
   const live = rows.filter((r) => r.status !== 'retired');
   if (live.length === 0) return 'empty';
-  if (live.some((r) => r.status.startsWith('paused:'))) return 'blocked';
+  if (live.some((r) => r.blocked || r.status.startsWith('paused:'))) return 'blocked';
   if (live.some((r) => r.status === 'running' || r.activeRunId !== null)) return 'running';
   if (live.some((r) => r.status === 'awaiting-validation')) return 'waiting';
   if (live.some((r) => r.status === 'refining' || r.status === 'planned')) return 'refining';
@@ -67,7 +81,7 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
     plans: rows.filter((r) => r.plan).length,
     tasks: rows.reduce((sum, r) => sum + r.tasks, 0),
     tasksDone: delivered.reduce((sum, r) => sum + r.tasks, 0),
-    blockers: rows.filter((r) => r.status.startsWith('paused:')).length,
+    blockers: rows.filter((r) => r.blocked || r.status.startsWith('paused:')).length,
   };
 }
 
@@ -92,7 +106,7 @@ interface SpecIndexEntry {
 }
 
 /** Reads a project's architecture, its spec index and each spec's files; null when the project has no architecture yet. */
-export async function loadRepoSource(dir: string, specs: ReadonlyArray<Pick<RepoSpec, 'specId' | 'status' | 'activeRunId' | 'repository'>>): Promise<RepoSource | null> {
+export async function loadRepoSource(dir: string, specs: ReadonlyArray<Pick<RepoSpec, 'specId' | 'status' | 'activeRunId' | 'repository' | 'blocked'>>): Promise<RepoSource | null> {
   const architecture = await fs.readFile(path.join(dir, 'docs', 'architecture.json'), 'utf8').then((t) => Architecture.parse(JSON.parse(t)), () => null);
   if (!architecture) return null;
   const index = await fs.readFile(path.join(dir, 'docs', 'specs.json'), 'utf8').then((t) => (JSON.parse(t) as { specs?: SpecIndexEntry[] }).specs ?? [], () => [] as SpecIndexEntry[]);
@@ -107,4 +121,12 @@ export async function loadRepoSource(dir: string, specs: ReadonlyArray<Pick<Repo
     }),
   );
   return { architecture, specs: rows };
+}
+
+/** The last `limit` events of the runs given, oldest first; a run with no journal yet contributes nothing. */
+export async function historyOf(runsDir: string, runs: ReadonlyArray<{ runId: string; specId: string }>, limit = 50): Promise<HistoryEvent[]> {
+  const events = await Promise.all(
+    runs.map(async (run) => (await loadEvents(path.join(runsDir, run.runId, 'events.ndjson')).catch(() => [])).map((e) => ({ at: e.at, type: e.type, runId: run.runId, specId: run.specId }))),
+  );
+  return events.flat().sort((a, b) => a.at.localeCompare(b.at)).slice(-limit);
 }

@@ -33,7 +33,7 @@ import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './r
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
-import { loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
+import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
@@ -338,17 +338,21 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
   /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
-  const repoSource = async (projectId: string): Promise<RepoSource | null> => {
-    const row = (await listProjects(await index())).find((p) => p.projectId === projectId);
+  const repoSource = async (projectId: string) => {
+    const idx = await index();
+    const row = (await listProjects(idx)).find((p) => p.projectId === projectId);
     if (!row) throw new HttpError(404, `unknown project ${projectId}`);
-    return loadRepoSource(row.dir, row.specs);
+    const runs = await listRuns(idx, projectId);
+    // A spec is blocked when one of its runs needs the owner; its run list also feeds the history.
+    const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
+    return { src: await loadRepoSource(row.dir, specs), runs, runsDir: runsDir(idx) };
   };
   return [
     {
       method: 'GET',
       path: `${P}/projects/:projectId/repositories`,
       handler: async ({ params, json }) => {
-        const src = await repoSource(params.projectId!);
+        const { src } = await repoSource(params.projectId!);
         json(200, { repositories: src ? repositoryCards(src) : [] });
       },
     },
@@ -358,10 +362,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const name = params.repo!;
         if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
-        const src = await repoSource(params.projectId!);
+        const { src, runs, runsDir: runsRoot } = await repoSource(params.projectId!);
         const detail = src ? repositoryDetail(src, name) : null;
         if (!detail) throw new HttpError(404, `unknown repository ${name}`);
-        json(200, detail);
+        const ids = new Set(detail.rows.map((r) => r.specId));
+        json(200, { ...detail, history: await historyOf(runsRoot, runs.filter((r) => ids.has(r.specId))) });
       },
     },
     {

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Architecture } from '../../server/contracts/architecture.js';
-import { loadRepoSource, repositoryCards, repositoryDetail, statusOf, type RepoSource, type RepoSpec } from '../../server/api/repositories.js';
+import { historyOf, loadRepoSource, repositoryCards, repositoryDetail, statusOf, type RepoSource, type RepoSpec } from '../../server/api/repositories.js';
 
 const ARCH: Architecture = {
   style: 'microservices',
@@ -28,6 +28,7 @@ const spec = (specId: string, repository: string, status: string, extra: Partial
   dependsOn: [],
   plan: false,
   tasks: 0,
+  blocked: false,
   ...extra,
 });
 
@@ -71,6 +72,27 @@ describe('cards and dashboard of the repositories', () => {
   });
 });
 
+describe('blockers and history', () => {
+  it('counts a spec whose run needs the owner as blocked, even when its status reads running', () => {
+    const src: RepoSource = { architecture: ARCH, specs: [spec('cart', 'shop-api', 'running', { blocked: true })] };
+    expect(repositoryCards(src)[0]).toMatchObject({ status: 'blocked', blockers: 1 });
+  });
+
+  it('keeps the last events of the runs, oldest first', async () => {
+    const runs = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-history-'));
+    try {
+      const ev = (seq: number, type: string, at: string) => JSON.stringify({ seq, at, runId: 'r1', specHash: 'h', type, kind: 'fact', data: {} });
+      await fs.mkdir(path.join(runs, 'r1'), { recursive: true });
+      await fs.writeFile(path.join(runs, 'r1', 'events.ndjson'), [ev(1, 'B', '2026-10-31T10:00:00Z'), ev(2, 'A', '2026-10-31T09:00:00Z')].join('\n') + '\n');
+      const history = await historyOf(runs, [{ runId: 'r1', specId: 'cart' }], 50);
+      expect(history.map((h) => h.type)).toEqual(['A', 'B']);
+      expect(history[0]).toMatchObject({ runId: 'r1', specId: 'cart' });
+    } finally {
+      await fs.rm(runs, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('reading a project\'s repositories from disk', () => {
   let dir = '';
   beforeEach(async () => {
@@ -84,8 +106,8 @@ describe('reading a project\'s repositories from disk', () => {
     await fs.writeFile(path.join(dir, 'docs', 'specs.json'), JSON.stringify({ specs: [{ specId: 'cart', title: 'Carrinho', priority: 'P1', dependsOn: ['pay'] }] }));
     await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'implementation-plan.md'), '# plan');
     await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'task.md'), '# tasks\n\n## Task 1: a\n\n## Task 2: b\n');
-    const src = await loadRepoSource(dir, [{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api' }]);
-    expect(src?.specs).toEqual([{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', title: 'Carrinho', priority: 'P1', dependsOn: ['pay'], plan: true, tasks: 2 }]);
+    const src = await loadRepoSource(dir, [{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', blocked: false }]);
+    expect(src?.specs).toEqual([{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', blocked: false, title: 'Carrinho', priority: 'P1', dependsOn: ['pay'], plan: true, tasks: 2 }]);
   });
 
   it('gives no source for a project with no architecture yet', async () => {
