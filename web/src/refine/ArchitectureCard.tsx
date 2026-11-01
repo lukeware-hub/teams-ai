@@ -37,7 +37,7 @@ function DecisionProgress({ startedAt }: { startedAt: string | null }) {
   );
 }
 
-export function ArchitectureCard({ architecture, error, stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; stale: boolean; busy: boolean; onDecide: () => void }) {
+export function ArchitectureCard({ architecture, error, stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; stale: boolean; busy: boolean; startedAt?: string | null; onDecide: () => void }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
