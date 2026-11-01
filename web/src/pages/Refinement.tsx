@@ -18,6 +18,7 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
+import { ClosingDialog } from '../refine/ClosingDialog.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
@@ -1259,6 +1260,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [closingOpen, setClosingOpen] = useState(false);
   const applied = useRef(0);
   const { events, reopened } = useJournal(snap ? refineApi.events(projectId, specId) : null);
   // One snapshot read at a time: a request made during a read is answered by one more read after it, so a burst costs two reads.
@@ -1327,10 +1329,14 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     setError(null);
     return f().catch((e: Error) => setError(e.message));
   };
-  const startRun = act(() => {
+  // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.
+  const startWith = (summaryHash?: string) => act(() => {
     setStarting(true);
-    return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
+    return refineApi.start(projectId, specId, summaryHash).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
+  const startRun = startWith();
+  const repositorySession = snap.state.repositories === true;
+  const openSummary = () => setClosingOpen(true);
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
@@ -1339,9 +1345,12 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
+      {closingOpen && snap.closing && (
+        <ClosingDialog summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
+      )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
-        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(repositorySession ? { ...snap.state, closing: { ok: snap.closing?.ok === true } } : snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
@@ -1382,7 +1391,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
-        onStart={startRun}
+        onStart={repositorySession ? openSummary : startRun}
         startState={startLabel}
         hideStart={bannerStarts}
         events={events}

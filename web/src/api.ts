@@ -469,6 +469,8 @@ export interface RefineState {
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
   doneStages?: string[];
+  /** A repository session: the architecture gives the repositories and the start waits for the closing summary. */
+  repositories?: boolean;
   /** The documents reviewed since their last human edit, in a repository session. */
   reviewedStages?: string[];
   /** The documents in the Graphify graph after their last edit, in a repository session. */
@@ -492,6 +494,15 @@ export interface RefineState {
   /** The plan preparation of a detailed backlog; stale once a document or the backlog changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string> };
 }
+/** The closing summary a repository session shows before the owner authorizes the development. */
+export interface ClosingSummary {
+  ok: boolean;
+  checks: Array<{ id: string; ok: boolean; detail: string }>;
+  repositories: Array<{ name: string; specs: number; plans: number; tasks: number }>;
+  assumptions: string[];
+  summaryHash: string;
+}
+
 export interface Snapshot {
   projectId: string;
   specId: string;
@@ -505,6 +516,8 @@ export interface Snapshot {
   seq?: number;
   /** The round after which Reavaliar stops. */
   limits?: { max: number };
+  /** The closing summary of a repository session: the checks, the repositories, the assumptions, and the hash the owner authorizes. */
+  closing?: ClosingSummary;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
   stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
 }
@@ -553,7 +566,7 @@ export const refineApi = {
   reject: (p: string, s: string, patchId: string, reason: string | null) =>
     send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
-  start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
+  start: (p: string, s: string, summaryHash?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`, summaryHash === undefined ? undefined : { summaryHash }).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
   score: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/score`).then((r) => json<{ ok: true }>(r)),
   scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
   continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),
