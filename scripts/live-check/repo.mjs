@@ -44,7 +44,9 @@ async function ownerQuestions(where) {
   }
 }
 
-const RESUME = process.env.RESUME === '1';
+// FROM_STAGE=<doc> continues a project that exists: the stages from that document on run, the project is not created again.
+const FROM_STAGE = process.env.FROM_STAGE;
+const RESUME = process.env.RESUME === '1' || FROM_STAGE !== undefined;
 if (!RESUME) console.log('new project', (await api('POST', '/projects/new', { projectId, name, description: '' })).status);
 for (const f of RESUME ? [] : ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md']) {
   // The agenda folder names the briefing brief.md; any other folder uses the document name.
@@ -53,7 +55,8 @@ for (const f of RESUME ? [] : ['project.md', 'briefing.md', 'stack.md', 'flow.md
 }
 if (!RESUME) console.log('confidential', (await api('POST', `${S}/confidential`, { confidential: false })).status);
 
-for (const file of RESUME ? [] : STAGES) {
+const stagesToRun = process.env.RESUME === '1' ? [] : STAGES.slice(FROM_STAGE ? STAGES.indexOf(FROM_STAGE) : 0);
+for (const file of stagesToRun) {
   console.log('evaluate stage', file, (await api('POST', `${S}/docs/${file}/evaluate`)).status);
   await settle(`review ${file}`);
   await ownerQuestions(`review ${file}`);
@@ -122,5 +125,7 @@ for (let round = 1; round <= 3; round++) {
 const closing = (await snap())?.closing;
 console.log('closing ok:', closing?.ok, closing?.checks?.filter((c) => !c.ok).map((c) => c.detail).join('; ') || 'all checks green');
 if (!closing?.ok) { console.log('STOP: closing checks are not green'); process.exit(5); }
+// NO_START=1 stops at the green closing: the screens of the closing dialog are checked without spending a development run.
+if (process.env.NO_START === '1') { console.log('closing green; start skipped (NO_START=1)'); process.exit(0); }
 const started = await api('POST', `${S}/start`, { summaryHash: closing.summaryHash });
 console.log('start with the summary hash', started.status, started.text.slice(0, 160));
