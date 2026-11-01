@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
-import { Architecture, repoKind } from '../contracts/architecture.js';
+import { Architecture, repoKind, repositoryContext, type RepositoryContext } from '../contracts/architecture.js';
 import { Project, SERVICE_NAMING } from '../contracts/project.js';
 import type { ArchitectureOutput } from '../agents/outputs.js';
 import { SERVICE_SUFFIXES } from '../core/ids.js';
@@ -27,6 +27,19 @@ export function withArchitecture(project: Project, arch: Architecture): Project 
   if (arch.style === 'monolith') return Project.parse(rest);
   return Project.parse({ ...rest, services: arch.repositories.map((repo) => repo.name) });
 }
+
+/** The repositories of a stamped draft's decided architecture; undefined before the decision and for an unstamped draft. */
+export function repositoryNamesOf(state: ArchitectureState): string[] | undefined {
+  return state.repositories === true && state.architecture ? state.architecture.decision.repositories.map((r) => r.name) : undefined;
+}
+
+/** The context of the item's repository in a stamped draft's architecture; undefined when the item names none. */
+export function repositoryContextOf(state: ArchitectureState, name: string | undefined): RepositoryContext | undefined {
+  return state.repositories === true && state.architecture ? repositoryContext(state.architecture.decision, name) : undefined;
+}
+
+/** The part of the refinement state the architecture helpers read. */
+type ArchitectureState = { repositories?: boolean; architecture?: { decision: Architecture } | null };
 
 /** A stamped project takes its services from the decided architecture; before the decision it keeps what the docs gave. */
 export function projectWithArchitecture(project: Project, state: { repositories?: boolean; architecture?: { decision: Architecture } | null }): Project {

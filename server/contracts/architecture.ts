@@ -38,3 +38,19 @@ export function repoKind(name: string, style: ArchitectureStyle): RepoKind | nul
   const suffix = /-([a-z]+)$/.exec(name)?.[1];
   return SERVICE_SUFFIXES.find((kind) => kind === suffix) ?? null;
 }
+
+/** What one repository is, with the integrations that reach it: what the packs of its items carry. */
+export interface RepositoryContext {
+  name: string;
+  kind: RepoKind | null;
+  responsibility: string;
+  integrations: string[];
+}
+
+/** The context of the named repository; undefined when the architecture does not name it. */
+export function repositoryContext(arch: Architecture, name: string | undefined): RepositoryContext | undefined {
+  const repo = arch.repositories.find((r) => r.name === name);
+  if (!repo) return undefined;
+  const integrations = arch.integrations.filter((l) => l.consumer === repo.name || l.provider === repo.name).map((l) => `${l.consumer} → ${l.provider}: ${l.contract}`);
+  return { name: repo.name, kind: repoKind(repo.name, arch.style), responsibility: repo.responsibility, integrations };
+}

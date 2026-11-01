@@ -19,6 +19,8 @@ export interface SpecsIndexEntry {
   rationale: string;
   dependsOn: string[];
   sources: BacklogState['items'][number]['sources'];
+  /** Set when the item names a repository; absent otherwise, so a repository-less index keeps its bytes. */
+  repository?: string;
 }
 
 /** The ordered list of specs the agents will work through: structure only, no status, hash, run or PR. */
@@ -45,6 +47,7 @@ export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'ep
       rationale: i.rationale,
       dependsOn: i.dependsOn.map((d) => specIdOf(draftId, d, backlog.keyIds)),
       sources: i.sources,
+      ...(i.repository === undefined ? {} : { repository: i.repository }),
     }));
   return { version: 1, draftId, epics: backlog.epics, specs };
 }

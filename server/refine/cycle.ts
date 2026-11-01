@@ -19,7 +19,7 @@ import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { verifyContradictions } from './contradictions.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
-import { projectWithArchitecture } from './architecture-step.js';
+import { projectWithArchitecture, repositoryNamesOf } from './architecture-step.js';
 import { answerPack } from './answer.js';
 import { heldForOwner } from './auto-floor.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
@@ -348,7 +348,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key) })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state) })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -360,7 +360,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await failAgent('O backlog', out);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state));
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }

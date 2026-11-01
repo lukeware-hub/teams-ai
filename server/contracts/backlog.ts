@@ -26,6 +26,8 @@ export const BacklogItem = z.object({
   dependsOn: z.array(slug),
   sources: z.array(BacklogSource).min(1),
   size: z.enum(['S', 'M', 'L']),
+  /** The repository the item's spec changes: set by a stamped draft, from its architecture; absent before it. */
+  repository: slug.optional(),
 });
 export type BacklogItem = z.infer<typeof BacklogItem>;
 

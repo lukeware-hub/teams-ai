@@ -1,4 +1,5 @@
 import type { BacklogItem } from '../contracts/backlog.js';
+import type { RepositoryContext } from '../contracts/architecture.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
@@ -47,6 +48,14 @@ const dependencyLines = (item: BacklogItem, all: readonly RankedItem[]) =>
 export const citedSections = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
   item.sources.map((s) => ({ heading: `${s.doc} › ${s.heading}`, text: sectionText(docs[s.doc], s.heading) ?? '(seção não encontrada no documento)' }));
 
+/** An item's repository as the spec pack shows it: its name, its type and what it is for, and the integrations it has. */
+function repositoryLines(repo: RepositoryContext): string[] {
+  return [
+    `- repository: ${repo.name} (${repo.kind ?? 'no suffix'}): ${repo.responsibility}`,
+    ...(repo.integrations.length > 0 ? [`- integrations of this repository: ${repo.integrations.join('; ')}`] : []),
+  ];
+}
+
 /** The PO's pack for the specs of up to three backlog items: the project, each item, and each cited section once. */
 export function specPack(input: {
   specHash: string;
@@ -58,6 +67,8 @@ export function specPack(input: {
   rejection: Readonly<Record<string, readonly string[] | undefined>>;
   /** R11.7.4: for an adjustment, the started specs it changes, oldest first. */
   adjusts?: Readonly<Record<string, readonly Spec[] | undefined>>;
+  /** The repository of each item of a stamped draft, with the integrations that reach it. */
+  repositories?: Readonly<Record<string, RepositoryContext | undefined>>;
 }): ContextPackInput {
   const cited = new Map<string, string>();
   for (const i of input.batch) {
@@ -70,6 +81,7 @@ export function specPack(input: {
       `- epic: ${i.epic}; priority: ${i.priority}; rank: ${i.rank}`,
       `- scope: ${i.scope}`,
       `- rationale: ${i.rationale}`,
+      ...(input.repositories?.[i.key] ? repositoryLines(input.repositories[i.key]!) : []),
       `- sources: ${i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}`,
       'Depends on:',
       dependencyLines(i, input.all),
