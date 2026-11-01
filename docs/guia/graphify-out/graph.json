@@ -1,66 +1,6 @@
 {
   "nodes": [
     {
-      "id": "chat",
-      "label": "Chat de d\u00favidas (doc)",
-      "file_type": "document",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "chat_chat_de_duvidas",
-      "label": "Chat de d\u00favidas",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Quando o registro n\u00e3o diz algo, o chat diz que n\u00e3o est\u00e1 registrado e informa onde apareceria; ele n\u00e3o chuta a causa. S\u00f3 responde: os agentes seguem apenas as specs e o backlog."
-    },
-    {
-      "id": "chat_pesquisa_internet",
-      "label": "Pesquisa na internet do chat",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "S\u00f3 o texto gen\u00e9rico do erro sai do computador; nomes, caminhos e valores do projeto n\u00e3o saem. N\u00e3o ocorre em projetos confidenciais."
-    },
-    {
-      "id": "chat_spec_de_correcao",
-      "label": "Rascunho de spec de corre\u00e7\u00e3o",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Nada \u00e9 executado at\u00e9 o usu\u00e1rio revisar e iniciar o refinamento; respostas que pesquisaram na internet n\u00e3o abrem corre\u00e7\u00e3o."
-    },
-    {
-      "id": "chat_limpar_conversa",
-      "label": "Limpar conversa",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
       "id": "criar_projeto",
       "label": "Como criar ou importar um projeto (doc)",
       "file_type": "document",
@@ -146,7 +86,7 @@
     },
     {
       "id": "criar_spec_nova_spec",
-      "label": "Formul\u00e1rio Nova spec",
+      "label": "Formulário Nova spec",
       "file_type": "concept",
       "source_file": "criar-spec.md",
       "source_location": null,
@@ -158,7 +98,7 @@
     },
     {
       "id": "estados_e_papeis",
-      "label": "Estados e pap\u00e9is (doc)",
+      "label": "Estados e papéis (doc)",
       "file_type": "document",
       "source_file": "estados-e-papeis.md",
       "source_location": null,
@@ -194,7 +134,7 @@
     },
     {
       "id": "estados_e_papeis_tecnico",
-      "label": "Agente T\u00e9cnico (Scrum Master)",
+      "label": "Agente Técnico (Scrum Master)",
       "file_type": "concept",
       "source_file": "estados-e-papeis.md",
       "source_location": null,
@@ -218,7 +158,7 @@
     },
     {
       "id": "execucao",
-      "label": "Execu\u00e7\u00e3o (doc)",
+      "label": "Execução (doc)",
       "file_type": "document",
       "source_file": "execucao.md",
       "source_location": null,
@@ -230,7 +170,7 @@
     },
     {
       "id": "execucao_fases",
-      "label": "Fases da execu\u00e7\u00e3o (0-6)",
+      "label": "Fases da execução (0-6)",
       "file_type": "concept",
       "source_file": "execucao.md",
       "source_location": null,
@@ -326,7 +266,7 @@
     },
     {
       "id": "primeiros_passos_github",
-      "label": "GitHub (CLI, token, organiza\u00e7\u00e3o)",
+      "label": "GitHub (CLI, token, organização)",
       "file_type": "concept",
       "source_file": "primeiros-passos.md",
       "source_location": null,
@@ -382,7 +322,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Os agentes conferem se a descri\u00e7\u00e3o est\u00e1 completa e sem ambiguidade antes de gastar tempo desenvolvendo."
+      "rationale": "Os agentes conferem se a descrição está completa e sem ambiguidade antes de gastar tempo desenvolvendo."
     },
     {
       "id": "refinamento_documentos_projeto",
@@ -394,7 +334,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Em briefing.md a se\u00e7\u00e3o ## Decis\u00f5es \u00e9 mantida ao salvar ou anexar para que as respostas j\u00e1 dadas n\u00e3o se percam."
+      "rationale": "Em briefing.md a seção ## Decisões é mantida ao salvar ou anexar para que as respostas já dadas não se percam."
     },
     {
       "id": "refinamento_etapas_projeto_novo",
@@ -410,7 +350,7 @@
     },
     {
       "id": "refinamento_lista_verificacao",
-      "label": "Lista de verifica\u00e7\u00e3o",
+      "label": "Lista de verificação",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -422,7 +362,7 @@
     },
     {
       "id": "refinamento_iniciar_analise",
-      "label": "Iniciar an\u00e1lise",
+      "label": "Iniciar análise",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -430,7 +370,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Nenhuma nota ou lista de verifica\u00e7\u00e3o trava o bot\u00e3o; a an\u00e1lise nunca come\u00e7a sozinha."
+      "rationale": "Nenhuma nota ou lista de verificação trava o botão; a análise nunca começa sozinha."
     },
     {
       "id": "refinamento_limite_rodadas",
@@ -466,7 +406,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Na primeira etapa (flow.md) o Jev n\u00e3o compara documentos porque ainda n\u00e3o h\u00e1 documento anterior. Seus pontos s\u00e3o conselhos e a nota n\u00e3o impede o in\u00edcio."
+      "rationale": "Na primeira etapa (flow.md) o Jev não compara documentos porque ainda não há documento anterior. Seus pontos são conselhos e a nota não impede o início."
     },
     {
       "id": "refinamento_backlog",
@@ -482,7 +422,7 @@
     },
     {
       "id": "refinamento_arquitetura_repositorios",
-      "label": "Arquitetura e reposit\u00f3rios (mon\u00f3lito/microsservi\u00e7os)",
+      "label": "Arquitetura e repositórios (monólito/microsserviços)",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -494,7 +434,7 @@
     },
     {
       "id": "refinamento_movimentos_conteudo",
-      "label": "Movimentos de conte\u00fado",
+      "label": "Movimentos de conteúdo",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -518,7 +458,7 @@
     },
     {
       "id": "validacao",
-      "label": "Valida\u00e7\u00e3o (doc)",
+      "label": "Validação (doc)",
       "file_type": "document",
       "source_file": "validacao.md",
       "source_location": null,
@@ -530,7 +470,7 @@
     },
     {
       "id": "validacao_concluir_especificacao",
-      "label": "Concluir especifica\u00e7\u00e3o",
+      "label": "Concluir especificação",
       "file_type": "concept",
       "source_file": "validacao.md",
       "source_location": null,
@@ -566,7 +506,7 @@
     },
     {
       "id": "visao_geral",
-      "label": "Vis\u00e3o geral do Teams AI (doc)",
+      "label": "Visão geral do Teams AI (doc)",
       "file_type": "document",
       "source_file": "visao-geral.md",
       "source_location": null,
@@ -590,7 +530,7 @@
     },
     {
       "id": "visao_geral_caminho_entrega",
-      "label": "Caminho de uma entrega (Descrever\u2192Refinar\u2192Executar\u2192Validar)",
+      "label": "Caminho de uma entrega (Descrever→Refinar→Executar→Validar)",
       "file_type": "concept",
       "source_file": "visao-geral.md",
       "source_location": null,
@@ -599,19 +539,130 @@
       "author": null,
       "contributor": null,
       "rationale": null
+    },
+    {
+      "id": "chat_chat_de_duvidas",
+      "label": "Chat de dúvidas",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_execucao",
+      "label": "Execução",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_bloqueio",
+      "label": "Bloqueio",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_pergunta",
+      "label": "Pergunta",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_especificacao",
+      "label": "Especificação",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_spec_de_correcao",
+      "label": "Spec de Correção",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_documento_principal",
+      "label": "Documento Principal",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_pesquisa_internet",
+      "label": "Pesquisa na Internet",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_agente",
+      "label": "Agente",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_backlog",
+      "label": "Backlog",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "chat_projeto",
+      "label": "Projeto",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
     }
   ],
   "edges": [
-    {
-      "source": "chat",
-      "target": "chat_chat_de_duvidas",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
     {
       "source": "chat_chat_de_duvidas",
       "target": "chat_pesquisa_internet",
@@ -625,16 +676,6 @@
     {
       "source": "chat_chat_de_duvidas",
       "target": "chat_spec_de_correcao",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat_chat_de_duvidas",
-      "target": "chat_limpar_conversa",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
@@ -1461,6 +1502,116 @@
       "source_file": "visao-geral.md",
       "source_location": null,
       "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_execucao",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_bloqueio",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_pergunta",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_especificacao",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_documento_principal",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_spec_de_correcao",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_pesquisa_internet",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_chat_de_duvidas",
+      "target": "chat_projeto",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_agente",
+      "target": "chat_especificacao",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_agente",
+      "target": "chat_backlog",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
+    },
+    {
+      "source": "chat_especificacao",
+      "target": "chat_spec_de_correcao",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "chat.md",
+      "source_location": null,
+      "weight": 1
     }
   ],
   "hyperedges": [
@@ -1495,7 +1646,7 @@
     },
     {
       "id": "execution_recovery_actions",
-      "label": "Recupera\u00e7\u00e3o de execu\u00e7\u00f5es paradas",
+      "label": "Recuperação de execuções paradas",
       "nodes": [
         "execucao_pausada_por_cota",
         "execucao_aguardando_login",
