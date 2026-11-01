@@ -74,6 +74,16 @@ describe('cards and dashboard of the repositories', () => {
 });
 
 describe('blockers and history', () => {
+  it('counts a spec with a root blocked task as blocked, and gives the task and its cause in the dashboard', () => {
+    const src: RepoSource = {
+      architecture: ARCH,
+      specs: [spec('cart', 'shop-api', 'running'), spec('pay', 'shop-api', 'refining')],
+      rootBlocks: [{ specId: 'cart', taskId: 'T2-reserve', reason: 'o banco recusou a conexão' }],
+    };
+    expect(repositoryCards(src)[0]).toMatchObject({ status: 'blocked', blockers: 1 });
+    expect(repositoryDetail(src, 'shop-api')?.rootBlocks).toEqual([{ specId: 'cart', taskId: 'T2-reserve', reason: 'o banco recusou a conexão' }]);
+  });
+
   it('counts a spec the program stopped with a reason as blocked, once, and gives the reason in the dashboard', () => {
     const src: RepoSource = {
       architecture: ARCH,

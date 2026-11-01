@@ -43,6 +43,8 @@ export interface RepoSource {
   missingSecrets?: string[];
   /** The program items that stopped with a reason: a blocked, failed or partial spec. */
   programStops?: Array<{ specId: string; status: string; reason: string }>;
+  /** The root blocked tasks of each run of the project: a task blocked on its own cause, not waiting on another. */
+  rootBlocks?: Array<{ specId: string; taskId: string; reason: string }>;
 }
 
 export interface RepoCard {
@@ -64,6 +66,8 @@ export interface RepoDetail extends RepoCard {
   rows: RepoSpec[];
   /** Why each stopped spec of the repository stopped, from the program's record. */
   reasons: Array<{ specId: string; status: string; reason: string }>;
+  /** The root blocked tasks of the repository's specs, each with its own cause. */
+  rootBlocks: Array<{ specId: string; taskId: string; reason: string }>;
   questions: Array<{ itemKey: string | null; text: string }>;
   missingSecrets: string[];
 }
@@ -106,7 +110,7 @@ export function repositoryCards(src: RepoSource): RepoCard[] {
 
 /** The repository's specs, a spec the program stopped counting as blocked. */
 function rowsOf(src: RepoSource, name: string): RepoSpec[] {
-  const stopped = new Set((src.programStops ?? []).map((s) => s.specId));
+  const stopped = new Set([...(src.programStops ?? []).map((s) => s.specId), ...(src.rootBlocks ?? []).map((b) => b.specId)]);
   return src.specs.filter((s) => s.repository === name).map((s) => (stopped.has(s.specId) ? { ...s, blocked: true } : s));
 }
 
@@ -115,7 +119,7 @@ export function repositoryDetail(src: RepoSource, name: string): RepoDetail | nu
   const card = cardOf(src, name);
   const ctx = repositoryContext(src.architecture, name);
   if (!card || !ctx) return null;
-  return { ...card, integrations: ctx.integrations, rows: rowsOf(src, name), reasons: (src.programStops ?? []).filter((s) => src.specs.some((r) => r.repository === name && r.specId === s.specId)), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
+  return { ...card, integrations: ctx.integrations, rows: rowsOf(src, name), rootBlocks: (src.rootBlocks ?? []).filter((b) => src.specs.some((r) => r.repository === name && r.specId === b.specId)), reasons: (src.programStops ?? []).filter((s) => src.specs.some((r) => r.repository === name && r.specId === s.specId)), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
 }
 
 interface SpecIndexEntry {

@@ -37,6 +37,7 @@ import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, 
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
+import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
@@ -367,7 +368,14 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     }
     const present = new Set(Object.keys(await loadSecrets(ws.secrets).catch(() => ({}))));
     const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
-    return { src: { ...src, questions, missingSecrets, programStops }, runs, runsDir: runsDir(idx) };
+    // The root blocked tasks of each run: a task blocked on its own cause, read from the run's journal as it stands.
+    const rootBlocks: Array<{ specId: string; taskId: string; reason: string }> = [];
+    for (const run of runs) {
+      const events = await loadEvents(path.join(runsDir(idx), run.runId, 'events.ndjson')).catch(() => []);
+      const ids = new Set(events.flatMap((e) => (e.data.taskId === undefined ? [] : [String(e.data.taskId)])));
+      for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
+    }
+    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx) };
   };
   return [
     {
