@@ -604,7 +604,7 @@ export function RefinementView(p: ViewProps) {
       {newProject ? (
         <>
           {confidentialAsk}
-          <StageSteps views={stageViews(st)} shown={tab} onSelect={setTab} />
+          <StageSteps views={stageViews(st)} shown={tab} />
         </>
       ) : existing ? (
         <div className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
@@ -1134,7 +1134,6 @@ export function RefinementView(p: ViewProps) {
             {byDoc.map(({ file, count }) => (
               <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink">
                 <span>{docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}</span>
-                <button type="button" className="secondary h-10 px-3" onClick={() => goTo(file)}>Abrir etapa</button>
               </div>
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
@@ -1196,11 +1195,12 @@ export function RefinementView(p: ViewProps) {
               const result = await p.onCloseReview?.();
               if (result === false) return;
             }
-            goTo('backlog');
+            // The next step of the list: the architecture in a repository session, the backlog otherwise.
+            goTo(nextWizardStep('review', stepsOf(st)) ?? 'backlog');
           }}
           icon={<Icon name="arrow-right" size={16} />}
         >
-          Abrir backlog e execução
+          {st.repositories === true ? 'Continuar' : 'Abrir backlog e execução'}
         </ActionButton>
       ) : (
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
@@ -1240,7 +1240,7 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
-          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => goTo(key as WizardStep)} />}
+          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" />}
           stepKey={step}
           meta={usageLine}
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
@@ -1343,9 +1343,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {error ? <p className="error">{error}</p> : <Loading />}
     </main>
   );
+  // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
-    return f().catch((e: Error) => setError(e.message));
+    return f().catch((e: Error) => {
+      setError(e.message);
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    });
   };
   // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.
   const startWith = (summaryHash?: string) => act(() => {
