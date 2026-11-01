@@ -13,7 +13,8 @@ import type { FailureKind } from '../scheduler/retry-policy.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
-import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from './guide.js';
+import type { MainDoc } from '../git/main-docs.js';
+import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import { needsLabels, withRecordPointer } from './answer.js';
 import { withSources } from './sources.js';
@@ -63,6 +64,8 @@ export interface ChatDeps {
   newSpec: (projectId: string, specId: string, description: string) => Promise<unknown>;
   /** Builds the project graph the chat queries again from the graphs its repositories already have. */
   refreshProjectGraph?: (projectId: string) => Promise<void>;
+  /** The project's five main documents as the chat may search them; a failure gives none. */
+  docs?: (projectId: string) => Promise<MainDoc[]>;
   /** Whether the project is confidential, so the chat may not search the web about it. A check that fails counts as confidential; without a check there is no search. */
   confidential?: (projectId: string) => Promise<boolean>;
   now?: () => Date;
@@ -119,7 +122,8 @@ export class ChatService {
       if (!context) throw new NotFoundError(`projeto ${projectId} não encontrado`);
       const history = await this.deps.store.read(projectId);
       const at = (this.deps.now?.() ?? new Date()).toISOString();
-      const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
+      const documents = (await this.deps.docs?.(projectId)) ?? [];
+      const input = { context: context.text, name: context.name, specIds: context.specIds, details: context.details, documents, history, opened: history.flatMap((m) => (m.correction?.specId ? [m.correction.title] : [])), question };
       let result = await this.run(projectId, input, controller.signal);
       // A question about what happened gets the labelled answer; up to two more tries, so a repeat costs at most two more questions.
       for (let tries = 1; tries < 3 && needsLabels(question, result.value.answer); tries++) result = await this.run(projectId, input, controller.signal);
@@ -156,7 +160,7 @@ export class ChatService {
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
-  private async run(projectId: string, input: { context: string; name: string; specIds: readonly string[]; details: ReadonlyMap<string, string>; history: readonly ChatMessage[]; opened: readonly string[]; question: string }, signal: AbortSignal): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; searched: boolean }> {
+  private async run(projectId: string, input: { context: string; name: string; specIds: readonly string[]; details: ReadonlyMap<string, string>; documents: readonly MainDoc[]; history: readonly ChatMessage[]; opened: readonly string[]; question: string }, signal: AbortSignal): Promise<{ value: ChatOutput; usage: ChatUsage | undefined; searched: boolean }> {
     // The same for every question of a project: the hash sits above the project context in the prompt, and a prompt that starts the same way is read from the cache instead of paid for again.
     const specHash = sha256(canonicalJson({ kind: 'chat', projectId }));
     // The web search needs a check that the project is not confidential; a check that fails, or none, means no search.
@@ -168,6 +172,7 @@ export class ChatService {
     try {
       await stageChatFiles(cwd, this.deps.guideDir);
       await stageFailureDetails(cwd, input.details);
+      await stageProjectDocs(cwd, input.documents);
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);

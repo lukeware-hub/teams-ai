@@ -3,10 +3,38 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageFailureDetails, stageProjectGraph } from '../../server/chat/guide.js';
+import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from '../../server/chat/guide.js';
 
 const GUIDE = path.resolve('docs/guia');
 const hasGraphify = spawnSync('graphify', ['--version']).status === 0;
+
+describe('the project documents the chat searches', () => {
+  it('writes each document that main has under documentos/, and no file for one it does not', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-chat-docs-'));
+    try {
+      await stageProjectDocs(cwd, [
+        { file: 'project.md', text: 'Projeto' },
+        { file: 'briefing.md', text: null },
+        { file: 'design.md', text: 'Design' },
+      ]);
+      expect(await fs.readFile(path.join(cwd, 'documentos', 'project.md'), 'utf8')).toBe('Projeto');
+      expect(await fs.readFile(path.join(cwd, 'documentos', 'design.md'), 'utf8')).toBe('Design');
+      expect(await fs.readdir(path.join(cwd, 'documentos'))).toEqual(['design.md', 'project.md']);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('creates no folder when no document is there', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-chat-docs-'));
+    try {
+      await stageProjectDocs(cwd, [{ file: 'project.md', text: null }]);
+      await expect(fs.access(path.join(cwd, 'documentos'))).rejects.toThrow();
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('the user guide the chat searches', () => {
   it('has a graph built from its current text (run `task guia:grafo` after editing docs/guia)', async () => {

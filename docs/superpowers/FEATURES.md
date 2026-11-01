@@ -125,3 +125,10 @@ Status: built 2026-10-31 (plan 117), pending the owner's check on a real run.
 - The chat answers a question about a problem in three parts: what is happening, why (the recorded cause and who must act), and what the person can do. A fact the record does not hold is said to be missing, with the record that would hold it.
 - One web search per question, to explain a recorded error, for projects the owner has not marked confidential. The answer lists its sources and never opens a correction.
 - Agent records are more complete: a failed gate keeps its exit code and the end of its output, an environment failure reruns under its own name and keeps its cause, a timed-out step says how it ended, and a replan opens with the recorded cause.
+
+## 17. The chat reads the five main documents of the project
+
+Status: in progress (plan 118), draft pull request.
+
+- The Help chat can answer questions about the project's five main documents (vision, briefing, stack, flow and design). Each question gets the documents main has, as searchable files in its working folder, and nothing is loaded into the prompt.
+- The chat answers from the project graph first and searches the file text only when the graph does not cover the question.

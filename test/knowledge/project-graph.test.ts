@@ -61,5 +61,25 @@ describe('buildProjectGraph', () => {
     expect(lines.filter((line) => line.startsWith('update'))).toHaveLength(1);
     expect(lines.find((line) => line.startsWith('merge-graphs'))).toContain('audit-service');
   });
+
+  it('scans the five main documents with the project description, and drops a document that main no longer has', async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'project-graph-'));
+    const ws = workspacePaths({ paths: { workspaces: root, runs: path.join(root, 'runs') } } as unknown as Config, 'kayron-hub');
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    await fs.mkdir(path.join(ws.graph, 'project-info'), { recursive: true });
+    await fs.writeFile(path.join(ws.graph, 'project-info', 'flow.md'), 'fluxo removido do main');
+
+    await mergeProjectGraph(graphify, ws, project, [], [
+      { file: 'design.md', text: 'Tokens de cor' },
+      { file: 'stack.md', text: null },
+    ]);
+
+    const info = path.join(ws.graph, 'project-info');
+    expect(await fs.readFile(path.join(info, 'design.md'), 'utf8')).toBe('Tokens de cor');
+    expect(await fs.readFile(path.join(info, 'projeto.md'), 'utf8')).toContain('Kayron Hub');
+    await expect(fs.access(path.join(info, 'stack.md'))).rejects.toThrow();
+    await expect(fs.access(path.join(info, 'flow.md'))).rejects.toThrow();
+  });
 });
 
