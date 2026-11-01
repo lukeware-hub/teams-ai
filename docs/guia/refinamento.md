@@ -52,14 +52,6 @@ A linha **Alinhado com os outros documentos** diz se o documento da etapa bate c
 
 Na primeira etapa (flow.md), o Jev não compara documentos, porque ainda não há documento anterior. Em um projeto confidencial, o Jev não lê nenhum documento.
 
-## Repositórios
-
-Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura diz se o sistema é **um monólito** (um repositório com o nome do projeto) ou **microsserviços** (um repositório por serviço, com o sufixo do tipo: `-api`, `-jobs`, `-web`, `-mobile` ou `-workflow`). Cada repositório cita um trecho dos documentos que o justifica.
-
-- A etapa **Arquitetura** decide o estilo a partir dos cinco documentos. Se os documentos mudarem depois, a decisão aparece como desatualizada e você decide de novo.
-- O backlog agrupa as specs pelo repositório que cada uma muda. Uma funcionalidade que atravessa repositórios vira uma spec por repositório, com a dependência do consumidor para o provedor.
-- Antes de iniciar, o **Resumo do refinamento** mostra sete verificações, a contagem de specs, planos e tarefas por repositório, e as premissas assumidas. O início só funciona com o resumo que você leu.
-
 ## Movimentos de conteúdo
 
 Quando um agente encontra um trecho no documento errado (por exemplo, a ordem de passos dentro do design.md), ele move o trecho para o documento certo e avisa no topo da tela. **Desfazer** devolve os dois documentos ao texto anterior, enquanto nenhum deles mudou depois do movimento. **Fechar** só esconde o aviso; o movimento continua valendo.
