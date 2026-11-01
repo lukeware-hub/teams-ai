@@ -83,6 +83,7 @@ describe('architecture pack', () => {
 
   it('leaves out the optional blocks when there is nothing to put in them', () => {
     const pack = architecturePack({ specHash: docsHashOf(DOCS), principles: [], docs: DOCS, graphContext: '', existingServices: [], answers: [] });
+    expect(pack.feedback).toContain('Several applications are not microservices by themselves.');
     expect(pack.feedback).not.toContain('Graph context');
     expect(pack.feedback).not.toContain('Owner answers');
     expect(pack.feedback).not.toContain('Existing services');
