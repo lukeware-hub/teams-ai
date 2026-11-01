@@ -61,7 +61,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
     : epics;
   return (
     <div className="my-4 grid gap-1" data-testid="backlog-on">
-      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${byRepository ? groups.length + ' repositórios' : epics.length + ' épicos'}` : ''}<InfoTip text={HELP} /></h3>
+      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} ${backlog.items.length === 1 ? 'spec' : 'specs'} em ${byRepository ? groups.length + (groups.length === 1 ? ' repositório' : ' repositórios') : epics.length + (epics.length === 1 ? ' épico' : ' épicos')}` : ''}<InfoTip text={HELP} /></h3>
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {groups.map((epic) => (
         <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`${byRepository ? 'repo' : 'epic'}-${epic.key}`}>

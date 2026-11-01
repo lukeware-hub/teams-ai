@@ -24,9 +24,13 @@ export function derivePack(input: {
     project: z.toJSONSchema(Project, { target: 'draft-07', io: 'input' }),
     spec: z.toJSONSchema(Spec, { target: 'draft-07', io: 'input' }),
   };
+  // A stamped draft's services come from its architecture, so the naming rule stays out of its pack.
+  const servicesClause = input.repositories
+    ? 'In project.json, `services` is left out, because the architecture names the repositories; '
+    : 'In project.json, `services` lists the services the docs split the system into (one repository each; ' + SERVICE_NAMING + ') and stays out when they describe one application; ';
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
     ...(input.repositories ? [`The architecture names these repositories: ${input.repositories.join(', ')}. Set spec.repository to the one the spec changes, exactly as written here.`] : []),
-    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. In project.json, \`services\` lists the services the docs split the system into (one repository each; ${SERVICE_NAMING}) and stays out when they describe one application; \`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives; \`platform\` stays out too when \`services\` does, since a single application keeps the containers it needs in its own docker-compose.yml. Invent neither.`,
+    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. ${servicesClause}\`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives; \`platform\` stays out too when \`services\` does, since a single application keeps the containers it needs in its own docker-compose.yml. Invent neither.`,
     'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',

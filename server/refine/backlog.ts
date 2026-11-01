@@ -24,8 +24,11 @@ const RULES = [
   '- key: a short lowercase slug of at most 40 characters, the same limit for every epic key and every dependsOn entry. dependsOn repeats the exact key of another item, never its title. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
-  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ' + SERVICE_NAMING,
+  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ',
 ].join('\n');
+
+/** The backlog rules; a stamped draft's services come from its architecture, so the naming rule stays out of its pack. */
+const rulesFor = (repositories: readonly string[] | undefined): string => (repositories ? RULES.trimEnd() : RULES + SERVICE_NAMING);
 
 export function backlogPack(input: {
   specHash: string;
@@ -47,7 +50,7 @@ export function backlogPack(input: {
   const started = new Set(input.started);
   const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
-    RULES,
+    rulesFor(input.repositories),
     ...(input.repositories ? [repositoryRules(input.repositories)] : []),
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
