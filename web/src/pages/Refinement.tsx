@@ -36,7 +36,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -403,7 +403,6 @@ export function RefinementView(p: ViewProps) {
   const stageStep = newProject ? stageAction(st) : null;
   const backlogBlock = (
     <>
-      {st.repositories === true && <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating} onDecide={() => void p.onDecideArchitecture?.()} />}
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
       {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
@@ -1168,6 +1167,17 @@ export function RefinementView(p: ViewProps) {
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
   const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
+  // The architecture step: the decision of the five documents, and Continuar once it is current.
+  const architectureDecided = st.architecture != null && snap.architectureStale !== true;
+  const architectureScreen = () => (
+    <div className="grid min-w-0 gap-4" data-testid="architecture-step">
+      <header className="grid gap-1">
+        <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
+        <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
+      </header>
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating} onDecide={() => void p.onDecideArchitecture?.()} />
+    </div>
+  );
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
@@ -1196,6 +1206,10 @@ export function RefinementView(p: ViewProps) {
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
     </>
+  ) : step === 'architecture' ? (
+    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided} title={architectureDecided ? undefined : 'Decida a arquitetura antes de quebrar o backlog.'} onClick={() => goTo('backlog')} icon={<Icon name="arrow-right" size={16} />}>
+      Quebrar o backlog por repositório
+    </ActionButton>
   ) : (
     <>
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
@@ -1214,7 +1228,7 @@ export function RefinementView(p: ViewProps) {
             const result = await p.onContinueStage?.(step);
             if (result === false) return;
           }
-          goTo(nextWizardStep(step));
+          goTo(nextWizardStep(step, stepsOf(st)));
         }}
         icon={<Icon name="arrow-right" size={16} />}
       >
@@ -1229,10 +1243,10 @@ export function RefinementView(p: ViewProps) {
           stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => goTo(key as WizardStep)} />}
           stepKey={step}
           meta={usageLine}
-          back={{ onClick: () => goTo(prevStep(step)), disabled: prevStep(step) === null, reason: 'Esta é a primeira etapa' }}
+          back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : stageScreen(step)}
+          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
         </WizardShell>
         {reevaluateDialog}
         {askDialog}

@@ -7,17 +7,20 @@ type State = Snapshot['state'];
 type DocFile = (typeof DOC_STAGES)[number];
 
 /** One screen per document, then the final review, then the backlog. */
-export type WizardStep = DocFile | 'review' | 'backlog';
+export type WizardStep = DocFile | 'review' | 'architecture' | 'backlog';
 export const WIZARD_STEPS: readonly WizardStep[] = [...DOC_STAGES, 'review', 'backlog'];
+/** A repository session has the architecture step between the review and the backlog; any other draft keeps the steps above. */
+export const stepsOf = (st: { repositories?: boolean }): readonly WizardStep[] => (st.repositories === true ? [...DOC_STAGES, 'review', 'architecture', 'backlog'] : WIZARD_STEPS);
 
-export const isDocStep = (step: WizardStep): step is DocFile => step !== 'review' && step !== 'backlog';
+export const isDocStep = (step: WizardStep): step is DocFile => step !== 'review' && step !== 'architecture' && step !== 'backlog';
 
 /** The step as the address writes it: the document name, `revisao` for the review, `backlog` for the backlog. */
-export const stepParam = (step: WizardStep): string => (step === 'review' ? 'revisao' : step);
+export const stepParam = (step: WizardStep): string => (step === 'review' ? 'revisao' : step === 'architecture' ? 'arquitetura' : step);
 
 export function parseStep(value: string | null): WizardStep | null {
   if (value === 'revisao') return 'review';
   if (value === 'backlog') return 'backlog';
+  if (value === 'arquitetura') return 'architecture';
   return (DOC_STAGES as readonly string[]).includes(value ?? '') ? (value as DocFile) : null;
 }
 
@@ -30,20 +33,21 @@ export function initialStep(st: Pick<State, 'stages' | 'doneStages'>, param: str
   return DOC_STAGES.find((file) => !done.has(file)) ?? 'review';
 }
 
-export const prevStep = (step: WizardStep): WizardStep | null => WIZARD_STEPS[WIZARD_STEPS.indexOf(step) - 1] ?? null;
-export const nextStep = (step: WizardStep): WizardStep | null => WIZARD_STEPS[WIZARD_STEPS.indexOf(step) + 1] ?? null;
+export const prevStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) - 1] ?? null;
+export const nextStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) + 1] ?? null;
 
 /** The stepper's nodes: state only, never a score. A stage session reads done from the journal; a project with no stages reads it from the position. */
-export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedDocs' | 'staleBy' | 'reviewClosed'>, current: WizardStep): StepperStep[] {
+export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedDocs' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture'>, current: WizardStep): StepperStep[] {
   const done = new Set(st.doneStages ?? []);
-  const at = WIZARD_STEPS.indexOf(current);
-  return WIZARD_STEPS.map((step, index) => {
+  const steps = stepsOf(st);
+  const at = steps.indexOf(current);
+  return steps.map((step, index) => {
     const doc = isDocStep(step) ? step : null;
     const outdated = doc !== null && (st.outdatedDocs?.includes(doc) === true || st.staleBy?.[doc] !== undefined);
-    const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true);
+    const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true) || (step === 'architecture' && st.architecture != null);
     return {
       key: step,
-      label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Revisão' : 'Backlog',
+      label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Revisão' : step === 'architecture' ? 'Arquitetura' : 'Backlog',
       state: step === current ? 'active' : isDone ? 'done' : 'todo',
       ...(outdated ? { marker: 'desatualizado' } : {}),
     };
