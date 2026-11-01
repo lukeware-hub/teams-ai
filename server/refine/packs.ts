@@ -9,6 +9,7 @@ import { buildWithDocs, DIGEST_NOTE, docDigest, MAX_DOCS_TOKENS } from './docs-v
 import { DOC_REL, type DocFile, flowTemplate, stackTemplate } from './draft.js';
 import type { BacklogState, FindingRow, MoveRow, PatchRow, QuestionRow } from './state.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
+import { skillClause } from './superpowers-pack.js';
 
 /** A stack.md or flow.md that is still the blank template is filled by the SM in one patch each; nobody is asked about a placeholder. */
 /** From the second cycle on a review converges: only defects block the spec (live: Front polished design.md for 8 cycles). */
@@ -189,6 +190,8 @@ export function refinePack(input: {
   projectBriefing?: boolean;
   /** The cycle under review: a detailed backlog carries the full JSON of the items derived in it. */
   cycle?: number;
+  /** A repository session: the product owner reads the documents with the brainstorming skill. */
+  stamped?: boolean;
 }): ContextPackInput {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
@@ -206,6 +209,7 @@ export function refinePack(input: {
         ? `Review flow.md as something to build: its states, events, order and dependencies must be implementable as written. Ask a question or propose a patch when a step is missing or cannot be built.`
         : 'flow.md is context for you: do not review it.',
     ...(input.role === 'po' ? [NO_CONTRADICTIONS_RULE] : []),
+    ...(input.role === 'po' && input.stamped ? [`- ${skillClause('superpowers:brainstorming')} Use it to read the document for scope gaps and contradictions.`] : []),
     input.role === 'front'
       ? `Treat design.md as the frontend source of truth. Validate distinctive web and mobile direction, responsive states, accessibility, keyboard focus, reduced motion, touch targets, and consistency with project.md, ${brief}, stack.md, and flow.md. Reject generic AI-looking UI choices and propose a precise patch when design.md is incomplete or contradictory. A process order, business rule, endpoint or technology written in design.md is a move to the document that holds it, not a patch. A patch never replaces or deletes such a line, and never rewrites its meaning as visual wording. A visual value written in the briefing (a color, size or contrast) is a move to design.md too; a contrast conflict it causes is a finding on top of that move. Before a patch, read design.md as it stands now: a rule already written there, including a line moved into it in this cycle, is replaced, never written a second time. Write every new design.md heading, description, label, and patch reason in Brazilian Portuguese; preserve only technical identifiers, file names, code, and color tokens.`
       : `design.md is Front's: read it as context, never ask about it or patch it. Report it only as a contradiction with another document.`,

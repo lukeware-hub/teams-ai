@@ -489,6 +489,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         role,
         pack: fitPackBudget(refinePack({
           role,
+          stamped: journal.state.repositories === true,
           specHash: hash,
           principles: deps.principles(),
           specId: draft.specId,
