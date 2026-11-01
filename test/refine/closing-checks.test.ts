@@ -57,6 +57,11 @@ function greenState(): RefineState {
 const failing = (state: RefineState, architectureCurrent = true) => closingChecks(state, architectureCurrent).filter((c) => !c.ok).map((c) => c.id);
 
 describe('closing checks of a repository session', () => {
+  it('names the failing checklist items when the document checklist is red, so a contradiction reads as such', () => {
+    const state = { ...greenState(), checklist: [{ id: 'po.no-contradictions', role: 'po', passed: false, detail: '1 divergência' }] } as never;
+    expect(closingChecks(state, true).find((c) => c.id === 'questions')?.detail).toBe('o checklist do documento não está verde: po.no-contradictions');
+  });
+
   it('passes all seven when the documents, the architecture, the specs, the plans and the tasks are in place', () => {
     const checks = closingChecks(greenState(), true);
     expect(checks.map((c) => c.id)).toEqual(['documents', 'architecture', 'specs', 'plans', 'tasks', 'dependencies', 'questions']);

@@ -60,9 +60,14 @@ describe('cards and dashboard of the repositories', () => {
 
   it('gives one card per repository, in the order the architecture names them', () => {
     expect(repositoryCards(src)).toEqual([
-      { name: 'shop-api', kind: 'api', responsibility: 'Sells', status: 'blocked', specs: 2, plans: 2, tasks: 5, tasksDone: 3, blockers: 1 },
-      { name: 'shop-web', kind: 'web', responsibility: 'Shows', status: 'refining', specs: 1, plans: 0, tasks: 1, tasksDone: 0, blockers: 0 },
+      { name: 'shop-api', kind: 'api', responsibility: 'Sells', status: 'blocked', specs: 2, plans: 2, tasks: 5, tasksDone: 3, fixes: 0, deployFixes: 0, blockers: 1 },
+      { name: 'shop-web', kind: 'web', responsibility: 'Shows', status: 'refining', specs: 1, plans: 0, tasks: 1, tasksDone: 0, fixes: 0, deployFixes: 0, blockers: 0 },
     ]);
+  });
+
+  it('counts the fix and deploy-fix tasks of a repository apart from its planned tasks', () => {
+    const src: RepoSource = { architecture: ARCH, specs: [{ ...spec('cart', 'shop-api', 'done', { plan: true, tasks: 3 }), fixes: 2, deployFixes: 1 }] };
+    expect(repositoryCards(src)[0]).toMatchObject({ tasks: 3, fixes: 2, deployFixes: 1 });
   });
 
   it('gives the dashboard of a repository with its integrations, and nothing for a name the architecture does not give', () => {

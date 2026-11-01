@@ -358,11 +358,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
     // The root blocked tasks of each run: a task blocked on its own cause, read from the run's journal as it stands.
     const rootBlocks: Array<{ specId: string; taskId: string; reason: string }> = [];
+    // The fix and deploy-fix tasks the orchestrator added to each spec's runs, counted apart from the planned tasks.
+    const added = new Map<string, { fixes: number; deployFixes: number }>();
     for (const run of runs) {
       const events = await loadEvents(path.join(runsDir(idx), run.runId, 'events.ndjson')).catch(() => []);
+      const count = added.get(run.specId) ?? { fixes: 0, deployFixes: 0 };
+      for (const e of events) for (const t of Array.isArray(e.data.tasks) ? (e.data.tasks as Array<{ origin?: string }>) : []) {
+        if (t.origin === 'fix') count.fixes += 1;
+        if (t.origin === 'deploy-fix') count.deployFixes += 1;
+      }
+      added.set(run.specId, count);
       const ids = new Set(events.flatMap((e) => (e.data.taskId === undefined ? [] : [String(e.data.taskId)])));
       for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
     }
+    src.specs = src.specs.map((spec) => ({ ...spec, ...(added.get(spec.specId) ?? { fixes: 0, deployFixes: 0 }) }));
     return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx) };
   };
   return [

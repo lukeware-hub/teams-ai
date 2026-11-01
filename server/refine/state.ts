@@ -328,6 +328,8 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
   const gaps = s.backlog ? coverageGaps(s.backlog) : [];
   const blocking = s.questions.filter((q) => q.status === 'pending' && q.blocking).length;
   const green = allGreen(s.checklist);
+  // A red checklist names its failing checks, so a contradiction between documents reads as such to the owner.
+  const red = s.checklist.filter((c) => !c.passed).map((c) => c.id);
   return [
     { id: 'documents', ok: open.length === 0, detail: open.length === 0 ? 'os cinco documentos estão concluídos e no grafo' : `faltam: ${open.join(', ')}` },
     { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
@@ -335,7 +337,7 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
     { id: 'plans', ok: noPlan.length === 0, detail: noPlan.length === 0 ? 'cada item tem o seu plano' : `sem plano: ${noPlan.join(', ')}` },
     { id: 'tasks', ok: noTasks.length === 0, detail: noTasks.length === 0 ? 'cada item tem a sua lista de tarefas' : `sem lista de tarefas: ${noTasks.join(', ')}` },
     { id: 'dependencies', ok: dangling.length === 0, detail: dangling.length === 0 ? 'todas as dependências existem' : `dependência inexistente: ${dangling.join(', ')}` },
-    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : 'o checklist do documento não está verde' },
+    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : `o checklist do documento não está verde: ${red.join(', ')}` },
   ];
 }
 

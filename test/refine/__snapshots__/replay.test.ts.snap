@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`replay of a live refinement journal > reduces a journal written by a live run to the same state it had when recorded 1`] = `
+{
+  "architectureStyle": "monolith",
+  "backlogEnabled": true,
+  "cycle": 31,
+  "doneStages": [
+    "flow.md",
+    "project.md",
+    "briefing.md",
+    "stack.md",
+    "design.md",
+  ],
+  "graphed": [
+    "flow.md",
+    "stack.md",
+  ],
+  "mode": "new-project",
+  "pendingBlocking": 0,
+  "repositories": true,
+  "stages": true,
+  "status": "drafting",
+}
+`;

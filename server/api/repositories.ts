@@ -30,6 +30,10 @@ export interface RepoSpec {
   dependsOn: string[];
   plan: boolean;
   tasks: number;
+  /** Fix tasks the orchestrator added in the spec's runs (Phase 4), counted apart from the planned tasks. */
+  fixes?: number;
+  /** Deploy-fix tasks the orchestrator added in the spec's runs (Phase 5), counted apart from the planned tasks. */
+  deployFixes?: number;
   /** The spec's run needs the owner: a run blocked, deadlocked or failed in its phase. */
   blocked: boolean;
 }
@@ -57,6 +61,10 @@ export interface RepoCard {
   tasks: number;
   /** Tasks of the specs delivered on main: a task counts done when its spec is done. */
   tasksDone: number;
+  /** Fix tasks of the repository's runs, apart from the planned tasks. */
+  fixes: number;
+  /** Deploy-fix tasks of the repository's runs, apart from the planned tasks. */
+  deployFixes: number;
   /** Specs paused on a blocker (quota or authentication). */
   blockers: number;
 }
@@ -99,6 +107,8 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
     plans: rows.filter((r) => r.plan).length,
     tasks: rows.reduce((sum, r) => sum + r.tasks, 0),
     tasksDone: delivered.reduce((sum, r) => sum + r.tasks, 0),
+    fixes: rows.reduce((sum, r) => sum + (r.fixes ?? 0), 0),
+    deployFixes: rows.reduce((sum, r) => sum + (r.deployFixes ?? 0), 0),
     blockers: rows.filter((r) => r.blocked || r.status.startsWith('paused:')).length + questions,
   };
 }

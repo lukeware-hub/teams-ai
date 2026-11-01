@@ -172,6 +172,18 @@ describe('architecture decision of a repository session', () => {
     await s.close();
   });
 
+  it('a restart during the architecture decision does not leave the session evaluating', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await completeStages(s);
+    const seq = s.events.length + 1;
+    await s.close();
+    await fs.appendFile(draft().events, `${JSON.stringify({ seq, at: new Date().toISOString(), runId: 'hello-app/hello-001', specHash: 'draft', type: 'REFINE_EVALUATION_STARTED', kind: 'fact', data: {} })}
+`);
+    const again = await RefineSession.open({ ...deps(), extractDocs });
+    expect(again.state.status).not.toBe('evaluating');
+    await again.close();
+  });
+
   it('refuses the decision in a draft that was not stamped with the repository flow', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: false });
     await expect(s.decideArchitecture()).rejects.toThrow('só um refinamento com repositórios decide a arquitetura');
