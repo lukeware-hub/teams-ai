@@ -40,6 +40,15 @@ describe('a follow-on draft of a project with an architecture', () => {
     await s.close();
   });
 
+  it.each(['continue', 'backlog'] as const)('stamps a %s draft from the architecture its main copy holds', async (mode) => {
+    await fs.writeFile(path.join(draft().root, 'docs', 'architecture.json'), JSON.stringify(ARCHITECTURE));
+    if (mode === 'continue') await fs.writeFile(draft().specJson, JSON.stringify(makeSpec()));
+    const s = await RefineSession.create(deps(), mode, { repositories: true });
+    expect(s.state.repositories).toBe(true);
+    expect(s.state.architecture?.decision).toMatchObject({ style: 'monolith' });
+    await s.close();
+  });
+
   it('keeps an unstamped follow-on draft as it was when main has no architecture', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     expect(s.state.repositories).not.toBe(true);
