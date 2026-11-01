@@ -22,11 +22,13 @@ import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
 import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, syncWithMain, type Draft, type RouteReport } from './draft.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
-import { ConflictError, NotFoundError, RefineSession } from './session.js';
+import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
+  /** Whether a new project takes the repository flow; the server default is REPOSITORY_FLOW, a test that predates it passes false. */
+  repositoryFlow?: boolean;
   /** Extracts the documents of a folder into a graph folder for a repository session (plan increment B). */
   extractDocs?: (dir: string, outDir: string) => Promise<void>;
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
@@ -111,7 +113,9 @@ export class SessionRegistry {
       const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
       // A follow-on draft is a repository session when main holds the architecture its documents came from.
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
-      return create ? RefineSession.create(deps, create, architecture ? { repositories: true } : {}) : RefineSession.open(deps);
+      // A new project follows the rollout flag; a follow-on draft is stamped only when main holds its architecture.
+      const stamp = create === 'new-project' ? (this.deps.repositoryFlow ?? REPOSITORY_FLOW) : architecture;
+      return create ? RefineSession.create(deps, create, { repositories: stamp === true }) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
     // Only drop the entry this attempt added: a later attempt's entry must survive this one failing.

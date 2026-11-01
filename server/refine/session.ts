@@ -49,7 +49,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 /** The rollout switches new projects onto the repository flow (plan increment K); until then a session is created without the stamp. */
-export const REPOSITORY_FLOW = false;
+export const REPOSITORY_FLOW = true;
 
 export class ConflictError extends Error {}
 /** The draft is held by a run, a start or a discard: the caller tries again later. */

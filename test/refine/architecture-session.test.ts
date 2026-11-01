@@ -173,7 +173,7 @@ describe('architecture decision of a repository session', () => {
   });
 
   it('refuses the decision in a draft that was not stamped with the repository flow', async () => {
-    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: false });
     await expect(s.decideArchitecture()).rejects.toThrow('só um refinamento com repositórios decide a arquitetura');
     await s.close();
   });

@@ -102,6 +102,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   registry = new SessionRegistry({
+    repositoryFlow: false,
     cfg: async () => (await readUserConfig(home)).cfg,
     home,
     runAgent: ((req, ctx) => {

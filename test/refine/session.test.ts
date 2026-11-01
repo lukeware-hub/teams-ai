@@ -47,7 +47,7 @@ afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
 describe('RefineSession confidentiality answer', () => {
   it('a new project starts unanswered in the stages, and the owner answer is journaled', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     expect(s.state.stages).toBe(true);
     expect(s.state.confidential).toBeUndefined();
     await s.answerConfidentiality(false);
@@ -59,7 +59,7 @@ describe('RefineSession confidentiality answer', () => {
 
 describe('RefineSession', () => {
   it('backlog mode moves the brief to the target project docs/briefing.md, and a reopen finishes an interrupted move', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const brief = await readDoc(draft(), 'briefing.md');
     await s.enableBacklog();
     expect(await fs.readFile(`${draft().docs}/briefing.md`, 'utf8')).toBe(brief);
@@ -94,7 +94,7 @@ describe('RefineSession', () => {
   });
 
   it('evaluates: derive, PO and SM, questions merged blocking-first, patches proposed or discarded, no secrets item', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q1', text: 'Which DB?', blocking: false, relatedAcIds: [] }], [{ file: 'docs/project.md', find: '## Vision', replace: '## Product vision', reason: 'clearer' }, { file: 'docs/project.md', find: 'nope', replace: 'x', reason: 'r' }])];
     script['refine/sm'] = [refineOut(green(SM), [{ id: 'q2', text: 'which db?', blocking: true, relatedAcIds: [] }, { id: 'q3', text: 'Port?', blocking: true, relatedAcIds: [] }])];
@@ -117,7 +117,7 @@ describe('RefineSession', () => {
     const s = await RefineSession.create({
       ...base,
       frontAgent: makeFakeRunAgent(script),
-    }, 'new-project');
+    }, 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
     script['refine/po'] = [refineOut(green(PO))];
@@ -205,7 +205,7 @@ describe('RefineSession', () => {
   });
 
   it('a new project is healed once its final review is closed, and a draft being discarded is busy and starts no run', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     expect(s.healView()).toMatchObject({ staged: true });
     await s.closeReview();
     expect(s.healView()).toMatchObject({ staged: false });
@@ -243,7 +243,7 @@ describe('RefineSession', () => {
   });
 
   it("journals the owner's mark that the documents already answered a question, the label the routing eval reads", async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -257,7 +257,7 @@ describe('RefineSession', () => {
   it('starts no cycle when the evaluation is aborted while the floor is read', async () => {
     let release!: (floor: number | undefined) => void;
     const reading = new Promise<number | undefined>((resolve) => { release = resolve; });
-    const s = await RefineSession.create({ ...deps(), autoAnswerFloor: () => reading } as never, 'new-project');
+    const s = await RefineSession.create({ ...deps(), autoAnswerFloor: () => reading } as never, 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     const evaluating = s.evaluate();
     const aborting = s.abort();
@@ -271,7 +271,7 @@ describe('RefineSession', () => {
   it('reads the auto answer floor at each evaluation, and the next cycle sees the answer a role gave from the docs', async () => {
     let floor: number | undefined = 0.9;
     const decider = { decide: async (id: string) => (id === 'question-routing' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { route: { type: 'choice' as const, value: 'auto', probabilities: { auto: 0.95 }, confidence: 0.95 } } } : { answered: false as const, reason: 'disabled' as const }) };
-    const s = await RefineSession.create({ ...deps(), decider: decider as never, autoAnswerFloor: async () => floor } as never, 'new-project');
+    const s = await RefineSession.create({ ...deps(), decider: decider as never, autoAnswerFloor: async () => floor } as never, 'new-project', { repositories: false });
     script['derive/po'] = [derived, derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }]), refineOut(green(PO), [{ id: 'q2', text: 'Name?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
@@ -288,7 +288,7 @@ describe('RefineSession', () => {
 
   // Plan 90 review: the answers given before the backlog was on reach the briefing too, since no agent records one now.
   it('writes into the briefing the answers given before the backlog was turned on, and nothing while it is a single spec', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -357,7 +357,7 @@ describe('RefineSession', () => {
   });
 
   it('accept applies the patch and marks stale; a stale find is dropped with a conflict; the file is untouched', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## V', reason: 'r' }, { file: 'docs/project.md', find: '## Personas', replace: '## People', reason: 'r' }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -372,7 +372,7 @@ describe('RefineSession', () => {
   });
 
   it('a save states the hash it was typed over: a file another change moved since is a conflict that keeps its text', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const snap = await s.snapshot();
     expect(snap.hashes['project.md']).toBe(sha256(snap.docs['project.md']));
     const saved = await s.saveDoc('project.md', '# Hello\n\n## Mine\n', snap.hashes['project.md']);
@@ -383,7 +383,7 @@ describe('RefineSession', () => {
   });
 
   it('accepting a patch drops the pending patches it made stale, with a message in Portuguese', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     // flow.md is the one document both PO and SM may patch, so the overlap happens there.
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\n## Visão\n\nTexto.\n\n## Pessoas\n\nTexto.\n');
@@ -401,7 +401,7 @@ describe('RefineSession', () => {
     await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
     const before = { project: await readDoc(draft(), 'project.md'), flow: await readDoc(draft(), 'flow.md') };
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' };
     script['refine/po'] = [refineOut(green(PO), [], [], [move])];
@@ -421,7 +421,7 @@ describe('RefineSession', () => {
   it('a failing check ends the click at once: no backlog cycle runs on documents the owner still has to fix', async () => {
     // A flow without a diagram fails sm.flow-is-mermaid, so the documents are not ready.
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\nSem diagrama.\n');
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -436,7 +436,7 @@ describe('RefineSession', () => {
   it('refuses to undo a move once one of its two documents changed after it', async () => {
     await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [], [], [{ from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' }])];
     script['refine/sm'] = [refineOut(green(SM))];
@@ -447,7 +447,7 @@ describe('RefineSession', () => {
   });
 
   it('fills a stack.md or flow.md that is still the blank template, straight from the SM patch; an edited one is left to the usual patch flow', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM), [], [
@@ -570,7 +570,7 @@ describe('RefineSession', () => {
   });
 
   it('refuses a backlog start while an evaluation holds the session', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     s.state.backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
     s.state.status = 'evaluating';
     await expect(s.freezeProgram()).rejects.toThrow('session cannot start now (evaluating)');
@@ -607,7 +607,7 @@ describe('RefineSession', () => {
   });
 
   it('writes a secret once the run has started', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     await s.markStarted('run-1');
     await s.writeSecret('DB_URL', 'postgres://x');
     expect(await fs.readFile(path.join(secretsDir, 'DB_URL'), 'utf8')).toBe('postgres://x');
@@ -718,7 +718,7 @@ describe('RefineSession round limit', () => {
 
 describe('RefineSession stages', () => {
   it('steps through the five documents in order, and refuses a step once every document is done', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     for (let i = 0; i < 5; i += 1) await s.continueStage();
     expect(s.state.doneStages).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md']);
     await expect(s.continueStage()).rejects.toBeInstanceOf(ConflictError);
@@ -732,7 +732,7 @@ describe('RefineSession stages', () => {
   });
 
   it('closes the final review once, and refuses it in a session that has no stages', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     await s.closeReview();
     expect(s.state.reviewClosed).toBe(true);
     await expect(s.closeReview()).rejects.toBeInstanceOf(ConflictError);
@@ -743,7 +743,7 @@ describe('RefineSession stages', () => {
   });
 
   it('counts the rounds of an evaluation from the stage it runs in, so the next stage starts with its own rounds', async () => {
-    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project', { repositories: false });
     await s.evaluate();
     await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
     await s.continueStage();
@@ -755,7 +755,7 @@ describe('RefineSession stages', () => {
 
 describe('RefineSession stage review', () => {
   it('reviews one stage at a time, and the rounds of that stage count against its limit', async () => {
-    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), limits: { max: 1 } }, 'new-project', { repositories: false });
     await s.evaluateStage('flow.md');
     expect(s.state.cycle).toBe(1);
     expect(() => s.evaluateStage('flow.md')).toThrow(ConflictError);
@@ -767,7 +767,7 @@ describe('RefineSession stage review', () => {
 
   it('reshapes the stage document into its template, and undo puts back the text it had', async () => {
     await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['suggest/po'] = [{ text: SHAPED_BRIEF }];
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('briefing.md');
@@ -782,7 +782,7 @@ describe('RefineSession stage review', () => {
 
   it('refuses to undo a reshape once the document changed after it', async () => {
     await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['suggest/po'] = [{ text: SHAPED_BRIEF }];
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('briefing.md');
@@ -818,7 +818,7 @@ describe('RefineSession stage review', () => {
 
   it('keeps the text the owner passed the first time a stage is processed, and not the later ones', async () => {
     const d = deps();
-    const s = await RefineSession.create(d, 'new-project');
+    const s = await RefineSession.create(d, 'new-project', { repositories: false });
     await writeDoc(d.draft, 'project.md', '# Entregue\n');
     await s.evaluateStage('project.md');
     expect(s.state.passedStages).toEqual(['project.md']);
@@ -830,7 +830,7 @@ describe('RefineSession stage review', () => {
 
   it('reprocesses a stage from the text that was passed: the document goes back to it and the review runs again', async () => {
     const d = deps();
-    const s = await RefineSession.create(d, 'new-project');
+    const s = await RefineSession.create(d, 'new-project', { repositories: false });
     await writeDoc(d.draft, 'project.md', '# Entregue\n');
     await s.evaluateStage('project.md');
     await writeDoc(d.draft, 'project.md', '# Mudou\n');
@@ -841,20 +841,20 @@ describe('RefineSession stage review', () => {
   });
 
   it('refuses to reprocess a stage that has no passed text yet', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     expect(() => s.reprocessStage('project.md')).toThrow(ConflictError);
     await s.close();
   });
 
   it('a stage review may start on any document of a stage session, not only the current one', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     await s.evaluateStage('project.md');
     expect(s.state.cycle).toBe(1);
     await s.close();
   });
 
   it('continues the named document, and refuses one that is already done or outside the five', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     await s.continueStage('briefing.md');
     expect(s.state.doneStages).toEqual(['briefing.md']);
     await expect(s.continueStage('briefing.md')).rejects.toBeInstanceOf(ConflictError);
@@ -863,7 +863,7 @@ describe('RefineSession stage review', () => {
   });
 
   it('a stage review cannot start while another evaluation runs, and the running one ends normally', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const first = s.evaluateStage('flow.md');
     expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
     await first;
@@ -874,7 +874,7 @@ describe('RefineSession stage review', () => {
 
 describe('RefineSession briefing decisions', () => {
   it('a save of the briefing that leaves out its decisions keeps the section the owner answered', async () => {
-    const s = await RefineSession.create(deps(), 'new-project');
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     await s.saveDoc('briefing.md', '# Briefing\n\n## Decisões\n\n- Qual o prazo?\n  Answer: Trinta dias\n');
     await s.saveDoc('briefing.md', '# Briefing novo\n\n## Objetivos\n\nVender online.\n');
     const briefing = (await s.snapshot()).docs['briefing.md'];
@@ -890,7 +890,7 @@ describe('RefineSession document score', () => {
 
   it('scores one document on request, and journals only that document', async () => {
     const scoreDocs = vi.fn(async (_docs: Record<string, string>, _files?: readonly string[]) => scored);
-    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project', { repositories: false });
     await s.answerConfidentiality(false);
     await s.score('stack.md');
     expect(scoreDocs.mock.calls[0]![1]).toEqual(['stack.md']);
@@ -900,7 +900,7 @@ describe('RefineSession document score', () => {
 
   it('scores the documents without spending a round, and keeps a current score', async () => {
     const scoreDocs = vi.fn(async () => scored);
-    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project', { repositories: false });
     await s.answerConfidentiality(false);
     await s.score();
     expect(s.state).toMatchObject({ cycle: 0, readiness: { available: true, average: 0.9, outdated: false } });
@@ -915,7 +915,7 @@ describe('RefineSession document score', () => {
 
   it('an evaluation journals the score of the documents, not only the manual score', async () => {
     const scoreDocs = vi.fn(async () => scored);
-    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project');
+    const s = await RefineSession.create({ ...deps(), scoreDocs }, 'new-project', { repositories: false });
     await s.answerConfidentiality(false);
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];

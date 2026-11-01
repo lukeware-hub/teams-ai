@@ -75,7 +75,7 @@ async function writePlan(req: AgentStepRequest<'speckit'>, text: (key: string) =
 
 /** A wizard session whose backlog of two items is detailed, with each item's spec and pre-plan. */
 async function detailedSession(): Promise<RefineSession> {
-  const created = await RefineSession.create(deps(), 'new-project');
+  const created = await RefineSession.create(deps(), 'new-project', { repositories: false });
   await created.enableBacklog();
   await created.close();
   const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });

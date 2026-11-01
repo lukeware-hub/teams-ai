@@ -22,7 +22,7 @@ const FIXTURE = new URL('../fixtures/refine/stage-session.state.json', import.me
 
 const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
-const plain = () => RefineSession.create(deps(), 'new-project');
+const plain = () => RefineSession.create(deps(), 'new-project', { repositories: false });
 /** A graphify stand-in for the stages: one node per document of the folder, so every document counts in the graph. */
 const extractDocs = async (dir: string, outDir: string) => {
   const files = await fs.readdir(dir);
