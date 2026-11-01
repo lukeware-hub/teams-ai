@@ -107,6 +107,12 @@ for (let round = 1; round <= 3; round++) {
     console.log('close round', round, 'architecture', (await api('POST', `${S}/architecture`)).status);
     await settle('architecture again');
   }
+  // An item added after the plans step has no plan or task list: the step prepares only the missing ones.
+  if (now?.closing?.checks?.some((c) => (c.id === 'plans' || c.id === 'tasks') && !c.ok)) {
+    console.log('close round', round, 'plans', (await api('POST', `${S}/plans`)).status);
+    await settle('plans again');
+    await ownerQuestions('plans again');
+  }
   console.log('close round', round, 'evaluate', (await api('POST', `${S}/evaluate`)).status);
   await settle('close evaluation');
   await ownerQuestions('close evaluation');

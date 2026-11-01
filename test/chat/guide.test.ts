@@ -54,7 +54,7 @@ describe('the user guide the chat searches', () => {
       ['como criar uma nova spec', 'criar-spec.md'],
       ['onde fica o botão Nova spec', 'criar-spec.md'],
       ['o que significa pausada por cota', 'execucao.md'],
-      ['como validar a entrega', 'validacao.md'],
+      ['como concluir uma spec', 'validacao.md'],
       ['o que faz o orquestrador', 'estados-e-papeis.md'],
       ['o login do Claude expirou', 'execucao.md'],
       ['como criar um projeto novo', 'criar-projeto.md'],
