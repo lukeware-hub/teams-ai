@@ -1,0 +1,94 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { Architecture } from '../../server/contracts/architecture.js';
+import { loadRepoSource, repositoryCards, repositoryDetail, statusOf, type RepoSource, type RepoSpec } from '../../server/api/repositories.js';
+
+const ARCH: Architecture = {
+  style: 'microservices',
+  rationale: 'Two parts.',
+  repositories: [
+    { name: 'shop-api', responsibility: 'Sells', evidence: { doc: 'project.md', quote: 'sells' } },
+    { name: 'shop-web', responsibility: 'Shows', evidence: { doc: 'design.md', quote: 'shows' } },
+  ],
+  integrations: [
+    { consumer: 'shop-web', provider: 'shop-api', contract: 'GET /cart' },
+    { consumer: 'shop-api', provider: 'shop-api', contract: 'x' },
+  ],
+};
+
+const spec = (specId: string, repository: string, status: string, extra: Partial<RepoSpec> = {}): RepoSpec => ({
+  specId,
+  status,
+  activeRunId: null,
+  repository,
+  title: null,
+  priority: null,
+  dependsOn: [],
+  plan: false,
+  tasks: 0,
+  ...extra,
+});
+
+describe('status of a repository', () => {
+  it('shows the worst state among its specs, retired ones aside', () => {
+    expect(statusOf([])).toBe('empty');
+    expect(statusOf([spec('a', 'r', 'done'), spec('b', 'r', 'retired')])).toBe('done');
+    expect(statusOf([spec('a', 'r', 'done'), spec('b', 'r', 'refining')])).toBe('refining');
+    expect(statusOf([spec('a', 'r', 'awaiting-validation'), spec('b', 'r', 'refining')])).toBe('waiting');
+    expect(statusOf([spec('a', 'r', 'awaiting-validation'), spec('b', 'r', 'running')])).toBe('running');
+    expect(statusOf([spec('a', 'r', 'running'), spec('b', 'r', 'paused:quota')])).toBe('blocked');
+  });
+
+  it('counts a spec with an active run as running even when its status says otherwise', () => {
+    expect(statusOf([spec('a', 'r', 'refining', { activeRunId: 'run-1' })])).toBe('running');
+  });
+});
+
+describe('cards and dashboard of the repositories', () => {
+  const src: RepoSource = {
+    architecture: ARCH,
+    specs: [
+      spec('cart', 'shop-api', 'done', { plan: true, tasks: 3 }),
+      spec('pay', 'shop-api', 'paused:quota', { plan: true, tasks: 2 }),
+      spec('catalog', 'shop-web', 'refining', { tasks: 1 }),
+    ],
+  };
+
+  it('gives one card per repository, in the order the architecture names them', () => {
+    expect(repositoryCards(src)).toEqual([
+      { name: 'shop-api', kind: 'api', responsibility: 'Sells', status: 'blocked', specs: 2, plans: 2, tasks: 5, tasksDone: 3, blockers: 1 },
+      { name: 'shop-web', kind: 'web', responsibility: 'Shows', status: 'refining', specs: 1, plans: 0, tasks: 1, tasksDone: 0, blockers: 0 },
+    ]);
+  });
+
+  it('gives the dashboard of a repository with its integrations, and nothing for a name the architecture does not give', () => {
+    const detail = repositoryDetail(src, 'shop-web');
+    expect(detail?.integrations).toEqual(['shop-web → shop-api: GET /cart']);
+    expect(detail?.rows.map((r) => r.specId)).toEqual(['catalog']);
+    expect(repositoryDetail(src, 'shop-cli')).toBeNull();
+  });
+});
+
+describe('reading a project\'s repositories from disk', () => {
+  let dir = '';
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-repos-'));
+  });
+  afterEach(() => fs.rm(dir, { recursive: true, force: true }));
+
+  it('reads the architecture, the spec index and each spec\'s plan and task list', async () => {
+    await fs.mkdir(path.join(dir, 'docs', 'specs', 'cart'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'docs', 'architecture.json'), JSON.stringify(ARCH));
+    await fs.writeFile(path.join(dir, 'docs', 'specs.json'), JSON.stringify({ specs: [{ specId: 'cart', title: 'Carrinho', priority: 'P1', dependsOn: ['pay'] }] }));
+    await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'implementation-plan.md'), '# plan');
+    await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'task.md'), '# tasks\n\n## Task 1: a\n\n## Task 2: b\n');
+    const src = await loadRepoSource(dir, [{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api' }]);
+    expect(src?.specs).toEqual([{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', title: 'Carrinho', priority: 'P1', dependsOn: ['pay'], plan: true, tasks: 2 }]);
+  });
+
+  it('gives no source for a project with no architecture yet', async () => {
+    expect(await loadRepoSource(dir, [])).toBeNull();
+  });
+});

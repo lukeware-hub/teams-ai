@@ -33,6 +33,8 @@ import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './r
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
+import { loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
+import { ID_PATTERNS } from '../core/ids.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
 
@@ -335,7 +337,33 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
+  /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
+  const repoSource = async (projectId: string): Promise<RepoSource | null> => {
+    const row = (await listProjects(await index())).find((p) => p.projectId === projectId);
+    if (!row) throw new HttpError(404, `unknown project ${projectId}`);
+    return loadRepoSource(row.dir, row.specs);
+  };
   return [
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories`,
+      handler: async ({ params, json }) => {
+        const src = await repoSource(params.projectId!);
+        json(200, { repositories: src ? repositoryCards(src) : [] });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo`,
+      handler: async ({ params, json }) => {
+        const name = params.repo!;
+        if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
+        const src = await repoSource(params.projectId!);
+        const detail = src ? repositoryDetail(src, name) : null;
+        if (!detail) throw new HttpError(404, `unknown repository ${name}`);
+        json(200, detail);
+      },
+    },
     {
       method: 'GET',
       path: `${P}/projects`,
