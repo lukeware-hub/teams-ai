@@ -136,3 +136,10 @@ Status: built 2026-10-31 (plan a9d6), committed on `feat/refinement-reform` (PR 
 - Before the start, the owner reads a summary with seven checks, each repository's counts and the assumptions taken. The start carries the hash of that summary.
 - The project page shows a card per repository, and each card opens its dashboard: its specs, its tasks, its integrations, its blockers and its history.
 - Not done: the live check on two throwaway projects, the deploy by clean export, the Chrome check on the deployed app, the rollout of the flow for new projects, and the reconstruction of the guide graph. The architecture is a card in the backlog step, not its own stepper node. The dashboard does not yet list the program's item reasons or the pending questions and secrets as blockers.
+
+## 18. The chat reads the five main documents of the project
+
+Status: in progress (plan 118), draft pull request.
+
+- The Help chat can answer questions about the project's five main documents (vision, briefing, stack, flow and design). Each question gets the documents main has, as searchable files in its working folder, and nothing is loaded into the prompt.
+- The chat answers from the project graph first and searches the file text only when the graph does not cover the question.

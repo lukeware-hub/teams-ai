@@ -13,7 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { mergeProjectGraph } from './knowledge/project-graph.js';
+import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -179,12 +179,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
     suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
     newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
-    refreshProjectGraph: async (projectId) => {
-      const dir = await projectDirOf(projectId);
-      const read = dir ? await readProject(dir) : null;
-      if (!read) throw new Error('project not found');
-      await mergeProjectGraph(graphify, workspacePaths((await readUserConfig()).cfg, projectId), read.project, read.project.services ?? []);
-    },
+    refreshProjectGraph: async (projectId) => rebuildProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)),
+    docs: async (projectId) => projectMainDocs(await locateProject((await readUserConfig()).cfg, projectId)),
     confidential: async (projectId) => {
       const dir = await projectDirOf(projectId);
       return dir === null ? true : isConfidential({ cfg: (await readUserConfig()).cfg, dir, projectId });

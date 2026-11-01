@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { MainDoc } from '../git/main-docs.js';
 import type { ChatMessage } from './store.js';
 
 /** Where the committed graph of the guide lives, inside the guide folder; the chat step finds it at the same relative path. */
@@ -44,6 +45,14 @@ export async function stageFailureDetails(cwd: string, details: ReadonlyMap<stri
   if (details.size === 0) return;
   await fs.mkdir(path.join(cwd, 'falhas'), { recursive: true });
   for (const [specId, text] of details) await fs.writeFile(path.join(cwd, 'falhas', `${specId}.md`), text);
+}
+
+/** Puts the project's main documents in the step's working directory, where the chat searches them: `documentos/<file>`. */
+export async function stageProjectDocs(cwd: string, docs: readonly MainDoc[]): Promise<void> {
+  const present = docs.filter((doc): doc is MainDoc & { text: string } => doc.text !== null);
+  if (present.length === 0) return;
+  await fs.mkdir(path.join(cwd, 'documentos'), { recursive: true });
+  for (const doc of present) await fs.writeFile(path.join(cwd, 'documentos', doc.file), doc.text);
 }
 
 /** Puts the guide and its graph in the step's working directory, the only place it can read. */
