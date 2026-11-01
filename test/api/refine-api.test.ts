@@ -889,6 +889,18 @@ describe('refine api', () => {
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/restart')).status).toBe(409); // only awaiting-validation specs
   });
 
+  it('restart spec of a reformed project reopens the draft with the repository stamp and its architecture', async () => {
+    const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
+    const architecture = { style: 'monolith', rationale: 'Uma aplicação.', repositories: [{ name: 'hello-app', responsibility: 'Entrega', evidence: { doc: 'project.md', quote: 'Projeto' } }], integrations: [] };
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec), 'docs/architecture.json': JSON.stringify(architecture) });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    expect((await call('POST', '/api/projects/hello-app/specs/hello-001/restart')).status).toBe(200);
+    const snap = await (await fetch(`${base()}/api/refine/hello-app/hello-001`)).json();
+    expect(snap.state.repositories).toBe(true);
+    expect(snap.state.architecture?.decision).toMatchObject({ style: 'monolith' });
+  });
+
   it('continue spec reopens a draft still refining and replaces one whose run already started', async () => {
     const spec = { ...makeSpec({ specId: 'hello-001' }), status: 'awaiting-validation', specHash: `sha256:${'a'.repeat(64)}` };
     remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-001/spec.json': JSON.stringify(spec) });

@@ -49,6 +49,16 @@ describe('a follow-on draft of a project with an architecture', () => {
     await s.close();
   });
 
+  it('a reopened stamped draft keeps its stamp and architecture, as a chat correction needs', async () => {
+    await fs.writeFile(path.join(draft().root, 'docs', 'architecture.json'), JSON.stringify(ARCHITECTURE));
+    const created = await RefineSession.create(deps(), 'new-spec', { repositories: true });
+    await created.close();
+    const reopened = await RefineSession.open(deps());
+    expect(reopened.state.repositories).toBe(true);
+    expect(reopened.state.architecture?.decision).toMatchObject({ style: 'monolith' });
+    await reopened.close();
+  });
+
   it('keeps an unstamped follow-on draft as it was when main has no architecture', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     expect(s.state.repositories).not.toBe(true);
