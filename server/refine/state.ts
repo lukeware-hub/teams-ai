@@ -194,6 +194,8 @@ export interface RefineState {
   graphError?: { file: DocFile; reason: string } | null;
   /** The architecture the documents support, with the hash of the documents it was decided on; a later edit of a document makes it stale. */
   architecture?: { docsHash: string; decision: Architecture } | null;
+  /** The summary the owner authorized the development on, by its hash; absent until that authorization. */
+  authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
   architectureError?: string | null;
   /** The owner's answer on confidentiality; undefined until it comes. */
@@ -297,6 +299,43 @@ export interface StartInput {
   backlog?: { enabled: boolean; detail?: boolean | null; items?: ReadonlyArray<{ key: string }>; specs?: Record<string, { spec: { status?: string } | null }>; preplans?: Record<string, { preplan: unknown }> } | null;
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
+  repositories?: boolean;
+  /** The closing checks of a repository session, once the snapshot computed them; absent for other sessions. */
+  closing?: { ok: boolean } | null;
+}
+
+/** One closing check: its id, whether it passes, and what the owner reads about it in plain words. */
+export interface ClosingCheck {
+  id: string;
+  ok: boolean;
+  detail: string;
+}
+
+/** The seven checks the owner reads before starting a repository session; every one must pass. */
+export function closingChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
+  const items = s.backlog?.items ?? [];
+  const keys = items.map((i) => i.key);
+  const doneSteps = (s.speckit?.steps ?? []).filter((step) => step.basis !== undefined);
+  const stepDone = (command: string) => keys.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
+  const repos = s.architecture?.decision.repositories.map((r) => r.name) ?? [];
+  const open = DOC_STAGES.filter((file) => !(s.doneStages ?? []).includes(file) || !(s.graphed ?? []).includes(file));
+  const noPlan = stepDone('plan');
+  const noTasks = stepDone('tasks');
+  const noSpec = keys.filter((key) => !s.backlog?.specs?.[key]?.spec);
+  const unknown = items.filter((i) => i.repository === undefined || !repos.includes(i.repository)).map((i) => i.key);
+  const dangling = items.flatMap((i) => i.dependsOn.filter((d) => !keys.includes(d)).map((d) => `${i.key} → ${d}`));
+  const gaps = s.backlog ? coverageGaps(s.backlog) : [];
+  const blocking = s.questions.filter((q) => q.status === 'pending' && q.blocking).length;
+  const green = allGreen(s.checklist);
+  return [
+    { id: 'documents', ok: open.length === 0, detail: open.length === 0 ? 'os cinco documentos estão concluídos e no grafo' : `faltam: ${open.join(', ')}` },
+    { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
+    { id: 'specs', ok: noSpec.length === 0 && gaps.length === 0 && keys.length > 0, detail: noSpec.length > 0 ? `sem spec validada: ${noSpec.join(', ')}` : gaps.length > 0 ? `critérios sem item: ${gaps.join(', ')}` : 'cada item tem a sua spec validada' },
+    { id: 'plans', ok: noPlan.length === 0, detail: noPlan.length === 0 ? 'cada item tem o seu plano' : `sem plano: ${noPlan.join(', ')}` },
+    { id: 'tasks', ok: noTasks.length === 0, detail: noTasks.length === 0 ? 'cada item tem a sua lista de tarefas' : `sem lista de tarefas: ${noTasks.join(', ')}` },
+    { id: 'dependencies', ok: dangling.length === 0, detail: dangling.length === 0 ? 'todas as dependências existem' : `dependência inexistente: ${dangling.join(', ')}` },
+    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : 'o checklist do documento não está verde' },
+  ];
 }
 
 /** A blocking question plan left open that the owner has not answered yet. */
@@ -314,6 +353,8 @@ const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.it
 /** The start is open unless the agents evaluate, a run started or the plan preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
+  // A repository session starts only after the owner's summary has every check green.
+  if (s.repositories === true && s.closing?.ok !== true) return false;
   if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
@@ -569,6 +610,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
+      break;
+    case RefineEvent.DevelopmentAuthorized:
+      s.authorization = { summaryHash: String(d.summaryHash) };
       break;
     case RefineEvent.DocGraphStarted:
       s.graphing = docName(d.file);

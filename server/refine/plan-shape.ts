@@ -37,7 +37,7 @@ const criteriaIn = (line: string): string[] =>
   line.slice(CRITERIA_LABEL.length).replace(/[`*]/g, '').split(/[\s,;]+/).map((id) => id.replace(/\.$/, '')).filter((id) => id.startsWith('AC-'));
 
 /** The bullets under ## Assumptions. */
-function assumptionBullets(lines: readonly string[]): string[] {
+export function assumptionBullets(lines: readonly string[]): string[] {
   const start = lines.findIndex((line) => line.trim() === '## Assumptions');
   if (start === -1) return [];
   const bullets: string[] = [];

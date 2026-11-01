@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { sha256 } from '../contracts/hash.js';
+import { canonicalJson, sha256 } from '../contracts/hash.js';
+import { assumptionBullets } from './plan-shape.js';
+import { planFileOf } from './plan-file.js';
 import type { ArchitectureOutput, SuggestOutput } from '../agents/outputs.js';
 import type { Architecture } from '../contracts/architecture.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
@@ -33,7 +35,7 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, emptyRefineState, newestReshape, speckitPending, type BacklogState, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState } from './state.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { preparePlans } from './plan-prepare.js';
@@ -162,6 +164,8 @@ export interface Snapshot {
   busy: boolean;
   /** True when the architecture was decided on documents that have changed since. */
   architectureStale: boolean;
+  /** The closing summary of a repository session; absent for other sessions. */
+  closing?: ClosingSummary;
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
@@ -192,6 +196,15 @@ const MAX_CHAIN_CYCLES = 4;
 /** What the architecture pack asks the graph for: the system's repositories and the links between them. */
 const ARCHITECTURE_QUESTION = 'repositories of the system, their responsibilities and the integrations between them';
 const GRAPH_CONTEXT_TOKENS = 4_000;
+
+/** What the owner reads before starting a repository session; its hash is what the owner authorizes. */
+export interface ClosingSummary {
+  ok: boolean;
+  checks: ClosingCheck[];
+  repositories: Array<{ name: string; specs: number; plans: number; tasks: number }>;
+  assumptions: string[];
+  summaryHash: string;
+}
 
 export class RefineSession {
   private running: Promise<void> | null = null;
@@ -329,7 +342,7 @@ export class RefineSession {
     }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   /** The rounds the current stage has used count against its limit. */
@@ -950,7 +963,36 @@ export class RefineSession {
    * R11.4: the whole backlog is detailed, reviewed and ready, so the program may run it. Nothing is frozen here (each spec
    * freezes at its turn, `freezeItem`); this checks the gate, takes the `starting` lock and hands back the items in rank order.
    */
-  async freezeProgram(): Promise<ProgramEntry[]> {
+  /** The summary of a repository session: its seven checks, each repository's counts, and the assumptions taken; hashed for the authorization. */
+  async closingSummary(): Promise<ClosingSummary> {
+    const docs = await this.docsNow();
+    const architectureCurrent = this.state.architecture?.docsHash === docsHashOf(docs);
+    const checks = closingChecks(this.state, architectureCurrent === true);
+    const items = this.state.backlog?.items ?? [];
+    const done = (command: string, key: string) => (this.state.speckit?.steps ?? []).some((step) => step.command === command && step.itemKey === key && step.basis !== undefined);
+    const repositories = (this.state.architecture?.decision.repositories ?? []).map((repo) => {
+      const own = items.filter((i) => i.repository === repo.name);
+      return { name: repo.name, specs: own.length, plans: own.filter((i) => done('plan', i.key)).length, tasks: own.filter((i) => done('tasks', i.key)).length };
+    });
+    const summary = { checks, repositories, assumptions: await this.assumptionsOf(items) };
+    return { ok: checks.every((c) => c.ok), ...summary, summaryHash: sha256(canonicalJson(summary)) };
+  }
+
+  /** The assumptions the plans of the backlog took, each with its item, and the decisions the documents settled for the owner. */
+  private async assumptionsOf(items: readonly { key: string }[]): Promise<string[]> {
+    const specs = buildSpecsIndex(this.deps.draft.specId, this.state.backlog ?? { epics: [], items: [] }).specs;
+    const planned = await Promise.all(
+      items.map(async (item) => {
+        const specId = specs.find((spec) => spec.key === item.key)?.specId ?? item.key;
+        const text = await fs.readFile(path.join(this.deps.draft.docs, path.posix.relative('docs', planFileOf(specId))), 'utf8').catch(() => '');
+        return assumptionBullets(text.split('\n')).map((bullet) => `${item.key}: ${bullet}`);
+      }),
+    );
+    const decided = this.state.questions.filter((q) => q.answeredBy).map((q) => `${q.text}: ${q.answer ?? ''}`);
+    return [...planned.flat(), ...decided];
+  }
+
+  async freezeProgram(summaryHash?: string): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
@@ -964,7 +1006,18 @@ export class RefineSession {
     if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     this.refuseWithoutSpeckit(inputHash);
-    if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
+    let closing: { ok: boolean } | undefined;
+    if (this.state.repositories === true) {
+      // The owner starts on the summary he read: every check green, and the same summary the page showed (its hash).
+      if (summaryHash === undefined) throw new ConflictError('Abra o resumo do refinamento e confirme antes de iniciar.');
+      const summary = await this.closingSummary();
+      const failing = summary.checks.find((c) => !c.ok);
+      if (failing) throw new ConflictError(`O resumo ainda tem uma checagem aberta: ${failing.detail}.`);
+      if (summary.summaryHash !== summaryHash) throw new ConflictError('O resumo mudou desde que você o abriu: revise-o antes de iniciar.');
+      closing = { ok: summary.ok };
+      await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
+    }
+    if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
     // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);
     this.starting = true;

@@ -92,6 +92,8 @@ export const RefineEvent = {
   DocGraphed: 'REFINE_DOC_GRAPHED',
   /** The document could not be added to the graph: `{file, reason}`, in plain words for the owner. */
   DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
+  /** The owner authorized the development on the summary with this hash: `{summaryHash}`. */
+  DevelopmentAuthorized: 'REFINE_DEVELOPMENT_AUTHORIZED',
   /** The architecture step started on the five documents at this hash: `{docsHash}`. */
   ArchitectureStarted: 'REFINE_ARCHITECTURE_STARTED',
   /** The architecture the documents support: `{docsHash, architecture, questions}`; the questions are the owner's to answer. */

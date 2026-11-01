@@ -205,8 +205,8 @@ export class SessionRegistry {
   }
 
   /** R11.4: starts the program of a detailed backlog; the first item's run is the one the screen follows. */
-  private async startProgram(projectId: string, specId: string, session: RefineSession): Promise<{ runId: string; program: Program }> {
-    const entries = await session.freezeProgram();
+  private async startProgram(projectId: string, specId: string, session: RefineSession, summaryHash?: string): Promise<{ runId: string; program: Program }> {
+    const entries = await session.freezeProgram(summaryHash);
     try {
       const program = await this.programs.start(projectId, specId, entries);
       const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
@@ -277,12 +277,12 @@ export class SessionRegistry {
   }
 
   /** Spec (refinement) §3.6: freeze the spec, spawn `run --draft`, register the draft root as a project. */
-  async start(projectId: string, specId: string): Promise<{ runId: string; program?: Program }> {
+  async start(projectId: string, specId: string, summaryHash?: string): Promise<{ runId: string; program?: Program }> {
     const session = await this.get(projectId, specId);
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
     await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec));
-    if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session);
+    if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session, summaryHash);
     if (session.state.mode === 'new-project') throw new ConflictError('O backlog ainda não está pronto: avalie o projeto até ele ficar pronto antes de iniciar a análise.');
     await session.freeze();
     const runs = await this.deps.runsDir();

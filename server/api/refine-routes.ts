@@ -232,7 +232,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     {
       method: 'POST',
       path: `${S}/start`,
-      handler: wrap(async ({ params, json }) => json(200, await registry.start(params.projectId!, params.specId!))),
+      handler: wrap(async (ctx) => {
+        // The owner's authorization: the hash of the summary he read; a repository session cannot start without it.
+        const summaryHash = str(await optionalBody(ctx), 'summaryHash', true) || undefined;
+        ctx.json(200, await registry.start(ctx.params.projectId!, ctx.params.specId!, summaryHash));
+      }),
     },
     {
       method: 'POST',
