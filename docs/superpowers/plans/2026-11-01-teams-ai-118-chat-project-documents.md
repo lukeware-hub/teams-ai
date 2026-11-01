@@ -13,7 +13,7 @@ The owner asked for a chat that can answer any question about the project from t
 - **Chat.** Each question stages the documents that main has under `documentos/` in the step's working directory. The rules name that folder, send a question about a document to the graph first and then to a search of the file, and keep the four-call limit.
 - **Tests.** `test/git/main-docs.test.ts` uses a real repository; `test/chat/guide.test.ts`, `test/chat/service.test.ts` and `test/knowledge/project-graph.test.ts` cover staging, the rules and the graph.
 
-Not done in this plan: the user guide (`docs/guia/chat.md`) does not yet list the documents. A rebuild of its graph with `task guia:grafo` produced three extractions that each lost guide labels the chat search relies on (for example "Chat diz que não está registrado"), so the guide and its graph stay at their current version until the rebuild is checked.
+Moved out of this plan by the owner on 2026-11-01, to a separate item: the user guide (`docs/guia/chat.md`) does not yet list the documents. A rebuild of its graph with `task guia:grafo` produced three extractions that each lost guide labels the chat search relies on (for example "Chat diz que não está registrado"), so the guide and its graph stay at their current version until the rebuild is checked.
 
 ## Approach
 
