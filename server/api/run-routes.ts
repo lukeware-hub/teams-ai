@@ -5,7 +5,10 @@ import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { agentsDecideFor, type Config, type Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
-import { loadSecretValues } from '../core/secrets.js';
+import { loadSecretValues, loadSecrets } from '../core/secrets.js';
+import { draftPaths, refineRoot } from '../refine/draft.js';
+import { reduceRefineEvents } from '../refine/state.js';
+import { requiredSecretNames } from '../refine/session.js';
 import { redactSecrets } from '../core/redact.js';
 import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
@@ -345,7 +348,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const runs = await listRuns(idx, projectId);
     // A spec is blocked when one of its runs needs the owner; its run list also feeds the history.
     const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
-    return { src: await loadRepoSource(row.dir, specs), runs, runsDir: runsDir(idx) };
+    const src = await loadRepoSource(row.dir, specs);
+    if (!src) return { src, runs, runsDir: runsDir(idx) };
+    // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
+    const ws = workspacePaths(idx.cfg, projectId, deps.home);
+    const drafts = await fs.readdir(refineRoot(ws)).catch(() => [] as string[]);
+    const questions: Array<{ itemKey: string | null; text: string }> = [];
+    const needed = new Set<string>();
+    for (const id of drafts) {
+      const events = await loadEvents(draftPaths(ws, id).events).catch(() => []);
+      if (events.length === 0) continue;
+      const state = reduceRefineEvents(events);
+      questions.push(...state.questions.filter((q) => q.status === 'pending' && q.blocking).map((q) => ({ itemKey: q.itemKey ?? null, text: q.text })));
+      for (const name of requiredSecretNames(state)) needed.add(name);
+    }
+    const present = new Set(Object.keys(await loadSecrets(ws.secrets).catch(() => ({}))));
+    const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
+    return { src: { ...src, questions, missingSecrets }, runs, runsDir: runsDir(idx) };
   };
   return [
     {

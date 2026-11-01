@@ -126,7 +126,7 @@ export function declaredDependencies(state: RefineState): ExternalDependency[] {
   return state.derived?.spec.externalDependencies ?? [];
 }
 /** The secrets the specs list as external dependencies, so the screen offers a field for each one that is missing. */
-function requiredSecretNames(state: RefineState): string[] {
+export function requiredSecretNames(state: RefineState): string[] {
   return providedSecretNames(declaredDependencies(state));
 }
 /** The document sections (heading level) where a secret name appears, in document order. */

@@ -20,6 +20,8 @@ export type RepoStatus = 'blocked' | 'running' | 'waiting' | 'refining' | 'done'
 /** A spec of the project as a repository page reads it: its status, its run, its place in the backlog, and its files. */
 export interface RepoSpec {
   specId: string;
+  /** The backlog key of the spec, which a question names in its item. */
+  key: string | null;
   status: string;
   activeRunId: string | null;
   repository?: string;
@@ -35,6 +37,10 @@ export interface RepoSpec {
 export interface RepoSource {
   architecture: Architecture;
   specs: RepoSpec[];
+  /** The owner's pending blocking questions of the project, each with the backlog item it is about. */
+  questions?: Array<{ itemKey: string | null; text: string }>;
+  /** The secrets the project's specs need that the vault does not hold, by name. */
+  missingSecrets?: string[];
 }
 
 export interface RepoCard {
@@ -54,6 +60,8 @@ export interface RepoCard {
 export interface RepoDetail extends RepoCard {
   integrations: string[];
   rows: RepoSpec[];
+  questions: Array<{ itemKey: string | null; text: string }>;
+  missingSecrets: string[];
 }
 
 /** The status a repository shows: the worst state among its specs, retired ones aside. */
@@ -72,6 +80,8 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
   if (!ctx) return null;
   const rows = src.specs.filter((s) => s.repository === name);
   const delivered = rows.filter((r) => r.status === 'done');
+  const keys = new Set(rows.map((r) => r.key).filter((k): k is string => k !== null));
+  const questions = (src.questions ?? []).filter((q) => q.itemKey !== null && keys.has(q.itemKey)).length;
   return {
     name,
     kind: ctx.kind,
@@ -81,7 +91,7 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
     plans: rows.filter((r) => r.plan).length,
     tasks: rows.reduce((sum, r) => sum + r.tasks, 0),
     tasksDone: delivered.reduce((sum, r) => sum + r.tasks, 0),
-    blockers: rows.filter((r) => r.blocked || r.status.startsWith('paused:')).length,
+    blockers: rows.filter((r) => r.blocked || r.status.startsWith('paused:')).length + questions,
   };
 }
 
@@ -95,11 +105,12 @@ export function repositoryDetail(src: RepoSource, name: string): RepoDetail | nu
   const card = cardOf(src, name);
   const ctx = repositoryContext(src.architecture, name);
   if (!card || !ctx) return null;
-  return { ...card, integrations: ctx.integrations, rows: src.specs.filter((s) => s.repository === name) };
+  return { ...card, integrations: ctx.integrations, rows: src.specs.filter((s) => s.repository === name), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
 }
 
 interface SpecIndexEntry {
   specId: string;
+  key?: string;
   title?: string;
   priority?: string;
   dependsOn?: string[];
@@ -117,7 +128,7 @@ export async function loadRepoSource(dir: string, specs: ReadonlyArray<Pick<Repo
       const entry = byId.get(spec.specId);
       const plan = await fs.access(path.join(folder, 'implementation-plan.md')).then(() => true, () => false);
       const tasks = await fs.readFile(path.join(folder, 'task.md'), 'utf8').then((t) => (t.match(/^## Task \d+:/gm) ?? []).length, () => 0);
-      return { ...spec, title: entry?.title ?? null, priority: entry?.priority ?? null, dependsOn: entry?.dependsOn ?? [], plan, tasks };
+      return { ...spec, key: entry?.key ?? null, title: entry?.title ?? null, priority: entry?.priority ?? null, dependsOn: entry?.dependsOn ?? [], plan, tasks };
     }),
   );
   return { architecture, specs: rows };

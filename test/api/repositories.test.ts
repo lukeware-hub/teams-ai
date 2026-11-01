@@ -20,6 +20,7 @@ const ARCH: Architecture = {
 
 const spec = (specId: string, repository: string, status: string, extra: Partial<RepoSpec> = {}): RepoSpec => ({
   specId,
+  key: null,
   status,
   activeRunId: null,
   repository,
@@ -73,6 +74,18 @@ describe('cards and dashboard of the repositories', () => {
 });
 
 describe('blockers and history', () => {
+  it('counts a pending blocking question on a spec of the repository as one of its blockers, and lists the missing secrets', () => {
+    const src: RepoSource = {
+      architecture: ARCH,
+      specs: [{ ...spec('cart', 'shop-api', 'refining'), key: 'cart' }, spec('catalog', 'shop-web', 'refining')],
+      questions: [{ itemKey: 'cart', text: 'Quem paga?' }, { itemKey: 'other', text: 'Outra?' }],
+      missingSecrets: ['STRIPE_KEY'],
+    };
+    expect(repositoryCards(src)[0]).toMatchObject({ name: 'shop-api', blockers: 1 });
+    expect(repositoryCards(src)[1]).toMatchObject({ name: 'shop-web', blockers: 0 });
+    expect(repositoryDetail(src, 'shop-api')).toMatchObject({ questions: [{ itemKey: 'cart', text: 'Quem paga?' }], missingSecrets: ['STRIPE_KEY'] });
+  });
+
   it('counts a spec whose run needs the owner as blocked, even when its status reads running', () => {
     const src: RepoSource = { architecture: ARCH, specs: [spec('cart', 'shop-api', 'running', { blocked: true })] };
     expect(repositoryCards(src)[0]).toMatchObject({ status: 'blocked', blockers: 1 });
@@ -107,7 +120,7 @@ describe('reading a project\'s repositories from disk', () => {
     await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'implementation-plan.md'), '# plan');
     await fs.writeFile(path.join(dir, 'docs', 'specs', 'cart', 'task.md'), '# tasks\n\n## Task 1: a\n\n## Task 2: b\n');
     const src = await loadRepoSource(dir, [{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', blocked: false }]);
-    expect(src?.specs).toEqual([{ specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', blocked: false, title: 'Carrinho', priority: 'P1', dependsOn: ['pay'], plan: true, tasks: 2 }]);
+    expect(src?.specs).toEqual([{ specId: 'cart', key: null, status: 'done', activeRunId: null, repository: 'shop-api', blocked: false, title: 'Carrinho', priority: 'P1', dependsOn: ['pay'], plan: true, tasks: 2 }]);
   });
 
   it('gives no source for a project with no architecture yet', async () => {
