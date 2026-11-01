@@ -9,6 +9,15 @@ const item = (key: string, over: Partial<BacklogView['items'][number]> = {}) => 
 const view = (items: BacklogView['items'], epics = [{ key: 'core', title: 'Núcleo' }, { key: 'fin', title: 'Financeiro' }]): BacklogView => ({ enabled: true, project: null, epics, items, cycle: 1 });
 
 describe('BacklogPanel', () => {
+  it('groups the items under their repositories when some item names one, each row keeping its epic', () => {
+    const items = [item('cart', { repository: 'shop-api' }), item('pay', { epic: 'fin', repository: 'shop-api', rank: 2 }), item('catalog', { repository: 'shop-web', rank: 3 })];
+    render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} />);
+    expect(screen.getByTestId('repo-shop-api')).toBeTruthy();
+    expect(screen.getByTestId('repo-shop-web')).toBeTruthy();
+    expect(screen.queryByTestId('epic-core')).toBeNull();
+    expect(within(screen.getByTestId('item-pay')).getByText('Financeiro')).toBeTruthy();
+  });
+
   it('offers to break the docs into a backlog while it is off, and holds the button while locked', () => {
     const onEnable = vi.fn();
     const { rerender } = render(<BacklogPanel backlog={null} evaluating={false} locked={false} onEnable={onEnable} />);

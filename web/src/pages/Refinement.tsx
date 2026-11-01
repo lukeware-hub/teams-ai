@@ -19,6 +19,7 @@ import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { ClosingDialog } from '../refine/ClosingDialog.js';
+import { ArchitectureCard } from '../refine/ArchitectureCard.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
@@ -217,6 +218,8 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
+  /** Decides the architecture of the five documents, in a repository session. */
+  onDecideArchitecture?(): void | Promise<unknown>;
   /** Stage 7: the owner asks for the plans of every backlog item. */
   onPreparePlans?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
@@ -400,6 +403,7 @@ export function RefinementView(p: ViewProps) {
   const stageStep = newProject ? stageAction(st) : null;
   const backlogBlock = (
     <>
+      {st.repositories === true && <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating} onDecide={() => void p.onDecideArchitecture?.()} />}
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
       {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
     </>
@@ -1378,6 +1382,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
+        onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}

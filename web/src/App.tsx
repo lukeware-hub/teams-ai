@@ -8,6 +8,7 @@ import { LicenseGuard } from './pages/LicenseGuard.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { OnboardingGate, StatusRedirect } from './pages/OnboardingGate.js';
 import { ProjectHub } from './pages/ProjectHub.js';
+import { RepositoryPage } from './pages/RepositoryPage.js';
 import { Projects } from './pages/Projects.js';
 import { ProgramPage } from './pages/Program.js';
 import { RefinementPage } from './pages/Refinement.js';
@@ -38,6 +39,7 @@ export function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectHub />} />
+            <Route path="/projects/:projectId/:repoId" element={<RepositoryPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
             <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
             <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
