@@ -1,19 +1,6 @@
 {
   "nodes": [
     {
-      "id": "chat",
-      "label": "Chat de d\u00favidas",
-      "file_type": "document",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": null
-    },
-    {
-      "id": "criar_projeto",
       "label": "Como criar ou importar um projeto",
       "file_type": "document",
       "source_file": "criar-projeto.md",
@@ -22,10 +9,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::criar_projeto"
     },
     {
-      "id": "criar_spec",
       "label": "Como criar uma nova spec",
       "file_type": "document",
       "source_file": "criar-spec.md",
@@ -34,11 +21,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::criar_spec"
     },
     {
-      "id": "estados_e_papeis",
-      "label": "Estados e pap\u00e9is",
+      "label": "Estados e papéis",
       "file_type": "document",
       "source_file": "estados-e-papeis.md",
       "source_location": null,
@@ -46,11 +33,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::estados_e_papeis"
     },
     {
-      "id": "execucao",
-      "label": "Execu\u00e7\u00e3o: acompanhar o desenvolvimento",
+      "label": "Execução: acompanhar o desenvolvimento",
       "file_type": "document",
       "source_file": "execucao.md",
       "source_location": null,
@@ -58,10 +45,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::execucao"
     },
     {
-      "id": "primeiros_passos",
       "label": "Primeiros passos: conectar o ambiente",
       "file_type": "document",
       "source_file": "primeiros-passos.md",
@@ -70,10 +57,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::primeiros_passos"
     },
     {
-      "id": "problemas_comuns",
       "label": "Problemas comuns e o que fazer",
       "file_type": "document",
       "source_file": "problemas-comuns.md",
@@ -82,10 +69,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::problemas_comuns"
     },
     {
-      "id": "refinamento",
       "label": "Refinamento: preparar a spec antes de executar",
       "file_type": "document",
       "source_file": "refinamento.md",
@@ -94,10 +81,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::refinamento"
     },
     {
-      "id": "validacao",
       "label": "Validar a entrega: aceitar ou relatar um problema",
       "file_type": "document",
       "source_file": "validacao.md",
@@ -106,11 +93,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::validacao"
     },
     {
-      "id": "visao_geral",
-      "label": "O que \u00e9 o Teams AI e como ele funciona",
+      "label": "O que é o Teams AI e como ele funciona",
       "file_type": "document",
       "source_file": "visao-geral.md",
       "source_location": null,
@@ -118,46 +105,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::visao_geral"
     },
     {
-      "id": "chat_pesquisa_na_internet",
-      "label": "Pesquisa na internet do chat",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "S\u00f3 o texto gen\u00e9rico do erro sai do computador; nomes, caminhos e valores do projeto n\u00e3o saem. A pesquisa n\u00e3o ocorre em projetos confidenciais nem enquanto o refinamento n\u00e3o respondeu a pergunta."
-    },
-    {
-      "id": "chat_spec_de_correcao",
-      "label": "Spec de corre\u00e7\u00e3o",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Nada \u00e9 executado at\u00e9 o usu\u00e1rio revisar e iniciar o refinamento. Uma resposta que pesquisou na internet n\u00e3o abre corre\u00e7\u00e3o."
-    },
-    {
-      "id": "chat_so_responde",
-      "label": "Chat s\u00f3 responde",
-      "file_type": "concept",
-      "source_file": "chat.md",
-      "source_location": null,
-      "source_url": null,
-      "captured_at": null,
-      "author": null,
-      "contributor": null,
-      "rationale": "Os agentes seguem apenas as specs e o backlog, n\u00e3o o chat."
-    },
-    {
-      "id": "criar_projeto_novo_projeto",
       "label": "Criar projeto novo",
       "file_type": "concept",
       "source_file": "criar-projeto.md",
@@ -166,10 +117,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "O projeto s\u00f3 entra na lista de Projetos quando a primeira execu\u00e7\u00e3o come\u00e7a; enquanto isso aparece em Novos projetos em refinamento."
+      "rationale": "O projeto só entra na lista de Projetos quando a primeira execução começa; enquanto isso aparece em Novos projetos em refinamento.",
+      "id": "repo::criar_projeto_novo_projeto"
     },
     {
-      "id": "criar_projeto_importar_git",
       "label": "Importar projeto do Git",
       "file_type": "concept",
       "source_file": "criar-projeto.md",
@@ -178,10 +129,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::criar_projeto_importar_git"
     },
     {
-      "id": "criar_spec_nova_spec",
       "label": "Nova spec",
       "file_type": "concept",
       "source_file": "criar-spec.md",
@@ -190,11 +141,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::criar_spec_nova_spec"
     },
     {
-      "id": "execucao_fases",
-      "label": "Fases da execu\u00e7\u00e3o",
+      "label": "Fases da execução",
       "file_type": "concept",
       "source_file": "execucao.md",
       "source_location": null,
@@ -202,10 +153,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::execucao_fases"
     },
     {
-      "id": "execucao_pausada_por_cota",
       "label": "Pausada por cota",
       "file_type": "concept",
       "source_file": "execucao.md",
@@ -214,10 +165,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "O limite de uso do Claude acabou; a execu\u00e7\u00e3o continua sozinha quando o limite renovar."
+      "rationale": "O limite de uso do Claude acabou; a execução continua sozinha quando o limite renovar.",
+      "id": "repo::execucao_pausada_por_cota"
     },
     {
-      "id": "execucao_aguardando_login",
       "label": "Aguardando login",
       "file_type": "concept",
       "source_file": "execucao.md",
@@ -226,10 +177,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::execucao_aguardando_login"
     },
     {
-      "id": "execucao_bloqueada",
       "label": "Bloqueada",
       "file_type": "concept",
       "source_file": "execucao.md",
@@ -238,10 +189,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::execucao_bloqueada"
     },
     {
-      "id": "estados_e_papeis_produto_agente",
       "label": "Produto (Product Owner)",
       "file_type": "concept",
       "source_file": "estados-e-papeis.md",
@@ -250,11 +201,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Confere objetivos, crit\u00e9rios de aceite e fluxo de neg\u00f3cio e faz perguntas ao usu\u00e1rio."
+      "rationale": "Confere objetivos, critérios de aceite e fluxo de negócio e faz perguntas ao usuário.",
+      "id": "repo::estados_e_papeis_produto_agente"
     },
     {
-      "id": "estados_e_papeis_tecnico_agente",
-      "label": "T\u00e9cnico (Scrum Master)",
+      "label": "Técnico (Scrum Master)",
       "file_type": "concept",
       "source_file": "estados-e-papeis.md",
       "source_location": null,
@@ -262,10 +213,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Confere tecnologias, divide o trabalho em tarefas e acompanha a viabilidade."
+      "rationale": "Confere tecnologias, divide o trabalho em tarefas e acompanha a viabilidade.",
+      "id": "repo::estados_e_papeis_tecnico_agente"
     },
     {
-      "id": "estados_e_papeis_orquestrador",
       "label": "Orquestrador",
       "file_type": "concept",
       "source_file": "estados-e-papeis.md",
@@ -274,10 +225,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "N\u00e3o \u00e9 um agente: \u00e9 o programa que valida, roda verifica\u00e7\u00f5es, abre pull requests, faz a jun\u00e7\u00e3o do c\u00f3digo e publica; s\u00f3 segue as specs e o backlog."
+      "rationale": "Não é um agente: é o programa que valida, roda verificações, abre pull requests, faz a junção do código e publica; só segue as specs e o backlog.",
+      "id": "repo::estados_e_papeis_orquestrador"
     },
     {
-      "id": "primeiros_passos_configure_ambiente",
       "label": "Tela Configure este ambiente",
       "file_type": "concept",
       "source_file": "primeiros-passos.md",
@@ -286,11 +237,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::primeiros_passos_configure_ambiente"
     },
     {
-      "id": "problemas_comuns_chat_sem_registro",
-      "label": "Chat diz que n\u00e3o est\u00e1 registrado",
+      "label": "Chat diz que não está registrado",
       "file_type": "concept",
       "source_file": "problemas-comuns.md",
       "source_location": null,
@@ -298,10 +249,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::problemas_comuns_chat_sem_registro"
     },
     {
-      "id": "refinamento_avaliar",
       "label": "Avaliar",
       "file_type": "concept",
       "source_file": "refinamento.md",
@@ -310,11 +261,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::refinamento_avaliar"
     },
     {
-      "id": "refinamento_lista_de_verificacao",
-      "label": "Lista de verifica\u00e7\u00e3o",
+      "label": "Lista de verificação",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -322,10 +273,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::refinamento_lista_de_verificacao"
     },
     {
-      "id": "refinamento_jev",
       "label": "Jev",
       "file_type": "concept",
       "source_file": "refinamento.md",
@@ -334,10 +285,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Os pontos que aponta s\u00e3o conselhos; a nota n\u00e3o impede o in\u00edcio da an\u00e1lise. Projetos confidenciais n\u00e3o enviam documentos ao Jev."
+      "rationale": "Os pontos que aponta são conselhos; a nota não impede o início da análise. Projetos confidenciais não enviam documentos ao Jev.",
+      "id": "repo::refinamento_jev"
     },
     {
-      "id": "refinamento_segredos",
       "label": "Segredos",
       "file_type": "concept",
       "source_file": "refinamento.md",
@@ -346,11 +297,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "N\u00e3o bloqueia a spec; os agentes nunca veem o valor."
+      "rationale": "Não bloqueia a spec; os agentes nunca veem o valor.",
+      "id": "repo::refinamento_segredos"
     },
     {
-      "id": "refinamento_iniciar_analise",
-      "label": "Iniciar an\u00e1lise",
+      "label": "Iniciar análise",
       "file_type": "concept",
       "source_file": "refinamento.md",
       "source_location": null,
@@ -358,10 +309,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "A an\u00e1lise nunca come\u00e7a sozinha; o bot\u00e3o fica livre a qualquer momento, exceto durante a avalia\u00e7\u00e3o dos agentes."
+      "rationale": "A análise nunca começa sozinha; o botão fica livre a qualquer momento, exceto durante a avaliação dos agentes.",
+      "id": "repo::refinamento_iniciar_analise"
     },
     {
-      "id": "refinamento_backlog",
       "label": "Backlog",
       "file_type": "concept",
       "source_file": "refinamento.md",
@@ -370,10 +321,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::refinamento_backlog"
     },
     {
-      "id": "refinamento_etapas_projeto_novo",
       "label": "Etapas de um projeto novo",
       "file_type": "concept",
       "source_file": "refinamento.md",
@@ -382,11 +333,11 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": "Na primeira etapa (flow.md) o Jev n\u00e3o compara documentos, porque ainda n\u00e3o h\u00e1 documento anterior."
+      "rationale": "Na primeira etapa (flow.md) o Jev não compara documentos, porque ainda não há documento anterior.",
+      "id": "repo::refinamento_etapas_projeto_novo"
     },
     {
-      "id": "validacao_concluir_especificacao",
-      "label": "Concluir especifica\u00e7\u00e3o",
+      "label": "Concluir especificação",
       "file_type": "concept",
       "source_file": "validacao.md",
       "source_location": null,
@@ -394,10 +345,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::validacao_concluir_especificacao"
     },
     {
-      "id": "validacao_relatar_problema",
       "label": "Relatar problema",
       "file_type": "concept",
       "source_file": "validacao.md",
@@ -406,10 +357,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::validacao_relatar_problema"
     },
     {
-      "id": "validacao_cobertura_documentos",
       "label": "Cobertura dos documentos",
       "file_type": "concept",
       "source_file": "validacao.md",
@@ -418,10 +369,10 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::validacao_cobertura_documentos"
     },
     {
-      "id": "visao_geral_caminho_entrega",
       "label": "Caminho de uma entrega",
       "file_type": "concept",
       "source_file": "visao-geral.md",
@@ -430,502 +381,674 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "rationale": null
+      "rationale": null,
+      "id": "repo::visao_geral_caminho_entrega"
+    },
+    {
+      "label": "Chat de dúvidas",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "title",
+      "id": "repo-2::chat_chat_de_duvidas"
+    },
+    {
+      "label": "Teams AI",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "introduction",
+      "id": "repo-2::chat_teams_ai"
+    },
+    {
+      "label": "Projeto escolhido",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "introduction",
+      "id": "repo-2::chat_projeto"
+    },
+    {
+      "label": "Execuções",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat sabe",
+      "id": "repo-2::chat_execucoes"
+    },
+    {
+      "label": "Bloqueios",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat sabe",
+      "id": "repo-2::chat_bloqueios"
+    },
+    {
+      "label": "Perguntas aguardando resposta",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat sabe",
+      "id": "repo-2::chat_perguntas"
+    },
+    {
+      "label": "Especificações",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat sabe",
+      "id": "repo-2::chat_specs"
+    },
+    {
+      "label": "Spec de correção",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "Spec de correção",
+      "id": "repo-2::chat_especificacao_de_correcao"
+    },
+    {
+      "label": "Documentos principais",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat sabe",
+      "id": "repo-2::chat_documentos_principais"
+    },
+    {
+      "label": "Pesquisa na internet",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "Pesquisa na internet",
+      "id": "repo-2::chat_pesquisa_internet"
+    },
+    {
+      "label": "Agentes",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat não faz",
+      "id": "repo-2::chat_agentes"
+    },
+    {
+      "label": "Backlog",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "O que o chat não faz",
+      "id": "repo-2::chat_backlog"
+    },
+    {
+      "label": "Refinamento",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "Pesquisa na internet",
+      "id": "repo-2::chat_refinamento"
+    },
+    {
+      "label": "Projetos confidenciais",
+      "file_type": "concept",
+      "source_file": "chat.md",
+      "source_location": "Pesquisa na internet",
+      "id": "repo-2::chat_projetos_confidenciais"
     }
   ],
   "edges": [
     {
-      "source": "chat",
-      "target": "chat_so_responde",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat",
-      "target": "chat_pesquisa_na_internet",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat",
-      "target": "chat_spec_de_correcao",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat_spec_de_correcao",
-      "target": "refinamento",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.75,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat_so_responde",
-      "target": "estados_e_papeis_orquestrador",
-      "relation": "conceptually_related_to",
-      "confidence": "INFERRED",
-      "confidence_score": 0.75,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "chat",
-      "target": "execucao",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "chat.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "criar_projeto",
-      "target": "criar_projeto_novo_projeto",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-projeto.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_projeto",
+      "target": "repo::criar_projeto_novo_projeto"
     },
     {
-      "source": "criar_projeto",
-      "target": "criar_projeto_importar_git",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-projeto.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_projeto",
+      "target": "repo::criar_projeto_importar_git"
     },
     {
-      "source": "criar_projeto",
-      "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-projeto.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_projeto",
+      "target": "repo::refinamento"
     },
     {
-      "source": "criar_spec",
-      "target": "criar_spec_nova_spec",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-spec.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_spec",
+      "target": "repo::criar_spec_nova_spec"
     },
     {
-      "source": "criar_spec",
-      "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-spec.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_spec",
+      "target": "repo::refinamento"
     },
     {
-      "source": "criar_spec",
-      "target": "validacao_relatar_problema",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "criar-spec.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::criar_spec",
+      "target": "repo::validacao_relatar_problema"
     },
     {
-      "source": "criar_spec",
-      "target": "chat",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "criar-spec.md",
+      "source_file": "visao-geral.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::criar_spec"
     },
     {
-      "source": "estados_e_papeis",
-      "target": "estados_e_papeis_produto_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "estados-e-papeis.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::estados_e_papeis",
+      "target": "repo::estados_e_papeis_produto_agente"
     },
     {
-      "source": "estados_e_papeis",
-      "target": "estados_e_papeis_tecnico_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "estados-e-papeis.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::estados_e_papeis",
+      "target": "repo::estados_e_papeis_tecnico_agente"
     },
     {
-      "source": "estados_e_papeis",
-      "target": "estados_e_papeis_orquestrador",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "estados-e-papeis.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::estados_e_papeis",
+      "target": "repo::estados_e_papeis_orquestrador"
     },
     {
-      "source": "execucao",
-      "target": "execucao_fases",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::estados_e_papeis"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::execucao",
+      "target": "repo::execucao_fases"
     },
     {
-      "source": "execucao",
-      "target": "execucao_pausada_por_cota",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::execucao",
+      "target": "repo::execucao_pausada_por_cota"
     },
     {
-      "source": "execucao",
-      "target": "execucao_aguardando_login",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::execucao",
+      "target": "repo::execucao_aguardando_login"
     },
     {
-      "source": "execucao",
-      "target": "execucao_bloqueada",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::execucao",
+      "target": "repo::execucao_bloqueada"
     },
     {
-      "source": "execucao",
-      "target": "validacao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "execucao.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::execucao",
+      "target": "repo::validacao"
     },
     {
-      "source": "primeiros_passos",
-      "target": "primeiros_passos_configure_ambiente",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "problemas-comuns.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::problemas_comuns",
+      "target": "repo::execucao"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "refinamento.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::refinamento_iniciar_analise",
+      "target": "repo::execucao"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::execucao"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "primeiros-passos.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::primeiros_passos",
+      "target": "repo::primeiros_passos_configure_ambiente"
     },
     {
-      "source": "problemas_comuns",
-      "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "problemas-comuns.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::problemas_comuns",
+      "target": "repo::primeiros_passos"
     },
     {
-      "source": "problemas_comuns",
-      "target": "primeiros_passos",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "problemas-comuns.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::problemas_comuns",
+      "target": "repo::problemas_comuns_chat_sem_registro"
     },
     {
-      "source": "problemas_comuns",
-      "target": "problemas_comuns_chat_sem_registro",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "problemas-comuns.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "problemas_comuns_chat_sem_registro",
-      "target": "chat",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "problemas-comuns.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "refinamento",
-      "target": "refinamento_avaliar",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_avaliar"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_lista_de_verificacao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_lista_de_verificacao"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_jev",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_jev"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_segredos",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_segredos"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_iniciar_analise",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_iniciar_analise"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_backlog",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_backlog"
     },
     {
-      "source": "refinamento",
-      "target": "refinamento_etapas_projeto_novo",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento",
+      "target": "repo::refinamento_etapas_projeto_novo"
     },
     {
-      "source": "refinamento_avaliar",
-      "target": "estados_e_papeis_produto_agente",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "validacao.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::validacao_relatar_problema",
+      "target": "repo::refinamento"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::refinamento"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "validacao.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::validacao",
+      "target": "repo::validacao_concluir_especificacao"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "validacao.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::validacao",
+      "target": "repo::validacao_relatar_problema"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "validacao.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::validacao",
+      "target": "repo::validacao_cobertura_documentos"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::validacao"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "visao-geral.md",
+      "source_location": null,
+      "weight": 1,
+      "source": "repo::visao_geral",
+      "target": "repo::visao_geral_caminho_entrega"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento_avaliar",
+      "target": "repo::estados_e_papeis_produto_agente"
     },
     {
-      "source": "refinamento_avaliar",
-      "target": "estados_e_papeis_tecnico_agente",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento_avaliar",
+      "target": "repo::estados_e_papeis_tecnico_agente"
     },
     {
-      "source": "refinamento_iniciar_analise",
-      "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento_etapas_projeto_novo",
+      "target": "repo::refinamento_jev"
     },
     {
-      "source": "refinamento_backlog",
-      "target": "refinamento_iniciar_analise",
       "relation": "conceptually_related_to",
       "confidence": "INFERRED",
       "confidence_score": 0.75,
       "source_file": "refinamento.md",
       "source_location": null,
-      "weight": 1
+      "weight": 1,
+      "source": "repo::refinamento_backlog",
+      "target": "repo::refinamento_iniciar_analise"
     },
     {
-      "source": "refinamento_etapas_projeto_novo",
-      "target": "refinamento_jev",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "refinamento.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_teams_ai"
     },
     {
-      "source": "validacao",
-      "target": "validacao_concluir_especificacao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_projeto"
     },
     {
-      "source": "validacao",
-      "target": "validacao_relatar_problema",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_execucoes"
     },
     {
-      "source": "validacao",
-      "target": "validacao_cobertura_documentos",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_bloqueios"
     },
     {
-      "source": "validacao_relatar_problema",
-      "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "validacao.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_perguntas"
     },
     {
-      "source": "visao_geral",
-      "target": "visao_geral_caminho_entrega",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_specs"
     },
     {
-      "source": "visao_geral",
-      "target": "criar_spec",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_documentos_principais"
     },
     {
-      "source": "visao_geral",
-      "target": "refinamento",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_pesquisa_internet"
     },
     {
-      "source": "visao_geral",
-      "target": "execucao",
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_especificacao_de_correcao"
     },
     {
-      "source": "visao_geral",
-      "target": "validacao",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "weight": -1,
+      "source": "repo-2::chat_chat_de_duvidas",
+      "target": "repo-2::chat_agentes"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_agentes",
+      "target": "repo-2::chat_specs"
     },
     {
-      "source": "visao_geral",
-      "target": "chat",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_especificacao_de_correcao",
+      "target": "repo-2::chat_refinamento"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "weight": -1,
+      "source": "repo-2::chat_pesquisa_internet",
+      "target": "repo-2::chat_projetos_confidenciais"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1,
+      "source_file": "chat.md",
+      "weight": -1,
+      "source": "repo-2::chat_pesquisa_internet",
+      "target": "repo-2::chat_refinamento"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
-    },
-    {
-      "source": "visao_geral",
-      "target": "estados_e_papeis",
-      "relation": "references",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1,
-      "source_file": "visao-geral.md",
-      "source_location": null,
-      "weight": 1
+      "source_file": "chat.md",
+      "weight": 1,
+      "source": "repo-2::chat_agentes",
+      "target": "repo-2::chat_backlog"
     }
   ],
-  "hyperedges": [],
+  "hyperedges": [
+    {
+      "id": "repo-2::chat_conhecimento_sistema",
+      "label": "Informações que o chat conhece",
+      "nodes": [
+        "repo-2::chat_execucoes",
+        "repo-2::chat_bloqueios",
+        "repo-2::chat_perguntas",
+        "repo-2::chat_specs",
+        "repo-2::chat_documentos_principais"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1
+    },
+    {
+      "id": "repo-2::chat_restricoes_operacao",
+      "label": "Restrições operacionais do chat",
+      "nodes": [
+        "repo-2::chat_chat_de_duvidas",
+        "repo-2::chat_agentes",
+        "repo-2::chat_pesquisa_internet",
+        "repo-2::chat_projetos_confidenciais"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95
+    }
+  ],
   "input_tokens": 85028,
   "output_tokens": 19968,
   "extracted_sources": []

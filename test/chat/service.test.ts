@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
+import type { MainDoc } from '../../server/git/main-docs.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
 import { makePlanTask } from '../fixtures/contracts.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
@@ -25,7 +26,7 @@ const ok = (value: unknown) => ({ ok: true, value: { specHash: 'x', ...(value as
 
 interface Req { model?: string; kind: string; role: string; cwd: string; pack: { feedback?: string }; extraAllow?: string[]; denyRead?: string[]; systemExtra?: string }
 
-function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; confidential?: (projectId: string) => Promise<boolean> } = {}) {
+function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () => Promise<unknown>; log?: (line: string) => void; refreshProjectGraph?: (projectId: string) => Promise<void>; confidential?: (projectId: string) => Promise<boolean>; docs?: (projectId: string) => Promise<MainDoc[]> } = {}) {
   const newSpec = vi.fn(extra.newSpec ?? (async () => undefined));
   const suggestSpecId = vi.fn(async () => 'fix-greeting');
   const service = new ChatService({
@@ -40,6 +41,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
     confidential: extra.confidential,
+    docs: extra.docs,
   });
   return { service, newSpec, suggestSpecId };
 }
@@ -273,6 +275,37 @@ describe('ChatService project graph', () => {
     await service.ask('hello-app', 'o que significa este erro?');
     expect(log).toHaveBeenCalledWith(expect.stringContaining('web search query: erro go.mod requires go'));
     expect(log).toHaveBeenCalledWith(expect.stringContaining('names the project'));
+  });
+});
+
+describe('the project documents the chat gets', () => {
+  it('stages the project documents for each question and names them in the rules, without putting their text in the prompt', async () => {
+    const seen: Array<{ staged: string | null; system: string; feedback: string }> = [];
+    const runAgent = vi.fn(async (req: Req) => {
+      const staged = await fs.readFile(path.join(req.cwd, 'documentos', 'design.md'), 'utf8').catch(() => null);
+      seen.push({ staged, system: req.systemExtra ?? '', feedback: req.pack.feedback ?? '' });
+      return ok({ answer: 'Resposta.', correction: null });
+    });
+    const docs = vi.fn(async () => [{ file: 'design.md', text: 'Tokens de cor do Kayron Hub' }]);
+    const { service } = make(runAgent, { docs });
+    await service.ask('hello-app', 'qual é o design?');
+    await service.ask('hello-app', 'e a segunda?');
+    expect(docs).toHaveBeenCalledWith('hello-app');
+    expect(seen.map((s) => s.staged)).toEqual(['Tokens de cor do Kayron Hub', 'Tokens de cor do Kayron Hub']);
+    expect(seen[0]!.system).toContain('`documentos/`');
+    expect(seen[0]!.system).not.toContain('Tokens de cor do Kayron Hub');
+    expect(seen[0]!.feedback).not.toContain('Tokens de cor do Kayron Hub');
+  });
+
+  it('asks without any document when the project documents cannot be read', async () => {
+    let staged = true;
+    const runAgent = vi.fn(async (req: Req) => {
+      staged = await fs.access(path.join(req.cwd, 'documentos')).then(() => true, () => false);
+      return ok({ answer: 'Resposta.', correction: null });
+    });
+    const { service } = make(runAgent, { docs: async () => [] });
+    await service.ask('hello-app', 'qual é o design?');
+    expect(staged).toBe(false);
   });
 });
 
