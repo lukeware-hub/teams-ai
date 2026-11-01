@@ -401,6 +401,7 @@ const STEP_DOING: Record<string, string> = {
   'spec-gap': 'respondendo uma dúvida sobre a spec',
   replan: 'replanejando uma tarefa',
   'fix-tasks': 'criando tarefas de correção',
+  architecture: 'decidindo a arquitetura dos repositórios',
 };
 /** What an agent step kind is doing, in plain words. */
 export const stepDoing = (kind: string) => STEP_DOING[kind] ?? kind;

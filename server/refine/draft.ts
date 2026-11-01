@@ -291,7 +291,7 @@ export async function restoreFromBase(d: Draft, specId: string): Promise<void> {
 }
 
 /** The project docs: a change main brings to one of them makes a derived spec stale. Other specs' files are not. */
-const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stack.md', 'flow.md', 'design.md']);
+const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stack.md', 'flow.md', 'design.md', 'architecture.json']);
 
 /**
  * Before a start: what main changed since the draft began comes into the draft, merged with the draft's own edits, and the

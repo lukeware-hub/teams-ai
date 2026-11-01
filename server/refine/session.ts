@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { sha256 } from '../contracts/hash.js';
-import type { SuggestOutput } from '../agents/outputs.js';
+import type { ArchitectureOutput, SuggestOutput } from '../agents/outputs.js';
+import type { Architecture } from '../contracts/architecture.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
@@ -24,7 +25,8 @@ import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
-import { currentEvent, DRAFT_HASH, RefineEvent } from './events.js';
+import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
+import { architecturePack, checkDecision, docsHashOf, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -112,6 +114,8 @@ export interface SessionDeps {
   speckitAgents?: () => Promise<number>;
   /** Extracts the documents of `dir` into the graph folder `outDir`; required by a repository session, which adds each stage to the graph. */
   extractDocs?: (dir: string, outDir: string) => Promise<void>;
+  /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
+  docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
 }
 /** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
 export function declaredDependencies(state: RefineState): ExternalDependency[] {
@@ -156,6 +160,8 @@ export interface Snapshot {
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** True from the evaluate call on, even before the cycle journals that it started. */
   busy: boolean;
+  /** True when the architecture was decided on documents that have changed since. */
+  architectureStale: boolean;
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
@@ -182,6 +188,10 @@ export function programEntries(draftId: string, backlog: BacklogState, onMain: R
 
 /** Cycles one click may spend: the documents, the backlog outline, the detail, and one more for what the detail left open. */
 const MAX_CHAIN_CYCLES = 4;
+
+/** What the architecture pack asks the graph for: the system's repositories and the links between them. */
+const ARCHITECTURE_QUESTION = 'repositories of the system, their responsibilities and the integrations between them';
+const GRAPH_CONTEXT_TOKENS = 4_000;
 
 export class RefineSession {
   private running: Promise<void> | null = null;
@@ -318,7 +328,8 @@ export class RefineSession {
       tokens.outputTokens += Number(e.data.outputTokens ?? 0);
     }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
   }
 
   /** The rounds the current stage has used count against its limit. */
@@ -446,7 +457,9 @@ export class RefineSession {
     const target = doc ?? this.currentStage();
     if (!target) throw new ConflictError('todas as etapas já foram concluídas');
     if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
-    if ((this.state.doneStages ?? []).includes(target)) throw new ConflictError(`a etapa ${target} já foi concluída`);
+    // A finished document only goes back to the graph when a human edit took it out of there: the review then comes first, and the extraction adds it again.
+    const finished = (this.state.doneStages ?? []).includes(target);
+    if (finished && (this.state.repositories !== true || (this.state.graphed ?? []).includes(target))) throw new ConflictError(`a etapa ${target} já foi concluída`);
     if (this.state.repositories === true) {
       this.guardStage(target);
       const why = stageReviewBlock(this.state, target);
@@ -546,10 +559,83 @@ export class RefineSession {
     await this.enableBacklogStep();
   }
 
+  /** The five documents as they are now, by file name. */
+  private async docsNow(): Promise<Record<DocFile, string>> {
+    return Object.fromEntries(await Promise.all(DOC_STAGES.map(async (file) => [file, await readDoc(this.deps.draft, file)]))) as Record<DocFile, string>;
+  }
+
+  /** Why the backlog cannot start yet, in plain words; null when the architecture is decided on the documents as they are. */
+  private async architectureProblem(): Promise<string | null> {
+    if (this.state.repositories !== true) return null;
+    if (!this.state.architecture) return 'Decida a arquitetura antes do backlog.';
+    if (this.state.architecture.docsHash !== docsHashOf(await this.docsNow())) return 'Os documentos mudaram depois da arquitetura: decida a arquitetura de novo.';
+    if (this.state.questions.some((q) => q.origin === 'architecture' && q.status === 'pending' && q.blocking)) return 'Responda as perguntas da arquitetura antes do backlog.';
+    return null;
+  }
+
+  /** "Decidir a arquitetura": the architecture the five documents support, decided in the background; the request answers once it has started. */
+  async decideArchitecture(): Promise<void> {
+    this.guard();
+    if (this.state.repositories !== true) throw new ConflictError('só um refinamento com repositórios decide a arquitetura');
+    this.guardStagesDone();
+    this.guardGraphed();
+    const ctl = (this.abortCtl = new AbortController());
+    const started = this.docsNow().then(async (docs) => {
+      await this.journal.fact(RefineEvent.ArchitectureStarted, { docsHash: docsHashOf(docs) });
+      return docs;
+    });
+    this.running = started.then((docs) => this.architectureRun(docs, ctl)).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    await started;
+  }
+
+  /** One decision, journaled inside an evaluation so a restart ends it; a failure is journaled for the owner, never thrown. */
+  private async architectureRun(docs: Record<DocFile, string>, ctl: AbortController): Promise<void> {
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
+    try {
+      const out = await this.decideOnDocs(docs, ctl.signal);
+      const arch: Architecture = { style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations };
+      await writeArchitectureFiles(this.deps.draft.root, arch);
+      // The questions get ids from the journal's length, so a replay names them the same way.
+      const prefix = `arch-${this.journal.events.length}`;
+      const questions: Question[] = out.questions.map((q, i) => ({ questionId: `${prefix}-${i}`, role: 'sm', text: q.text, context: q.context, blocking: q.blocking, relatedAcIds: [], cycle: this.state.cycle, options: q.options.length > 0 ? q.options : undefined, origin: 'architecture' }));
+      await this.journal.fact(RefineEvent.ArchitectureDecided, { docsHash: docsHashOf(docs), architecture: arch, questions });
+    } catch (err) {
+      await this.journal.fact(RefineEvent.ArchitectureFailed, { reason: err instanceof Error ? err.message : String(err) });
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
+    }
+  }
+
+  /** The agent decides; a rule it breaks goes back once, with the rules named, and a second break stops the decision. */
+  private async decideOnDocs(docs: Record<DocFile, string>, signal: AbortSignal): Promise<ArchitectureOutput> {
+    const { draft } = this.deps;
+    const hash = docsHashOf(docs);
+    const graphContext = this.deps.docGraphContext ? await this.deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), ARCHITECTURE_QUESTION, GRAPH_CONTEXT_TOKENS) : '';
+    const answers = this.state.questions.filter((q) => q.origin === 'architecture' && q.status === 'answered' && q.answer).map((q) => `${q.text}: ${q.answer}`);
+    const existingServices = this.state.derived?.project.services ?? [];
+    let issues: string[] = [];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const pack = fitPackBudget(architecturePack({ specHash: hash, principles: [], docs, graphContext, existingServices, answers, issues }));
+      const out = (await this.deps.runAgent<'architecture'>(
+        { kind: 'architecture', role: 'sm', pack, cwd: draft.root, phase: 'refine', taskId: null, attempt },
+        { journal: this.journal, stepDir: draft.steps, specHash: hash, signal },
+      )) as StepOutcome<ArchitectureOutput>;
+      if (!out.ok) throw ownerFailure('A arquitetura', out.failure, out.errors, TRY_AGAIN);
+      issues = checkDecision(out.value, draft.projectId, docs);
+      if (issues.length === 0) return out.value;
+    }
+    throw new OwnerError('A arquitetura não fechou com as regras.', issues.join(' '));
+  }
+
   private async enableBacklogStep(): Promise<void> {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
     this.guardGraphed();
+    const why = await this.architectureProblem();
+    if (why) throw new ConflictError(why);
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
@@ -663,6 +749,8 @@ export class RefineSession {
       if (stale) continue;
       if (status === 'ready') {
         if (backlog?.enabled) return;
+        // A repository session waits for the architecture of the documents as they are now.
+        if (await this.architectureProblem()) return;
         await this.enableBacklogStep();
         continue;
       }

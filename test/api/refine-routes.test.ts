@@ -33,6 +33,16 @@ describe('refine routes', () => {
     expect(json).toHaveBeenCalledWith(202, { ok: true });
   });
 
+  it('decides the architecture in the background and answers 202', async () => {
+    const decideArchitecture = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ decideArchitecture })) } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/architecture'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);
+    expect(decideArchitecture).toHaveBeenCalledOnce();
+    expect(json).toHaveBeenCalledWith(202, { ok: true });
+  });
+
   it('closes the final review of a refinement', async () => {
     const closeReview = vi.fn(async () => undefined);
     const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ closeReview })) } as never, log: vi.fn() });

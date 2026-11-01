@@ -32,7 +32,7 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
 };
 
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
-const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus };
+const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus, architecture: MODELS.opus };
 
 const positive = z.number().int().min(1);
 /** The most agents that prepare the plans at once. */

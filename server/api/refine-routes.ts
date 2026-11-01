@@ -305,6 +305,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/architecture`,
+      handler: wrap(async (ctx) => {
+        await (await get(ctx.params)).decideArchitecture();
+        // The decision runs in the background; the page follows it through the snapshot.
+        ctx.json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/review/close`,
       handler: wrap(async (ctx) => {
         await (await get(ctx.params)).closeReview();

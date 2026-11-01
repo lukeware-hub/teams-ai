@@ -19,6 +19,7 @@ import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { verifyContradictions } from './contradictions.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
+import { projectWithArchitecture } from './architecture-step.js';
 import { answerPack } from './answer.js';
 import { heldForOwner } from './auto-floor.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
@@ -370,7 +371,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         return;
       }
       const { backlog: ranked } = accepted.value;
-      const project = await keepBaseProject(draft, accepted.value.project);
+      const project = projectWithArchitecture(await keepBaseProject(draft, accepted.value.project), journal.state);
       await writeProject(draft, project);
       await writeBacklogMd(draft, renderBacklogMd(ranked));
       await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds }));
@@ -421,7 +422,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       await fail('A derivação dos documentos não passou na validação. Clique em Reavaliar.', checked.issues.join('; '));
       return;
     }
-    checked.value.project = await keepBaseProject(draft, checked.value.project);
+    checked.value.project = projectWithArchitecture(await keepBaseProject(draft, checked.value.project), journal.state);
     await writeDerived(draft, checked.value);
     await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
     derived = checked.value;

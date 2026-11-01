@@ -1,3 +1,4 @@
+import type { Architecture } from '../contracts/architecture.js';
 import type { Backlog, BacklogItem } from '../contracts/backlog.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
@@ -191,6 +192,10 @@ export interface RefineState {
   graphing?: DocFile | null;
   /** The last document the extraction could not add, with the reason in plain words; cleared by the next success. */
   graphError?: { file: DocFile; reason: string } | null;
+  /** The architecture the documents support, with the hash of the documents it was decided on; a later edit of a document makes it stale. */
+  architecture?: { docsHash: string; decision: Architecture } | null;
+  /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
+  architectureError?: string | null;
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -576,6 +581,18 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.DocGraphFailed:
       s.graphing = null;
       s.graphError = { file: docName(d.file), reason: String(d.reason) };
+      break;
+    case RefineEvent.ArchitectureDecided: {
+      const v = d as unknown as { docsHash: string; architecture: Architecture; questions: Question[] };
+      s.architecture = { docsHash: String(v.docsHash), decision: v.architecture };
+      s.architectureError = null;
+      // A new decision replaces the questions the last one left open; the answered ones stay for the next decision.
+      s.questions = [...s.questions.filter((q) => !(q.origin === 'architecture' && q.status === 'pending')), ...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
+      s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.ArchitectureFailed:
+      s.architectureError = String(d.reason);
       break;
     case RefineEvent.DocsScored: {
       // A score without a file list is a full one, as journals from before the per-document score wrote it.

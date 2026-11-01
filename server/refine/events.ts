@@ -92,6 +92,12 @@ export const RefineEvent = {
   DocGraphed: 'REFINE_DOC_GRAPHED',
   /** The document could not be added to the graph: `{file, reason}`, in plain words for the owner. */
   DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
+  /** The architecture step started on the five documents at this hash: `{docsHash}`. */
+  ArchitectureStarted: 'REFINE_ARCHITECTURE_STARTED',
+  /** The architecture the documents support: `{docsHash, architecture, questions}`; the questions are the owner's to answer. */
+  ArchitectureDecided: 'REFINE_ARCHITECTURE_DECIDED',
+  /** The architecture could not be decided, in plain words: `{reason}`. */
+  ArchitectureFailed: 'REFINE_ARCHITECTURE_FAILED',
   DecisionMade: 'DECISION_MADE',
 } as const;
 /** The names the journal wrote before the plan preparation was renamed, each with its current name. */
@@ -127,8 +133,8 @@ export interface Question {
   options?: QuestionChoice[];
   /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
   rule?: string;
-  /** Set on a question plan left open during its preparation. */
-  origin?: 'speckit';
+  /** Set on a question plan left open during its preparation, or on one the architecture step leaves open. */
+  origin?: 'speckit' | 'architecture';
   /** The backlog item a plan question is about. */
   itemKey?: string;
   /** The plan command that asked a plan question. */
