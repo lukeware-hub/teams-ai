@@ -69,7 +69,7 @@ describe('document graph extraction', () => {
     expect(calls).toHaveLength(1);
     const call = calls[0]!;
     expect(call.bin).toBe('graphify');
-    expect(call.args).toEqual(['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--out', out]);
+    expect(call.args).toEqual(['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', out]);
     expect(call.env).toMatchObject({ GRAPHIFY_CLAUDE_CLI_MODEL: 'claude-sonnet-5-5', SSH_AUTH_SOCK: '', DOCKER_HOST: '' });
     expect(call.env!.HOME).not.toBe(host);
     expect(call.env!.HOME!.replace(/\\/g, '/').startsWith(parent)).toBe(true);

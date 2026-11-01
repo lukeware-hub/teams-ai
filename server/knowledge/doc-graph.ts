@@ -64,7 +64,7 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
       result = await withRefreshGate(deps.hostEnv, deps.clock ?? (() => new Date()), TIMEOUT_MS + REFRESH_WINDOW_MS, () =>
         deps.exec({
           bin: 'graphify',
-          args: ['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--out', outDir],
+          args: ['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', outDir],
           cwd: dir,
           timeoutMs: TIMEOUT_MS,
           env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: MODELS.sonnet },

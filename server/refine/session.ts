@@ -407,10 +407,12 @@ export class RefineSession {
       await fs.rm(folder, { recursive: true, force: true });
       await fs.mkdir(folder, { recursive: true });
       for (const doc of [...(this.state.doneStages ?? []), file]) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
+      const previous = await documentCounts(staging, file).catch(() => null);
       await this.deps.extractDocs!(folder, staging);
       const counts = await documentCounts(staging, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
-      await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
       await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
       await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
