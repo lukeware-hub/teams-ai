@@ -25,6 +25,11 @@ export interface PlanPackInput {
   repository?: RepositoryContext;
 }
 
+/** The clause that runs a skill unattended in a stamped draft: loaded with the Skill tool, and never a stop to ask. */
+export function skillClause(skill: string): string {
+  return `Load the skill ${skill} with the Skill tool and follow it. Nobody is present: never stop to ask a question, never commit, open a worktree or start a subagent, and load no other skill. The JSON answer is the deliverable.`;
+}
+
 /** The repository block of a pack: what the repository is for and the integrations that reach it. */
 export function repositoryNote(repo: RepositoryContext): string {
   return [
@@ -75,7 +80,7 @@ export function taskPack(input: TaskPackInput): ContextPackInput {
   const inputs = PLAN_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
   const feedback = [
     `Write the task list of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}". Read the implementation plan docs/specs/${input.specId}/implementation-plan.md in this folder, and the six Markdown inputs read with the Read tool: ${inputs}.`,
-    '- Nobody is present: never stop to ask a question in the chat. No commit, no worktree, no subagent, and no other skill.',
+    `- ${skillClause('superpowers:writing-plans')} Use it for the granularity of the entries.`,
     `- Write only ${taskFileOf(input.specId)} in this folder, and never change the plan, the inputs or .claude/.`,
     `- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (docs/specs/${input.specId}/spec.md), **Plan:** (docs/specs/${input.specId}/implementation-plan.md), **Repository:**${input.repository ? ` (${input.repository.name})` : ''}, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.`,
     '- Every criterion id of the spec must appear in at least one entry. Never invent a criterion, and never invent a business rule: a fact comes from the six files, and the entry cites the file for it.',
