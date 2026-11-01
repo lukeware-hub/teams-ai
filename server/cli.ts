@@ -11,10 +11,8 @@ import { redactSecrets } from './core/redact.js';
 import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
-import { fetch as fetchRepo } from './git/git.js';
-import { readMainDocs, type MainDoc } from './git/main-docs.js';
 import { Graphify } from './knowledge/graphify.js';
-import { mergeProjectGraph } from './knowledge/project-graph.js';
+import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -168,13 +166,6 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   healTimer.unref();
   const healSettle = setTimeout(healTick, HEAL_SETTLE_MS);
   healSettle.unref();
-  /** The project's main documents as origin/main has them; a project that cannot be read has none. */
-  const mainDocsOf = async (projectId: string): Promise<MainDoc[]> => {
-    const dir = await projectDirOf(projectId);
-    const read = dir ? await readProject(dir) : null;
-    if (!read) return [];
-    return readMainDocs(workspacePaths((await readUserConfig()).cfg, projectId).repo, read.specs.at(-1)?.specId).catch(() => []);
-  };
   const chat = new ChatService({
     guideDir: path.join(repoRoot, 'docs', 'guia'),
     store: new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats')),
@@ -184,16 +175,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
     suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
     newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
-    refreshProjectGraph: async (projectId) => {
-      const dir = await projectDirOf(projectId);
-      const read = dir ? await readProject(dir) : null;
-      if (!read) throw new Error('project not found');
-      const ws = workspacePaths((await readUserConfig()).cfg, projectId);
-      // The graph is rebuilt from main as it is now: a failed fetch keeps the last copy.
-      await fetchRepo(ws.repo).catch(() => undefined);
-      await mergeProjectGraph(graphify, ws, read.project, read.project.services ?? [], await mainDocsOf(projectId));
-    },
-    docs: mainDocsOf,
+    refreshProjectGraph: async (projectId) => rebuildProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)),
+    docs: async (projectId) => projectMainDocs(await locateProject((await readUserConfig()).cfg, projectId)),
     confidential: async (projectId) => {
       const dir = await projectDirOf(projectId);
       return dir === null ? true : isConfidential({ cfg: (await readUserConfig()).cfg, dir, projectId });
