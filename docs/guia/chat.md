@@ -21,6 +21,7 @@ O **Chat de dúvidas** (ícone de balão no menu lateral) responde em palavras s
 - As **perguntas** que aguardam a sua resposta.
 - As **execuções anteriores** da mesma spec.
 - O **registro completo** de cada spec, que o chat consulta quando a resposta exige mais detalhe.
+- Os **documentos principais** do projeto (visão, briefing, stack, fluxo e design), que o chat consulta quando a pergunta é sobre o que eles dizem.
 
 Quando o registro não diz algo, o chat diz que não está registrado e informa em qual registro isso apareceria. Ele não chuta a causa.
 
