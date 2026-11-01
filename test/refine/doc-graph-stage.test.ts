@@ -43,8 +43,11 @@ describe('document graph in the stages', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    // The review adds the document to the graph at once; only the extraction that Continuar starts waits for the gate.
+    let calls = 0;
     const slow = async (dir: string, outDir: string) => {
-      await gate;
+      calls += 1;
+      if (calls > 1) await gate;
       await extractDocs(dir, outDir);
     };
     const s = await RefineSession.create({ ...deps(), extractDocs: slow }, 'new-project', { repositories: true });

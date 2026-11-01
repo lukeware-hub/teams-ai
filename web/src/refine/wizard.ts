@@ -2,6 +2,7 @@ import { DOC_STAGES } from '@server/refine/doc-stages';
 import type { PatchRow, QuestionRow, Snapshot } from '../api.js';
 import type { StepperStep } from '../components/Stepper.js';
 import { DOC_LABEL } from './doc-labels.js';
+import { stageOutdated } from './stage-view.js';
 
 type State = Snapshot['state'];
 type DocFile = (typeof DOC_STAGES)[number];
@@ -37,13 +38,13 @@ export const prevStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD
 export const nextStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) + 1] ?? null;
 
 /** The stepper's nodes: state only, never a score. A stage session reads done from the journal; a project with no stages reads it from the position. */
-export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'outdatedDocs' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture'>, current: WizardStep): StepperStep[] {
+export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture'>, current: WizardStep): StepperStep[] {
   const done = new Set(st.doneStages ?? []);
   const steps = stepsOf(st);
   const at = steps.indexOf(current);
   return steps.map((step, index) => {
     const doc = isDocStep(step) ? step : null;
-    const outdated = doc !== null && (st.outdatedDocs?.includes(doc) === true || st.staleBy?.[doc] !== undefined);
+    const outdated = doc !== null && stageOutdated(st, doc);
     const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true) || (step === 'architecture' && st.architecture != null);
     return {
       key: step,

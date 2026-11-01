@@ -5,7 +5,7 @@ import { stageViews } from './stage-view.js';
 
 describe('StageSteps', () => {
   it('shows the five documents in order, marks the one shown, and shows each score and outdated mark', () => {
-    const views = stageViews({ doneStages: ['flow.md'], readiness: { docs: { 'project.md': { score: 0.44 } } }, outdatedDocs: ['project.md'] });
+    const views = stageViews({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md'], readiness: { docs: { 'project.md': { score: 0.44 } } } });
     render(<StageSteps views={views} shown="project.md" />);
     expect(screen.queryAllByRole('button')).toHaveLength(0);
     expect(screen.getByTestId('stage-project.md').getAttribute('aria-current')).toBe('step');

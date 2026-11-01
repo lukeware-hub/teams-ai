@@ -68,6 +68,13 @@ describe('one stage per screen', () => {
 });
 
 describe('Voltar and Continuar', () => {
+  it('adds a done document to Graphify on Continuar when it is not in the graph yet', async () => {
+    const handlers = show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md'));
+  });
+
   it('disables Voltar on the first stage, with the reason, and goes back from the others', () => {
     show(base({ doneStages: ['flow.md'] }));
     fireEvent.click(screen.getByTestId('wizard-back'));
@@ -85,7 +92,7 @@ describe('Voltar and Continuar', () => {
   });
 
   it('only moves the view with Continuar on a stage that is already done', async () => {
-    const handlers = show(base({ doneStages: ['flow.md', 'project.md'] }));
+    const handlers = show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md', 'project.md'] }));
     fireEvent.click(screen.getByTestId('wizard-back'));
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(editor('briefing.md').value).toBe('## Objectives'));
@@ -443,6 +450,15 @@ describe('the final review', () => {
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(handlers.onCloseReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows which documents are in Graphify, and adds a missing one on demand', () => {
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ graphed: ['flow.md', 'project.md'] }));
+    expect(screen.getByTestId('graph-row-flow.md').textContent).toContain('no Graphify');
+    expect(screen.getByTestId('graph-row-stack.md').textContent).toContain('fora do Graphify');
+    fireEvent.click(screen.getByTestId('graph-add-stack.md'));
+    expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md');
   });
 
   it('shows the review done once closed, and does not close it again', () => {

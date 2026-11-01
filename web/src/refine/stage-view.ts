@@ -14,9 +14,15 @@ export interface StageView {
 export interface StageInput {
   doneStages?: string[];
   readiness?: { docs?: Partial<Record<DocFile, { score: number }>> | null } | null;
-  outdatedDocs?: string[];
+  graphed?: string[];
   staleBy?: Record<string, string>;
 }
+
+/** A document is outdated when an earlier document changed after its review, or when it is finished but no longer in the graph (an edit took it out). The Jev score never makes a document outdated: it only informs. */
+export const stageOutdated = (st: StageInput, doc: DocFile): boolean => doc in (st.staleBy ?? {}) || ((st.doneStages ?? []).includes(doc) && !(st.graphed ?? []).includes(doc));
+
+/** Every document is processed: finished, in the graph and not outdated. */
+export const allStagesCurrent = (st: StageInput): boolean => DOC_STAGES.every((doc) => (st.doneStages ?? []).includes(doc) && !stageOutdated(st, doc));
 
 /** The five documents in stage order, each with its state, its score and whether that score is outdated. */
 export function stageViews(st: StageInput): StageView[] {
@@ -25,7 +31,7 @@ export function stageViews(st: StageInput): StageView[] {
     doc,
     state: (st.doneStages ?? []).includes(doc) ? 'done' : doc === current ? 'current' : 'todo',
     score: st.readiness?.docs?.[doc]?.score ?? null,
-    outdated: (st.outdatedDocs ?? []).includes(doc) || doc in (st.staleBy ?? {}),
+    outdated: stageOutdated(st, doc),
   }));
 }
 

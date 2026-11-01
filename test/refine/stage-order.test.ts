@@ -151,6 +151,7 @@ describe('stage order, stamped sessions', () => {
     expect(patch).toBeDefined();
     await expect(s.continueStage()).rejects.toThrow(/Aceite ou rejeite as sugestões da etapa flow\.md/);
     await s.accept(patch!.patchId);
+    await s.settled();
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);

@@ -26,7 +26,7 @@ import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
-import { currentStage, previousStage, stageViews } from '../refine/stage-view.js';
+import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
@@ -451,7 +451,7 @@ export function RefinementView(p: ViewProps) {
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
       ? { label: 'Não avaliada', tone: '' }
-      : st.stale
+      : st.stale && !allStagesCurrent(st)
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
@@ -685,8 +685,8 @@ export function RefinementView(p: ViewProps) {
       {newProject && staleFrom && (
         <p data-testid="doc-stale" className={notice}>{docLabel[staleFrom]} mudou depois desta etapa: avalie esta etapa de novo.</p>
       )}
-      {newProject && st.outdatedDocs?.includes(tab) && (
-        <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} mudou depois da última nota: clique em Avaliar com o Jev para medir de novo.</p>
+      {newProject && stageOutdated(st, tab) && (
+        <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} saiu do Graphify depois de uma edição: avalie esta etapa e continue para incluí-lo de novo.</p>
       )}
       {aligned && (
         <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{aligned}</p>
@@ -1129,6 +1129,18 @@ export function RefinementView(p: ViewProps) {
               </ActionButton>
             )}
           </div>
+          <div className="grid gap-3" data-testid="final-graph">
+            <h3 className="m-0 text-[1rem] font-semibold text-ink">Graphify</h3>
+            {DOC_STAGES.map((file) => {
+              const inGraph = (st.graphed ?? []).includes(file);
+              return (
+                <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
+                  <span>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
+                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onContinueStage?.(file)}>Adicionar ao Graphify</button>}
+                </div>
+              );
+            })}
+          </div>
           <div className="grid gap-3" data-testid="final-pending">
             <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
             {byDoc.map(({ file, count }) => (
@@ -1224,7 +1236,9 @@ export function RefinementView(p: ViewProps) {
         className="primary"
         disabled={locked}
         onClick={async () => {
-          if (stageSession && !doneStages.includes(step)) {
+          // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
+          const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
+          if (stageSession && (!doneStages.includes(step) || notGraphed)) {
             const result = await p.onContinueStage?.(step);
             if (result === false) return;
           }

@@ -58,8 +58,8 @@ describe('wizardNodes', () => {
     expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo', 'todo']);
   });
 
-  it('flags a document that changed after its score or after an earlier document changed', () => {
-    const nodes = wizardNodes(state({ outdatedDocs: ['stack.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
+  it('flags a finished document that left the graph, or one that changed after an earlier document, and never the Jev score', () => {
+    const nodes = wizardNodes(state({ doneStages: ['flow.md', 'stack.md'], graphed: ['flow.md'], outdatedDocs: ['flow.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
     expect(nodes.find((n) => n.key === 'stack.md')!.marker).toBe('desatualizado');
     expect(nodes.find((n) => n.key === 'design.md')!.marker).toBe('desatualizado');
     expect(nodes.find((n) => n.key === 'flow.md')!.marker).toBeUndefined();

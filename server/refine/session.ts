@@ -391,16 +391,16 @@ export class RefineSession {
   }
 
   /** Shows the extraction in the state, then runs it in the background; the session stays busy until the graph has the document or refused it. */
-  private startIndexing(file: DocFile): Promise<void> {
+  private startIndexing(file: DocFile, advance = true): Promise<void> {
     const started = this.journal.fact(RefineEvent.DocGraphStarted, { file });
-    this.running = started.then(() => this.indexStage(file)).finally(() => {
+    this.running = started.then(() => this.indexStage(file, advance)).finally(() => {
       this.running = null;
     });
     return started.then(() => undefined);
   }
 
   /** One extraction: the finished documents and this one, as they are now, go to the graph; a failure is journaled for the owner. */
-  private async indexStage(file: DocFile): Promise<void> {
+  private async indexStage(file: DocFile, advance = true): Promise<void> {
     try {
       const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
       const folder = path.posix.join(staging, 'docs');
@@ -413,7 +413,7 @@ export class RefineSession {
       const counts = await documentCounts(staging, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
       await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
-      await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
+      if (advance) await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
       await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
     }
@@ -473,6 +473,11 @@ export class RefineSession {
       await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
+      // A repository session adds the reviewed document to the graph when its review ends; the owner still moves on with Continuar.
+      if (this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
+        await this.journal.fact(RefineEvent.DocGraphStarted, { file });
+        await this.indexStage(file, false);
+      }
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
@@ -869,6 +874,8 @@ export class RefineSession {
     await writeDoc(this.deps.draft, p.file, after);
     await this.journal.fact(RefineEvent.DocEdited, { file: p.file, hash: sha256(after), source: 'patch' });
     await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
+    // An accepted suggestion changes the document, so a repository session adds it to the graph again at once.
+    if (this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(p.file) && this.deps.extractDocs) this.startIndexing(p.file, false).catch(() => undefined);
     // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
     for (const other of this.state.patches) {
       if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {

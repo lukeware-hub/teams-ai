@@ -165,7 +165,6 @@ describe('architecture decision of a repository session', () => {
     expect((await s.snapshot()).architectureStale).toBe(true);
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
-    await s.continueStage('flow.md');
     await s.settled();
     expect(s.state.graphed).toContain('flow.md');
     await expect(s.enableBacklog()).rejects.toThrow('Os documentos mudaram depois da arquitetura: decida a arquitetura de novo.');
