@@ -1186,7 +1186,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating} onDecide={() => void p.onDecideArchitecture?.()} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => void p.onDecideArchitecture?.()} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (

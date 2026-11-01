@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ArchitectureView } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
@@ -15,7 +16,28 @@ export function kindLabel(name: string, style: ArchitectureView['style']): strin
  * The architecture step: the style and its reason, each repository with its quote, and each integration. Before a decision it
  * offers the one primary action; a decision made on documents that changed since says so and asks for a new one.
  */
-export function ArchitectureCard({ architecture, error, stale, busy, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; stale: boolean; busy: boolean; onDecide: () => void }) {
+/** The time a decision has run, as mm:ss. */
+const elapsedOf = (startedAt: string, now: number): string => {
+  const total = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
+/** The progress of a running decision: the time it has run, and what it reads. */
+function DecisionProgress({ startedAt }: { startedAt: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div className="grid gap-1 text-[0.8125rem] text-ink-soft" role="status" data-testid="architecture-progress">
+      <span>Decidindo a arquitetura…{startedAt ? ` Tempo: ${elapsedOf(startedAt, now)}` : ''}</span>
+      <span>Lendo os cinco documentos do grafo e decidindo o estilo e os repositórios. Ao terminar, a decisão aparece aqui.</span>
+    </div>
+  );
+}
+
+export function ArchitectureCard({ architecture, error, stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; stale: boolean; busy: boolean; onDecide: () => void }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
@@ -25,7 +47,7 @@ export function ArchitectureCard({ architecture, error, stale, busy, onDecide }:
         {decision && <span className="count-pill" data-testid="architecture-style">{decision.style === 'monolith' ? 'Monólito' : 'Microsserviços'}</span>}
       </div>
       {!decision && !busy && <p className="hint" data-testid="architecture-empty">Nenhuma arquitetura decidida ainda: decida-a a partir dos cinco documentos.</p>}
-      {busy && <p className="hint" role="status">Decidindo a arquitetura…</p>}
+      {busy && <DecisionProgress startedAt={startedAt ?? null} />}
       {error && <p className="text-warn" role="alert">{error}</p>}
       {decision && stale && <p className="text-warn" data-testid="architecture-stale">Os documentos mudaram: decida a arquitetura de novo.</p>}
       {decision && (

@@ -14,6 +14,13 @@ const decision: ArchitectureView = {
 };
 
 describe('ArchitectureCard', () => {
+  it('shows the progress of a running decision, with the time it has run', () => {
+    const started = new Date(Date.now() - 65_000).toISOString();
+    render(<ArchitectureCard architecture={null} error={null} stale={false} busy startedAt={started} onDecide={() => undefined} />);
+    expect(screen.getByTestId('architecture-progress').textContent).toContain('Tempo: 01:0');
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('offers the one primary action while no architecture is decided', () => {
     const onDecide = vi.fn();
     render(<ArchitectureCard architecture={null} error={null} stale={false} busy={false} onDecide={onDecide} />);
