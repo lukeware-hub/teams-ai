@@ -78,6 +78,7 @@ export function RepositoryPage() {
         {detail.rows.length === 0 ? (
           <p className="hint">Nenhuma spec neste repositório.</p>
         ) : (
+          <div className="-mx-1 overflow-x-auto">
           <table className="w-full text-[0.8125rem]">
             <thead>
               <tr className="text-left text-ink-soft">
@@ -102,6 +103,7 @@ export function RepositoryPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
       {detail.rows.some((r) => r.blocked) && (
