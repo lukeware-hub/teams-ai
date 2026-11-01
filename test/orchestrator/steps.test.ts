@@ -655,6 +655,16 @@ describe('runAgentStep', () => {
     expect(seen[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low' });
   });
 
+  it('an architecture step runs on the manual setting of its role from the Settings screen, not on the Opus pin', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.agentSetting = (role) => (role === 'sm' ? { model: 'claude-sonnet-5-5', effort: 'medium' } : undefined);
+    const pack = { kind: 'architecture', role: 'sm', specHash: HASH, principles: [], outputContract: '', criteria: [], feedback: 'Decide the architecture.', budgetTokens: 8000 };
+    await runAgentStep({ kind: 'architecture', role: 'sm', pack, cwd: dir, phase: 'refine', taskId: null, attempt: 1, model: 'claude-opus-5-5', effort: 'low' } as never, d);
+    expect(seen[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'medium' });
+  });
+
   it('reads the manual setting when each step starts, so a change made during the run applies to the next step', async () => {
     const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
     const seen: Array<{ model: string; effort?: string }> = [];

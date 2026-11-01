@@ -627,7 +627,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
   // A plan step carries its own model and effort (plan 107): the role's pin, which sets the builders, does not apply to it.
-  const manual = req.kind === 'speckit' || req.kind === 'architecture' ? undefined : await deps.agentSetting?.(req.role);
+  // The architecture step follows the role's setting in the Settings screen, as the owner asked.
+  const manual = req.kind === 'speckit' ? undefined : await deps.agentSetting?.(req.role);
   const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.
   const lower = sessionStore || manual ? undefined : fallbackModel(planned);
