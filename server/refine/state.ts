@@ -563,7 +563,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       markSpeckitStale(s);
       // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
       if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
-      if (s.graphed) s.graphed = s.graphed.filter((file) => file !== docName(d.file));
+      // An accepted suggestion or an architecture decision keeps the document in the graph: its processing still counts after it.
+      if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.

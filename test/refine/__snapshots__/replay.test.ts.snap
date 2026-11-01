@@ -14,6 +14,7 @@ exports[`replay of a live refinement journal > reduces a journal written by a li
   ],
   "graphed": [
     "flow.md",
+    "briefing.md",
     "stack.md",
   ],
   "mode": "new-project",

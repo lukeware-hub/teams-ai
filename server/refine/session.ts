@@ -874,8 +874,6 @@ export class RefineSession {
     await writeDoc(this.deps.draft, p.file, after);
     await this.journal.fact(RefineEvent.DocEdited, { file: p.file, hash: sha256(after), source: 'patch' });
     await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
-    // An accepted suggestion changes the document, so a repository session adds it to the graph again at once.
-    if (this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(p.file) && this.deps.extractDocs) this.startIndexing(p.file, false).catch(() => undefined);
     // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
     for (const other of this.state.patches) {
       if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {
