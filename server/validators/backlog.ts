@@ -27,7 +27,7 @@ export function flowHeadings(flow: string): string[] {
 }
 
 /** Deterministic rules on a derived backlog, against the docs by the names items cite; the agent gets the messages back when it breaks one. */
-export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs: Partial<BacklogDocs>; frozen?: ReadonlySet<string> }): string[] {
+export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs: Partial<BacklogDocs>; frozen?: ReadonlySet<string>; /** The architecture's repositories: when given, every item names one of them. */ repositories?: readonly string[] }): string[] {
   const errors: string[] = [];
   if (backlog.items.length > MAX_ITEMS) errors.push(`o backlog tem ${backlog.items.length} itens; o máximo é ${MAX_ITEMS}`);
   const epics = new Set<string>();
@@ -41,6 +41,8 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
     else byKey.set(i.key, i);
     if (RESERVED_KEY.test(i.key)) errors.push(`chave reservada: ${i.key}`);
     if (!epics.has(i.epic)) errors.push(`item ${i.key}: épico desconhecido ${i.epic}`);
+    if (opts.repositories && !i.repository) errors.push(`item ${i.key}: sem repositório`);
+    else if (opts.repositories && !opts.repositories.includes(i.repository!)) errors.push(`item ${i.key}: repositório desconhecido ${i.repository}`);
   }
   for (const i of backlog.items) {
     const owner = branchOwner(i.key, backlog.items.map((o) => o.key));

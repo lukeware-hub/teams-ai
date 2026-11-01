@@ -1,5 +1,6 @@
 import type { BACKLOG_DOCS, BacklogItem } from '../contracts/backlog.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
+import type { RepositoryContext } from '../contracts/architecture.js';
 import type { SpecProvenance } from '../contracts/spec.js';
 import { approvalKey, sectionText, withoutApprovals } from './sections.js';
 
@@ -18,8 +19,8 @@ const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
  * enter only through cited sections; hashing them whole would re-derive every spec on almost every accepted patch.
  * The dependencies feed only the pre-plan (R11.10), so one the outline adds re-derives no spec.
  */
-export function specInputHash(item: BacklogItem, docs: BacklogDocs): string {
-  return sha256(canonicalJson({ v: HASH_VERSION, key: item.key, title: item.title, scope: item.scope, sources: cited(item, docs) }));
+export function specInputHash(item: BacklogItem, docs: BacklogDocs, repo?: RepositoryContext): string {
+  return sha256(canonicalJson({ v: HASH_VERSION, key: item.key, title: item.title, scope: item.scope, sources: cited(item, docs), ...(repo ? { repo } : {}) }));
 }
 
 /** What a pre-plan is derived from: the spec it plans (by hash), stack.md, and whether the item carries the scaffold. */
@@ -32,10 +33,13 @@ export function sourceHashes(item: Pick<BacklogItem, 'sources'>, docs: BacklogDo
   return cited(item, docs).map(({ doc, heading, text }) => ({ doc, heading, hash: text === null ? null : sha256(text), bodyHash: text === null ? null : sha256(text.split('\n').slice(1).join('\n')) }));
 }
 
-/** Items to (re)derive, grouped by epic in rank order, at most `size` per agent call. */
-export function batches<T extends { epic: string; rank: number }>(items: readonly T[], size = 3): T[][] {
+/** Items to (re)derive, grouped by epic (and by repository, when an item names one) in rank order, at most `size` per agent call. */
+export function batches<T extends { epic: string; rank: number; repository?: string }>(items: readonly T[], size = 3): T[][] {
   const byEpic = new Map<string, T[]>();
-  for (const i of [...items].sort((a, b) => a.rank - b.rank)) byEpic.set(i.epic, [...(byEpic.get(i.epic) ?? []), i]);
+  for (const i of [...items].sort((a, b) => a.rank - b.rank)) {
+    const group = i.repository === undefined ? i.epic : `${i.repository}/${i.epic}`;
+    byEpic.set(group, [...(byEpic.get(group) ?? []), i]);
+  }
   const out: T[][] = [];
   for (const group of byEpic.values()) for (let n = 0; n < group.length; n += size) out.push(group.slice(n, n + size));
   return out;

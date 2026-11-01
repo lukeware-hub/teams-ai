@@ -32,7 +32,6 @@ afterEach(() => {
 describe('one stage per screen', () => {
   it('opens the first document not done, with the editor of that document only and no score on any step', () => {
     show(base({ doneStages: ['flow.md'], readiness: scored({ 'project.md': 0.65 }) }));
-    expect(screen.getByTestId('step-project.md').closest('li')!.getAttribute('aria-current')).toBe('step');
     expect(editor('project.md').value).toBe('# Hello');
     expect(screen.queryByTestId('doc-flow.md')).toBeNull();
     expect(within(screen.getByRole('list', { name: 'Etapas dos documentos' })).queryByText(/%/)).toBeNull();
@@ -49,11 +48,10 @@ describe('one stage per screen', () => {
     expect(editor('flow.md').value).toBe('# Flow');
   });
 
-  it('opens any step from the stepper, without a lock', () => {
+  it('the stepper does not open another step: only Continuar and Voltar move between them', () => {
     show(base());
-    fireEvent.click(screen.getByTestId('step-design.md'));
-    expect(editor('design.md').value).toBe('# Design');
-    expect(window.location.search).toBe('?etapa=design.md');
+    expect(screen.queryByTestId('step-design.md')).toBeNull();
+    expect(window.location.search).not.toBe('?etapa=design.md');
   });
 
   it('shows the usage of the whole refinement as one line in the footer', () => {
@@ -64,12 +62,19 @@ describe('one stage per screen', () => {
   it('keeps the text the owner typed when moving to another screen', () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(editor('project.md'), { target: { value: '# Editado' } });
-    fireEvent.click(screen.getByTestId('step-stack.md'));
+    fireEvent.click(screen.getByTestId('wizard-back'));
     expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Editado');
   });
 });
 
 describe('Voltar and Continuar', () => {
+  it('adds a done document to Graphify on Continuar when it is not in the graph yet', async () => {
+    const handlers = show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md'));
+  });
+
   it('disables Voltar on the first stage, with the reason, and goes back from the others', () => {
     show(base({ doneStages: ['flow.md'] }));
     fireEvent.click(screen.getByTestId('wizard-back'));
@@ -87,8 +92,8 @@ describe('Voltar and Continuar', () => {
   });
 
   it('only moves the view with Continuar on a stage that is already done', async () => {
-    const handlers = show(base({ doneStages: ['flow.md', 'project.md'] }));
-    fireEvent.click(screen.getByTestId('step-project.md'));
+    const handlers = show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md', 'project.md'] }));
+    fireEvent.click(screen.getByTestId('wizard-back'));
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(editor('briefing.md').value).toBe('## Objectives'));
     expect(handlers.onContinueStage).not.toHaveBeenCalled();
@@ -202,8 +207,7 @@ describe('the review of the stage shows only its own document', () => {
   });
 
   it('tells which earlier document changed after the stage was reviewed', () => {
-    show(base({ doneStages: ['flow.md', 'project.md'], staleBy: { 'project.md': 'flow.md' } }));
-    fireEvent.click(screen.getByTestId('step-project.md'));
+    show(base({ doneStages: ['flow.md'], staleBy: { 'project.md': 'flow.md' } }));
     expect(screen.getByTestId('doc-stale').textContent).toContain('flow.md');
   });
 });
@@ -334,9 +338,10 @@ describe('the actions of the editor', () => {
 
   it('offers Sugerir from the second document on, not on flow.md', () => {
     const suggest = vi.fn(async () => null);
-    render(<MemoryRouter><RefinementView snap={base()} busy={false} {...on()} onSuggestDoc={suggest} /></MemoryRouter>);
+    const first = render(<MemoryRouter><RefinementView snap={base()} busy={false} {...on()} onSuggestDoc={suggest} /></MemoryRouter>);
     expect(screen.queryByTestId('suggest')).toBeNull();
-    fireEvent.click(screen.getByTestId('step-project.md'));
+    first.unmount();
+    render(<MemoryRouter><RefinementView snap={base({ doneStages: ['flow.md'] })} busy={false} {...on()} onSuggestDoc={suggest} /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('suggest'));
     expect(suggest).toHaveBeenCalledWith('project.md');
   });
@@ -365,8 +370,6 @@ describe('the final review', () => {
     show(reviewSnap());
     expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir etapa' }));
-    expect(editor('project.md').value).toBe('# Hello');
   });
 
   it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
@@ -449,12 +452,20 @@ describe('the final review', () => {
     expect(handlers.onCloseReview).toHaveBeenCalledTimes(1);
   });
 
+  it('shows which documents are in Graphify, and adds a missing one on demand', () => {
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ graphed: ['flow.md', 'project.md'] }));
+    expect(screen.getByTestId('graph-row-flow.md').textContent).toContain('no Graphify');
+    expect(screen.getByTestId('graph-row-stack.md').textContent).toContain('fora do Graphify');
+    fireEvent.click(screen.getByTestId('graph-add-stack.md'));
+    expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md');
+  });
+
   it('shows the review done once closed, and does not close it again', () => {
     open('?etapa=revisao');
     const handlers = show(reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
     fireEvent.click(screen.getByTestId('open-backlog'));
     expect(screen.getByTestId('backlog-stage')).toBeTruthy();
-    expect(screen.getByTestId('step-review').closest('li')!.className).toContain('is-done');
     expect(handlers.onCloseReview).not.toHaveBeenCalled();
   });
 

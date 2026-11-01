@@ -12,6 +12,7 @@ import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { gitAuthEnv, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
+import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
 import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
@@ -38,7 +39,7 @@ import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
-import { planFileFor } from './refine/plan-prepare.js';
+import { planFileFor, taskFileFor } from './refine/plan-prepare.js';
 import { createJevValidator } from './refine/jev-validation.js';
 import { createJevScorer } from './refine/jev-scoring.js';
 import { createDecider } from './decide/create-decider.js';
@@ -135,6 +136,9 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
+    // The graph extraction shares the refinement governor, and runs in step homes of its own.
+    extractDocs: (dir, outDir) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
+    docGraphContext: (outDir, question, budgetTokens) => docGraphContext(graphify, outDir, question, budgetTokens),
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),
@@ -189,7 +193,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,
@@ -319,7 +323,8 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets, cfg.environment.generatedSecrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   const planFile = await planFileFor(projectDir, specId);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId) };
+  const taskFile = await taskFileFor(projectDir, specId);
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

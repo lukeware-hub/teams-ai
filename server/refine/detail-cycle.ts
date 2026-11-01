@@ -17,6 +17,7 @@ import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
 import { citedSections, fitConflictsPack, preplanPack, specPack } from './detail-packs.js';
+import { repositoryContextOf } from './architecture-step.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
@@ -111,6 +112,10 @@ export async function retireDropped(draft: Draft, specIds: readonly string[]): P
  * the reason once the calls in flight end; what finished stays recorded. With the decision layer on, the Jev checks each
  * valid first answer, and an item it flags is retried alone once as well (R11.5a item 3).
  */
+/** What the spec pack asks the graph for: the parts of the system the items touch. */
+const SPEC_GRAPH_QUESTION = 'the modules, entities and integrations that the backlog items touch';
+const SPEC_GRAPH_TOKENS = 3_000;
+
 export async function detailBacklog(deps: CycleDeps, input: { cycle: number; hash: string; docs: BacklogDocs; backlog: BacklogState; ctx: Ctx }): Promise<DetailResult> {
   try {
     return await detail(deps, input);
@@ -193,7 +198,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   };
 
   // Specs. Each item's last valid spec (its row, or the generated spec.json on disk) keeps its criterion ids stable.
-  const specHash = new Map(items.map((i) => [i.key, specInputHash(i, docs)]));
+  const specHash = new Map(items.map((i) => [i.key, specInputHash(i, docs, repositoryContextOf(deps.journal.state, i.repository))]));
+  const graphContext = deps.docGraphContext ? await deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), SPEC_GRAPH_QUESTION, SPEC_GRAPH_TOKENS) : '';
   const previous = new Map<string, Spec | null>();
   const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
   for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
@@ -231,7 +237,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined, review: boolean): Promise<Verdict> => {
     if (!entry) return { issues: ['o agente não devolveu a spec deste item'], detail: ['the answer has no spec for this item'] };
     const inputHash = specHash.get(item.key)!;
-    const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) } });
+    const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) }, repository: item.repository });
     if (review && decider) {
       const dry = processed();
       if (!dry.ok) return { issues: dry.issues, detail: dry.detail };
@@ -262,7 +268,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const adjustsOf = (item: Item) => adjusted(item.key, items).flatMap((k) => (specs[k]?.spec ? [specs[k]!.spec!] : []));
   const runSpecs = (batch: readonly Item[], rejection: Record<string, string[]>) => call(() => deps.runAgent<'spec'>({
     kind: 'spec', role: 'po', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-    pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection, adjusts: Object.fromEntries(batch.map((i) => [i.key, adjustsOf(i)])) })),
+    pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection, adjusts: Object.fromEntries(batch.map((i) => [i.key, adjustsOf(i)])), graphContext, repositories: Object.fromEntries(batch.map((i) => [i.key, repositoryContextOf(deps.journal.state, i.repository)])) })),
   }, ctx) as Promise<StepOutcome<SpecDetailOutput>>);
   const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null));
   await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec);

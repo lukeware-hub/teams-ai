@@ -18,22 +18,25 @@ import type { Divergence, DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
+import { ClosingDialog } from '../refine/ClosingDialog.js';
+import { ArchitectureCard } from '../refine/ArchitectureCard.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
-import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
+import { canStartRun, ProgramStatus, startInputOf, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
-import { currentStage, previousStage, stageViews } from '../refine/stage-view.js';
+import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
+import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -215,6 +218,8 @@ export interface ViewProps {
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
+  /** Decides the architecture of the five documents, in a repository session. */
+  onDecideArchitecture?(): void | Promise<unknown>;
   /** Stage 7: the owner asks for the plans of every backlog item. */
   onPreparePlans?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
@@ -379,7 +384,7 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId, speckitAsked[0]?.questionId, step]);
-  const canStart = canStartRun(st, busy);
+  const canStart = canStartRun(startInputOf(snap), busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
@@ -446,7 +451,7 @@ export function RefinementView(p: ViewProps) {
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
       ? { label: 'Não avaliada', tone: '' }
-      : st.stale
+      : st.stale && !allStagesCurrent(st)
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
@@ -571,6 +576,21 @@ export function RefinementView(p: ViewProps) {
     </div>
   ) : null;
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
+  /** The five checks of a stage, from the state and the snapshot's format problem. */
+  const stageLines = (file: DocFile) => {
+    const graphError = st.graphError?.file === file ? st.graphError.reason : null;
+    return stageChecklist({
+      reviewed: st.reviewedStages?.includes(file) ?? false,
+      openQuestions: docQuestions(st, file).filter((q) => q.blocking).length,
+      pendingSuggestions: docPatches(st, file).length,
+      formatProblem: snap.stageProblems?.[file] ?? null,
+      graphed: st.graphed?.includes(file) ?? false,
+      graphing: st.graphing === file,
+      graphError,
+    });
+  };
+  /** The first failing check of a stage: what the disabled Continuar names. Null when the stage can continue. */
+  const stageBlock = (file: DocFile): StageCheck | null => firstFailing(stageLines(file));
   const docsPanel = (
     <section className={panelCard}>
       <div className={panelHeading}>
@@ -584,7 +604,7 @@ export function RefinementView(p: ViewProps) {
       {newProject ? (
         <>
           {confidentialAsk}
-          <StageSteps views={stageViews(st)} shown={tab} onSelect={setTab} />
+          <StageSteps views={stageViews(st)} shown={tab} />
         </>
       ) : existing ? (
         <div className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
@@ -655,7 +675,7 @@ export function RefinementView(p: ViewProps) {
           {onStage ? (
             <>
               <ActionButton data-testid="stage-evaluate" disabled={locked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
-              <ActionButton data-testid="stage-continue" className="primary" disabled={locked} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
+              <ActionButton data-testid="stage-continue" className="primary" disabled={locked || stageBlock(onStage) !== null} title={stageBlock(onStage)?.hint ?? undefined} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
             </>
           ) : (
             <ActionButton data-testid="stage-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
@@ -665,8 +685,8 @@ export function RefinementView(p: ViewProps) {
       {newProject && staleFrom && (
         <p data-testid="doc-stale" className={notice}>{docLabel[staleFrom]} mudou depois desta etapa: avalie esta etapa de novo.</p>
       )}
-      {newProject && st.outdatedDocs?.includes(tab) && (
-        <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} mudou depois da última nota: clique em Avaliar com o Jev para medir de novo.</p>
+      {newProject && stageOutdated(st, tab) && (
+        <p data-testid="doc-outdated" className={notice}>{docLabel[tab]} saiu do Graphify depois de uma edição: avalie esta etapa e continue para incluí-lo de novo.</p>
       )}
       {aligned && (
         <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{aligned}</p>
@@ -979,6 +999,7 @@ export function RefinementView(p: ViewProps) {
     const discarded = st.discarded.filter((d) => d.file.split('/').pop() === file);
     const count = pendingCount(st, file);
     const jevBlocked = stageSession && st.confidential === undefined;
+    const checks = stageLines(file);
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
@@ -1050,6 +1071,19 @@ export function RefinementView(p: ViewProps) {
             )}
           </DocScoreInset>
           {alignment && <p data-testid="aligned" className="m-0 text-[0.8125rem] text-ink-soft">{alignment}</p>}
+          {newProject && (
+            <ol className="m-0 grid list-none gap-2 p-0" aria-label="Lista de verificação da etapa" data-testid="stage-checklist">
+              {checks.map((check) => (
+                <li key={check.id} className="flex items-start gap-2 text-[0.8125rem] text-ink-soft" data-testid={`check-${check.id}`} data-ok={check.ok}>
+                  <Icon name={check.ok ? 'check' : 'info'} size={16} />
+                  <span>
+                    {check.id === 'graphed' ? graphLabel({ graphed: check.ok, graphing: st.graphing === file }, null) : check.label}
+                    {!check.ok && check.hint ? ` — ${check.hint}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
           {!locked && questions[0] && questionCard(questions[0], questions.length)}
           {!locked && patches.map(patchCard)}
@@ -1095,12 +1129,23 @@ export function RefinementView(p: ViewProps) {
               </ActionButton>
             )}
           </div>
+          <div className="grid gap-3" data-testid="final-graph">
+            <h3 className="m-0 text-[1rem] font-semibold text-ink">Graphify</h3>
+            {DOC_STAGES.map((file) => {
+              const inGraph = (st.graphed ?? []).includes(file);
+              return (
+                <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
+                  <span>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
+                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onContinueStage?.(file)}>Adicionar ao Graphify</button>}
+                </div>
+              );
+            })}
+          </div>
           <div className="grid gap-3" data-testid="final-pending">
             <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
             {byDoc.map(({ file, count }) => (
               <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink">
                 <span>{docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}</span>
-                <button type="button" className="secondary h-10 px-3" onClick={() => goTo(file)}>Abrir etapa</button>
               </div>
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
@@ -1133,6 +1178,17 @@ export function RefinementView(p: ViewProps) {
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
   const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
+  // The architecture step: the decision of the five documents, and Continuar once it is current.
+  const architectureDecided = st.architecture != null && snap.architectureStale !== true;
+  const architectureScreen = () => (
+    <div className="grid min-w-0 gap-4" data-testid="architecture-step">
+      <header className="grid gap-1">
+        <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
+        <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
+      </header>
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => void p.onDecideArchitecture?.()} />
+    </div>
+  );
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
@@ -1151,16 +1207,21 @@ export function RefinementView(p: ViewProps) {
               const result = await p.onCloseReview?.();
               if (result === false) return;
             }
-            goTo('backlog');
+            // The next step of the list: the architecture in a repository session, the backlog otherwise.
+            goTo(nextWizardStep('review', stepsOf(st)) ?? 'backlog');
           }}
           icon={<Icon name="arrow-right" size={16} />}
         >
-          Abrir backlog e execução
+          {st.repositories === true ? 'Continuar' : 'Abrir backlog e execução'}
         </ActionButton>
       ) : (
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
     </>
+  ) : step === 'architecture' ? (
+    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided} title={architectureDecided ? undefined : 'Decida a arquitetura antes de quebrar o backlog.'} onClick={() => goTo('backlog')} icon={<Icon name="arrow-right" size={16} />}>
+      Quebrar o backlog por repositório
+    </ActionButton>
   ) : (
     <>
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
@@ -1175,11 +1236,13 @@ export function RefinementView(p: ViewProps) {
         className="primary"
         disabled={locked}
         onClick={async () => {
-          if (stageSession && !doneStages.includes(step)) {
+          // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
+          const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
+          if (stageSession && (!doneStages.includes(step) || notGraphed)) {
             const result = await p.onContinueStage?.(step);
             if (result === false) return;
           }
-          goTo(nextWizardStep(step));
+          goTo(nextWizardStep(step, stepsOf(st)));
         }}
         icon={<Icon name="arrow-right" size={16} />}
       >
@@ -1191,13 +1254,13 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
-          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => goTo(key as WizardStep)} />}
+          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" />}
           stepKey={step}
           meta={usageLine}
-          back={{ onClick: () => goTo(prevStep(step)), disabled: prevStep(step) === null, reason: 'Esta é a primeira etapa' }}
+          back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : stageScreen(step)}
+          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1229,6 +1292,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [closingOpen, setClosingOpen] = useState(false);
   const applied = useRef(0);
   const { events, reopened } = useJournal(snap ? refineApi.events(projectId, specId) : null);
   // One snapshot read at a time: a request made during a read is answered by one more read after it, so a burst costs two reads.
@@ -1293,14 +1357,22 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {error ? <p className="error">{error}</p> : <Loading />}
     </main>
   );
+  // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
-    return f().catch((e: Error) => setError(e.message));
+    return f().catch((e: Error) => {
+      setError(e.message);
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    });
   };
-  const startRun = act(() => {
+  // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.
+  const startWith = (summaryHash?: string) => act(() => {
     setStarting(true);
-    return refineApi.start(projectId, specId).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
+    return refineApi.start(projectId, specId, summaryHash).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
   });
+  const startRun = startWith();
+  const repositorySession = snap.state.repositories === true;
+  const openSummary = () => setClosingOpen(true);
   const executing = starting || (following && program?.status !== 'finished');
   const startLabel = { label: starting ? 'Iniciando…' : executing ? 'Em execução' : 'Iniciar análise', busy: executing };
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
@@ -1309,9 +1381,12 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
       <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
+      {closingOpen && snap.closing && (
+        <ClosingDialog summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
+      )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
-        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={startRun} />
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(startInputOf(snap), false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
@@ -1339,6 +1414,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
+        onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
@@ -1352,7 +1428,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
-        onStart={startRun}
+        onStart={repositorySession ? openSummary : startRun}
         startState={startLabel}
         hideStart={bannerStarts}
         events={events}

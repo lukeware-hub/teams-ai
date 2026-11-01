@@ -14,7 +14,7 @@ describe('stage views', () => {
   });
 
   it('holds the score and the outdated mark of each document, and none when there is no score', () => {
-    const views = stageViews({ readiness: { docs: { 'flow.md': { score: 0.8 } } }, outdatedDocs: ['flow.md'] });
+    const views = stageViews({ doneStages: ['flow.md'], readiness: { docs: { 'flow.md': { score: 0.8 } } }, graphed: [] });
     expect(views[0]).toMatchObject({ doc: 'flow.md', score: 0.8, outdated: true });
     expect(views[1]).toMatchObject({ doc: 'project.md', score: null, outdated: false });
   });

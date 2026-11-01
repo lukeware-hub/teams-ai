@@ -1,3 +1,4 @@
+import type { Architecture } from '../contracts/architecture.js';
 import type { Backlog, BacklogItem } from '../contracts/backlog.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
@@ -181,6 +182,22 @@ export interface RefineState {
   featureKey?: string;
   /** Created with the document stages: its confidentiality is unknown, so no document goes to the Jev, until the owner answers. */
   stages?: boolean;
+  /** Created with the repository flow (plan increment A): the stages gate each other, and the backlog, plans and final review wait for all five. */
+  repositories?: boolean;
+  /** The documents reviewed since their last edit, kept only by a repository session: a human edit takes a document out; an accepted patch or an answer keeps it. */
+  reviewedStages?: DocFile[];
+  /** The documents in the Graphify graph; a later edit of a document takes it out until it is added again. */
+  graphed?: DocFile[];
+  /** The document whose extraction runs now, if any. */
+  graphing?: DocFile | null;
+  /** The last document the extraction could not add, with the reason in plain words; cleared by the next success. */
+  graphError?: { file: DocFile; reason: string } | null;
+  /** The architecture the documents support, with the hash of the documents it was decided on; a later edit of a document makes it stale. */
+  architecture?: { docsHash: string; decision: Architecture } | null;
+  /** The summary the owner authorized the development on, by its hash; absent until that authorization. */
+  authorization?: { summaryHash: string } | null;
+  /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
+  architectureError?: string | null;
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -282,6 +299,46 @@ export interface StartInput {
   backlog?: { enabled: boolean; detail?: boolean | null; items?: ReadonlyArray<{ key: string }>; specs?: Record<string, { spec: { status?: string } | null }>; preplans?: Record<string, { preplan: unknown }> } | null;
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
+  repositories?: boolean;
+  /** The closing checks of a repository session, once the snapshot computed them; absent for other sessions. */
+  closing?: { ok: boolean } | null;
+}
+
+/** One closing check: its id, whether it passes, and what the owner reads about it in plain words. */
+export interface ClosingCheck {
+  id: string;
+  ok: boolean;
+  detail: string;
+}
+
+/** The seven checks the owner reads before starting a repository session; every one must pass. */
+export function closingChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
+  const items = s.backlog?.items ?? [];
+  const keys = items.map((i) => i.key);
+  const doneSteps = (s.speckit?.steps ?? []).filter((step) => step.basis !== undefined);
+  const stepDone = (command: string) => keys.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
+  const repos = s.architecture?.decision.repositories.map((r) => r.name) ?? [];
+  // A follow-on draft has no document stages: its documents are the ones main holds, and the check reads them as in place.
+  const open = s.stages === true ? DOC_STAGES.filter((file) => !(s.doneStages ?? []).includes(file) || !(s.graphed ?? []).includes(file)) : [];
+  const noPlan = stepDone('plan');
+  const noTasks = stepDone('tasks');
+  const noSpec = keys.filter((key) => !s.backlog?.specs?.[key]?.spec);
+  const unknown = items.filter((i) => i.repository === undefined || !repos.includes(i.repository)).map((i) => i.key);
+  const dangling = items.flatMap((i) => i.dependsOn.filter((d) => !keys.includes(d)).map((d) => `${i.key} → ${d}`));
+  const gaps = s.backlog ? coverageGaps(s.backlog) : [];
+  const blocking = s.questions.filter((q) => q.status === 'pending' && q.blocking).length;
+  const green = allGreen(s.checklist);
+  // A red checklist names its failing checks, so a contradiction between documents reads as such to the owner.
+  const red = s.checklist.filter((c) => !c.passed).map((c) => c.id);
+  return [
+    { id: 'documents', ok: open.length === 0, detail: open.length === 0 ? 'os cinco documentos estão concluídos e no grafo' : `faltam: ${open.join(', ')}` },
+    { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
+    { id: 'specs', ok: noSpec.length === 0 && gaps.length === 0 && keys.length > 0, detail: noSpec.length > 0 ? `sem spec validada: ${noSpec.join(', ')}` : gaps.length > 0 ? `critérios sem item: ${gaps.join(', ')}` : 'cada item tem a sua spec validada' },
+    { id: 'plans', ok: noPlan.length === 0, detail: noPlan.length === 0 ? 'cada item tem o seu plano' : `sem plano: ${noPlan.join(', ')}` },
+    { id: 'tasks', ok: noTasks.length === 0, detail: noTasks.length === 0 ? 'cada item tem a sua lista de tarefas' : `sem lista de tarefas: ${noTasks.join(', ')}` },
+    { id: 'dependencies', ok: dangling.length === 0, detail: dangling.length === 0 ? 'todas as dependências existem' : `dependência inexistente: ${dangling.join(', ')}` },
+    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : `o checklist do documento não está verde: ${red.join(', ')}` },
+  ];
 }
 
 /** A blocking question plan left open that the owner has not answered yet. */
@@ -299,6 +356,8 @@ const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.it
 /** The start is open unless the agents evaluate, a run started or the plan preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
+  // A repository session starts only after the owner's summary has every check green.
+  if (s.repositories === true && s.closing?.ok !== true) return false;
   if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
@@ -367,6 +426,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.questions.push(...v.questions.map((q) => ({ ...q, file: docName(v.file), status: 'pending' as const, answer: null })));
       s.stageAlignment = { ...(s.stageAlignment ?? {}), [v.file]: v.divergences };
       if (s.staleBy) delete s.staleBy[v.file];
+      if (s.repositories === true) s.reviewedStages = [...new Set([...(s.reviewedStages ?? []), docName(v.file)])];
       s.discarded.push(...v.discardedPatches.map((x) => ({ cycle: v.cycle, ...x, file: docName(x.file) })));
       s.status = 'drafting';
       s.status = computeStatus(s);
@@ -479,6 +539,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.mode = (d.mode as RefineState['mode']) ?? null;
       s.stages = d.stages === true;
       if (d.featureKey !== undefined) s.featureKey = String(d.featureKey);
+      if (d.repositories === true) s.repositories = true;
       break;
     case RefineEvent.ConfidentialityAnswered:
       s.confidential = d.confidential === true;
@@ -500,6 +561,10 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
       markStaleStages(s, docName(d.file));
       markSpeckitStale(s);
+      // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
+      if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
+      // An accepted suggestion or an architecture decision keeps the document in the graph: its processing still counts after it.
+      if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
@@ -549,6 +614,33 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.ConflictsDerived:
       if (s.backlog) s.backlog = { ...s.backlog, conflicts: { inputHash: String(d.inputHash), pairs: d.pairs as ConflictMap['pairs'] } };
+      break;
+    case RefineEvent.DevelopmentAuthorized:
+      s.authorization = { summaryHash: String(d.summaryHash) };
+      break;
+    case RefineEvent.DocGraphStarted:
+      s.graphing = docName(d.file);
+      break;
+    case RefineEvent.DocGraphed:
+      s.graphed = [...new Set([...(s.graphed ?? []), docName(d.file)])];
+      s.graphing = null;
+      s.graphError = null;
+      break;
+    case RefineEvent.DocGraphFailed:
+      s.graphing = null;
+      s.graphError = { file: docName(d.file), reason: String(d.reason) };
+      break;
+    case RefineEvent.ArchitectureDecided: {
+      const v = d as unknown as { docsHash: string; architecture: Architecture; questions: Question[] };
+      s.architecture = { docsHash: String(v.docsHash), decision: v.architecture };
+      s.architectureError = null;
+      // A new decision replaces the questions the last one left open; the answered ones stay for the next decision.
+      s.questions = [...s.questions.filter((q) => !(q.origin === 'architecture' && q.status === 'pending')), ...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
+      s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.ArchitectureFailed:
+      s.architectureError = String(d.reason);
       break;
     case RefineEvent.DocsScored: {
       // A score without a file list is a full one, as journals from before the per-document score wrote it.

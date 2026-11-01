@@ -86,6 +86,11 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
   for (const task of plan.tasks) {
     if (task.service === undefined || !names.includes(task.service)) errors.push(`task ${task.id} must name one of the plan's services (${names.join(', ')})`);
   }
+  // A spec that names a repository changes only that repository: its plan and its tasks name nothing else.
+  if (spec.repository !== undefined) {
+    for (const name of names) if (name !== spec.repository) errors.push(`the spec changes only ${spec.repository}, but the plan names the service ${name}`);
+    for (const task of plan.tasks) if (task.service !== spec.repository) errors.push(`task ${task.id} belongs to ${task.service ?? 'no service'}, but the spec changes ${spec.repository}`);
+  }
   const ports = new Map<number, string>();
   for (const { service, plan: view } of servicePlans(plan)) {
     const name = service!;

@@ -17,6 +17,13 @@ const base = {
   rejected: [],
 } as unknown as Parameters<typeof refinePack>[0];
 
+describe('refinePack of a stamped draft', () => {
+  it('asks the product owner to read the documents with the brainstorming skill only in a stamped draft', () => {
+    expect(refinePack({ ...base, role: 'po', stamped: true }).feedback).toContain('superpowers:brainstorming');
+    expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('superpowers:brainstorming');
+  });
+});
+
 describe('refinePack', () => {
   it('asks every role to report defects in the documents it does not own as findings, at most 3 each', () => {
     for (const role of ['po', 'sm', 'front'] as const) {

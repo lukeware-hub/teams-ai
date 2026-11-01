@@ -593,39 +593,22 @@ describe('RefinementView: a new spec in an existing project', () => {
     expect(screen.getByTestId('docs-group-spec').textContent).toContain('Spec');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('Contexto do projeto');
     expect(screen.getByTestId('docs-group-project').textContent).toContain('muda só com sua aprovação');
-    fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
-    expect(screen.getByTestId('doc-briefing.md')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.textContent)).toEqual(['briefing.md', 'flow.md', 'project.md', 'stack.md', 'design.md']);
     unmount();
     render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('docs-group-project')).toBeNull();
-    expect(screen.getAllByRole('button', { name: /\.md$/ }).map((b) => b.getAttribute('aria-label'))).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md']);
   });
 });
 
 describe('RefinementView: Anexar imagem', () => {
-  it('only on design.md; fills the editor with the adjusted text without saving', async () => {
-    const h = { ...on(), onDesignFromImages: vi.fn().mockResolvedValue('# Design ajustado') };
-    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...h} /></MemoryRouter>);
+  it('the image tool is not on flow.md', () => {
+    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('attach-images')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'design.md' }));
-    fireEvent.change(screen.getByTestId('attach-images'), { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
-    await screen.findByDisplayValue('# Design ajustado');
-    expect(h.onDesignFromImages).toHaveBeenCalledWith([{ data: 'eA==' }]);
-    expect(h.onSaveDoc).not.toHaveBeenCalled();
   });
 });
 
 describe('RefinementView: Sugerir', () => {
-  it('fills the editor with the suggestion from flow.md without saving, and has no button on flow.md', async () => {
-    const h = { ...on(), onSuggestDoc: vi.fn().mockResolvedValue('# Stack sugerida') };
-    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...h} /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: 'stack.md' }));
-    fireEvent.click(screen.getByTestId('suggest'));
-    expect(h.onSuggestDoc).toHaveBeenCalledWith('stack.md');
-    await screen.findByDisplayValue('# Stack sugerida');
-    expect(h.onSaveDoc).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'flow.md' }));
+  it('has no suggestion on flow.md, the first document', () => {
+    render(<MemoryRouter><RefinementView snap={base({ mode: 'new-project' })} busy={false} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('suggest')).toBeNull();
   });
 
@@ -633,12 +616,11 @@ describe('RefinementView: Sugerir', () => {
     const snap = base({ mode: 'new-project' });
     const view = (s: Snapshot) => <MemoryRouter><RefinementView snap={s} busy={false} {...on()} /></MemoryRouter>;
     const { rerender } = render(view(snap));
-    fireEvent.click(screen.getByRole('button', { name: 'stack.md' }));
-    fireEvent.change(screen.getByTestId('doc-stack.md'), { target: { value: '# Stack local' } });
+    fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo local' } });
     rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito' } }));
-    expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack local');
-    rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito', 'stack.md': '# Stack do servidor' } }));
-    expect((screen.getByTestId('doc-stack.md') as HTMLTextAreaElement).value).toBe('# Stack do servidor');
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Fluxo local');
+    rerender(view({ ...snap, docs: { ...snap.docs, 'flow.md': '# Fluxo do servidor' } }));
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Fluxo do servidor');
   });
 });
 

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Pagination, SortHeader, TableFilters, usePagination, useTableView } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { RepositoriesPanel } from './RepositoriesPanel.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
@@ -120,6 +121,8 @@ function AttentionBanner({ runs }: { runs: RunRow[] }) {
 
 export function ProjectHubView(p: {
   project: ProjectRow | null;
+  /** The repositories of the project's architecture, as cards; empty for a project without one. */
+  repositories?: RepoCardView[];
   notFound: boolean;
   runs: RunRow[];
   drafts: DraftRow[];
@@ -362,7 +365,7 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
-      {pr.services?.length ? (
+      {(p.repositories?.length ?? 0) > 0 ? <RepositoriesPanel projectId={pr.projectId} repositories={p.repositories ?? []} /> : pr.services?.length ? (
         <section className={panel} data-testid="project-services">
           <div className={section}>
             <div className={sectionHead}>
@@ -623,6 +626,7 @@ async function latestApps(project: ProjectRow, rows: RunRow[]): Promise<AppLinks
 export function ProjectHub() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<ProjectRow | null>(null);
+  const [repositories, setRepositories] = useState<RepoCardView[]>([]);
   const [notFound, setNotFound] = useState(false);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
@@ -642,6 +646,7 @@ export function ProjectHub() {
       if (found) {
         const rows = await runApi.runs(projectId);
         setRuns(rows);
+        setRepositories(await runApi.repositories(projectId).catch(() => []));
         setApps(await latestApps(found, rows));
         const own = (await refineApi.list()).filter((d) => d.projectId === projectId);
         setDrafts(own.filter((d) => d.state !== 'started'));
@@ -701,6 +706,7 @@ export function ProjectHub() {
   return (
     <ProjectHubView
       project={project}
+      repositories={repositories}
       notFound={notFound}
       runs={runs}
       drafts={drafts}

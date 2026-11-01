@@ -6,7 +6,7 @@ import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { PLAN_STEP } from '../../server/refine/plan-prepare.js';
+import { PLAN_STEP, preparePlans } from '../../server/refine/plan-prepare.js';
 import { reduceRefineEvents } from '../../server/refine/state.js';
 import { RefineJournal, RefineSession, type RunAgent } from '../../server/refine/session.js';
 import { loadEvents } from '../../server/store/event-store.js';
@@ -75,7 +75,7 @@ async function writePlan(req: AgentStepRequest<'speckit'>, text: (key: string) =
 
 /** A wizard session whose backlog of two items is detailed, with each item's spec and pre-plan. */
 async function detailedSession(): Promise<RefineSession> {
-  const created = await RefineSession.create(deps(), 'new-project');
+  const created = await RefineSession.create(deps(), 'new-project', { repositories: false });
   await created.enableBacklog();
   await created.close();
   const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
@@ -136,6 +136,26 @@ describe('RefineSession.runPlans with the plan step', () => {
     const failed = (await events()).find((e) => e.type === RefineEvent.SpeckitFailed);
     expect(failed).toBeDefined();
     expect(failed!.data.failures).toEqual([expect.objectContaining({ command: 'plan', itemKey: 'cart', kind: 'plan-shape' })]);
+  });
+
+  it('a stamped draft keeps its task lists on a second run and still journals them as done', async () => {
+    const created = await detailedSession();
+    await created.close();
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    const taskText = (key: string) => `# Tasks ${key}\n\n## Task 1: ${key} core\n\n**Spec:** docs/specs/${key}/spec.md\n**Plan:** docs/specs/${key}/implementation-plan.md\n**Repository:** ${key}\n**Objective:** Build ${key}.\n**Criteria:** ${IDS.join(', ')}\n**Success scenario:** ${key} works.\n**Error scenario:** A wrong ${key} is refused.\n**Done when:** The owner sees ${key}.\n`;
+    answer = async (req) => (req.pack.feedback!.startsWith('Write the task list') ? { status: 'done', summary: 'ok', files: [], questions: [] } : writePlan(req));
+    const writing = (async (req: AgentStepRequest<'speckit'>, ctx: { specHash: string }) => {
+      agentCalls.push(req);
+      if (req.pack.feedback!.startsWith('Write the task list')) await fs.writeFile(path.join(req.cwd, `docs/specs/${keyOf(req)}/task.md`), taskText(keyOf(req)));
+      const out = await answer(req);
+      return { ok: true, value: { specHash: ctx.specHash, questions: [], ...(out as object) }, summary };
+    }) as never;
+    const planDeps = { draft: draft(), journal, runAgent: writing, agents: 1 };
+    await preparePlans(planDeps, { ...journal.state, repositories: true });
+    agentCalls = [];
+    await preparePlans(planDeps, { ...journal.state, repositories: true });
+    expect(agentCalls).toEqual([]);
+    expect(journal.state.speckit?.steps.filter((step) => step.command === 'tasks').map((step) => step.itemKey).sort()).toEqual(['cart', 'login']);
   });
 
   it('a plan step that says it cannot write its plan is stopped at once, without a repair', async () => {

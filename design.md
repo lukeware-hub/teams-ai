@@ -1192,6 +1192,73 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 
 `Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
 
+### 26.6 Checklist de validação do documento
+
+Aparece no painel `REVISÃO DA ETAPA`, entre o cartão do Jev e os avisos. Cinco linhas, cada uma com um marcador (ponto ou check) e um texto:
+
+| Linha | Passa quando |
+|---|---|
+| `Revisado depois da última edição` | a revisão da etapa é posterior à última edição do documento |
+| `Sem pergunta obrigatória aberta` | nenhuma pergunta obrigatória da etapa está sem resposta |
+| `Sem sugestão pendente` | nenhuma sugestão da etapa espera aceitar ou rejeitar |
+| `Formato do modelo` | o texto tem a forma do modelo do documento (e `flow.md` é Mermaid) |
+| `No Graphify` | o documento está no grafo do Graphify depois da última edição |
+
+Enquanto o grafo trabalha, a última linha mostra um spinner e o botão `Continuar` lê `Adicionando ao Graphify…`. Depois, lê `No Graphify: n nós`. Se a extração falhou, a linha diz o motivo em palavras simples, e `Continuar` tenta de novo.
+
+`Continuar` fica desligado enquanto qualquer linha falha. A dica ligada ao botão nomeia a primeira linha que falta. Estados: tudo passa; uma linha falha; o grafo trabalha; o grafo falhou; editado depois da etapa (a linha `No Graphify` fica pendente e o texto da etapa vira `desatualizado`).
+
+### 26.7 Etapa de arquitetura
+
+Uma etapa do assistente entre `Revisão` e `Backlog`. A tela principal é um cartão com cabeçalho, uma frase e uma linha de estado.
+
+| Elemento | Especificação |
+|---|---|
+| `Estilo` | `Monólito` ou `Microsserviços`, a razão e o documento e a seção em que a decisão se apoia. |
+| `Repositórios (n)` | linhas recolhíveis, como as dos épicos do backlog: nome, chip do tipo (`api`, `jobs`, `web`, `mobile`, `workflow`, ou `Monólito`), contagem de integrações. Aberta, mostra a responsabilidade e a citação. Com mais de 12 repositórios, filtro e paginação como nas specs. |
+| `Integrações (n)` | linhas `consumidor → provedor · contrato`. |
+| `Perguntas da arquitetura` | os cartões de pergunta já usados no refinamento; uma pergunta bloqueante segura o backlog. |
+| Ações | `Voltar` (secundária), `Redefinir` (secundária), `Quebrar o backlog por repositório` (primária). |
+
+Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (spinner e `Decidindo a arquitetura…`); decidida; falhou (motivo em palavras simples e `Decidir de novo`); desatualizada (os documentos mudaram depois da decisão, com o aviso `Os documentos mudaram: decida a arquitetura de novo.`); com perguntas abertas.
+
+Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`, e um único repositório como `Monólito`.
+
+### 26.8 Backlog por repositório
+
+Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo.
+
+### 26.9 Diálogo de resumo do refinamento
+
+É o `Dialog` existente, com título `Resumo do refinamento`. Traz:
+- sete linhas de verificação, cada uma com marcador e texto, na ordem das checagens de fechamento;
+- uma tabela compacta, uma linha por repositório, com as colunas specs, planos e tarefas;
+- um recolhível `Premissas assumidas (n)` com a lista;
+- uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
+- `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
+
+Uma verificação que falha desliga a primária e diz por quê. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+
+### 27.2 Projeto: repositórios
+
+No lugar do painel `Serviços` da página do projeto, depois de `Execuções`, um painel `Repositórios (n)`, com o cabeçalho de seção (ícone, título, dica), busca e filtro pelo tipo. A grade de cartões tem 1, 2 ou 3 colunas conforme a largura do contêiner. Cada cartão mostra o nome como link, o chip do tipo, a responsabilidade (no máximo duas linhas), `n specs · n planos · n tarefas`, `Tarefas: n de m concluídas` com uma barra determinada, um chip de estado com o ponto e a contagem de bloqueios, e o botão discreto `Abrir painel`.
+
+`Especificações` continua para as specs sem repositório (grupo `Sem repositório definido`) e mantém `Nova spec`. Projetos sem arquitetura mantêm o painel `Serviços` como está.
+
+### 27.3 Painel do repositório
+
+Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `repoId`.
+
+- Migalha `Projetos › <projeto> › <repositório>`.
+- Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e o botão do GitHub.
+- Faixa de quatro cartões: specs, planos, tarefas, `concluídas n de m`, bloqueios.
+- `Integrações`, com as linhas da arquitetura que tocam o repositório.
+- `Especificações`, no padrão da tabela de execuções: ordenação, filtro, faceta de estado e paginação. Colunas: spec, prioridade, estado, plano, tarefas `n de m`, depende de. Uma linha abre as suas tarefas, com estado, tentativas e critérios com resultado.
+- `Aguardando dependências` e `Falhas de execução` só aparecem quando têm itens.
+- `Histórico` (últimos 50 eventos) num recolhível.
+
+Dado que a fonte não existe mostra `sem dados`, nunca um número.
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:

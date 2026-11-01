@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProgramView } from '../api.js';
-import { canStartRun, ProgramPanel, ProgramStatus } from './ProgramPanel.js';
+import { canStartRun, ProgramPanel, ProgramStatus, startInputOf } from './ProgramPanel.js';
 
 const item = (key: string, over: Partial<ProgramView['items'][number]> = {}): ProgramView['items'][number] => ({
   specId: `d-${key}`, key, rank: 1, dependsOn: [], status: 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, ...over,
@@ -179,6 +179,19 @@ describe('ProgramStatus', () => {
   it('links an interrupted spec that was completing to its completion run', () => {
     renderStatus(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1', interrupted: { runId: 'd-a-complete-r1' } })]));
     expect((screen.getByRole('link', { name: 'Acompanhar a run' }) as HTMLAnchorElement).getAttribute('href')).toBe('/runs/d-a-complete-r1');
+  });
+});
+
+describe('startInputOf', () => {
+  it('gives a repository session the closing summary of the snapshot, so its start is open once every check passes', () => {
+    const backlog = { enabled: true, detail: true, items: [{ key: 'a' }], specs: {}, preplans: { a: { preplan: {} } } };
+    const repo = { state: { status: 'ready', mode: 'new-project', derived: {}, repositories: true, backlog, speckit: { status: 'done', stale: false } } as never, closing: { ok: true } };
+    expect(canStartRun(startInputOf(repo), false)).toBe(true);
+    expect(canStartRun(startInputOf({ ...repo, closing: { ok: false } }), false)).toBe(false);
+  });
+  it('leaves any other session as it is', () => {
+    const plain = { state: { status: 'ready', mode: 'new-spec', derived: {}, speckit: { status: 'done', stale: false } } as never, closing: null };
+    expect(startInputOf(plain)).toBe(plain.state);
   });
 });
 

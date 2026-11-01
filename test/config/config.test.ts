@@ -24,7 +24,7 @@ describe('loadConfig', () => {
   it('runs Opus only on the architecture steps, Haiku on small tasks and Sonnet on the rest', () => {
     const cfg = loadConfig({});
     expect(Object.values(cfg.roles).every((r) => r.model === 'claude-sonnet-5-5')).toBe(true);
-    expect(cfg.routing.stepModels).toEqual({ 'tech-spec': 'claude-opus-5-5', plan: 'claude-opus-5-5', 'services-plan': 'claude-opus-5-5' });
+    expect(cfg.routing.stepModels).toEqual({ 'tech-spec': 'claude-opus-5-5', plan: 'claude-opus-5-5', 'services-plan': 'claude-opus-5-5', architecture: 'claude-opus-5-5' });
     expect(cfg.routing.models).toEqual({ small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' });
   });
 

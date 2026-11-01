@@ -39,6 +39,8 @@ export interface PackBase {
   service?: ServiceContext;
   /** The implementation plan of this spec in the repository, when the refinement published one. */
   planFile?: string;
+  /** The spec's task list in the repository, when its refinement wrote one. */
+  taskFile?: string;
 }
 
 /** What a step in a service's repository needs from the project and cannot read there (R12.6). */
@@ -126,7 +128,11 @@ export const sourceDocsRule = (specId: string): string =>
   `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's only source of truth, and a document wins over the code, the plan and the tech spec when they disagree. The plan, the tech spec and the ADRs derive from these documents and never override them. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
 
 /** What every task that builds or judges code reads first: the implementation plan and the five documents. */
-const sourceRules = (base: PackBase): string[] => [planRule(base.planFile), sourceDocsRule(base.spec.specId)];
+/** The task list of a spec whose draft has a repository: a builder reads the entry of each task it builds. */
+export const taskListRule = (taskFile?: string): string =>
+  taskFile ? `This spec's task list is ${taskFile}: before you change a file of a task, read that task's entry, its criteria and its scenarios, and make the tests prove them.` : '';
+
+const sourceRules = (base: PackBase): string[] => [planRule(base.planFile), ...(base.taskFile ? [taskListRule(base.taskFile)] : []), sourceDocsRule(base.spec.specId)];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
 export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
@@ -135,11 +141,12 @@ export const FILES_READ_RULE = 'On a done result, list in filesRead, as reposito
 export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task or from its implementation plan; leave it empty when you followed both.';
 
 /** The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there. */
-export async function sourceFiles(dir: string, planFile: string | undefined, specId: string): Promise<string[]> {
+export async function sourceFiles(dir: string, planFile: string | undefined, specId: string, taskFile?: string): Promise<string[]> {
   const has = (file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
   const ownBriefing = `docs/specs/${specId}/briefing.md`;
   const rules = [
     planFile ? [planFile] : [],
+    taskFile ? [taskFile] : [],
     ['docs/project.md', 'docs/stack.md', 'docs/flow.md', 'docs/design.md', (await has(ownBriefing)) ? ownBriefing : 'docs/briefing.md'],
   ];
   const named: string[] = [];
@@ -620,6 +627,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
   // A plan step carries its own model and effort (plan 107): the role's pin, which sets the builders, does not apply to it.
+  // The architecture step follows the role's setting in the Settings screen, as the owner asked.
   const manual = req.kind === 'speckit' ? undefined : await deps.agentSetting?.(req.role);
   const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.

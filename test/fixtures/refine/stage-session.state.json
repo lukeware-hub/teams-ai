@@ -1,0 +1,35 @@
+{
+  "status": "drafting",
+  "stale": false,
+  "cycle": 1,
+  "derived": null,
+  "checklist": [],
+  "questions": [],
+  "patches": [],
+  "moves": [],
+  "reshapes": [],
+  "reorganized": {},
+  "findings": [],
+  "discarded": [],
+  "error": null,
+  "runId": null,
+  "backlog": null,
+  "mode": "new-project",
+  "stages": true,
+  "confidential": false,
+  "passedStages": [
+    "flow.md"
+  ],
+  "editedInCycle": false,
+  "stageAlignment": {
+    "flow.md": []
+  },
+  "doneStages": [
+    "flow.md",
+    "project.md"
+  ],
+  "stageStartCycle": 1,
+  "outdatedDocs": [
+    "project.md"
+  ]
+}

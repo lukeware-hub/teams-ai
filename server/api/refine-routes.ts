@@ -232,7 +232,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     {
       method: 'POST',
       path: `${S}/start`,
-      handler: wrap(async ({ params, json }) => json(200, await registry.start(params.projectId!, params.specId!))),
+      handler: wrap(async (ctx) => {
+        // The owner's authorization: the hash of the summary he read; a repository session cannot start without it.
+        const summaryHash = str(await optionalBody(ctx), 'summaryHash', true) || undefined;
+        ctx.json(200, await registry.start(ctx.params.projectId!, ctx.params.specId!, summaryHash));
+      }),
     },
     {
       method: 'POST',
@@ -297,8 +301,19 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async (ctx) => {
         const doc = str(await optionalBody(ctx), 'doc', true);
         if (doc && !DOC_STAGES.includes(doc as DocFile)) throw new HttpError(400, `unknown doc ${doc}`);
-        await (await get(ctx.params)).continueStage(doc ? (doc as DocFile) : undefined);
-        ctx.json(200, { ok: true });
+        const s = await get(ctx.params);
+        await s.continueStage(doc ? (doc as DocFile) : undefined);
+        // A repository session answers once the extraction is under way; the page follows it through the snapshot.
+        ctx.json(s.state.repositories === true ? 202 : 200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/architecture`,
+      handler: wrap(async (ctx) => {
+        await (await get(ctx.params)).decideArchitecture();
+        // The decision runs in the background; the page follows it through the snapshot.
+        ctx.json(202, { ok: true });
       }),
     },
     {

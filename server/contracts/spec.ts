@@ -93,6 +93,8 @@ export const Spec = z
     specVersion: z.number().int().nonnegative(),
     specHash: z.string().regex(HASH_PATTERN).nullable(),
     type: SpecType.default('feature'),
+    /** The repository this spec changes, when its draft has an architecture; absent for a spec from before it. */
+    repository: z.string().min(1).max(40).optional(),
     bug: BugDetails.optional(),
     objectives: z.array(z.string().min(1)).min(1),
     features: z.array(z.string().min(1)),
@@ -133,6 +135,7 @@ const HASHED_FIELDS = [
   'specId',
   'specVersion',
   'type',
+  'repository',
   'bug',
   'objectives',
   'features',

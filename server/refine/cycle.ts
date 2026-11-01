@@ -19,6 +19,7 @@ import { mergeChecklist, type ChecklistItem } from './checklist.js';
 import { verifyContradictions } from './contradictions.js';
 import { norm, parseDecisions } from './decisions.js';
 import { derivePack, postProcessDerived } from './derive.js';
+import { projectWithArchitecture, repositoryNamesOf } from './architecture-step.js';
 import { answerPack } from './answer.js';
 import { heldForOwner } from './auto-floor.js';
 import { backlogPack, postProcessBacklog, renderBacklogMd, type BacklogCheck } from './backlog.js';
@@ -57,6 +58,8 @@ export interface CycleDeps {
   draft: Draft;
   journal: CycleJournal;
   runAgent: RunAgent;
+  /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
+  docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   frontAgent?: RunAgent;
   principles: () => readonly string[];
   retrieval: (query: string) => readonly Hit[];
@@ -347,7 +350,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key) })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state) })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -359,7 +362,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await failAgent('O backlog', out);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state));
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
@@ -370,7 +373,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         return;
       }
       const { backlog: ranked } = accepted.value;
-      const project = await keepBaseProject(draft, accepted.value.project);
+      const project = projectWithArchitecture(await keepBaseProject(draft, accepted.value.project), journal.state);
       await writeProject(draft, project);
       await writeBacklogMd(draft, renderBacklogMd(ranked));
       await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds }));
@@ -402,7 +405,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       {
         kind: 'derive',
         role: 'po',
-        pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
+        pack: fitPackBudget(derivePack({ repositories: repositoryNamesOf(journal.state), specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
         cwd: draft.root,
         phase: 'refine',
         taskId: null,
@@ -416,12 +419,12 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
     const floor = await maxCriterionInDraft(draft);
-    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']));
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']), repositoryNamesOf(journal.state));
     if (!checked.ok) {
       await fail('A derivação dos documentos não passou na validação. Clique em Reavaliar.', checked.issues.join('; '));
       return;
     }
-    checked.value.project = await keepBaseProject(draft, checked.value.project);
+    checked.value.project = projectWithArchitecture(await keepBaseProject(draft, checked.value.project), journal.state);
     await writeDerived(draft, checked.value);
     await journal.fact(RefineEvent.Derived, { cycle, ...checked.value });
     derived = checked.value;
@@ -486,6 +489,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         role,
         pack: fitPackBudget(refinePack({
           role,
+          stamped: journal.state.repositories === true,
           specHash: hash,
           principles: deps.principles(),
           specId: draft.specId,

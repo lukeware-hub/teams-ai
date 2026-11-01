@@ -37,7 +37,7 @@ const criteriaIn = (line: string): string[] =>
   line.slice(CRITERIA_LABEL.length).replace(/[`*]/g, '').split(/[\s,;]+/).map((id) => id.replace(/\.$/, '')).filter((id) => id.startsWith('AC-'));
 
 /** The bullets under ## Assumptions. */
-function assumptionBullets(lines: readonly string[]): string[] {
+export function assumptionBullets(lines: readonly string[]): string[] {
   const start = lines.findIndex((line) => line.trim() === '## Assumptions');
   if (start === -1) return [];
   const bullets: string[] = [];
@@ -48,10 +48,24 @@ function assumptionBullets(lines: readonly string[]): string[] {
   return bullets;
 }
 
+/** The placeholder text and open markers a finished document never keeps, line by line. */
+export function placeholderIssues(lines: readonly string[]): string[] {
+  return lines.flatMap((line, index) => [
+    ...(MARKER.test(line) || PHRASE.test(line) ? [`line ${index + 1} has placeholder text: ${line.trim()}`] : []),
+    ...(line.includes(OPEN_MARKER) ? [`line ${index + 1} still has an open [NEEDS CLARIFICATION] marker`] : []),
+  ]);
+}
+
+/** The criterion ids each task of a plan delivers, by task number. */
+export function planCriteriaByTask(text: string): Map<string, string[]> {
+  return new Map(taskBlocks(text.split('\n')).map((task) => [task.number, task.lines.filter((line) => line.startsWith(CRITERIA_LABEL)).flatMap(criteriaIn)]));
+}
+
 /** What is wrong with a plan against its spec's acceptance criteria; an empty list means the plan passes. */
-export function planShapeIssues(text: string, criteria: readonly string[]): string[] {
+export function planShapeIssues(text: string, criteria: readonly string[], repository?: string): string[] {
   const lines = text.split('\n');
   const issues: string[] = [];
+  if (repository !== undefined && !lines.some((line) => line.trim() === `**Repository:** ${repository}`)) issues.push(`the header has no **Repository:** ${repository} line`);
   if (!(lines.find((line) => line.trim() !== '') ?? '').startsWith('# ')) issues.push('the first line must be the title, starting with "# "');
   for (const label of HEADER) if (!lines.some((line) => line.startsWith(label))) issues.push(`the header has no ${label} line`);
   for (const section of SECTIONS) if (!lines.some((line) => line.trim() === section)) issues.push(`the plan has no "${section}" section`);
@@ -70,10 +84,7 @@ export function planShapeIssues(text: string, criteria: readonly string[]): stri
   for (const id of new Set(named)) if (!criteria.includes(id)) issues.push(`criterion ${id} is not in the spec`);
   for (const id of criteria) if (!named.includes(id)) issues.push(`criterion ${id} is in no task's **Criteria:** line`);
 
-  lines.forEach((line, index) => {
-    if (MARKER.test(line) || PHRASE.test(line)) issues.push(`line ${index + 1} has placeholder text: ${line.trim()}`);
-    if (line.includes(OPEN_MARKER)) issues.push(`line ${index + 1} still has an open [NEEDS CLARIFICATION] marker`);
-  });
+  issues.push(...placeholderIssues(lines));
   for (const bullet of assumptionBullets(lines)) {
     if (!/Reason:/i.test(bullet) && !/^- none\.?$/i.test(bullet.trim())) issues.push(`an assumption has no Reason: ${bullet.trim()}`);
   }

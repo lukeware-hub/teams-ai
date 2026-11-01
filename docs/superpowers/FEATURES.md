@@ -126,7 +126,18 @@ Status: built 2026-10-31 (plan 117), pending the owner's check on a real run.
 - One web search per question, to explain a recorded error, for projects the owner has not marked confidential. The answer lists its sources and never opens a correction.
 - Agent records are more complete: a failed gate keeps its exit code and the end of its output, an environment failure reruns under its own name and keeps its cause, a timed-out step says how it ended, and a replan opens with the recorded cause.
 
-## 17. The chat reads the five main documents of the project
+## 17. Repositories: the refinement organizes the specs by repository
+
+Status: built 2026-10-31 (plan a9d6), committed on `feat/refinement-reform` (PR #35), behind the repository flow. The flow is off for new projects until the rollout; a project with an architecture takes it in its follow-on drafts.
+
+- The five documents are refined one at a time, in order, and each is added to the Graphify graph before the next starts.
+- The architecture step decides whether the system is one application (a monolith, one repository named after the project) or microservices (one repository per service, named with the suffix of its type). Every repository cites a quote from the documents, and the decision is checked by rules before the owner sees it.
+- The backlog, the specs, the plans and a task list (`task.md`) belong to a repository. A plan and its task list reach only the repository their spec changes.
+- Before the start, the owner reads a summary with seven checks, each repository's counts and the assumptions taken. The start carries the hash of that summary.
+- The project page shows a card per repository, and each card opens its dashboard: its specs, its tasks, its integrations, its blockers and its history.
+- Not done: the live check on two throwaway projects, the deploy by clean export, the Chrome check on the deployed app, the rollout of the flow for new projects, and the reconstruction of the guide graph. The architecture is a card in the backlog step, not its own stepper node. The dashboard does not yet list the program's item reasons or the pending questions and secrets as blockers.
+
+## 18. The chat reads the five main documents of the project
 
 Status: in progress (plan 118), draft pull request.
 

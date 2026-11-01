@@ -5,7 +5,10 @@ import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { agentsDecideFor, type Config, type Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
-import { loadSecretValues } from '../core/secrets.js';
+import { loadSecretValues, loadSecrets } from '../core/secrets.js';
+import { draftPaths, refineRoot } from '../refine/draft.js';
+import { reduceRefineEvents } from '../refine/state.js';
+import { requiredSecretNames } from '../refine/session.js';
 import { redactSecrets } from '../core/redact.js';
 import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
@@ -33,11 +36,16 @@ import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './r
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
+import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
+import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
+import { ID_PATTERNS } from '../core/ids.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
 
 export interface RunRoutesDeps {
   cfg: () => Promise<Config>;
+  /** The program items of a project that stopped with a reason; empty when the refinement is not running. */
+  stoppedItems?: (projectId: string) => Promise<Array<{ specId: string; status: string; reason: string }>>;
   home?: string;
   control: RunControlDeps;
   log?: (line: string) => void;
@@ -323,7 +331,71 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
+  /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
+  const repoSource = async (projectId: string) => {
+    const idx = await index();
+    const row = (await listProjects(idx)).find((p) => p.projectId === projectId);
+    if (!row) throw new HttpError(404, `unknown project ${projectId}`);
+    const runs = await listRuns(idx, projectId);
+    // A spec is blocked when one of its runs needs the owner; its run list also feeds the history.
+    const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
+    const src = await loadRepoSource(row.dir, specs);
+    if (!src) return { src, runs, runsDir: runsDir(idx) };
+    const programStops = (await deps.stoppedItems?.(projectId).catch(() => [])) ?? [];
+    // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
+    const ws = workspacePaths(idx.cfg, projectId, deps.home);
+    const drafts = await fs.readdir(refineRoot(ws)).catch(() => [] as string[]);
+    const questions: Array<{ itemKey: string | null; text: string }> = [];
+    const needed = new Set<string>();
+    for (const id of drafts) {
+      const events = await loadEvents(draftPaths(ws, id).events).catch(() => []);
+      if (events.length === 0) continue;
+      const state = reduceRefineEvents(events);
+      questions.push(...state.questions.filter((q) => q.status === 'pending' && q.blocking).map((q) => ({ itemKey: q.itemKey ?? null, text: q.text })));
+      for (const name of requiredSecretNames(state)) needed.add(name);
+    }
+    const present = new Set(Object.keys(await loadSecrets(ws.secrets).catch(() => ({}))));
+    const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
+    // The root blocked tasks of each run: a task blocked on its own cause, read from the run's journal as it stands.
+    const rootBlocks: Array<{ specId: string; taskId: string; reason: string }> = [];
+    // The fix and deploy-fix tasks the orchestrator added to each spec's runs, counted apart from the planned tasks.
+    const added = new Map<string, { fixes: number; deployFixes: number }>();
+    for (const run of runs) {
+      const events = await loadEvents(path.join(runsDir(idx), run.runId, 'events.ndjson')).catch(() => []);
+      const count = added.get(run.specId) ?? { fixes: 0, deployFixes: 0 };
+      for (const e of events) for (const t of Array.isArray(e.data.tasks) ? (e.data.tasks as Array<{ origin?: string }>) : []) {
+        if (t.origin === 'fix') count.fixes += 1;
+        if (t.origin === 'deploy-fix') count.deployFixes += 1;
+      }
+      added.set(run.specId, count);
+      const ids = new Set(events.flatMap((e) => (e.data.taskId === undefined ? [] : [String(e.data.taskId)])));
+      for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
+    }
+    src.specs = src.specs.map((spec) => ({ ...spec, ...(added.get(spec.specId) ?? { fixes: 0, deployFixes: 0 }) }));
+    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx) };
+  };
   return [
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories`,
+      handler: async ({ params, json }) => {
+        const { src } = await repoSource(params.projectId!);
+        json(200, { repositories: src ? repositoryCards(src) : [] });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo`,
+      handler: async ({ params, json }) => {
+        const name = params.repo!;
+        if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
+        const { src, runs, runsDir: runsRoot } = await repoSource(params.projectId!);
+        const detail = src ? repositoryDetail(src, name) : null;
+        if (!detail) throw new HttpError(404, `unknown repository ${name}`);
+        const ids = new Set(detail.rows.map((r) => r.specId));
+        json(200, { ...detail, history: await historyOf(runsRoot, runs.filter((r) => ids.has(r.specId))) });
+      },
+    },
     {
       method: 'GET',
       path: `${P}/projects`,

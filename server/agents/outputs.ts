@@ -7,8 +7,9 @@ import { AC_ID, AcceptanceCriterion, BugDetails, ExternalDependency, SpecType } 
 import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
+import { Architecture } from '../contracts/architecture.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -365,6 +366,11 @@ export const SkillSelectionOutput = z.discriminatedUnion('action', [
 export type SkillSelectionOutput = z.infer<typeof SkillSelectionOutput>;
 
 /** Chat screen: a plain answer, plus a correction when what is being built goes against its spec. */
+/** A question the architecture step leaves for the owner: a split it cannot settle from the documents. */
+const ArchitectureQuestion = z.object({ text: z.string().min(1), context: z.string().min(1), blocking: z.boolean(), options: z.array(QuestionChoice).max(4) });
+export const ArchitectureOutput = Architecture.extend({ specHash, questions: keepValid(ArchitectureQuestion) });
+export type ArchitectureOutput = z.infer<typeof ArchitectureOutput>;
+
 export const ChatOutput = z.object({
   specHash,
   answer: z.string().min(1),
@@ -404,6 +410,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   'skill-select': SkillSelectionOutput,
   speckit: SpeckitOutput,
   converge: ConvergeOutput,
+  architecture: ArchitectureOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

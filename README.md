@@ -354,6 +354,8 @@ If the service does not respond, Teams AI stays on that screen until the service
 4. **Validate.** When a run reaches `awaiting-validation`, the service is already deployed (`docker-local`) and the smoke and e2e
    tests passed. Try it, then accept it or report problems. Problems return to Gate 1 as a continuation of the same specification.
 
+For a new project, refinement runs in stages. Each of the five documents (flow, project, briefing, stack, design) is reviewed, then added to a document graph. The architecture step then decides whether the project is one repository (monolith) or several (microservices), with each repository named by its suffix (`-api`, `-jobs`, `-web`, `-mobile`, `-workflow`). The backlog, the specs, the plans and the tasks are organized per repository. **Start** opens a summary of every check; the owner confirms there.
+
 The **Help chat** answers questions about the project and about using Teams AI. It searches the user guide in `docs/guia/`, and it reads the recorded failures of each spec. It may run one web search per question to explain a recorded error; a confidential project never gets one.
 When you change a screen or button, update the guide and run `task guia:grafo` to rebuild its search graph.
 

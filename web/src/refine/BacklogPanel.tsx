@@ -53,12 +53,18 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   }
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
   const epics = backlog.epics.map((e) => ({ ...e, items: backlog.items.filter((i) => i.epic === e.key).sort((a, b) => a.rank - b.rank) })).filter((e) => e.items.length > 0);
+  // A stamped draft groups its items by repository; each row keeps its epic as a tag.
+  const byRepository = backlog.items.some((i) => i.repository !== undefined);
+  const epicTitle = new Map(backlog.epics.map((e) => [e.key, e.title]));
+  const groups = byRepository
+    ? [...new Set(backlog.items.map((i) => i.repository ?? ''))].map((repo) => ({ key: repo || 'sem-repositorio', title: repo || 'Sem repositório', items: backlog.items.filter((i) => (i.repository ?? '') === repo).sort((a, b) => a.rank - b.rank) }))
+    : epics;
   return (
     <div className="my-4 grid gap-1" data-testid="backlog-on">
-      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} specs em ${epics.length} épicos` : ''}<InfoTip text={HELP} /></h3>
+      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} ${backlog.items.length === 1 ? 'spec' : 'specs'} em ${byRepository ? groups.length + (groups.length === 1 ? ' repositório' : ' repositórios') : epics.length + (epics.length === 1 ? ' épico' : ' épicos')}` : ''}<InfoTip text={HELP} /></h3>
       {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
-      {epics.map((epic) => (
-        <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`epic-${epic.key}`}>
+      {groups.map((epic) => (
+        <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`${byRepository ? 'repo' : 'epic'}-${epic.key}`}>
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden">
             <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
             <span className="min-w-0 flex-1 font-semibold wrap-anywhere">{epic.title}</span>
@@ -72,6 +78,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
                     <span className={`${bkChip} ${bkTone[i.priority]}`}>{i.priority}</span>
                     <b className="min-w-[10rem] flex-[1_1_10rem] font-semibold wrap-anywhere">{i.title}</b>
                     {backlog.detail && <span className={`${bkChip} ${STATUS_TONE[itemStatus(backlog, i.key)]}`}>{itemStatus(backlog, i.key)}</span>}
+                    {byRepository && <span className={bkMeta}>{epicTitle.get(i.epic) ?? i.epic}</span>}
                     <span className={bkMeta}>#{i.rank} · {SIZE[i.size]}</span>
                   </summary>
                   <div className="grid gap-[0.35rem] px-[0.65rem] pb-[0.65rem] text-[0.8125rem] text-ink-soft [&_p]:m-0">

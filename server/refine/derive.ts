@@ -17,13 +17,20 @@ export function derivePack(input: {
   previous: { project: Project; spec: Spec } | null;
   specId: string;
   jevValidation?: JevValidationResult;
+  /** The repositories of the decided architecture, when the draft is stamped: the spec names one of them. */
+  repositories?: readonly string[];
 }): ContextPackInput {
   const schemas = {
     project: z.toJSONSchema(Project, { target: 'draft-07', io: 'input' }),
     spec: z.toJSONSchema(Spec, { target: 'draft-07', io: 'input' }),
   };
+  // A stamped draft's services come from its architecture, so the naming rule stays out of its pack.
+  const servicesClause = input.repositories
+    ? 'In project.json, `services` is left out, because the architecture names the repositories; '
+    : 'In project.json, `services` lists the services the docs split the system into (one repository each; ' + SERVICE_NAMING + ') and stays out when they describe one application; ';
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
-    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. In project.json, \`services\` lists the services the docs split the system into (one repository each; ${SERVICE_NAMING}) and stays out when they describe one application; \`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives; \`platform\` stays out too when \`services\` does, since a single application keeps the containers it needs in its own docker-compose.yml. Invent neither.`,
+    ...(input.repositories ? [`The architecture names these repositories: ${input.repositories.join(', ')}. Set spec.repository to the one the spec changes, exactly as written here.`] : []),
+    `specId must be ${input.specId}. Derive project.json and spec.json from the Markdown below. Classify the demand as feature, bug, maintenance, or refactor. For bugs, preserve actual behavior, expected behavior, reproduction steps, and optional evidence in the bug object; do not invent missing reproduction details. ${servicesClause}\`platform\` lists the shared containers stack.md declares for every service, each with an image pinned to a version (never latest) and the command, environment and healthcheck stack.md gives; \`platform\` stays out too when \`services\` does, since a single application keeps the containers it needs in its own docker-compose.yml. Invent neither.`,
     'Use flow.md as the business-flow reference and keep the derived objectives, features, and acceptance criteria consistent with its application behavior.',
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
@@ -64,7 +71,7 @@ export const sameText = (a: AcceptanceCriterion, b: AcceptanceCriterion) => a.gi
  * projects with several specs): without it a second spec renumbers from AC-001 again and Phase 4 matches its tests
  * against the JUnit of the whole repo, so an earlier spec's `AC-001` would wrongly "prove" this one's criterion too.
  */
-export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string, floor = 0, decisions?: SpecDecision[]): DeriveCheck {
+export function postProcessDerived(out: { project: unknown; spec: unknown }, previous: Spec | null, specId: string, floor = 0, decisions?: SpecDecision[], repositories?: readonly string[]): DeriveCheck {
   const p = Project.safeParse(out.project);
   const raw = typeof out.spec === 'object' && out.spec !== null ? (out.spec as Record<string, unknown>) : {};
   // Ids are renumbered before the Spec schema runs, since the schema rejects duplicates the agent may produce.
@@ -104,6 +111,8 @@ export function postProcessDerived(out: { project: unknown; spec: unknown }, pre
     ...(p.success ? [] : p.error.issues.map((i) => `project.${i.path.join('.')}: ${i.message}`)),
     ...(s.success ? [] : s.error.issues.map((i) => `spec.${i.path.join('.')}: ${i.message}`)),
   ];
-  if (!p.success || !s.success) return { ok: false, issues };
+  // A stamped draft names the spec's repository from the architecture: one it does not name is refused.
+  const repoIssues = s.success && repositories && !repositories.includes(s.data.repository ?? '') ? [`spec.repository: the spec names its repository, one of ${repositories.join(', ')}`] : [];
+  if (!p.success || !s.success || repoIssues.length > 0) return { ok: false, issues: [...issues, ...repoIssues] };
   return { ok: true, value: { project: p.data, spec: s.data } };
 }

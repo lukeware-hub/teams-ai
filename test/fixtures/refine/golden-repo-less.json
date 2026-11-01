@@ -1,0 +1,136 @@
+{
+  "index": {
+    "version": 1,
+    "draftId": "hello-001",
+    "epics": [
+      {
+        "key": "login",
+        "title": "Entrar"
+      },
+      {
+        "key": "shop",
+        "title": "Loja"
+      }
+    ],
+    "specs": [
+      {
+        "specId": "user-login",
+        "key": "user-login",
+        "title": "Título user-login",
+        "epic": "login",
+        "priority": "P1",
+        "rank": 1,
+        "size": "M",
+        "scope": "Escopo de user-login",
+        "rationale": "Motivo de user-login",
+        "dependsOn": [],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ]
+      },
+      {
+        "specId": "reset-password",
+        "key": "reset-password",
+        "title": "Título reset-password",
+        "epic": "login",
+        "priority": "P1",
+        "rank": 2,
+        "size": "M",
+        "scope": "Escopo de reset-password",
+        "rationale": "Motivo de reset-password",
+        "dependsOn": [
+          "user-login"
+        ],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ]
+      },
+      {
+        "specId": "cart",
+        "key": "cart",
+        "title": "Título cart",
+        "epic": "shop",
+        "priority": "P1",
+        "rank": 3,
+        "size": "M",
+        "scope": "Escopo de cart",
+        "rationale": "Motivo de cart",
+        "dependsOn": [],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ]
+      }
+    ]
+  },
+  "specsMd": "# Specs\n\n> Gerado a partir do backlog detalhado; não edite.\n\n## user-login: Título user-login\n\n- Épico: Entrar · Prioridade: P1 · Tamanho: M · Depende de: -\n- Escopo: Escopo de user-login\n- Por quê: Motivo de user-login\n- Origem: project.md › Visão\n\n## reset-password: Título reset-password\n\n- Épico: Entrar · Prioridade: P1 · Tamanho: M · Depende de: user-login\n- Escopo: Escopo de reset-password\n- Por quê: Motivo de reset-password\n- Origem: project.md › Visão\n\n## cart: Título cart\n\n- Épico: Loja · Prioridade: P1 · Tamanho: M · Depende de: -\n- Escopo: Escopo de cart\n- Por quê: Motivo de cart\n- Origem: project.md › Visão\n",
+  "backlogMd": "# Backlog\n\n> Gerado pelos agentes a partir dos documentos; não edite. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.\n\n## Entrar\n\n| # | Prioridade | Spec | Tamanho | Depende de |\n|---|---|---|---|---|\n| 1 | P1 | user-login | M | - |\n| 2 | P1 | reset-password | M | user-login |\n\n### user-login: Título user-login\n\n- Escopo: Escopo de user-login\n- Por quê: Motivo de user-login\n- Origem: project.md › Visão\n\n### reset-password: Título reset-password\n\n- Escopo: Escopo de reset-password\n- Por quê: Motivo de reset-password\n- Origem: project.md › Visão\n\n## Loja\n\n| # | Prioridade | Spec | Tamanho | Depende de |\n|---|---|---|---|---|\n| 3 | P1 | cart | M | - |\n\n### cart: Título cart\n\n- Escopo: Escopo de cart\n- Por quê: Motivo de cart\n- Origem: project.md › Visão\n",
+  "batches": [
+    [
+      {
+        "key": "user-login",
+        "title": "Título user-login",
+        "epic": "login",
+        "scope": "Escopo de user-login",
+        "priority": "P1",
+        "rationale": "Motivo de user-login",
+        "dependsOn": [],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ],
+        "size": "M",
+        "rank": 1
+      },
+      {
+        "key": "reset-password",
+        "title": "Título reset-password",
+        "epic": "login",
+        "scope": "Escopo de reset-password",
+        "priority": "P1",
+        "rationale": "Motivo de reset-password",
+        "dependsOn": [
+          "user-login"
+        ],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ],
+        "size": "M",
+        "rank": 2
+      }
+    ],
+    [
+      {
+        "key": "cart",
+        "title": "Título cart",
+        "epic": "shop",
+        "scope": "Escopo de cart",
+        "priority": "P1",
+        "rationale": "Motivo de cart",
+        "dependsOn": [],
+        "sources": [
+          {
+            "doc": "project.md",
+            "heading": "Visão"
+          }
+        ],
+        "size": "M",
+        "rank": 3
+      }
+    ]
+  ],
+  "specHash": "sha256:64a040d1b6a767d7d9e5cc912ea94d8f850bf602ce3ac4a2d6108fdc4e8134b1"
+}

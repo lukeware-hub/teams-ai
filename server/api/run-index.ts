@@ -39,6 +39,8 @@ export interface SpecRow {
   specId: string;
   status: string;
   activeRunId: string | null;
+  /** The repository the spec changes; absent for a spec from before the architecture. */
+  repository?: string;
 }
 export interface ProjectRow {
   projectId: string;
@@ -294,7 +296,7 @@ export async function listProjects(deps: IndexDeps): Promise<ProjectRow[]> {
       dir,
       name: read.project.name,
       description: read.project.vision,
-      specs: specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null })),
+      specs: specs.map((s) => ({ specId: s.specId, status: completed.has(s.specId) ? 'done' : s.status, activeRunId: runs.find((r) => r.specId === s.specId && claimsSpec(r))?.runId ?? null, ...(s.repository === undefined ? {} : { repository: s.repository }) })),
       ...(read.project.services ? { services: read.project.services } : {}),
       ...(read.project.platform ? { platform: read.project.platform.map((p) => ({ name: p.name, image: p.image })) } : {}),
     });

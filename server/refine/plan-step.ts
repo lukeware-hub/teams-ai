@@ -14,6 +14,10 @@ export interface PlanStepRun {
   staging: string;
   specId: string;
   criteria: readonly string[];
+  /** The file the step writes, relative to the folder; the implementation plan when absent. */
+  file?: string;
+  /** Checks the file's text and returns what is wrong with it; the plan shape check when absent. */
+  check?: (text: string) => string[];
   /** The pack of one run; a repair run carries the note of the problems its previous plan had. */
   pack: (repair: string | null) => ContextPackInput;
   /** Runs the agent with a pack and returns its outcome. */
@@ -38,7 +42,8 @@ export const planRepairNote = (file: string, issues: readonly string[]): string 
 
 /** One plan step: runs the agent, checks the plan file it wrote, and repairs the plan up to MAX_PLAN_REPAIRS times. */
 export async function runPlanStep(step: PlanStepRun): Promise<PlanStepResult> {
-  const file = planFileOf(step.specId);
+  const file = step.file ?? planFileOf(step.specId);
+  const check = step.check ?? ((text: string) => planShapeIssues(text, step.criteria));
   let repair: string | null = null;
   for (let repairs = 0; ; repairs++) {
     const outcome = await step.run(step.pack(repair));
@@ -47,7 +52,7 @@ export async function runPlanStep(step: PlanStepRun): Promise<PlanStepResult> {
     const questions = answer.questions.length;
     if (answer.status === 'blocked') return { status: 'blocked', file, issues: [answer.reason], repairs, questions };
     const text = await fs.readFile(path.join(step.staging, file), 'utf8').catch(() => null);
-    const issues = text === null ? [`the plan file ${file} is missing`] : planShapeIssues(text, step.criteria);
+    const issues = text === null ? [`the ${step.file === undefined ? 'plan file' : 'file'} ${file} is missing`] : check(text);
     if (issues.length === 0) return { status: 'valid', file, issues, repairs, questions };
     if (repairs === MAX_PLAN_REPAIRS) return { status: 'failed', file, issues, repairs, questions };
     repair = planRepairNote(file, issues);

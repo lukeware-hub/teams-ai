@@ -241,7 +241,43 @@ export type StartedRun = { runId: string; queued?: undefined } | { queued: true;
 /** Where a started spec is followed: its run, or the execution screen of the program that queued it. */
 export const startedPath = (projectId: string, r: StartedRun) => (r.queued ? `/refine/${projectId}/${r.draftId}/program` : `/runs/${r.runId}`);
 const jsonPost = (p: string, body?: unknown) => fetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+/** A repository card of the project page: its kind, what it is for, its counts, and its state. */
+export interface RepoCardView {
+  name: string;
+  kind: string | null;
+  responsibility: string;
+  status: 'blocked' | 'running' | 'waiting' | 'refining' | 'done' | 'empty';
+  specs: number;
+  plans: number;
+  tasks: number;
+  tasksDone: number;
+  blockers: number;
+}
+
+/** One spec of a repository's dashboard: its state, its plan, its tasks, and whether its run needs the owner. */
+export interface RepoSpecView {
+  specId: string;
+  status: string;
+  activeRunId: string | null;
+  repository?: string;
+  title: string | null;
+  priority: string | null;
+  dependsOn: string[];
+  plan: boolean;
+  tasks: number;
+  blocked: boolean;
+}
+
+/** A repository's dashboard: the card, its integrations, its specs, and the last events of its runs. */
+export interface RepoDetailView extends RepoCardView {
+  integrations: string[];
+  rows: RepoSpecView[];
+  history: Array<{ at: string; type: string; runId: string; specId: string }>;
+}
+
 export const runApi = {
+  repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
+  repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   deleteProject: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
@@ -365,6 +401,8 @@ export interface BacklogViewItem {
   key: string;
   title: string;
   epic: string;
+  /** The repository the item changes, in a repository session. */
+  repository?: string;
   scope: string;
   priority: Priority;
   rationale: string;
@@ -469,6 +507,20 @@ export interface RefineState {
   readiness?: Readiness;
   /** The documents the owner moved on from, in order, and the round the current stage began at. */
   doneStages?: string[];
+  /** A repository session: the architecture gives the repositories and the start waits for the closing summary. */
+  repositories?: boolean;
+  /** The architecture the five documents support, with the hash of the documents it was decided on. */
+  architecture?: { docsHash: string; decision: ArchitectureView } | null;
+  /** The last architecture decision failed, with the reason in plain words. */
+  architectureError?: string | null;
+  /** The documents reviewed since their last human edit, in a repository session. */
+  reviewedStages?: string[];
+  /** The documents in the Graphify graph after their last edit, in a repository session. */
+  graphed?: string[];
+  /** The document whose graph extraction runs now, if any. */
+  graphing?: string | null;
+  /** The last graph extraction that failed, with the reason in plain words. */
+  graphError?: { file: string; reason: string } | null;
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: string[];
   /** The owner moved on from the final review to the backlog. */
@@ -484,6 +536,23 @@ export interface RefineState {
   /** The plan preparation of a detailed backlog; stale once a document or the backlog changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string> };
 }
+/** The architecture as the page shows it: the style, the reason, the repositories and the integrations between them. */
+export interface ArchitectureView {
+  style: 'monolith' | 'microservices';
+  rationale: string;
+  repositories: Array<{ name: string; responsibility: string; evidence: { doc: string; quote: string } }>;
+  integrations: Array<{ consumer: string; provider: string; contract: string }>;
+}
+
+/** The closing summary a repository session shows before the owner authorizes the development. */
+export interface ClosingSummary {
+  ok: boolean;
+  checks: Array<{ id: string; ok: boolean; detail: string }>;
+  repositories: Array<{ name: string; specs: number; plans: number; tasks: number }>;
+  assumptions: string[];
+  summaryHash: string;
+}
+
 export interface Snapshot {
   projectId: string;
   specId: string;
@@ -497,6 +566,12 @@ export interface Snapshot {
   seq?: number;
   /** The round after which Reavaliar stops. */
   limits?: { max: number };
+  /** The closing summary of a repository session: the checks, the repositories, the assumptions, and the hash the owner authorizes. */
+  closing?: ClosingSummary;
+  /** The architecture was decided on documents that have changed since. */
+  architectureStale?: boolean;
+  /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
+  stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
 }
 export interface DraftRow {
   projectId: string;
@@ -543,7 +618,8 @@ export const refineApi = {
   reject: (p: string, s: string, patchId: string, reason: string | null) =>
     send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
-  start: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
+  decideArchitecture: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/architecture`).then((r) => json<{ ok: boolean }>(r)),
+  start: (p: string, s: string, summaryHash?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`, summaryHash === undefined ? undefined : { summaryHash }).then((r) => json<{ runId: string; program?: ProgramView }>(r)),
   score: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/score`).then((r) => json<{ ok: true }>(r)),
   scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
   continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),

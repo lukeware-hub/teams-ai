@@ -76,6 +76,13 @@ Delivery goals to keep in mind in every decision: code quality, security, very l
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+## Frontend
+
+- Every change to the teams-ai frontend (`web/`, `design.md`, UI copy) goes through the `/impeccable` skill: `shape` before a new screen or step, `critique` and `audit` when judging, `polish` at the end. Name the commands that ran in the PR description.
+- The visual reference is the refinement screen: `design.md` §26 and §30 and the live page `http://localhost:8787/refine/kayron-hub/kayron-hub-001`. New screens extend its look (dark glass panels, stepper, chips, gradient primary) and never replace it. Product truth is `PRODUCT.md`.
+- A new shape is described in `design.md` first, and a screen is shown as a wireframe and approved before code.
+- Before saying a UI change works, look at the real page in Chrome (desktop and phone width, dark and light) next to the reference, and run the detector once: `node <skill-dir>/scripts/detect.mjs --json <files>`.
+
 ## Repositório do projeto
 
 - O repositório do projeto não fica escrito neste arquivo. Ele foi registrado no início do projeto, no `remote.origin.url` do `.git/config` (o primeiro commit do projeto é `3b1eb64e`, de 23/09/2026).

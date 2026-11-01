@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { docPatches, docQuestions, initialStep, nextStep, parseStep, pendingCount, prevStep, speckitQuestions, stepParam, unfiledQuestions, wizardNodes } from './wizard.js';
+import { docPatches, docQuestions, initialStep, nextStep, parseStep, pendingCount, prevStep, speckitQuestions, stepParam, stepsOf, unfiledQuestions, wizardNodes } from './wizard.js';
 
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: 'q', blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string, status = 'pending') => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status, decision: null });
@@ -58,8 +58,8 @@ describe('wizardNodes', () => {
     expect(nodes.map((n) => n.state)).toEqual(['done', 'done', 'active', 'todo', 'todo', 'todo', 'todo']);
   });
 
-  it('flags a document that changed after its score or after an earlier document changed', () => {
-    const nodes = wizardNodes(state({ outdatedDocs: ['stack.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
+  it('flags a finished document that left the graph, or one that changed after an earlier document, and never the Jev score', () => {
+    const nodes = wizardNodes(state({ doneStages: ['flow.md', 'stack.md'], graphed: ['flow.md'], outdatedDocs: ['flow.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
     expect(nodes.find((n) => n.key === 'stack.md')!.marker).toBe('desatualizado');
     expect(nodes.find((n) => n.key === 'design.md')!.marker).toBe('desatualizado');
     expect(nodes.find((n) => n.key === 'flow.md')!.marker).toBeUndefined();
@@ -113,5 +113,12 @@ describe('the questions the plan preparation asks', () => {
     const st = state({ questions: [question('a'), question('s1', { origin: 'speckit' }), question('s2', { origin: 'speckit', blocking: true }), question('s3', { origin: 'speckit', status: 'answered' })] });
     expect(speckitQuestions(st).map((q) => q.questionId)).toEqual(['s2', 's1']);
     expect(unfiledQuestions(st).map((q) => q.questionId)).toEqual(['a']);
+  });
+});
+
+describe('the step after the review', () => {
+  it('is the architecture in a repository session, so the backlog is never reached before it', () => {
+    expect(nextStep('review', stepsOf({ repositories: true }))).toBe('architecture');
+    expect(nextStep('architecture', stepsOf({ repositories: true }))).toBe('backlog');
   });
 });

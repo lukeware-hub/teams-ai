@@ -17,6 +17,15 @@ const input = (over: Record<string, unknown> = {}) => ({
   specHash: HASH, principles: ['p'], projectMd: '# Projeto', briefMd: '# Briefing\nQuero OPME como P2.', stackMd: '# Stack', flowMd: '# Fluxo\n%% 7. OPME', designMd: '# Design', previous: null, ...over,
 });
 
+describe('the naming rule of the services', () => {
+  it('keeps the naming rule out of the pack of a stamped draft, whose services come from its architecture', () => {
+    expect(backlogPack(input({ repositories: ['core-api'] })).feedback).not.toContain('Name each service as the docs name it');
+  });
+  it('keeps the naming rule in the pack of a draft without repositories', () => {
+    expect(backlogPack(input()).feedback).toContain('Name each service as the docs name it');
+  });
+});
+
 describe('backlogPack', () => {
   it('puts the five docs, the binding-decisions rule and the output contract in the pack', () => {
     const pack = backlogPack(input());

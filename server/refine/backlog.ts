@@ -24,8 +24,11 @@ const RULES = [
   '- key: a short lowercase slug of at most 40 characters, the same limit for every epic key and every dependsOn entry. dependsOn repeats the exact key of another item, never its title. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
   '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
-  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ' + SERVICE_NAMING,
+  'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ',
 ].join('\n');
+
+/** The backlog rules; a stamped draft's services come from its architecture, so the naming rule stays out of its pack. */
+const rulesFor = (repositories: readonly string[] | undefined): string => (repositories ? RULES.trimEnd() : RULES + SERVICE_NAMING);
 
 export function backlogPack(input: {
   specHash: string;
@@ -41,11 +44,14 @@ export function backlogPack(input: {
   rejection?: readonly string[];
   /** Keys of the items whose spec started or was delivered (R11.7.5), shown as `started` so their sources stay put. */
   started?: readonly string[];
+  /** The architecture's repositories of a stamped draft: every item names one of them. */
+  repositories?: readonly string[];
 }): ContextPackInput {
   const started = new Set(input.started);
   const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
-    RULES,
+    rulesFor(input.repositories),
+    ...(input.repositories ? [repositoryRules(input.repositories)] : []),
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
     d.project,
@@ -107,7 +113,7 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 }
 
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = []): BacklogCheck {
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[]): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -116,7 +122,7 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
-  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)) });
+  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories });
   if (rules.length > 0) return { ok: false, issues: rules };
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));
@@ -128,14 +134,29 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   return { ok: true, value: { project: project.data, backlog: { epics, items: rankItems([...adjustments, ...all]) } } };
 }
 
+/** The rules that tie each item to one repository of the architecture; a feature across repositories is one item per repository. */
+function repositoryRules(names: readonly string[]): string {
+  return [
+    `REPOSITORIES (mandatory): the architecture names these repositories: ${names.join(', ')}. Give every item exactly one of them in \`repository\`.`,
+    '- A feature that spans repositories becomes one item per repository: the provider first, then each consumer with dependsOn on the provider, and the contract they share written in both scopes.',
+    '- Never write a repository outside this list, and never leave one out.',
+  ].join('\n');
+}
+
+/** The sections of backlog.md: one per epic, or one per repository when some item names one, each with its items in rank order. */
+function backlogSections(backlog: Pick<BacklogState, 'epics' | 'items'>): Array<{ title: string; items: BacklogState['items'] }> {
+  const sorted = [...backlog.items].sort((a, b) => a.rank - b.rank);
+  if (!backlog.items.some((i) => i.repository !== undefined)) return backlog.epics.map((epic) => ({ title: epic.title, items: sorted.filter((i) => i.epic === epic.key) }));
+  return [...new Set(sorted.map((i) => i.repository ?? ''))].map((repo) => ({ title: repo || 'Sem repositório', items: sorted.filter((i) => (i.repository ?? '') === repo) }));
+}
+
 /** The backlog as a Markdown view for people (and later agents); generated, never edited by hand. */
 export function renderBacklogMd(backlog: Pick<BacklogState, 'epics' | 'items'>): string {
   const byKey = new Map(backlog.items.map((i) => [i.key, i]));
   const parts = ['# Backlog', '', '> Gerado pelos agentes a partir dos documentos; não edite. Para mudar prioridades ou cortes, escreva no briefing.md e reavalie.', ''];
-  for (const epic of backlog.epics) {
-    const items = backlog.items.filter((i) => i.epic === epic.key).sort((a, b) => a.rank - b.rank);
+  for (const { title, items } of backlogSections(backlog)) {
     if (items.length === 0) continue;
-    parts.push(`## ${epic.title}`, '', '| # | Prioridade | Spec | Tamanho | Depende de |', '|---|---|---|---|---|');
+    parts.push(`## ${title}`, '', '| # | Prioridade | Spec | Tamanho | Depende de |', '|---|---|---|---|---|');
     for (const i of items) parts.push(`| ${i.rank} | ${i.priority} | ${i.key} | ${i.size} | ${i.dependsOn.map((d) => byKey.get(d)?.key ?? d).join(', ') || '-'} |`);
     parts.push('');
     for (const i of items) parts.push(`### ${i.key}: ${i.title}`, '', ...itemLines(i), '');
