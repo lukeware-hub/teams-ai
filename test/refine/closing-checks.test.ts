@@ -8,6 +8,7 @@ function greenState(): RefineState {
   return {
     ...state,
     repositories: true,
+    stages: true,
     doneStages: [...DOC_STAGES],
     graphed: [...DOC_STAGES],
     checklist: [{ id: 'po.objectives-verifiable', passed: true, detail: 'ok' }] as never,

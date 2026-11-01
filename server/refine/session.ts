@@ -5,7 +5,7 @@ import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { assumptionBullets } from './plan-shape.js';
 import { planFileOf } from './plan-file.js';
 import type { ArchitectureOutput, SuggestOutput } from '../agents/outputs.js';
-import type { Architecture } from '../contracts/architecture.js';
+import { Architecture } from '../contracts/architecture.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
@@ -249,9 +249,20 @@ export class RefineSession {
     // A continued spec keeps the backlog key that names its plan file, which its next derivation no longer carries.
     const featureKey = mode === 'continue' ? s.state.derived?.spec.derivedFrom?.backlogKey : undefined;
     // Only a new project takes the repository flow; the stamp is written once, here, and the event without it is the same as before.
-    const repositories = mode === 'new-project' && (options.repositories ?? REPOSITORY_FLOW);
+    const repositories = options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW);
     await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}) });
+    if (repositories) await s.adoptArchitecture();
     return s;
+  }
+
+  /** A follow-on draft takes the architecture its main copy holds: decided on the documents it starts from, so no stage is asked again. */
+  private async adoptArchitecture(): Promise<void> {
+    const file = path.posix.join(this.deps.draft.root, 'docs', 'architecture.json');
+    const text = await fs.readFile(file, 'utf8').catch(() => null);
+    if (text === null) return;
+    const architecture = Architecture.parse(JSON.parse(text));
+    const docs = await this.docsNow();
+    await this.journal.fact(RefineEvent.ArchitectureDecided, { docsHash: docsHashOf(docs), architecture, questions: [] });
   }
 
   get busy(): boolean {
@@ -360,21 +371,21 @@ export class RefineSession {
 
   /** In a repository session the documents go in order: only the current stage and the finished ones can be reviewed or suggested. */
   private guardStage(file: DocFile): void {
-    if (this.state.repositories !== true) return;
+    if (this.state.repositories !== true || this.state.stages !== true) return;
     const why = stageBlocked(this.state.doneStages ?? [], file);
     if (why) throw new ConflictError(why);
   }
 
   /** In a repository session the backlog, the plans and the final review wait until all five documents are done. */
   private guardStagesDone(): void {
-    if (this.state.repositories !== true) return;
+    if (this.state.repositories !== true || this.state.stages !== true) return;
     const open = DOC_STAGES.filter((file) => !(this.state.doneStages ?? []).includes(file));
     if (open.length > 0) throw new ConflictError(`Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`);
   }
 
   /** In a repository session the backlog and the evaluation wait until all five documents are in the Graphify graph. */
   private guardGraphed(): void {
-    if (this.state.repositories !== true) return;
+    if (this.state.repositories !== true || this.state.stages !== true) return;
     const missing = DOC_STAGES.filter((file) => !(this.state.graphed ?? []).includes(file));
     if (missing.length > 0) throw new ConflictError(`Adicione os cinco documentos ao Graphify antes: falta ${missing.join(', ')}.`);
   }

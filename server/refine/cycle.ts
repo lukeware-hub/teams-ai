@@ -405,7 +405,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       {
         kind: 'derive',
         role: 'po',
-        pack: fitPackBudget(derivePack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
+        pack: fitPackBudget(derivePack({ repositories: repositoryNamesOf(journal.state), specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, specId: draft.specId, jevValidation })),
         cwd: draft.root,
         phase: 'refine',
         taskId: null,
@@ -419,7 +419,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     }
     // A sibling spec of the same project (copied into the draft from main) may already use higher ids (R11.8).
     const floor = await maxCriterionInDraft(draft);
-    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']));
+    const checked = postProcessDerived(d.value as DeriveOutput, previous?.spec ?? null, draft.specId, floor, parseDecisions(docs['briefing.md']), repositoryNamesOf(journal.state));
     if (!checked.ok) {
       await fail('A derivação dos documentos não passou na validação. Clique em Reavaliar.', checked.issues.join('; '));
       return;

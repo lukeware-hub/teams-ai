@@ -109,7 +109,9 @@ export class SessionRegistry {
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
       const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
-      return create ? RefineSession.create(deps, create) : RefineSession.open(deps);
+      // A follow-on draft is a repository session when main holds the architecture its documents came from.
+      const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
+      return create ? RefineSession.create(deps, create, architecture ? { repositories: true } : {}) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
     // Only drop the entry this attempt added: a later attempt's entry must survive this one failing.
