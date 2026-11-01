@@ -74,6 +74,19 @@ describe('cards and dashboard of the repositories', () => {
 });
 
 describe('blockers and history', () => {
+  it('counts a spec the program stopped with a reason as blocked, once, and gives the reason in the dashboard', () => {
+    const src: RepoSource = {
+      architecture: ARCH,
+      specs: [spec('cart', 'shop-api', 'running'), spec('pay', 'shop-api', 'refining')],
+      programStops: [{ specId: 'cart', status: 'failed', reason: 'a verificação falhou' }, { specId: 'cart', status: 'blocked', reason: 'de novo' }],
+    };
+    expect(repositoryCards(src)[0]).toMatchObject({ status: 'blocked', blockers: 1 });
+    expect(repositoryDetail(src, 'shop-api')?.reasons).toEqual([
+      { specId: 'cart', status: 'failed', reason: 'a verificação falhou' },
+      { specId: 'cart', status: 'blocked', reason: 'de novo' },
+    ]);
+  });
+
   it('counts a pending blocking question on a spec of the repository as one of its blockers, and lists the missing secrets', () => {
     const src: RepoSource = {
       architecture: ARCH,

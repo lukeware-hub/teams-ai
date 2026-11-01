@@ -41,6 +41,8 @@ export interface RepoSource {
   questions?: Array<{ itemKey: string | null; text: string }>;
   /** The secrets the project's specs need that the vault does not hold, by name. */
   missingSecrets?: string[];
+  /** The program items that stopped with a reason: a blocked, failed or partial spec. */
+  programStops?: Array<{ specId: string; status: string; reason: string }>;
 }
 
 export interface RepoCard {
@@ -60,6 +62,8 @@ export interface RepoCard {
 export interface RepoDetail extends RepoCard {
   integrations: string[];
   rows: RepoSpec[];
+  /** Why each stopped spec of the repository stopped, from the program's record. */
+  reasons: Array<{ specId: string; status: string; reason: string }>;
   questions: Array<{ itemKey: string | null; text: string }>;
   missingSecrets: string[];
 }
@@ -78,7 +82,7 @@ export function statusOf(rows: readonly RepoSpec[]): RepoStatus {
 function cardOf(src: RepoSource, name: string): RepoCard | null {
   const ctx = repositoryContext(src.architecture, name);
   if (!ctx) return null;
-  const rows = src.specs.filter((s) => s.repository === name);
+  const rows = rowsOf(src, name);
   const delivered = rows.filter((r) => r.status === 'done');
   const keys = new Set(rows.map((r) => r.key).filter((k): k is string => k !== null));
   const questions = (src.questions ?? []).filter((q) => q.itemKey !== null && keys.has(q.itemKey)).length;
@@ -100,12 +104,18 @@ export function repositoryCards(src: RepoSource): RepoCard[] {
   return src.architecture.repositories.flatMap((repo) => cardOf(src, repo.name) ?? []);
 }
 
+/** The repository's specs, a spec the program stopped counting as blocked. */
+function rowsOf(src: RepoSource, name: string): RepoSpec[] {
+  const stopped = new Set((src.programStops ?? []).map((s) => s.specId));
+  return src.specs.filter((s) => s.repository === name).map((s) => (stopped.has(s.specId) ? { ...s, blocked: true } : s));
+}
+
 /** The dashboard of one repository, or null when the architecture does not name it. */
 export function repositoryDetail(src: RepoSource, name: string): RepoDetail | null {
   const card = cardOf(src, name);
   const ctx = repositoryContext(src.architecture, name);
   if (!card || !ctx) return null;
-  return { ...card, integrations: ctx.integrations, rows: src.specs.filter((s) => s.repository === name), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
+  return { ...card, integrations: ctx.integrations, rows: rowsOf(src, name), reasons: (src.programStops ?? []).filter((s) => src.specs.some((r) => r.repository === name && r.specId === s.specId)), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
 }
 
 interface SpecIndexEntry {

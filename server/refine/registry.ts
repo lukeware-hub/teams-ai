@@ -370,6 +370,19 @@ export class SessionRegistry {
     return out;
   }
 
+  /** The program items of a project that stopped with a reason, from each of its drafts: a blocked, failed or partial spec. */
+  async stoppedItems(projectId: string): Promise<Array<{ specId: string; status: string; reason: string }>> {
+    const drafts = (await this.list()).filter((d) => d.projectId === projectId);
+    const stops: Array<{ specId: string; status: string; reason: string }> = [];
+    for (const draft of drafts) {
+      const view = await this.program(projectId, draft.specId).catch(() => null);
+      for (const item of view?.items ?? []) {
+        if (item.reason && (item.status === 'blocked' || item.status === 'failed' || item.status === 'partial')) stops.push({ specId: item.specId, status: item.status, reason: item.reason });
+      }
+    }
+    return stops;
+  }
+
   async list(): Promise<DraftRow[]> {
     const cfg = await this.deps.cfg();
     const root = expandHome(cfg.paths.workspaces, this.deps.home);

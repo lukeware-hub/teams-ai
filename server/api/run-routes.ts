@@ -43,6 +43,8 @@ import { z } from 'zod';
 
 export interface RunRoutesDeps {
   cfg: () => Promise<Config>;
+  /** The program items of a project that stopped with a reason; empty when the refinement is not running. */
+  stoppedItems?: (projectId: string) => Promise<Array<{ specId: string; status: string; reason: string }>>;
   home?: string;
   control: RunControlDeps;
   log?: (line: string) => void;
@@ -350,6 +352,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
     const src = await loadRepoSource(row.dir, specs);
     if (!src) return { src, runs, runsDir: runsDir(idx) };
+    const programStops = (await deps.stoppedItems?.(projectId).catch(() => [])) ?? [];
     // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
     const ws = workspacePaths(idx.cfg, projectId, deps.home);
     const drafts = await fs.readdir(refineRoot(ws)).catch(() => [] as string[]);
@@ -364,7 +367,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     }
     const present = new Set(Object.keys(await loadSecrets(ws.secrets).catch(() => ({}))));
     const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
-    return { src: { ...src, questions, missingSecrets }, runs, runsDir: runsDir(idx) };
+    return { src: { ...src, questions, missingSecrets, programStops }, runs, runsDir: runsDir(idx) };
   };
   return [
     {
