@@ -159,7 +159,7 @@ Status: done 2026-11-02 (commits `c01367a1`, `8119af25`, `41e9e464`).
 
 ## 20. Documentation repository: the eight kinds, committed as the refinement goes
 
-Status: built behind the flag `TEAMS_AI_DOCS_REPO_LAYOUT` (off by default); live check and deploy pending. Plan 119, branch `feat/docs-repo-119`, draft pull request.
+Status: built behind the flag `TEAMS_AI_DOCS_REPO_LAYOUT` (off by default). The live check of plan 119 is in progress: the monolith project reached the start, with one start tag and a repository allowlist that has no file outside the eight kinds. The microservices project is still closing. Plan 119, branch `feat/docs-repo-119`, draft pull request.
 
 - Built: only the five documents and each spec's `spec.md`, `plan.md` and `task.md` are committed to the documentation repository. Every machine file (JSON, preplan, reports, technical spec) stays on the platform.
 - Built: a commit at each refinement boundary, a closing commit, and an annotated `dev-start/<alias>` tag per authorized spec, which marks where development starts.
