@@ -4,6 +4,7 @@ import { Architecture, repoKind, repositoryContext, type RepositoryContext } fro
 import { Project, SERVICE_NAMING } from '../contracts/project.js';
 import type { ArchitectureOutput } from '../agents/outputs.js';
 import { SERVICE_SUFFIXES } from '../core/ids.js';
+import { OwnerError } from '../core/owner-error.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
@@ -114,4 +115,13 @@ export function architecturePack(input: ArchitecturePackInput): ContextPackInput
 export function checkDecision(out: ArchitectureOutput, projectId: string, docs: Readonly<Record<DocFile, string>>): string[] {
   const arch = Architecture.parse({ style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations });
   return validateArchitecture(arch, { projectId, docs, normalize: (text) => ` ${normHeading(text)} ` });
+}
+
+/** The decision broke a rule on both answers: the owner reads each rule that stayed open. */
+export class RulesOpenError extends OwnerError {
+  readonly issues: string[];
+  constructor(issues: string[]) {
+    super('A arquitetura não fechou com as regras.', issues.join(' '));
+    this.issues = issues;
+  }
 }

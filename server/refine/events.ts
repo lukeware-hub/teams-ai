@@ -9,6 +9,8 @@ export const RefineEvent = {
   StageAdvanced: 'REFINE_STAGE_ADVANCED',
   /** The text the owner passed to a stage was kept the first time the stage was processed: `{file, hash}`; Reprocessar goes back to it. */
   StagePassed: 'REFINE_STAGE_PASSED',
+  /** The owner reprocessed a stage from its passed text: `{file}`; its mandatory questions no longer hold it. */
+  StageReprocessed: 'REFINE_STAGE_REPROCESSED',
   /** The owner moved on from the final review to the backlog: `{}`. */
   ReviewClosed: 'REFINE_REVIEW_CLOSED',
   StageReviewed: 'REFINE_STAGE_REVIEWED',

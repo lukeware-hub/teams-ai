@@ -16,7 +16,7 @@ const checks = (value: number) => ({ complete: value, concrete: value, consisten
 const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, { score, checks: { complete: 0.44, concrete: 0.72, consistent: 0.84, scoped: 0.6 } }])) });
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -109,6 +109,14 @@ describe('Voltar and Continuar', () => {
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(editor('briefing.md').value).toBe('## Objectives'));
     expect(handlers.onContinueStage).not.toHaveBeenCalled();
+  });
+
+  it('a reprocessed stage says its mandatory question can be skipped, and Continuar moves on without the answer', async () => {
+    const handlers = show(base({ questions: [question('po-s1-0', { blocking: true, file: 'flow.md' })], passedStages: ['flow.md'], reprocessedStages: ['flow.md'] }));
+    expect(screen.getByText('Pode pular: Continuar avança sem resposta.')).toBeTruthy();
+    expect(screen.queryByText('Bloqueia o avanço até você responder.')).toBeNull();
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('flow.md'));
   });
 
   it('stays on the screen when the server refuses to continue', async () => {
@@ -377,11 +385,17 @@ describe('the final review', () => {
     expect(scores).toContain('briefing.mdsem nota');
   });
 
-  it('lists the pending items by document, opens the stage from there, and shows the general questions in place', () => {
+  it('hides the pending items until the owner shows them, opens the stage from there, and keeps the general questions in place', () => {
     open('?etapa=revisao');
     show(reviewSnap());
-    expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
+    expect(screen.queryByTestId('pending-project.md')).toBeNull();
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('pending-toggle'));
+    expect(screen.getByTestId('pending-toggle').textContent).toBe('Ocultar pendências');
+    expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
+    fireEvent.click(screen.getByTestId('pending-project.md'));
+    expect(window.location.search).toContain('etapa=project.md');
+    expect(screen.getByTestId('doc-project.md')).toBeTruthy();
   });
 
   it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
@@ -423,18 +437,11 @@ describe('the final review', () => {
     expect(handlers.onScoreAll).toHaveBeenCalledTimes(1);
   });
 
-  it('evaluates everything with the agents, and asks first when nothing changed', async () => {
+  it('is the summary: it has no evaluate action, the owner refines in the stage', () => {
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ cycle: 0 }));
-    fireEvent.click(screen.getByTestId('evaluate'));
-    expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
-    cleanup();
-    open('?etapa=revisao');
-    const asked = show(reviewSnap());
-    fireEvent.click(screen.getByTestId('evaluate'));
-    expect(asked.onEvaluate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Reavaliar mesmo assim' }));
-    expect(asked.onEvaluate).toHaveBeenCalledTimes(1);
+    show(reviewSnap());
+    expect(screen.getByRole('heading', { name: 'Resumo' })).toBeTruthy();
+    expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
   it('breaks the backlog from the last screen', () => {
@@ -479,7 +486,8 @@ describe('the final review', () => {
     expect(screen.getByTestId('graph-row-flow.md').textContent).toContain('no Graphify');
     expect(screen.getByTestId('graph-row-stack.md').textContent).toContain('fora do Graphify');
     fireEvent.click(screen.getByTestId('graph-add-stack.md'));
-    expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md');
+    expect(handlers.onAddToGraph).toHaveBeenCalledWith('stack.md');
+    expect(handlers.onContinueStage).not.toHaveBeenCalled();
   });
 
   it('shows the review done once closed, and does not close it again', () => {

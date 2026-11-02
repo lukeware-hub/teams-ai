@@ -33,6 +33,17 @@ describe('refine routes', () => {
     expect(json).toHaveBeenCalledWith(202, { ok: true });
   });
 
+  it('adds the document named in the body to the graph, answers 202, and refuses a name outside the five', async () => {
+    const addToGraph = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ addToGraph, state: {} })) } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/graph/add'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'stack.md' }), json } as never);
+    expect(addToGraph).toHaveBeenCalledWith('stack.md');
+    expect(json).toHaveBeenCalledWith(202, { ok: true });
+    await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'brief.md' }), json } as never)).rejects.toMatchObject({ status: 400 });
+  });
+
   it('decides the architecture in the background and answers 202', async () => {
     const decideArchitecture = vi.fn(async () => undefined);
     const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ decideArchitecture })) } as never, log: vi.fn() });

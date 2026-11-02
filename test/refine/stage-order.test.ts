@@ -132,13 +132,16 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('sends a stage back for review when the owner edits its document after the review', async () => {
+  it('continues a stage the owner edited after its review, without a new review, and adds the document as it is to the graph', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.saveDoc('flow.md', `${FLOW}\nNova etapa editada pelo dono.\n`);
-    await expect(s.continueStage()).rejects.toThrow(/Revise a etapa flow\.md antes de continuar/);
+    await expect(s.continueStage()).resolves.toBeUndefined();
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
+    expect(s.state.graphed).toContain('flow.md');
     await s.close();
   });
 

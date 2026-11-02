@@ -529,6 +529,8 @@ export interface RefineState {
   architecture?: { docsHash: string; decision: ArchitectureView } | null;
   /** The last architecture decision failed, with the reason in plain words. */
   architectureError?: string | null;
+  /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
+  architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
   reviewedStages?: string[];
   /** The documents in the Graphify graph after their last edit, in a repository session. */
@@ -539,6 +541,8 @@ export interface RefineState {
   graphError?: { file: string; reason: string } | null;
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: string[];
+  /** The stages reprocessed from their passed text and not moved on from yet: their mandatory questions do not hold them. */
+  reprocessedStages?: string[];
   /** The owner moved on from the final review to the backlog. */
   reviewClosed?: boolean;
   stageStartCycle?: number;
@@ -550,7 +554,7 @@ export interface RefineState {
   /** When the latest evaluation started and ended (ISO times); `endedAt` stays null while it runs. */
   evaluation?: { startedAt: string; endedAt: string | null };
   /** The plan preparation of a detailed backlog; stale once a document or the backlog changes after it. */
-  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string> };
+  speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
 /** The architecture as the page shows it: the style, the reason, the repositories and the integrations between them. */
 export interface ArchitectureView {
@@ -646,6 +650,7 @@ export const refineApi = {
   score: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/score`).then((r) => json<{ ok: true }>(r)),
   scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
   continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),
+  addToGraph: (p: string, s: string, doc: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/graph/add`, { doc }).then((r) => json<{ ok: true }>(r)),
   closeReview: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/review/close`).then((r) => json<{ ok: true }>(r)),
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),

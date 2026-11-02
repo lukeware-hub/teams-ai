@@ -689,13 +689,45 @@ describe('the architecture step names what the documentation repository does', (
     expect(h.onEnableBacklog).toHaveBeenCalledOnce();
   });
 
-  it('the architecture button stays disabled for a documentation-repository session with no target', () => {
+  it('disables Redefinir once the development has started', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({ status: 'started' } as never)} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('the architecture button is always enabled, and names the missing owner on the click for a documentation-repository session with no target', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
     const button = screen.getByTestId('architecture-continue') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.title).toBe('Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.');
+    expect(button.disabled).toBe(false);
     fireEvent.click(button);
+    expect(screen.getByTestId('architecture-note').textContent).toBe('Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.');
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+    expect(window.location.search).toContain('etapa=arquitetura');
+  });
+
+  it('the architecture button asks for a decision on the click when none exists, and does not move', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({ architecture: null })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(screen.getByTestId('architecture-note').textContent).toBe('Decida a arquitetura antes de quebrar o backlog.');
+    expect(window.location.search).toContain('etapa=arquitetura');
+  });
+
+  it('the architecture button blocks on the click while a decision is running, and does not move', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({ evaluation: { startedAt: new Date().toISOString(), endedAt: null } } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(screen.getByTestId('architecture-note').textContent).toBe('A arquitetura ainda está sendo decidida: espere ela terminar.');
+    expect(window.location.search).toContain('etapa=arquitetura');
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
+  it('the architecture button blocks on the click when the documents changed since the decision, and does not move', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
+    expect(screen.queryByTestId('architecture-stale')).toBeNull();
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(screen.getByTestId('architecture-note').textContent).toBe('Os documentos mudaram: decida a arquitetura de novo.');
+    expect(window.location.search).toContain('etapa=arquitetura');
     expect(h.onEnableBacklog).not.toHaveBeenCalled();
   });
 

@@ -21,6 +21,25 @@ export interface ChecklistItem {
   detail: string;
   divergences?: Divergence[];
 }
+/** What each checklist id checks, in plain words, and the documents the owner reviews when it fails. */
+export const CHECK_NAMES: Record<ChecklistId, { label: string; files: readonly string[] }> = {
+  'po.objectives-verifiable': { label: 'Objetivos verificáveis', files: ['project.md', 'briefing.md'] },
+  'po.personas': { label: 'Público e personas definidos', files: ['project.md', 'briefing.md'] },
+  'po.scope-explicit': { label: 'Escopo explícito', files: ['flow.md', 'briefing.md'] },
+  'po.no-contradictions': { label: 'Documentos sem contradições', files: [] },
+  'sm.constraints-clear': { label: 'Restrições técnicas claras', files: ['stack.md'] },
+  'sm.tasks-feasible': { label: 'Tarefas viáveis', files: ['stack.md', 'flow.md'] },
+  'sm.no-open-questions': { label: 'Sem perguntas obrigatórias em aberto', files: [] },
+  'sm.flow-is-mermaid': { label: 'flow.md é um diagrama mermaid', files: ['flow.md'] },
+};
+
+/** The documents to review for a failing item: the ones its check reads, then both sides of each contradiction, with no repeats. */
+export function reviewFiles(item: { id: string; divergences?: Divergence[] }): string[] {
+  const named = CHECK_NAMES[item.id as ChecklistId]?.files ?? [];
+  const sides = (item.divergences ?? []).flatMap((d) => [d.a.file, d.b.file]).map((file) => file.split('/').pop() ?? file);
+  return [...new Set([...named, ...sides])];
+}
+
 type Reported = ReadonlyArray<{ id: string; passed: boolean; detail: string }>;
 
 /** Spec (refinement) §3.2 step 4: fixed ids per role; omitted items fail as "not reported". */

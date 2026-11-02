@@ -48,7 +48,7 @@ export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' 
     const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true) || (step === 'architecture' && st.architecture != null);
     return {
       key: step,
-      label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Revisão' : step === 'architecture' ? 'Arquitetura' : 'Backlog',
+      label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Resumo' : step === 'architecture' ? 'Arquitetura' : 'Backlog',
       state: step === current ? 'active' : isDone ? 'done' : 'todo',
       ...(outdated ? { marker: 'desatualizado' } : {}),
     };

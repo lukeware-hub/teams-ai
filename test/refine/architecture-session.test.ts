@@ -130,6 +130,7 @@ describe('architecture decision of a repository session', () => {
     await s.settled();
     expect(s.state.architecture ?? null).toBeNull();
     expect(s.state.architectureError).toContain('A arquitetura não fechou com as regras.');
+    expect(s.state.architectureIssues?.length ?? 0).toBeGreaterThan(0);
     await expect(s.enableBacklog()).rejects.toThrow('Decida a arquitetura antes do backlog.');
     await s.close();
   });

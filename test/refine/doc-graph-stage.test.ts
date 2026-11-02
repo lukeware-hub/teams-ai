@@ -28,6 +28,18 @@ async function extractDocs(dir: string, outDir: string, tokens = { input_tokens:
   await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], ...tokens }));
 }
 
+/** Every stage reviewed and continued in order, the agents approving each one. */
+async function finishAllStages(s: RefineSession): Promise<void> {
+  script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO)), refineOut(green(PO))];
+  script['refine/sm'] = [refineOut(green(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']))];
+  script['refine/front'] = [refineOut([])];
+  for (const file of DOC_STAGES) {
+    await s.evaluateStage(file);
+    await s.continueStage();
+    await s.settled();
+  }
+}
+
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-doc-graph-stage-'))).replace(/\\/g, '/');
   secretsDir = `${root}/secrets`;
@@ -105,17 +117,31 @@ describe('document graph in the stages', () => {
   it('refuses the backlog while a finished document is out of the graph, since its last edit', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO)), refineOut(green(PO))];
-    script['refine/sm'] = [refineOut(green(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']))];
-    script['refine/front'] = [refineOut([])];
-    for (const file of DOC_STAGES) {
-      await s.evaluateStage(file);
-      await s.continueStage();
-      await s.settled();
-    }
+    await finishAllStages(s);
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
     await expect(s.enableBacklog()).rejects.toThrow(/Adicione os cinco documentos ao Graphify antes: falta flow\.md/);
+    await s.close();
+  });
+
+  it('puts an edited finished document back in the graph as it is, without a review first', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishAllStages(s);
+    await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
+    expect(s.state.graphed).not.toContain('flow.md');
+    await s.addToGraph('flow.md');
+    await s.settled();
+    expect(s.state.graphed).toContain('flow.md');
+    expect(s.state.doneStages).toEqual([...DOC_STAGES]);
+    await s.close();
+  });
+
+  it('refuses to add a document that is already in the graph', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishAllStages(s);
+    await expect(s.addToGraph('flow.md')).rejects.toThrow(/flow\.md já está no Graphify/);
     await s.close();
   });
 
@@ -130,6 +156,26 @@ describe('document graph in the stages', () => {
     const after = await s.snapshot();
     expect(after.tokens.inputTokens - before).toBe(2500);
     expect(after.tokens.outputTokens).toBeGreaterThanOrEqual(90);
+    await s.close();
+  });
+
+  it('a reprocessed stage moves on without its mandatory question: the question is skipped and the document goes to the graph', async () => {
+    const mandatory = [{ text: 'Qual o fluxo de pagamento?', blocking: true, relatedAcIds: [], options: [] }];
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), mandatory)];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    await expect(s.continueStage()).rejects.toThrow('Responda as perguntas obrigatórias da etapa flow.md.');
+    script['refine/po'] = [refineOut(green(PO), mandatory)];
+    await s.reprocessStage('flow.md');
+    await s.settled();
+    await s.continueStage();
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
+    expect(s.state.graphed).toContain('flow.md');
+    expect(s.state.reprocessedStages ?? []).toEqual([]);
+    expect(s.state.questions.find((q) => q.text === 'Qual o fluxo de pagamento?')).toMatchObject({ status: 'skipped' });
     await s.close();
   });
 });

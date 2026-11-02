@@ -1218,15 +1218,16 @@ Uma etapa do assistente entre `Revisão` e `Backlog`. A tela principal é um car
 | `Repositórios (n)` | linhas recolhíveis, como as dos épicos do backlog: nome, chip do tipo (`api`, `jobs`, `web`, `mobile`, `workflow`, ou `Monólito`), contagem de integrações. Aberta, mostra a responsabilidade e a citação. Com mais de 12 repositórios, filtro e paginação como nas specs. |
 | `Integrações (n)` | linhas `consumidor → provedor · contrato`. |
 | `Perguntas da arquitetura` | os cartões de pergunta já usados no refinamento; uma pergunta bloqueante segura o backlog. |
-| Ações | `Voltar` (secundária), `Redefinir` (secundária), `Quebrar o backlog por repositório` (primária). |
+| Ações | `Voltar` (secundária), `Redefinir` (secundária), `Quebrar o backlog por repositório` (primária, sempre habilitada). Ao clicar, a etapa confere a decisão: sem decisão, ou com os documentos mudados depois dela, mostra o motivo ao lado do botão e não avança. O dono do repositório de documentos ausente também bloqueia o clique com o motivo. |
+| Trava | Nenhuma. A etapa só identifica o estilo (monólito ou microsserviços) e a interface de cada repositório (web, mobile, API). Não mostra aviso de documento mudado. |
 
-Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (spinner e `Decidindo a arquitetura…`); decidida; falhou (motivo em palavras simples e `Decidir de novo`); desatualizada (os documentos mudaram depois da decisão, com o aviso `Os documentos mudaram: decida a arquitetura de novo.`); com perguntas abertas.
+Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (bloco de processo igual ao da preparação dos planos, com o título `Decidindo a arquitetura`, o `Tempo` e o que a decisão lê); decidida; falhou (motivo em palavras simples, a lista `O que ainda não fecha:` com cada regra que ficou aberta, e a ação `Decidir a arquitetura`); decisão de documentos mudados (a tela não mostra aviso nem trava; o clique em `Quebrar o backlog por repositório` mostra `Os documentos mudaram: decida a arquitetura de novo.` e não avança); com perguntas abertas.
 
 Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`, e um único repositório como `Monólito`.
 
 ### 26.8 Backlog por repositório
 
-Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo.
+Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo. A etapa só gera specs, planos e tarefas: não valida os arquivos e não mostra aviso de documento mudado no topo. O motivo que impede iniciar aparece logo abaixo de `Cobertura`. Os itens reprovados do resumo aparecem como alerta nesse mesmo lugar, cada um com o seu motivo em palavras simples, as divergências entre documentos e um atalho para cada arquivo a revisar (`Revise em:`), e não travam o início. O rodapé fica só com os botões. Quando `Preparar de novo` reaproveita todos os planos, porque nada mudou, a etapa diz `Os planos já estavam atuais; nada foi refeito.` logo abaixo do estado dos planos.
 
 ### 26.9 Diálogo de resumo do refinamento
 
@@ -1237,7 +1238,7 @@ Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repo
 - uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
 - `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
 
-Uma verificação que falha desliga a primária e diz por quê. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+Uma verificação que falha só alerta: a primária continua habilitada. O diálogo lista cada verificação com o seu detalhe, e a etapa Backlog mostra um bloco de alerta com cada item reprovado, o seu motivo, as divergências entre documentos e o botão `Ver o que falta`, que leva à etapa Resumo (§26.11). O servidor recusa só um resumo diferente do que a página mostra (409), nunca por causa de uma verificação reprovada. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
 
 ### 27.2 Projeto: repositórios
 
@@ -1312,6 +1313,44 @@ Estados da linha de sincronização (`DocsSyncNotice`):
 - Em dia: nada é mostrado.
 
 Regra do botão: a ação da etapa é a mesma da etapa `Backlog`, sem uma segunda rota. O dono vê o aviso antes de clicar, então o botão não cria um repositório sem aviso.
+
+### 26.11 Etapa Resumo
+
+A última etapa do assistente, antes de `Arquitetura` ou `Backlog`. Na tela e no assistente chama-se `Resumo`; o endereço continua `?etapa=revisao`. A etapa só mostra o estado do refinamento: não avalia, não processa e não edita documento. Para mudar algo, o dono volta à etapa do documento e processa lá.
+
+| Elemento | Especificação |
+|---|---|
+| Cabeçalho | Overline `Etapa final`, título `Resumo`, frase `Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.` |
+| Notas do Jev | Bloco `Notas do Jev` com a nota de cada documento, e a ação `Validar com o Jev` (secundária, largura total). Projeto confidencial: `Projeto confidencial: o Jev não lê os documentos.` |
+| Graphify | Uma linha por documento: `no Graphify` ou `fora do Graphify`; a linha fora do grafo tem `Adicionar ao Graphify`. |
+| Pendências | Recolhida por padrão. O cabeçalho tem `Pendências` e o botão secundário `Mostrar pendências (N)`, com N o total de pendências dos documentos. Aberta, o botão vira `Ocultar pendências` e cada documento vira um link `documento: n pendências`, que abre a etapa desse documento. |
+| Perguntas sem documento | Sempre visíveis, fora da lista recolhida, com o cartão para responder. Responder não edita documento. |
+| Lista de verificação | O painel da §26.3, sem mudança: PO, SM, consumo de IA, arquivos gerados e segredos. Mostra o motivo de cada item que falta para iniciar. |
+| Ações | `Voltar` (secundária) e `Continuar` (primária). Sem `Avaliar tudo`. |
+
+Wireframe (aprovado pelo dono com as escolhas abaixo):
+
+```
+Etapa final
+Resumo
+Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.
+
+┌ Notas do Jev ─────────────────────┐  ┌ Lista de verificação ─────┐
+│ flow.md 26% · project.md 42% …    │  │ Produto (PO) ▸            │
+│ [ Validar com o Jev ]             │  │ Técnico (SM) ▸            │
+└───────────────────────────────────┘  │ Consumo de IA             │
+┌ Graphify ─────────────────────────┐  │ Arquivos gerados          │
+│ flow.md: no Graphify …            │  │ Segredos                  │
+└───────────────────────────────────┘  └───────────────────────────┘
+┌ Pendências  [ Mostrar pendências (N) ] ──┐
+└──────────────────────────────────────────┘
+                       [ Voltar ]  [ Continuar ]
+```
+
+Escolhas do dono:
+- Pendências recolhidas por padrão: o resumo não mostra a lista sem clique.
+- Perguntas sem documento continuam respondíveis no resumo.
+- Só o nome muda; o endereço `?etapa=revisao` fica, para os links salvos e os testes.
 
 ## 27. Projects, Run, Status
 

@@ -14,7 +14,7 @@ import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
-import type { Divergence, DivergenceSide } from '@server/refine/checklist';
+import { CHECK_NAMES, reviewFiles, type Divergence, type DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
@@ -22,7 +22,7 @@ import { ClosingDialog } from '../refine/ClosingDialog.js';
 import { ArchitectureCard } from '../refine/ArchitectureCard.js';
 import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
-import { canStartRun, ProgramStatus, startInputOf, useProgram } from '../refine/ProgramPanel.js';
+import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -95,16 +95,7 @@ const roleInfo: Record<'po' | 'sm', string> = {
   po: 'Pergunta do PO (Product Owner), o agente que revisa objetivos, critérios de aceite e o fluxo de negócio.',
   sm: 'Pergunta do SM (Scrum Master), o agente que revisa stack, tarefas, validação e viabilidade técnica.',
 };
-const checkLabel: Record<string, string> = {
-  'po.objectives-verifiable': 'Objetivos verificáveis',
-  'po.personas': 'Público e personas definidos',
-  'po.scope-explicit': 'Escopo explícito',
-  'po.no-contradictions': 'Documentos sem contradições',
-  'sm.constraints-clear': 'Restrições técnicas claras',
-  'sm.tasks-feasible': 'Tarefas viáveis',
-  'sm.no-open-questions': 'Sem perguntas obrigatórias em aberto',
-  'sm.flow-is-mermaid': 'flow.md é um diagrama mermaid',
-};
+const checkLabel: Record<string, string> = Object.fromEntries(Object.entries(CHECK_NAMES).map(([id, name]) => [id, name.label]));
 /** The server writes these details itself; details written by the agents pass through unchanged. */
 const checkDetail = (detail: string) => {
   if (detail === 'not reported') return 'O agente não avaliou este item.';
@@ -225,6 +216,8 @@ export interface ViewProps {
   onPreparePlans?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
+  /** The final review puts a document in the Graphify graph as it is now; `false` says the server refused. */
+  onAddToGraph?(doc: DocFile): void | boolean | Promise<unknown>;
   /** The owner moves on from the final review to the backlog; `false` says the server refused. */
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
@@ -318,6 +311,9 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [architectureNote, setArchitectureNote] = useState<string | null>(null);
+  const [prepareClick, setPrepareClick] = useState<{ at: number; inputHash?: string } | null>(null);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
@@ -387,7 +383,7 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId, speckitAsked[0]?.questionId, step]);
-  const canStart = canStartRun(startInputOf(snap), busy);
+  const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
@@ -404,10 +400,11 @@ export function RefinementView(p: ViewProps) {
     if (newProject && onStage) setTab(onStage);
   }, [onStage, newProject]);
   const stageStep = newProject ? stageAction(st) : null;
-  const backlogBlock = (
+  // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
+  const backlogBlock = (note: ReactNode) => (
     <>
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
-      {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
+      {st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} /> : note}
     </>
   );
   // What the plan preparation covers: each backlog item, or the single spec as one item.
@@ -436,11 +433,14 @@ export function RefinementView(p: ViewProps) {
   const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
   // One plan step per item, so the plans box lists the ones still to come.
   const speckitPlan = useMemo(() => speckitList.map((item) => ({ command: 'plan', itemKey: item.key })), [speckitList]);
-  const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />;
+  const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} startable={canStart} />;
+  // A preparation whose inputs did not change reuses every plan: the owner is told, since nothing on screen changes.
+  const preparedUnchanged = prepareClick !== null && !speckitRunning && speckit?.status === 'done' && speckit.startedAt !== undefined
+    && Date.parse(speckit.startedAt) >= prepareClick.at && speckit.inputHash === prepareClick.inputHash;
   // A backlog prepares once it is detailed, a single spec once it is derived.
   const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
   const prepareButton = (
-    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => p.onPreparePlans?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => { setPrepareClick({ at: Date.now(), inputHash: speckit?.inputHash }); p.onPreparePlans?.(); }} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
       {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar os planos'}
     </ActionButton>
   );
@@ -584,7 +584,7 @@ export function RefinementView(p: ViewProps) {
     const graphError = st.graphError?.file === file ? st.graphError.reason : null;
     return stageChecklist({
       reviewed: st.reviewedStages?.includes(file) ?? false,
-      openQuestions: docQuestions(st, file).filter((q) => q.blocking).length,
+      openQuestions: (st.reprocessedStages ?? []).includes(file) ? 0 : docQuestions(st, file).filter((q) => q.blocking).length,
       pendingSuggestions: docPatches(st, file).length,
       formatProblem: snap.stageProblems?.[file] ?? null,
       graphed: st.graphed?.includes(file) ?? false,
@@ -748,7 +748,7 @@ export function RefinementView(p: ViewProps) {
               })}
             </div>
           )}
-          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : 'Bloqueia o avanço até você responder.'}</p>}
+          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
             <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
@@ -925,7 +925,7 @@ export function RefinementView(p: ViewProps) {
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
-      {!newProject && backlogBlock}
+      {!newProject && backlogBlock(null)}
       <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
         <>
@@ -1100,14 +1100,15 @@ export function RefinementView(p: ViewProps) {
   const finalScreen = () => {
     const unfiled = unfiledQuestions(st);
     const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
+    const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5">
           <header className="grid gap-1">
             <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Revisão final</h2>
-            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Nada aqui bloqueia o próximo passo.</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Resumo</h2>
+            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
           </header>
           <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
             <p className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
@@ -1139,17 +1140,25 @@ export function RefinementView(p: ViewProps) {
               return (
                 <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
                   <span>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
-                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onContinueStage?.(file)}>Adicionar ao Graphify</button>}
+                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onAddToGraph?.(file)}>Adicionar ao Graphify</button>}
                 </div>
               );
             })}
           </div>
           <div className="grid gap-3" data-testid="final-pending">
-            <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
-            {byDoc.map(({ file, count }) => (
-              <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink">
-                <span>{docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}</span>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
+              {byDoc.length > 0 && (
+                <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
+                  {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
+                </button>
+              )}
+            </div>
+            {pendingOpen && byDoc.map(({ file, count }) => (
+              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
+                <Icon name="arrow-right" size={16} />
+              </button>
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
@@ -1166,9 +1175,10 @@ export function RefinementView(p: ViewProps) {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {backlogOn && speckitStatus}
+      {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
-      {backlogBlock}
+      {backlogBlock(startLine)}
     </div>
   );
   const developButton = (
@@ -1180,15 +1190,48 @@ export function RefinementView(p: ViewProps) {
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
-  const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
-  // The architecture step: the decision of the five documents, and Continuar once it is current.
-  const architectureDecided = st.architecture != null && snap.architectureStale !== true;
+  // The closing checks only alert: the start stays open, and each unmet check says what to fix, with its divergences.
+  const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
+  const failingChecklist = st.checklist.filter((c) => !c.passed);
+  const closingRows = closingFailing.flatMap((check) => (check.id === 'questions' && failingChecklist.length > 0
+    ? failingChecklist.map((item) => (
+      <li key={`${check.id}-${item.id}`}>
+        <b>{checkLabel[item.id] ?? item.id}</b>: {checkDetail(item.detail)}
+        {item.divergences?.length ? <Divergences items={item.divergences} /> : null}
+        <span className="mt-1 flex flex-wrap items-center gap-2">
+          Revise em:
+          {reviewFiles(item).map((file) => <button key={file} type="button" className="link-button" onClick={() => goTo(file as DocFile)}>{file}</button>)}
+        </span>
+      </li>
+    ))
+    : [<li key={check.id}>{check.detail}</li>]));
+  // The plain reason and the closing alert sit under the coverage; the footer keeps only the buttons.
+  const startLine = (
+    <>
+      {startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>}
+      {closingFailing.length > 0 && st.backlog?.detail === true && (
+        <div role="status" data-testid="closing-alert" className="grid gap-3 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
+          <p className="m-0 font-semibold">Itens reprovados no resumo. Eles não travam o início: corrija o que for preciso e veja o motivo de cada um.</p>
+          <ul className="m-0 grid list-disc gap-2 pl-5">{closingRows}</ul>
+          <div className="flex flex-wrap justify-end">
+            <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
+          </div>
+        </div>
+      )}
+    </>
+  );
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
   const docsTargetMissing = docsRepoNoBacklog && !snap.docsTarget;
-  const architectureTitle = !architectureDecided ? 'Decida a arquitetura antes de quebrar o backlog.' : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.' : undefined;
+  // The architecture step only names the style: its button is always enabled and checks the decision on the click.
+  const architectureBusy = evaluating || (st.evaluation != null && st.evaluation.endedAt === null);
+  const architectureBlock = (): string | null => (architectureBusy ? 'A arquitetura ainda está sendo decidida: espere ela terminar.'
+    : st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
+    : snap.architectureStale === true ? 'Os documentos mudaram: decida a arquitetura de novo.'
+    : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.'
+    : null);
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
       {docsNoticeTarget && (
@@ -1204,18 +1247,15 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} stale={snap.architectureStale === true} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => void p.onDecideArchitecture?.()} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{prepareButton}{developButton}{startNote}</>
+    ) : <>{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
-      <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
-        Avaliar tudo
-      </ActionButton>
       {backlogOn || st.repositories === true ? (
         <ActionButton
           data-testid="open-backlog"
@@ -1237,9 +1277,18 @@ export function RefinementView(p: ViewProps) {
       )}
     </>
   ) : step === 'architecture' ? (
-    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided || docsTargetMissing} title={architectureTitle} onClick={() => (docsRepoNoBacklog ? p.onEnableBacklog?.() : goTo('backlog'))} icon={<Icon name="arrow-right" size={16} />}>
-      Quebrar o backlog por repositório
-    </ActionButton>
+    <>
+      {architectureNote && <p role="alert" data-testid="architecture-note" className="m-0 basis-full text-[0.8125rem] text-warn">{architectureNote}</p>}
+      <ActionButton data-testid="architecture-continue" className="primary" disabled={locked} onClick={() => {
+        const block = architectureBlock();
+        setArchitectureNote(block);
+        if (block) return;
+        if (docsRepoNoBacklog) p.onEnableBacklog?.();
+        else goTo('backlog');
+      }} icon={<Icon name="arrow-right" size={16} />}>
+        Quebrar o backlog por repositório
+      </ActionButton>
+    </>
   ) : (
     <>
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
@@ -1408,7 +1457,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
-        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(startInputOf(snap), false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
@@ -1438,6 +1487,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onAddToGraph={(doc) => refineApi.addToGraph(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}

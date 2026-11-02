@@ -31,7 +31,7 @@ function EpicGroup({ testId, title, total, children }: { testId: string; title: 
 }
 
 /** The detailed backlog as a coverage tree: épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
-export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView; evaluating?: boolean }) {
+export function SpecTree({ backlog, evaluating = false, note }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode }) {
   const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
   const gaps = useMemo(() => coverageGaps(backlog as never), [backlog]);
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
@@ -75,6 +75,7 @@ export function SpecTree({ backlog, evaluating = false }: { backlog: BacklogView
           {gaps.map((g, n) => <li key={n}>{g}</li>)}
         </ul>
       )}
+      {note}
       {sectionEpics.map((e) => (
         <EpicGroup key={e.key} testId={`tree-section-epic-${e.key}`} title={e.title} total={e.sections.length}>
           {sectionList(e.sections)}

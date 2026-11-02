@@ -309,6 +309,17 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/graph/add`,
+      handler: wrap(async (ctx) => {
+        const doc = str(await optionalBody(ctx), 'doc');
+        if (!DOC_STAGES.includes(doc as DocFile)) throw new HttpError(400, `unknown doc ${doc}`);
+        await (await get(ctx.params)).addToGraph(doc as DocFile);
+        // The extraction runs in the background; the page follows it through the snapshot.
+        ctx.json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/architecture`,
       handler: wrap(async (ctx) => {
         await (await get(ctx.params)).decideArchitecture();

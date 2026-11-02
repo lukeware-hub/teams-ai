@@ -3,7 +3,7 @@ import type { Backlog, BacklogItem } from '../contracts/backlog.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
-import type { ChecklistItem } from './checklist.js';
+import { CHECK_NAMES, reviewFiles, type ChecklistItem } from './checklist.js';
 import { coverageGaps, isStarted } from './coverage.js';
 import { RefineEvent, type Question, type QuoteEvidence, type SpeckitTriage } from './events.js';
 import { approvalKey } from './sections.js';
@@ -200,6 +200,8 @@ export interface RefineState {
   authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
   architectureError?: string | null;
+  /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
+  architectureIssues?: string[];
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -212,6 +214,8 @@ export interface RefineState {
   doneStages?: DocFile[];
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: DocFile[];
+  /** The stages reprocessed from their passed text and not moved on from yet: their mandatory questions do not hold them. */
+  reprocessedStages?: DocFile[];
   /** The owner moved on from the final review to the backlog, so the review shows as done. */
   reviewClosed?: boolean;
   /** The round the current stage began at; its rounds count from here. */
@@ -302,8 +306,6 @@ export interface StartInput {
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
   repositories?: boolean;
-  /** The closing checks of a repository session, once the snapshot computed them; absent for other sessions. */
-  closing?: { ok: boolean } | null;
 }
 
 /** One closing check: its id, whether it passes, and what the owner reads about it in plain words. */
@@ -313,7 +315,13 @@ export interface ClosingCheck {
   detail: string;
 }
 
-/** The seven checks the owner reads before starting a repository session; every one must pass. */
+/** One failing checklist item in plain words, with the documents to review for it. */
+const reviewLine = (item: ChecklistItem): string => {
+  const files = reviewFiles(item);
+  return `${CHECK_NAMES[item.id]?.label ?? item.id} (${files.length > 0 ? files.join(', ') : 'veja o detalhe'})`;
+};
+
+/** The seven checks the owner reads before starting a repository session; they alert and never lock the start. */
 export function closingChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
   const items = s.backlog?.items ?? [];
   const keys = items.map((i) => i.key);
@@ -330,8 +338,8 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
   const gaps = s.backlog ? coverageGaps(s.backlog) : [];
   const blocking = s.questions.filter((q) => q.status === 'pending' && q.blocking).length;
   const green = allGreen(s.checklist);
-  // A red checklist names its failing checks, so a contradiction between documents reads as such to the owner.
-  const red = s.checklist.filter((c) => !c.passed).map((c) => c.id);
+  // A red checklist names each failing item with the documents to review, so the owner knows where to correct it.
+  const failing = s.checklist.filter((c) => !c.passed);
   return [
     { id: 'documents', ok: open.length === 0, detail: open.length === 0 ? 'os cinco documentos estão concluídos e no grafo' : `faltam: ${open.join(', ')}` },
     { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
@@ -339,7 +347,7 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
     { id: 'plans', ok: noPlan.length === 0, detail: noPlan.length === 0 ? 'cada item tem o seu plano' : `sem plano: ${noPlan.join(', ')}` },
     { id: 'tasks', ok: noTasks.length === 0, detail: noTasks.length === 0 ? 'cada item tem a sua lista de tarefas' : `sem lista de tarefas: ${noTasks.join(', ')}` },
     { id: 'dependencies', ok: dangling.length === 0, detail: dangling.length === 0 ? 'todas as dependências existem' : `dependência inexistente: ${dangling.join(', ')}` },
-    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : `o checklist do documento não está verde: ${red.join(', ')}` },
+    { id: 'questions', ok: blocking === 0 && green, detail: blocking > 0 ? `${blocking} pergunta(s) bloqueante(s) em aberto` : green ? 'sem pergunta bloqueante e checklist verde' : failing.length > 0 ? `revise antes de iniciar, nos arquivos indicados: ${failing.map(reviewLine).join('; ')}` : 'o checklist do documento ainda não foi avaliado' },
   ];
 }
 
@@ -358,8 +366,6 @@ const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.it
 /** The start is open unless the agents evaluate, a run started or the plan preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
-  // A repository session starts only after the owner's summary has every check green.
-  if (s.repositories === true && s.closing?.ok !== true) return false;
   if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }
@@ -550,9 +556,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.StageAdvanced:
       s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
       s.stageStartCycle = Number(d.cycle);
+      if (s.reprocessedStages) s.reprocessedStages = s.reprocessedStages.filter((file) => file !== docName(d.doc));
       break;
     case RefineEvent.StagePassed:
       s.passedStages = [...new Set([...(s.passedStages ?? []), docName(d.file)])];
+      break;
+    case RefineEvent.StageReprocessed:
+      s.reprocessedStages = [...new Set([...(s.reprocessedStages ?? []), docName(d.file)])];
       break;
     case RefineEvent.ReviewClosed:
       s.reviewClosed = true;
@@ -637,6 +647,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       const v = d as unknown as { docsHash: string; architecture: Architecture; questions: Question[] };
       s.architecture = { docsHash: String(v.docsHash), decision: v.architecture };
       s.architectureError = null;
+      s.architectureIssues = [];
       // A new decision replaces the questions the last one left open; the answered ones stay for the next decision.
       s.questions = [...s.questions.filter((q) => !(q.origin === 'architecture' && q.status === 'pending')), ...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
       s.status = computeStatus(s);
@@ -644,6 +655,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.ArchitectureFailed:
       s.architectureError = String(d.reason);
+      s.architectureIssues = Array.isArray(d.issues) ? d.issues.map(String) : [];
       break;
     case RefineEvent.DocsScored: {
       // A score without a file list is a full one, as journals from before the per-document score wrote it.

@@ -28,7 +28,7 @@ import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
-import { architecturePack, checkDecision, docsHashOf, writeArchitectureFiles } from './architecture-step.js';
+import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -516,6 +516,7 @@ export class RefineSession {
       const text = await fs.readFile(kept, 'utf8');
       await writeDoc(this.deps.draft, file, text);
       await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+      await this.journal.fact(RefineEvent.StageReprocessed, { file });
       return;
     }
     if ((this.state.passedStages ?? []).includes(file)) return;
@@ -558,11 +559,33 @@ export class RefineSession {
       const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
       if (problem) throw new ConflictError(problem);
       if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+      await this.skipOpenQuestions(target);
       // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
       await this.startIndexing(target);
       return;
     }
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
+  }
+
+  /** A reprocessed stage does not wait for its mandatory questions: moving on skips the open ones. */
+  private async skipOpenQuestions(file: DocFile): Promise<void> {
+    if (!(this.state.reprocessedStages ?? []).includes(file)) return;
+    for (const q of this.state.questions.filter((x) => x.file === file && x.status === 'pending' && x.blocking)) {
+      await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
+    }
+  }
+
+  /** The final review puts a finished document in the graph as it is now: the review, question and suggestion gates do not apply. */
+  async addToGraph(file: DocFile): Promise<void> {
+    this.guard();
+    if (this.state.repositories !== true || this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo com repositórios tem Graphify por etapa');
+    this.guardStagesDone();
+    if ((this.state.graphed ?? []).includes(file)) throw new ConflictError(`${file} já está no Graphify`);
+    const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
+    if (problem) throw new ConflictError(problem);
+    if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+    // The stage does not move: it is already done.
+    await this.startIndexing(file, false);
   }
 
   /** The owner moves on from the final review to the backlog; the review then shows as done. */
@@ -794,7 +817,7 @@ export class RefineSession {
       const questions: Question[] = out.questions.map((q, i) => ({ questionId: `${prefix}-${i}`, role: 'sm', text: q.text, context: q.context, blocking: q.blocking, relatedAcIds: [], cycle: this.state.cycle, options: q.options.length > 0 ? q.options : undefined, origin: 'architecture' }));
       await this.journal.fact(RefineEvent.ArchitectureDecided, { docsHash: docsHashOf(docs), architecture: arch, questions });
     } catch (err) {
-      await this.journal.fact(RefineEvent.ArchitectureFailed, { reason: err instanceof Error ? err.message : String(err) });
+      await this.journal.fact(RefineEvent.ArchitectureFailed, { reason: err instanceof Error ? err.message : String(err), issues: err instanceof RulesOpenError ? err.issues : [] });
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
@@ -818,7 +841,7 @@ export class RefineSession {
       issues = checkDecision(out.value, draft.projectId, docs);
       if (issues.length === 0) return out.value;
     }
-    throw new OwnerError('A arquitetura não fechou com as regras.', issues.join(' '));
+    throw new RulesOpenError(issues);
   }
 
   /** `bindRepo` is set only by the owner's Backlog step: no evaluation binds a documentation repository. */
@@ -1179,18 +1202,14 @@ export class RefineSession {
     const inputHash = await planInputHash(this.deps.draft, this.state);
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     this.refuseWithoutSpeckit(inputHash);
-    let closing: { ok: boolean } | undefined;
     if (this.state.repositories === true) {
-      // The owner starts on the summary he read: every check green, and the same summary the page showed (its hash).
+      // The owner starts on the summary he read, the same one the page showed (its hash); its unmet checks only advise.
       if (summaryHash === undefined) throw new ConflictError('Abra o resumo do refinamento e confirme antes de iniciar.');
       const summary = await this.closingSummary();
-      const failing = summary.checks.find((c) => !c.ok);
-      if (failing) throw new ConflictError(`O resumo ainda tem uma checagem aberta: ${failing.detail}.`);
       if (summary.summaryHash !== summaryHash) throw new ConflictError('O resumo mudou desde que você o abriu: revise-o antes de iniciar.');
-      closing = { ok: summary.ok };
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
-    if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
+    if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);
     await this.closeDocs(entries.map((e) => e.specId));
     return entries;

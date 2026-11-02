@@ -37,7 +37,7 @@ describe('wizardNodes', () => {
   it('has the five documents, the review and the backlog, with no score on any node', () => {
     const nodes = wizardNodes(state(), 'flow.md');
     expect(nodes.map((n) => n.key)).toEqual(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md', 'review', 'backlog']);
-    expect(nodes.at(-2)!.label).toBe('Revisão');
+    expect(nodes.at(-2)!.label).toBe('Resumo');
     expect(nodes.at(-1)!.label).toBe('Backlog');
     expect(nodes.every((n) => !/%/.test(n.label + (n.marker ?? '')))).toBe(true);
   });
