@@ -143,3 +143,16 @@ Status: in progress (plan 118), draft pull request.
 
 - The Help chat can answer questions about the project's five main documents (vision, briefing, stack, flow and design). Each question gets the documents main has, as searchable files in its working folder, and nothing is loaded into the prompt.
 - The chat answers from the project graph first and searches the file text only when the graph does not cover the question.
+
+## 19. Blocked runs go back to the agents; validation waits for a clean delivery
+
+Status: done 2026-11-02 (commits `c01367a1`, `8119af25`, `41e9e464`).
+
+- A run with a blocked task ends `blocked` before the plan review, the verification and the deploy. Its second verification round and its deploy do not run after a blocked fix task either.
+- Sending back: "Enviar para o agente corrigir" on the run screen restarts only the blocked tasks. With "Autorizo os agentes a tomar decisões: Sim" the run goes back by itself up to three times (`MAX_AUTO_RETURNS`); the cost is an alert only.
+- The send-back marks the spec running again, since a spec already delivered as awaiting-validation could not start a run; the spec stays running until the run ends.
+- Validation: "Concluir especificação" and "Relatar problema" stay disabled while the run has blocked tasks (`RUN_FINISHED.blocked`), and the approve route answers 409 for such a run. The run screen's Validação link stays visible but not followable.
+- "Abrir aplicação" shows only when the service answers with a web page; "Abrir Swagger" shows only when the documentation path the plan declares answers with a success.
+- The deploy checks the declared documentation path after the e2e suite; when it does not answer, a Dev fix task builds the page. Not done: the same check for a services run (several repositories).
+- The plan review reads a fresh checkout of main each round. A worktree left by an earlier run used to keep its old files, so a re-run reported missing code that main already had.
+- Open: a run whose blocked tasks only verify work already on main (no criteria, no diff) blocks again on every send-back. The run-7 case needs an owner decision: drop those fix tasks, reprocess the spec, or accept verify-only tasks as merged.
