@@ -13,11 +13,25 @@ import { git } from '../../git/git.js';
 import { rankPlans } from '../../decide/decisions/plan-rank.js';
 import { Intent, OrchEvent } from '../events.js';
 import { planPack } from '../steps.js';
+import { writeState } from '../../docs/project-state.js';
 import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForFailure, planIsStale, preplanDeviation, readDocs, specDir, type PhaseDeps, type PhaseResult } from './shared.js';
+
+/** Writes the plan: to the mirror of a docs-repo project, else to the docs pull request of the repository. */
+async function publishPlan(deps: PhaseDeps, worktree: string, branch: string, plan: AnyPlan): Promise<PhaseResult> {
+  const text = `${JSON.stringify(JSON.parse(canonicalJson(plan)), null, 2)}\n`;
+  if (deps.docsRepo) {
+    await writeState(deps.ws, `specs/${deps.spec.specId}/plan.json`, text);
+    return { ok: true };
+  }
+  const rel = `${specDir(deps.spec.specId)}/plan.json`;
+  await fs.mkdir(path.dirname(path.join(worktree, rel)), { recursive: true });
+  await fs.writeFile(path.join(worktree, rel), text);
+  return commitAndMergeDocs(deps, 2, branch, worktree, `docs(${deps.spec.specId}): plan`);
+}
 
 /** Spec (orchestrator) §4.3. */
 export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: AnyPlan }> {
-  const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
+  const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec, deps.docsRepo ? deps.ws : undefined);
   if (existing.plan !== null && !planIsStale(existing.plan, deps.specHash)) {
     await journalTasks(deps, existing.plan);
     return { ok: true, plan: existing.plan };
@@ -52,7 +66,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       ? await deps.runAgent<'services-plan'>({
           kind: 'services-plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, plan: planDoc }),
+          pack: planPack(deps.packBase(), { techSpecText, docsRepo: deps.docsRepo, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -62,7 +76,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       : await deps.runAgent<'plan'>({
           kind: 'plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, plan: planDoc }),
+          pack: planPack(deps.packBase(), { techSpecText, docsRepo: deps.docsRepo, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -92,10 +106,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
         await deps.journal.fact(OrchEvent.PlanChosen, { index: ranking.index, candidates: candidates.length, source: ranking.source });
       }
     }
-    const rel = `${specDir(deps.spec.specId)}/plan.json`;
-    await fs.mkdir(path.dirname(path.join(worktree, rel)), { recursive: true });
-    await fs.writeFile(path.join(worktree, rel), `${JSON.stringify(JSON.parse(canonicalJson(plan)), null, 2)}\n`);
-    const merged = await commitAndMergeDocs(deps, 2, branch, worktree, `docs(${deps.spec.specId}): plan`);
+    const merged = await publishPlan(deps, worktree, branch, plan);
     if (!merged.ok) return merged;
     if (preplan) {
       const missingCriteria = preplanDeviation(preplan, plan);

@@ -54,6 +54,7 @@ import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
+import { readState, updateState } from '../docs/project-state.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -103,6 +104,8 @@ export interface RunDeps {
   target?: DeployTarget;
   /** Runs gates and smoke; absent means docker over `exec`. */
   gateExecutor?: GateExecutor;
+  /** Set when the project's documents live in a documentation repository; its machine files are read from the mirror. */
+  docsRepo?: boolean;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -358,7 +361,7 @@ export class Run {
 
   private async loadPlan(): Promise<AnyPlan | null> {
     const { readDocs } = await import('./phases/shared.js');
-    return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec)).plan;
+    return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec, this.deps.docsRepo ? this.deps.ws : undefined)).plan;
   }
 
   /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
@@ -670,7 +673,7 @@ export class Run {
   private phaseDeps(): PhaseDeps {
     const single = singlePlan(this.plan);
     return {
-      journal: this.journal, ws: this.deps.ws, artifactsDir: path.join(runDir(this.deps.ws, this.runId), 'artifacts'), workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, docsRepo: this.deps.docsRepo, artifactsDir: path.join(runDir(this.deps.ws, this.runId), 'artifacts'), workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
       runAgent: this.runAgent,
       generatedSecretNames: this.deps.cfg.environment.generatedSecrets,
       environment: this.environment(),
@@ -741,6 +744,7 @@ export class Run {
   }
 
   private async loadAdrs(): Promise<void> {
+    if (this.deps.docsRepo) return; // A documentation repository keeps no ADRs.
     const list = await this.gitLocked(['ls-tree', '--name-only', 'origin/main', 'docs/adr/']).catch(() => '');
     // Filled aside and swapped in whole, so a step building its pack meanwhile never reads a partial list.
     const adrs: typeof this.adrs = [];
@@ -799,9 +803,12 @@ export class Run {
   async execute(): Promise<ExecuteResult> {
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
-    const phase1 = await runPhase1(this.phaseDeps());
-    if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
-    this.techSpecText = phase1.techSpecText ?? '';
+    // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
+    if (!this.deps.docsRepo) {
+      const phase1 = await runPhase1(this.phaseDeps());
+      if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
+      this.techSpecText = phase1.techSpecText ?? '';
+    }
     await this.loadSharedDocs();
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);
@@ -870,6 +877,10 @@ export class Run {
 
   async completeSpec(): Promise<ExecuteResult> {
     if (this.deps.spec.status !== 'awaiting-validation') return this.finish('phase-failed', `spec ${this.deps.spec.specId} is ${this.deps.spec.status}; only awaiting-validation specs complete`);
+    if (this.deps.docsRepo) {
+      await updateState(this.deps.ws, `specs/${this.deps.spec.specId}/spec.json`, (current) => (current === undefined ? undefined : `${JSON.stringify({ ...(current as object), status: 'done' }, null, 2)}\n`));
+      return this.finish('done');
+    }
     const branch = `docs/${this.deps.spec.specId}-done`;
     const wt = await (await import('./phases/shared.js')).docsWorktree(this.phaseDeps(), branch);
     const file = path.join(wt, 'docs', 'specs', this.deps.spec.specId, 'spec.json');
@@ -888,7 +899,7 @@ export class Run {
     const wt = await shared.freshDocsWorktree(this.phaseDeps(), branch, 6);
     const rel = (...p: string[]) => path.join(wt, ...p);
     this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
-    const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
+    const plan = this.deps.docsRepo ? ((await readState(this.deps.ws, `specs/${specId}/plan.json`)) as Plan | undefined) ?? null : await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
     const current = await shared.currentDocs(wt);
     let readme = '';
     let runbook = '';
@@ -920,9 +931,9 @@ export class Run {
     if (!this.deps.target) return this.finish('phase-failed', 'no deployment target');
     const specId = this.deps.spec.specId;
     await gitFetch(this.deps.ws.repo, this.deps.exec);
-    const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
-    if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
-    this.plan = parseAnyPlan(JSON.parse(text));
+    const plan = this.deps.docsRepo ? await readState(this.deps.ws, `specs/${specId}/plan.json`) : await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).then((text) => JSON.parse(text) as unknown, () => undefined);
+    if (plan === undefined) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
+    this.plan = parseAnyPlan(plan);
     // A fresh clone (an import) has no installed test dependencies, and smoke and e2e run from them.
     for (const view of servicePlans(this.plan)) {
       const install = await this.installInGate(view);

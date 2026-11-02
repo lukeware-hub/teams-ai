@@ -11,6 +11,7 @@ import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, withMainSnapshot, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
+import { listState, readState } from '../../docs/project-state.js';
 import { serviceWorkspace, type Workspace } from '../workspace.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -56,20 +57,26 @@ function serviceIntent(deps: PhaseDeps, repo: Pick<ServiceRepo, 'service' | 'pla
   const service = repo.service!;
   return { ...deployIntent({ ...deps, plan: repo.plan, ws: repo.ws }, tag), port: servicePort(deps, repo), shared: { composeProject: serviceComposeProject(deps.project.projectId, service), network: sharedNetwork(deps.project.projectId), alias: service } };
 }
-/** The view of a service as the first spec on the project's main that declares it; null when none does. */
-export async function declaredService(projectRepo: string, service: string): Promise<ServiceView | null> {
-  const specs = await fs.readdir(path.join(projectRepo, 'docs', 'specs')).catch(() => [] as string[]);
+/** The view of a service as the first spec that declares it: on the project's main, or in the mirror of a docs-repo project. */
+export async function declaredService(projectRepo: string, service: string, mirror?: Pick<Workspace, 'root'>): Promise<ServiceView | null> {
+  const specs = mirror ? await listState(mirror, 'specs') : await fs.readdir(path.join(projectRepo, 'docs', 'specs')).catch(() => [] as string[]);
   for (const spec of specs.sort()) {
-    const text = await fs.readFile(path.join(projectRepo, 'docs', 'specs', spec, 'plan.json'), 'utf8').catch(() => null);
-    if (text === null) continue;
     try {
-      const view = servicePlans(parseAnyPlan(JSON.parse(text))).find((v) => v.service === service);
+      const plan = await planOf(projectRepo, spec, mirror);
+      const view = plan === undefined ? undefined : servicePlans(parseAnyPlan(plan)).find((v) => v.service === service);
       if (view) return view;
     } catch {
       continue; // a plan that does not parse declares nothing here
     }
   }
   return null;
+}
+
+/** A spec's plan as parsed JSON, from the mirror of a docs-repo project; undefined when it is missing. */
+async function planOf(projectRepo: string, spec: string, mirror?: Pick<Workspace, 'root'>): Promise<unknown> {
+  if (mirror) return readState(mirror, `specs/${spec}/plan.json`);
+  const text = await fs.readFile(path.join(projectRepo, 'docs', 'specs', spec, 'plan.json'), 'utf8').catch(() => null);
+  return text === null ? undefined : JSON.parse(text);
 }
 /** Dependency manifests of the supported stacks: a smoke or e2e fix may need to add a test dependency. */
 const MANIFESTS = ['package.json', 'go.mod', 'go.sum', 'requirements.txt', 'pyproject.toml', 'Cargo.toml', 'Cargo.lock'];
@@ -351,7 +358,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const started = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
   // A service whose container is gone is built again from the plan of its spec; without one the start failure stands.
   const restore = async (service: string): Promise<{ ok: boolean; detail: string } | null> => {
-    const view = await declaredService(deps.ws.repo, service);
+    const view = await declaredService(deps.ws.repo, service, deps.docsRepo ? deps.ws : undefined);
     if (!view) return null;
     const ws = serviceWorkspace(deps.ws, service);
     try {

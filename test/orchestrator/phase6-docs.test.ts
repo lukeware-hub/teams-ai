@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Accounting } from '../../server/budget/accounting.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
+import { readState, writeState } from '../../server/docs/project-state.js';
 import { MergeQueue } from '../../server/git/merge-queue.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import type { PhaseDeps } from '../../server/orchestrator/phases/index.js';
@@ -75,6 +76,19 @@ describe('Phase 6 documentation gate', () => {
     expect(calls).toHaveLength(1);
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
     expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
+  });
+
+  it('writes the report and the awaiting-validation status to the mirror, and the docs to main', async () => {
+    const mirror = { root: remote.root };
+    await writeState(mirror, `specs/${spec.specId}/spec.json`, JSON.stringify(spec));
+    const d = deps(async () => report(GOOD));
+    const r = await runPhase6({ ...d, docsRepo: true, runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
+    expect(r.ok).toBe(true);
+    expect(await readState(mirror, `specs/${spec.specId}/report.json`)).toMatchObject({ specId: spec.specId });
+    expect(await readState(mirror, `specs/${spec.specId}/spec.json`)).toMatchObject({ status: 'awaiting-validation' });
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
+    expect(await git(remote.repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/specs'], execCommand)).not.toContain('report.json');
   });
 
   it('puts the deploy port, health path, kind and docs path into report.service', async () => {

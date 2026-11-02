@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
+import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { startApi } from '../../server/api/server.js';
 import { execCommand } from '../../server/exec/command.js';
@@ -574,6 +575,17 @@ describe('refine api', () => {
     await registry.tickPrograms();
     expect(spawns).toHaveLength(0);
     expect((await snapshot()).state.status).toBe('ready');
+  });
+
+  it('checks a new spec id against the mirror of a docs-repo project, not against main', async () => {
+    const ws = { root: `${home}/ws/hello-app` };
+    await writeDocsMarker(ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'hello-app' }, firstSha: null });
+    remote = await makeRemote({ 'docs/project.json': JSON.stringify(HELLO_PROJECT), 'docs/specs/hello-app-001/spec.json': JSON.stringify(makeSpec()) });
+    await fs.mkdir(`${home}/ws/hello-app`, { recursive: true });
+    await fs.cp(remote.repo, `${home}/ws/hello-app/repo`, { recursive: true });
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-app-001' })).status).toBe(200);
+    await writeState(ws, 'specs/hello-app-002/spec.json', JSON.stringify(makeSpec({ specId: 'hello-app-002' })));
+    expect((await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-app-002' })).status).toBe(409);
   });
 
   it('undo of a move puts both documents back and answers 200; a second undo is refused with 409', async () => {
