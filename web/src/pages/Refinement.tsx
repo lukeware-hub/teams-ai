@@ -1186,20 +1186,21 @@ export function RefinementView(p: ViewProps) {
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.
+  const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
   const docsTargetMissing = docsRepoNoBacklog && !snap.docsTarget;
   const architectureTitle = !architectureDecided ? 'Decida a arquitetura antes de quebrar o backlog.' : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.' : undefined;
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
-      {docsRepoNoBacklog && snap.docsTarget && (
+      {docsNoticeTarget && (
         <div role="status" data-testid="architecture-docs-notice" className="flex gap-3 rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink">
           <Icon name="file" size={16} />
           <div className="grid min-w-0 gap-1">
             <b className="text-[0.875rem] font-semibold">Documentos</b>
-            <span className="break-words">{`Cria o repositório privado ${snap.docsTarget.owner}/${snap.docsTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
+            <span className="break-words">{`Cria o repositório privado ${docsNoticeTarget.owner}/${docsNoticeTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
           </div>
         </div>
       )}
-      <DocsSyncNotice docsSync={snap.docsSync} />
+      {docsNoticeTarget && <DocsSyncNotice docsSync={snap.docsSync} />}
       <header className="grid gap-1">
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
