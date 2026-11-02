@@ -233,8 +233,7 @@ export interface ClosingSummary {
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
-  /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
-   *  through the window between freezing the spec and the run being marked started. */
+  /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
   private starting = false;
   /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
   private syncing = false;
@@ -1083,10 +1082,6 @@ export class RefineSession {
     return value;
   }
 
-  /**
-   * R11.4: the whole backlog is detailed, reviewed and ready, so the program may run it. Nothing is frozen here (each spec
-   * freezes at its turn, `freezeItem`); this checks the gate, takes the `starting` lock and hands back the items in rank order.
-   */
   /** The summary of a repository session: its seven checks, each repository's counts, and the assumptions taken; hashed for the authorization. */
   async closingSummary(): Promise<ClosingSummary> {
     const docs = await this.docsNow();
@@ -1116,6 +1111,7 @@ export class RefineSession {
     return [...planned.flat(), ...decided];
   }
 
+  /** R11.4: checks the gate of a backlog start and hands back its items in rank order; `beginStart()` takes the starting lock first. */
   async freezeProgram(summaryHash?: string): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
