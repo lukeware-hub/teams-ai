@@ -50,10 +50,7 @@ export function prBody(input: { summary: string; criteria: readonly AcceptanceCr
   return `${clean.length > limit ? `${clean.slice(0, limit - 16)}\n[... truncated]` : clean}${spec}`;
 }
 
-/**
- * The main the merge checks its rebase base against. A main that moved only by the documents of a monolith's documentation
- * repository still counts as the base: the task's own change does not touch them.
- */
+/** The main the merge checks its rebase base against; a main moved only by monolith documents still counts, as the task does not touch them. */
 export async function mainForMerge(repo: string, base: string, exec: Exec): Promise<string> {
   const remote = await remoteMainSha(repo, exec);
   if (remote === base) return remote;

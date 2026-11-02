@@ -1,8 +1,9 @@
 import { SAFE_ID } from '../api/run-index.js';
 import { BACKLOG_DOCS } from '../contracts/backlog.js';
+import { execCommand } from '../exec/command.js';
 import { docsStoreDir, isDocsRepo } from '../docs/project-state.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { git as runGit, showFile } from './git.js';
+import { fetch as gitFetch, git as runGit, showFile } from './git.js';
 
 /** One project document as origin/main has it; `text` is null when main does not have it. */
 export interface MainDoc {
@@ -25,7 +26,10 @@ function docPath(file: string, present: ReadonlySet<string>, specBriefing: strin
 /** The project's five documents: from the documentation store when the project is docs-repo, else from origin/main of its repository. */
 export async function readProjectDocs(ws: Pick<Workspace, 'root' | 'repo'>, newestSpec: string | undefined): Promise<MainDoc[]> {
   if (!(await isDocsRepo(ws))) return readMainDocs(ws.repo, newestSpec);
-  return readMainDocs(docsStoreDir(ws), undefined);
+  const store = docsStoreDir(ws);
+  // A failed fetch keeps the last copy of main, so the documents still show.
+  await gitFetch(store, execCommand, { timeoutMs: 30_000 }).catch(() => undefined);
+  return readMainDocs(store, undefined);
 }
 
 /** The five project documents as origin/main has them. `newestSpec` supplies the briefing when main has no root briefing. */

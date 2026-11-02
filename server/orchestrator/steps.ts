@@ -169,10 +169,7 @@ async function requiredSourceFiles(root: string, planFile: string | undefined, t
   return files;
 }
 
-/**
- * The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there.
- * A documentation repository (`required`) reads them all from its snapshot and fails when one is missing.
- */
+/** The source files a builder reads that the worktree at `dir` holds, each rule only when its first file is there; a documentation repository (`required`) reads them all or fails. */
 export async function sourceFiles(dir: string, planFile: string | undefined, specId: string, taskFile?: string, required = false): Promise<string[]> {
   if (required) return requiredSourceFiles(dir, planFile, taskFile);
   const has = (file: string) => fileExists(dir, file);

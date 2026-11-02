@@ -29,6 +29,34 @@ async function repoWith(files: Record<string, string>, dir?: string): Promise<st
   return root;
 }
 
+/** Commits the files on main of origin from a scratch clone, the way a teammate pushes. */
+async function pushToOrigin(origin: string, files: Record<string, string>): Promise<void> {
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-push-'));
+  dirs.push(work);
+  execFileSync('git', ['clone', '-q', origin, work]);
+  for (const [rel, text] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(work, rel)), { recursive: true });
+    await fs.writeFile(path.join(work, rel), text);
+  }
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: work, encoding: 'utf8' });
+  git('add', '-A');
+  git('-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'docs');
+  git('push', '-q', 'origin', 'HEAD:main');
+}
+
+/** A docs-repo project whose documentation store is a clone of a bare origin that holds the given files on main. */
+async function docsRepoProject(files: Record<string, string>): Promise<{ root: string; repo: string; origin: string }> {
+  const base = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-store-fetch-'));
+  dirs.push(base);
+  const root = path.join(base, 'ws');
+  const origin = path.join(base, 'origin.git');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
+  await pushToOrigin(origin, files);
+  await writeDocsMarker({ root }, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'app' }, firstSha: null });
+  execFileSync('git', ['clone', '-q', origin, docsStoreDir({ root })]);
+  return { root, repo: path.join(base, 'legacy'), origin };
+}
+
 describe('parseRepoPath (plan 119, I8 item 6)', () => {
   it('returns the alias of a spec file of either layout', () => {
     expect(parseRepoPath('docs/specify/orders-001/plan.md')).toBe('orders-001');
@@ -69,5 +97,19 @@ describe('readProjectDocs (plan 119, I8 item 6)', () => {
     const docs = await readProjectDocs({ root, repo }, 'orders-001');
     expect(docs.find((doc) => doc.file === 'project.md')!.text).toBe('store project\n');
     expect(docs.find((doc) => doc.file === 'briefing.md')!.text).toBe('store briefing\n');
+  });
+
+  it('shows a document pushed to origin after the store was cloned, with no other fetch', async () => {
+    const { root, repo, origin } = await docsRepoProject({ 'docs/project.md': 'first\n' });
+    await pushToOrigin(origin, { 'docs/project.md': 'second\n' });
+    const docs = await readProjectDocs({ root, repo }, undefined);
+    expect(docs.find((doc) => doc.file === 'project.md')!.text).toBe('second\n');
+  });
+
+  it('keeps the last known documents when the fetch fails', async () => {
+    const { root, repo, origin } = await docsRepoProject({ 'docs/project.md': 'first\n' });
+    await fs.rm(origin, { recursive: true, force: true });
+    const docs = await readProjectDocs({ root, repo }, undefined);
+    expect(docs.find((doc) => doc.file === 'project.md')!.text).toBe('first\n');
   });
 });
