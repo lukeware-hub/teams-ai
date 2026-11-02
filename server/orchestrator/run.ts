@@ -54,7 +54,8 @@ import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
-import { readState, updateState } from '../docs/project-state.js';
+import type { DocsRun } from '../docs/layout.js';
+import { readState, snapshotDesign, updateState } from '../docs/project-state.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -106,6 +107,8 @@ export interface RunDeps {
   gateExecutor?: GateExecutor;
   /** Set when the project's documents live in a documentation repository; its machine files are read from the mirror. */
   docsRepo?: boolean;
+  /** A documentation-repository project's layout and the pinned snapshot its agents read the documents from. */
+  docs?: DocsRun;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -420,6 +423,7 @@ export class Run {
       stepModel: (kind) => stepModelFor(cfg.routing, kind),
       agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
+      docsRoot: this.deps.docs?.snapshot,
       agentsDecide: () => this.autonomous(),
       specHash: this.deps.spec.specHash!,
     };
@@ -553,7 +557,7 @@ export class Run {
   }
 
   private mergeDeps(view: ServiceView | null): MergeStepsDeps {
-    return { journal: this.journal, ws: view ? this.wsOf(view) : this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: view ? this.gatesFor(view) : NO_GATES, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock };
+    return { journal: this.journal, ws: view ? this.wsOf(view) : this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: view ? this.gatesFor(view) : NO_GATES, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock, docs: this.deps.docs };
   }
 
   private packBase = (): PackBase => ({
@@ -567,6 +571,7 @@ export class Run {
     budgetTokens: 12_000,
     planFile: this.deps.planFile,
     taskFile: this.deps.taskFile,
+    docsRoot: this.deps.docs?.snapshot,
   });
 
   private codeFor(view: ServiceView) {
@@ -632,7 +637,7 @@ export class Run {
     const decider = this.decider();
     const ws = this.wsOf(view);
     return {
-      journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view),
+      journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view), docs: this.deps.docs,
       exec: this.deps.exec,
       runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => runAgentStep(req, this.agentDeps(view)),
       gates: this.gatesFor(view),
@@ -767,7 +772,8 @@ export class Run {
     if (head === this.sharedDocsAt) return;
     this.sharedDocsAt = head;
     await this.loadAdrs();
-    this.design = await this.gitLocked(['show', 'origin/main:docs/design.md']).then((text) => text.slice(0, 6000)).catch(() => null);
+    const design = this.deps.docs ? await snapshotDesign(this.deps.docs.snapshot) : await this.gitLocked(['show', 'origin/main:docs/design.md']).catch(() => null);
+    this.design = design?.slice(0, 6000) ?? null;
   }
 
   /** What a step in a service's repository cannot read there: where every service answers. */

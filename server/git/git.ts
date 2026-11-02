@@ -272,8 +272,8 @@ export async function push(dir: string, branch: string, exec: Exec = execCommand
   await git(dir, ['push', '-q', `--force-with-lease=${branch}:${remote}`, 'origin', branch], exec);
 }
 
-export async function fetch(repo: string, exec: Exec = execCommand): Promise<void> {
-  await withRepoLock(repo, () => git(repo, ['fetch', '-q', '--prune', 'origin'], exec));
+export async function fetch(repo: string, exec: Exec = execCommand, opts: { timeoutMs?: number } = {}): Promise<void> {
+  await withRepoLock(repo, () => git(repo, ['fetch', '-q', '--prune', 'origin'], exec, opts));
 }
 
 /** The sha of `main` on the remote right now — compared with the rebase base before merging. */

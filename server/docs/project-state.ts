@@ -62,6 +62,9 @@ export async function readDocsMarker(ws: Pick<Workspace, 'root'>): Promise<DocsM
 /** Whether the project is bound to a documentation repository, so its machine files live in the mirror. */
 export const isDocsRepo = async (ws: Pick<Workspace, 'root'>): Promise<boolean> => (await readDocsMarker(ws)) !== null;
 
+/** The design document of a documentation snapshot, or null when the snapshot has none. */
+export const snapshotDesign = (root: string): Promise<string | null> => fs.readFile(path.join(root, 'docs', 'design.md'), 'utf8').catch(() => null);
+
 export async function writeDocsMarker(ws: Pick<Workspace, 'root'>, marker: DocsMarker): Promise<void> {
   const file = docsMarkerPath(ws);
   await fs.mkdir(path.posix.dirname(file), { recursive: true });

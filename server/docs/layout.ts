@@ -11,10 +11,21 @@ export const SPEC_FILES = { spec: 'spec.md', plan: 'plan.md', task: 'task.md' } 
 
 export type Kind = keyof typeof SPEC_FILES;
 export type Style = 'monolith' | 'microservices';
+/** A documentation-repository run: the layout's style, and the pinned snapshot its agents read the documents from. */
+export interface DocsRun {
+  style: Style;
+  snapshot: string;
+}
 export interface RepoTarget {
   owner: string;
   name: string;
 }
+
+/** The documents of a monolith's docs folder that its build tasks may change; every other file under docs/ is frozen. */
+const BUILD_DOCS: readonly string[] = ['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md'];
+
+/** Whether a build task of a monolith may not change this file, because it is a document the documentation repository owns. */
+export const isFrozenDoc = (rel: string): boolean => rel.startsWith('docs/') && !BUILD_DOCS.includes(rel);
 
 /** The name of the central documentation repository of a multi-repo project. */
 export const CENTRAL_REPO = 'artefacty';
@@ -91,6 +102,13 @@ export function githubOwnerOf(projectMd: string): string | null {
   if (value === undefined || /[<>]/.test(value)) return null;
   if (!GITHUB_LOGIN.test(value)) throw new RangeError(`the owner under "${OWNER_HEADING}" must be a GitHub login, got "${value}"`);
   return value;
+}
+
+/** The alias of a spec file of the documentation repository (under docs/specify or docs/<service>/specify), or null for any other path. */
+export function parseRepoPath(rel: string): string | null {
+  const parts = rel.split('/');
+  const isSpecFile = (Object.values(SPEC_FILES) as string[]).includes(parts.at(-1) ?? '');
+  return isSpecFile && (isAllowedPath('monolith', rel) || isAllowedPath('microservices', rel)) ? parts.at(-2)! : null;
 }
 
 /** The tag that marks where development starts for one spec. */

@@ -1,5 +1,6 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
+import { parseRepoPath } from '../docs/layout.js';
 import { KnowledgeIndex, type DocKind } from './retrieval.js';
 
 /** Opens the project's knowledge index and fills it with the Markdown documents under its docs folder. */
@@ -21,6 +22,6 @@ async function markdownFiles(dir: string): Promise<string[]> {
   return nested.flat();
 }
 
-const kindOf = (id: string): DocKind => (id.includes('/specs/') ? 'spec' : id.includes('/adr/') ? 'adr' : 'other');
+const kindOf = (id: string): DocKind => (id.includes('/specs/') || parseRepoPath(id) !== null ? 'spec' : id.includes('/adr/') ? 'adr' : 'other');
 
-const specIdOf = (id: string): string | undefined => /^docs\/specs\/([^/]+)\//.exec(id)?.[1];
+const specIdOf = (id: string): string | undefined => /^docs\/specs\/([^/]+)\//.exec(id)?.[1] ?? parseRepoPath(id) ?? undefined;

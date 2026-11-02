@@ -29,7 +29,7 @@ import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { withGitAuth } from '../git/auth.js';
 import { fetch as fetchRepo } from '../git/git.js';
-import { readMainDocs } from '../git/main-docs.js';
+import { readProjectDocs } from '../git/main-docs.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
@@ -458,7 +458,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const cloned = services.filter((s) => !servicesNotCloned.includes(s));
           if (deps.graphify) {
             const ws = workspacePaths(cfg, read.project.projectId, deps.home);
-            const docs = await readMainDocs(ws.repo, (await readProject(dir)).specs.at(-1)?.specId).catch(() => []);
+            const docs = await readProjectDocs(ws, (await readProject(dir)).specs.at(-1)?.specId).catch(() => []);
             buildProjectGraph(deps.graphify, ws, read.project, cloned, docs).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
           }
         }
@@ -535,7 +535,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const repo = workspacePaths(idx.cfg, projectId, deps.home).repo;
         // A failed fetch keeps the last copy of main, so the documents still show.
         await fetchRepo(repo).catch(() => undefined);
-        json(200, { docs: await readMainDocs(repo, (await readProject(dir)).specs.at(-1)?.specId) });
+        json(200, { docs: await readProjectDocs(workspacePaths(idx.cfg, projectId, deps.home), (await readProject(dir)).specs.at(-1)?.specId) });
       },
     },
     {

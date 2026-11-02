@@ -4,7 +4,7 @@ import type { Config } from '../config/config.js';
 import type { Project } from '../contracts/project.js';
 import { readProject } from '../api/run-index.js';
 import { fetch as fetchRepo } from '../git/git.js';
-import { readMainDocs, type MainDoc } from '../git/main-docs.js';
+import { readProjectDocs, type MainDoc } from '../git/main-docs.js';
 import { graphDir, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import type { Graphify } from './graphify.js';
 import { projectInfoMarkdown } from './project-info.js';
@@ -28,7 +28,7 @@ export async function locateProject(cfg: Config, projectId: string): Promise<Loc
 /** The project's main documents as origin/main has them; a project that is not located, or cannot be read, has none. */
 export async function projectMainDocs(located: LocatedProject | null): Promise<MainDoc[]> {
   if (!located) return [];
-  return readMainDocs(located.ws.repo, located.newestSpec).catch(() => []);
+  return readProjectDocs(located.ws, located.newestSpec).catch(() => []);
 }
 
 /** Rebuilds the merged graph from main as it is now: the repository is fetched, then merged with the documents. */

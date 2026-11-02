@@ -6,6 +6,7 @@ import type { GateResult } from '../exec/gate-runner.js';
 import { changedFiles, fetch as gitFetch, git, headSha, push, rebaseOnto, remoteMainSha, removeWorktree, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { ensurePr, findMergedPr, mergePr } from '../git/github.js';
 import type { MergeSteps } from '../git/merge-queue.js';
+import { isAllowedPath, type DocsRun } from '../docs/layout.js';
 import type { HandoffSummary } from '../knowledge/context-pack.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
@@ -23,6 +24,8 @@ export interface MergeStepsDeps {
   secretValues: () => readonly string[];
   handoffs: HandoffSummary[];
   clock: () => Date;
+  /** A documentation-repository project; a monolith's merge tolerates a main moved only by its documents. */
+  docs?: DocsRun;
 }
 
 const BODY_LIMIT = 8 * 1024;
@@ -45,6 +48,15 @@ export function prBody(input: { summary: string; criteria: readonly AcceptanceCr
   const spec = `\n\nSpec: ${input.specId}`;
   const limit = BODY_LIMIT - spec.length;
   return `${clean.length > limit ? `${clean.slice(0, limit - 16)}\n[... truncated]` : clean}${spec}`;
+}
+
+/** The main the merge checks its rebase base against; a main moved only by monolith documents still counts, as the task does not touch them. */
+export async function mainForMerge(repo: string, base: string, exec: Exec): Promise<string> {
+  const remote = await remoteMainSha(repo, exec);
+  if (remote === base) return remote;
+  await gitFetch(repo, exec);
+  const moved = (await git(repo, ['diff', '--name-only', base, 'origin/main'], exec)).split('\n').filter((file) => file !== '');
+  return moved.every((file) => isAllowedPath('monolith', file)) ? base : remote;
 }
 
 const gateLine = (r: GateResult) => `${r.name}: ${r.passed ? 'passed' : `failed (${r.failure}, exit ${r.exitCode})`}`;
@@ -137,15 +149,18 @@ function resetMainCheckout(deps: MergeStepsDeps): Promise<void> {
 export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: string, branch: string, spec: Spec, summary: string): MergeSteps {
   let gateResults: GateResult[] = [];
   let changed: string[] = [];
+  let rebasedOn: string | undefined;
   const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine), specId: spec.specId }, deps.secretValues()), true, task.id);
   return {
     ...base,
     rebase: async () => {
       const r = await base.rebase();
+      rebasedOn = r.ok ? r.baseSha : undefined;
       // Captured here: after the merge, origin/main already contains this branch and the diff would be empty.
       if (r.ok) changed = await changedFiles(worktree, 'origin/main', deps.exec).catch(() => [] as string[]);
       return r;
     },
+    remoteMainSha: () => (deps.docs?.style === 'monolith' && rebasedOn !== undefined ? mainForMerge(deps.ws.repo, rebasedOn, deps.exec) : remoteMainSha(deps.ws.repo, deps.exec)),
     gates: async () => {
       const r = await deps.gates(worktree, branch);
       gateResults = r.results;
