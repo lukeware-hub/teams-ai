@@ -692,8 +692,9 @@ export class RefineSession {
     await this.publishStartTags();
   }
 
-  /** After the launch: the start tags of the closing. Never fails the start; a tag left pending is retried by the tick. */
+  /** After a marked start: the start tags of the closing. Never fails the start; a tag left pending is retried by the tick. */
   publishStartTags(): Promise<void> {
+    if (this.state.status !== 'started') return Promise.resolve();
     return this.docs?.publishTags() ?? Promise.resolve();
   }
 
@@ -1171,8 +1172,9 @@ export class RefineSession {
     this.starting = false;
   }
 
-  /** The start failed before its run was recorded; undo the `starting` lock so the session can retry. */
-  failStart(): void {
+  /** The start failed before its run was recorded: undo the `starting` lock and drop the closing of that launch. */
+  async failStart(): Promise<void> {
     this.starting = false;
+    await this.docs?.discardClosing();
   }
 }

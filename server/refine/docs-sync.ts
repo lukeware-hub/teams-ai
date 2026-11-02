@@ -1,5 +1,5 @@
 import type { Style } from '../docs/layout.js';
-import { readClosingRecord, writeClosingRecord } from '../docs/project-state.js';
+import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
 import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
@@ -77,6 +77,11 @@ export class DocsSync {
     const done = this.chain.then(() => this.closeNow(aliases));
     this.chain = done.catch(() => undefined);
     return done;
+  }
+
+  /** Drops the closing of a launch that never happened, so no start tag is ever published for it. */
+  discardClosing(): Promise<void> {
+    return this.enqueue(() => removeClosingRecord(this.input.ws, this.input.draft.specId).catch((err) => console.error(`closing of ${this.input.draft.specId}: ${messageOf(err)}`)));
   }
 
   /** The start tags of the closing, published once; a failure keeps them pending for the next tick and never fails the start. */

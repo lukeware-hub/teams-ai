@@ -135,6 +135,11 @@ export async function writeClosingRecord(ws: Pick<Workspace, 'root'>, draftId: s
 `);
 }
 
+/** Drops the closing record of a draft; a launch that never happened leaves none. */
+export async function removeClosingRecord(ws: Pick<Workspace, 'root'>, draftId: string): Promise<void> {
+  await fs.rm(docsClosingPath(ws, draftId), { force: true });
+}
+
 export async function removeDocsMarker(ws: Pick<Workspace, 'root'>): Promise<void> {
   await fs.rm(docsMarkerPath(ws), { force: true });
 }

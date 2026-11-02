@@ -243,7 +243,7 @@ export class SessionRegistry {
       await session.publishStartTags();
       return { runId, program };
     } catch (err) {
-      session.failStart();
+      await session.failStart();
       throw err;
     }
   }
@@ -322,7 +322,7 @@ export class SessionRegistry {
       await session.publishStartTags();
       return { runId };
     } catch (err) {
-      session.failStart();
+      await session.failStart();
       throw err;
     }
   }

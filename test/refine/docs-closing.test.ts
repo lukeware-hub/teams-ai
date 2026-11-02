@@ -116,6 +116,7 @@ describe('the start tags after the launch', () => {
     await writeAlias('hello-001');
     const s = await recordSpec('hello-001');
     await s.closeDocs(['hello-001']);
+    await s.markStarted('run-1');
     expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('');
     offline = true;
     await expect(s.publishStartTags()).resolves.toBeUndefined();
@@ -123,6 +124,45 @@ describe('the start tags after the launch', () => {
     offline = false;
     await s.tickDocs();
     expect((await closingRecord()).pendingTags).toEqual([]);
+    await s.tickDocs();
+    expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('dev-start/hello-001');
+    expect(await git(origin(), ['rev-parse', 'dev-start/hello-001^{commit}'])).toBe((await closingRecord()).commit);
+  });
+
+  it('a marked start publishes its tag once, on the next tick', async () => {
+    await bound();
+    await writeAlias('hello-001');
+    const s = await recordSpec('hello-001');
+    await s.closeDocs(['hello-001']);
+    await s.markStarted('run-1');
+    await s.tickDocs();
+    await s.tickDocs();
+    expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('dev-start/hello-001');
+    expect((await closingRecord()).pendingTags).toEqual([]);
+  });
+
+  it('a failed launch publishes no tag on the next tick, and its closing record is dropped', async () => {
+    await bound();
+    await writeAlias('hello-001');
+    const s = await recordSpec('hello-001');
+    await s.beginStart();
+    await s.closeDocs(['hello-001']);
+    await s.failStart();
+    await s.tickDocs();
+    expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('');
+    expect(await exists(docsClosingPath(rig!.ws, rig!.draft.specId))).toBe(false);
+  });
+
+  it('the retry after an abandoned launch gets the plain start tag name, at its own closing commit', async () => {
+    await bound();
+    await writeAlias('hello-001');
+    const s = await recordSpec('hello-001');
+    await s.beginStart();
+    await s.closeDocs(['hello-001']);
+    await s.failStart();
+    await s.tickDocs();
+    await s.closeDocs(['hello-001']);
+    await s.markStarted('run-2');
     await s.tickDocs();
     expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('dev-start/hello-001');
     expect(await git(origin(), ['rev-parse', 'dev-start/hello-001^{commit}'])).toBe((await closingRecord()).commit);
