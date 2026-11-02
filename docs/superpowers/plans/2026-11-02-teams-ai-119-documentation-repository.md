@@ -154,7 +154,7 @@ Goal: one pure module owns every document path; legacy output does not change.
 - [x] `server/core/redact.ts`: `findCredential` for the high-confidence token shapes and known secret values.
 - [x] Unit tests with real git on bare origins, and a fake for gh.
 - [x] Probe script `scripts/probes/docs-store.ts` written.
-- [ ] Owner-gated: the probe runs on a throwaway owner and its output is saved under `docs/superpowers/probes/`.
+- [x] Owner-gated: the probe runs on a throwaway owner (run on 2026-11-02 on the authorized account: repository created, pushed, tagged, rejected as non-fast-forward, and deleted) and its output is saved under `docs/superpowers/probes/`.
 
 ## I2b - Documentation store (size L, weight 3)
 
@@ -170,7 +170,7 @@ Goal: one pure module owns every document path; legacy output does not change.
 - [x] Atomic writes in the four draft writers of allowlisted files (`draft.ts`, `plan-prepare.ts`, `detail-cycle.ts`).
 - [x] Projector-only renderer of `spec.md` for the store; `renderSpecMd`, `renderSpecsMd`, `renderBriefMd` and `planBasis` stay byte-identical (golden tests).
 - [x] Docs-repo variants of the plan and task text: relative links, "never create other doc files"; legacy text byte-identical.
-- [ ] Alias rules in `validateBacklog` (stamped sessions only) and in the registry slug. The validator rule is done; the registry slug check moves to I5 with the stamp.
+- [x] Alias rules in `validateBacklog` (stamped sessions only) and in the registry slug. The registry check was closed in the leftovers of this plan.
 - [x] `KIND_WRITE_DIRS` unchanged: the draft tree does not move (decision D1), so no write rule changes.
 
 ## I4 - Mirror and run side (size L, weight 3)
@@ -216,7 +216,7 @@ Notes from the I7 review: the start flag is taken after the main sync, because t
 - [x] Monolith: a build task that changes `docs/` (except README, RUNBOOK, API) fails the scope check as frozen.
 - [x] Monolith merge queue tolerates a `main` moved only by allowlisted document paths.
 - [x] Charters and packs are layout-neutral; legacy goldens byte-identical.
-- [ ] Knowledge indexer, chat documents, graph input and main-docs read the store for docs-repo projects. Open: chat documents still read the project repository (I9).
+- [x] Knowledge indexer, chat documents, graph input and main-docs read the store for docs-repo projects. The chat and graph reads were closed in the leftovers of this plan.
 
 ## I9 - Follow-on drafts on direct main (size M, weight 2)
 

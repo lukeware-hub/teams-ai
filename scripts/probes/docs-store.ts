@@ -92,7 +92,10 @@ async function main(): Promise<void> {
   const name = `teams-ai-probe-${date.replaceAll('-', '')}-${pad(now.getHours())}${pad(now.getMinutes())}`;
   const fullName = `${owner}/${name}`;
   const secretsDir = path.join(os.homedir(), '.teams-ai', 'secrets');
-  const exec: Exec = withGhAuth(withGitAuth(execCommand, secretsDir), secretsDir);
+  const base: Exec = withGhAuth(withGitAuth(execCommand, secretsDir), secretsDir);
+  // On Windows the gh login lives in the keyring, which the command environment does not forward: pass the token the caller set.
+  const token = process.env.GH_TOKEN;
+  const exec: Exec = (spec) => (spec.bin === 'gh' && token ? base({ ...spec, env: { ...(spec.env ?? {}), GH_TOKEN: token } }) : base(spec));
   const work = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-probe-'));
   try {
     await probe(work, { owner, name }, exec);
