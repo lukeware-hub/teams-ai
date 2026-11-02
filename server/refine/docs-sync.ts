@@ -1,8 +1,10 @@
+import { loadSecretValues } from '../core/secrets.js';
 import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
 import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
-import type { Workspace } from '../orchestrator/workspace.js';
+import { readUserConfig } from '../onboarding/config-store.js';
+import { expandHome, type Workspace } from '../orchestrator/workspace.js';
 import { baseAliases, draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
@@ -21,11 +23,19 @@ export interface DocsSyncInput {
   exec: Exec;
   /** The specs the draft owns, read at each flush. */
   aliases: () => SpecAlias[];
+  /** The secrets directories whose values a flush refuses to commit; the project's and the platform's by default. */
+  secretDirs?: () => Promise<string[]>;
 }
 
 const FALLBACK_LABEL = 'documents synced';
 
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** The project's secrets directory and the platform's, from the user configuration. */
+async function defaultSecretDirs(ws: Workspace): Promise<string[]> {
+  const { cfg } = await readUserConfig();
+  return [ws.secrets, expandHome(cfg.paths.secrets)];
+}
 
 /** Names the documents the store refused; the others are already published. */
 const refusedMessage = (refused: string[]): string =>
@@ -135,12 +145,18 @@ export class DocsSync {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const files = await projectDraftFiles(draft, style, this.input.aliases());
-    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft) };
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft), known: await this.knownSecrets() };
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
     this.pending = 0;
     this.refused = false;
     this.lastError = null;
+  }
+
+  /** The secret values a flush must not commit, read at each flush. */
+  private async knownSecrets(): Promise<string[]> {
+    const dirs = await (this.input.secretDirs ?? (() => defaultSecretDirs(this.input.ws)))();
+    return (await Promise.all(dirs.map((dir) => loadSecretValues(dir)))).flat();
   }
 
   /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary; a failure stays while a change is pending or a document is refused. */
@@ -162,7 +178,7 @@ export class DocsSync {
       const seen = { pending: this.pending, labels: this.labels.length };
       const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
-      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft) });
+      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft), known: await this.knownSecrets() });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
       await pushLocalCommits(store);
       if (refused.length > 0) {
