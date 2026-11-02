@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { projectDraftFiles } from '../../server/refine/docs-projection.js';
@@ -72,6 +72,14 @@ describe('projectDraftFiles', () => {
     });
     const files = await projectDraftFiles(draft, 'monolith', [{ alias: ALIAS }]);
     expect(Object.keys(files).filter((file) => file.endsWith('.json'))).toEqual([]);
+  });
+
+  it('refuses an alias that is not a slug before any path is read', async () => {
+    const read = vi.spyOn(fs, 'readFile');
+    await expect(projectDraftFiles(draft, 'monolith', [{ alias: '../x' }])).rejects.toThrow(RangeError);
+    const files = read.mock.calls.map(([file]) => String(file));
+    read.mockRestore();
+    expect(files.some((file) => file.endsWith('spec.json') || file.endsWith('plan.md'))).toBe(false);
   });
 
   it('projects only the aliases it is given, and no spec.md without a spec.json', async () => {

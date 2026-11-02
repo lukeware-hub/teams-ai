@@ -68,6 +68,19 @@ describe('a documentation repository session syncs its documents', () => {
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
   });
 
+  it('attaching the documents again keeps the pending count and the last failure', async () => {
+    const r = await openRig();
+    const s = await decided(r);
+    await s.enableBacklog();
+    await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
+    offline = true;
+    await s.tickDocs();
+    const before = (await s.snapshot()).docsSync;
+    expect(before?.lastError).toMatch(/could not be reached/);
+    await (s as unknown as { attachDocs(atOpen: boolean): Promise<void> }).attachDocs(true);
+    expect((await s.snapshot()).docsSync).toEqual(before);
+  });
+
   it('a document saved alone waits for the next boundary', async () => {
     const r = await openRig();
     const s = await decided(r);

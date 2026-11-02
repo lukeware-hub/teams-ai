@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bind } from '../../server/docs/store.js';
+import { bind, commitProjection, storeOf } from '../../server/docs/store.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { boundaryLabel } from '../../server/refine/docs-boundary.js';
 import { DocsSync } from '../../server/refine/docs-sync.js';
@@ -112,5 +112,79 @@ describe('DocsSync retries a failed flush', () => {
     expect(await commitCount()).toBe(2);
     await s.tick();
     expect(await commitCount()).toBe(2);
+  });
+});
+
+const storeDir = (): string => storeOf(ws, 'monolith').dir;
+const localHead = (): Promise<string> => git(storeDir(), ['rev-parse', 'HEAD']);
+
+describe('DocsSync keeps a refused flush out of history', () => {
+  it('a flush with one diverged document publishes the accepted documents and names the refused one; the next flush after the divergence is resolved commits and pushes the refused document', async () => {
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side',
+      files: { 'docs/project.md': 'theirs\n' }, bases: { 'docs/project.md': '# project.md\n' },
+    });
+    const s = sync();
+    await edit('project.md', 'mine\n');
+    await edit('stack.md', 'stack changed\n');
+    s.boundary('backlog enabled');
+    await s.tick();
+    expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md') });
+    expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
+    expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
+    expect(await git(storeDir(), ['status', '--porcelain'])).toBe('');
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side undone',
+      files: { 'docs/project.md': '# project.md\n' },
+    });
+    await s.tick();
+    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
+  });
+});
+
+describe('DocsSync retries only a pending boundary', () => {
+  it('after a failed flush, a document edit alone waits for a boundary, and the retry pushes only what is local', async () => {
+    const s = sync();
+    await edit('stack.md', 'stack changed\n');
+    s.edit();
+    offline = true;
+    await s.flush();
+    expect(s.view.lastError).not.toBeNull();
+    expect(await commitCount()).toBe(1);
+    offline = false;
+    await edit('project.md', 'changed\n');
+    s.edit();
+    const local = await localHead();
+    await s.tick();
+    expect(await localHead()).toBe(local);
+    expect(await commitCount()).toBe(2);
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('# project.md');
+    s.boundary('backlog enabled');
+    await s.tick();
+    expect(await commitCount()).toBe(3);
+    expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('changed');
+  });
+});
+
+describe('DocsSync counts a change by the flush that projects it', () => {
+  it('an edit that arrives while the store opens is pushed by that flush, not left pending', async () => {
+    let s: DocsSync | null = null;
+    let armed = true;
+    const racing: Exec = async (spec): Promise<CommandResult> => {
+      if (armed) {
+        armed = false;
+        await edit('stack.md', 'arrived\n');
+        s!.edit();
+      }
+      return exec(spec);
+    };
+    s = new DocsSync({ ws, draft, style: 'monolith', exec: racing, aliases: () => [] });
+    s.boundary('backlog enabled');
+    await s.tick();
+    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('arrived');
   });
 });

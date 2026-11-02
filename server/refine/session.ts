@@ -647,7 +647,7 @@ export class RefineSession {
   /** Syncs a documentation repository session once its store is bound: the journal's hook, and at open one flush. */
   private async attachDocs(atOpen: boolean): Promise<void> {
     const exec = this.deps.docsBind?.exec;
-    if (this.state.docsRepo !== true || !exec) return;
+    if (this.docs || this.state.docsRepo !== true || !exec) return;
     const marker = await readDocsMarker(this.deps.ws);
     if (!marker?.firstSha) return;
     this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style) });

@@ -1,5 +1,5 @@
 import type { Style } from '../docs/layout.js';
-import { commitProjection, DocsStoreError, openStore, pushWithRecovery } from '../docs/store.js';
+import { commitProjection, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -21,6 +21,18 @@ export interface DocsSyncInput {
 }
 
 const FALLBACK_LABEL = 'documents synced';
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** Names the documents the store refused; the others are already published. */
+const refusedMessage = (refused: string[]): string =>
+  `Não publicado: o documento ${refused.join(', ')} mudou na loja; os outros foram publicados.`;
+
+/** Pushes the local commits; a refusal is thrown in plain words. */
+async function pushLocalCommits(store: Store): Promise<void> {
+  const pushed = await pushWithRecovery(store);
+  if (!pushed.ok) throw new DocsStoreError(pushed.message);
+}
 
 /** Flushes one draft's documents to its store: a boundary waits for the tick, and a failed flush is retried there. */
 export class DocsSync {
@@ -51,7 +63,7 @@ export class DocsSync {
   flush(): Promise<void> {
     if (!this.queued) {
       this.queued = true;
-      this.chain = this.chain.then(() => {
+      this.enqueue(() => {
         this.queued = false;
         return this.run();
       });
@@ -59,28 +71,46 @@ export class DocsSync {
     return this.chain;
   }
 
-  /** The registry tick: flushes when a boundary or a failure waits, and waits for a flush already in progress. */
+  /** The registry tick: a pending boundary is flushed again, and a failure without one only pushes the local commits. */
   tick(): Promise<void> {
-    return this.labels.length === 0 && this.lastError === null ? this.chain : this.flush();
+    if (this.labels.length > 0) return this.flush();
+    return this.lastError === null ? this.chain : this.enqueue(() => this.pushLocal());
   }
 
-  /** Commits the projection and pushes it; the labels are cleared only when the push lands. */
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    this.chain = this.chain.then(task);
+    return this.chain;
+  }
+
+  /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary. */
+  private async pushLocal(): Promise<void> {
+    try {
+      await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
+      this.lastError = null;
+    } catch (err) {
+      this.lastError = messageOf(err);
+    }
+  }
+
+  /** Commits the projection and pushes it; the labels stay while a document is refused, so the next flush tries it again. */
   private async run(): Promise<void> {
-    const seen = { pending: this.pending, labels: this.labels.length };
     try {
       const store = await openStore(this.input.ws, this.input.style, this.input.exec);
+      const seen = { pending: this.pending, labels: this.labels.length };
       const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
       const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
-      if (refused.length > 0) throw new DocsStoreError(`the store changed under this draft (${refused.join(', ')})`);
-      const pushed = await pushWithRecovery(store);
-      if (!pushed.ok) throw new DocsStoreError(pushed.message);
+      await pushLocalCommits(store);
+      if (refused.length > 0) {
+        this.lastError = refusedMessage(refused);
+        return;
+      }
       this.labels.splice(0, seen.labels);
       this.pending = Math.max(0, this.pending - seen.pending);
       this.lastError = null;
     } catch (err) {
-      this.lastError = err instanceof Error ? err.message : String(err);
+      this.lastError = messageOf(err);
     }
   }
 }

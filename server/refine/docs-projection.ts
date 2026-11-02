@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Spec } from '../contracts/spec.js';
-import { repoPath, type Style } from '../docs/layout.js';
+import { assertAlias, repoPath, type Style } from '../docs/layout.js';
 import { renderRepoSpec } from '../docs/repo-spec.js';
 import { DOC_STAGES } from './doc-stages.js';
 import { readDoc, type Draft } from './draft.js';
@@ -17,13 +17,14 @@ const readOptional = (file: string): Promise<string | null> => fs.readFile(file,
 
 /** The repository files of one alias folder: its spec, plan and task list, each only when the draft has it. */
 async function aliasFiles(draft: Draft, style: Style, { alias, service }: SpecAlias): Promise<Record<string, string>> {
+  const name = assertAlias(alias);
   const found: Record<string, string> = {};
-  const json = await readOptional(path.posix.join(draft.docs, 'specs', alias, 'spec.json'));
-  if (json !== null) found[repoPath(style, 'spec', alias, service)] = renderRepoSpec(Spec.parse(JSON.parse(json)));
-  const plan = await readOptional(path.posix.join(draft.root, planFileOf(alias)));
-  if (plan !== null) found[repoPath(style, 'plan', alias, service)] = plan;
-  const task = await readOptional(path.posix.join(draft.root, taskFileOf(alias)));
-  if (task !== null) found[repoPath(style, 'task', alias, service)] = task;
+  const json = await readOptional(path.posix.join(draft.docs, 'specs', name, 'spec.json'));
+  if (json !== null) found[repoPath(style, 'spec', name, service)] = renderRepoSpec(Spec.parse(JSON.parse(json)));
+  const plan = await readOptional(path.posix.join(draft.root, planFileOf(name)));
+  if (plan !== null) found[repoPath(style, 'plan', name, service)] = plan;
+  const task = await readOptional(path.posix.join(draft.root, taskFileOf(name)));
+  if (task !== null) found[repoPath(style, 'task', name, service)] = task;
   return found;
 }
 
