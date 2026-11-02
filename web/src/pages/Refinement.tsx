@@ -1199,8 +1199,9 @@ export function RefinementView(p: ViewProps) {
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
-  const startNote = closingGate ? (
-    <div role="status" data-testid="start-reason" className="grid basis-full gap-2 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
+  // What the start waits for sits under the coverage: the closing gate with its unmet checks, else the plain reason.
+  const startLine = closingGate ? (
+    <div role="status" data-testid="start-reason" className="grid gap-2 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
       <p className="m-0 font-semibold">Ainda não dá para iniciar. Falta:</p>
       <ul className="m-0 grid list-disc gap-1 pl-5">{unmet.map((item) => <li key={item}>{item}</li>)}</ul>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1208,9 +1209,7 @@ export function RefinementView(p: ViewProps) {
         <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
       </div>
     </div>
-  ) : null;
-  // The plain reason the start waits for sits under the coverage; the closing gate keeps its own block in the footer.
-  const startLine = closingGate || !startReason ? null : <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>;
+  ) : startReason ? <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p> : null;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.
@@ -1244,7 +1243,7 @@ export function RefinementView(p: ViewProps) {
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{prepareButton}{developButton}{startNote}</>
+    ) : <>{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
       {backlogOn || st.repositories === true ? (
