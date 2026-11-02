@@ -45,6 +45,8 @@ export interface RegistryDeps {
   decider?: CycleDeps['decider'];
   secretsDir: string;
   exec: Exec;
+  /** The git and gh exec with the saved token, used only to bind a documentation repository; absent in tests that predate it. */
+  ghExec?: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
   projectDir: (projectId: string) => Promise<string | null>;
   control: RunControlDeps;
