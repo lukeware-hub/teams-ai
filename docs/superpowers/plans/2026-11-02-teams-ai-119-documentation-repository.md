@@ -158,12 +158,12 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I2b - Documentation store (size L, weight 3)
 
-- [ ] `server/docs/store.ts`: open and heal, projection of the eight kinds, atomic writes, allowlist check, secret block.
-- [ ] Ownership by compare-and-set for the five documents, alias ownership by trailer, started aliases immutable, owned aliases only are retired.
-- [ ] Commit with trailers, push cycle with reset and recompute, bounded retries, plain messages for protected branch, auth and offline.
-- [ ] Bind: marker first, initial commit, private repository only when missing, ownership ladder, target locked after the first push.
-- [ ] Close: closing commit, detached snapshot, tags after launch with `.N` suffix, release.
-- [ ] Three test files, each under 60 seconds, with `test/fixtures/fake-gh-repos.ts`.
+- [x] `server/docs/store.ts`: open and heal, projection of the eight kinds, atomic writes, allowlist check, secret block.
+- [x] Ownership by compare-and-set for the five documents, alias ownership by trailer, started aliases immutable, owned aliases only are retired.
+- [x] Commit with trailers, push cycle with reset and recompute, bounded retries, plain messages for protected branch, auth and offline.
+- [x] Bind: marker first, initial commit, private repository only when missing, ownership ladder, target locked after the first push.
+- [x] Close: closing commit, detached snapshot, tags after launch with `.N` suffix, release.
+- [x] Three test files, each under 60 seconds, with `test/fixtures/fake-gh-repos.ts`.
 
 ## I3 - Draft writers and spec renderer (size S, weight 1)
 
