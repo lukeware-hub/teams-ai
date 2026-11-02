@@ -138,11 +138,11 @@ export class DocsSync {
     this.lastError = null;
   }
 
-  /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary. */
+  /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary; a failure stays while a change is pending. */
   private async pushLocal(): Promise<void> {
     try {
       await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
-      this.lastError = null;
+      if (this.pending === 0) this.lastError = null;
     } catch (err) {
       this.lastError = messageOf(err);
     }
