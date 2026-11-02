@@ -503,6 +503,13 @@ export async function pushDocuments(ws: Pick<Workspace, 'root'>, store: Store): 
   return pushed;
 }
 
+/** Records the first sha when nothing is ahead of origin main and the marker has none, so a skipped push still leaves it set. */
+export async function recordPublishedSha(ws: Pick<Workspace, 'root'>, store: Store): Promise<void> {
+  const marker = await readDocsMarker(ws);
+  if (marker?.firstSha !== null) return;
+  await writeDocsMarker(ws, { ...marker, firstSha: await withRepoLock(store.dir, () => headSha(store.dir, store.exec)) });
+}
+
 export interface Closing {
   summary: string;
   aliases: readonly string[];

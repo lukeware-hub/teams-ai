@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bind, pushDocuments, storeOf } from '../../server/docs/store.js';
+import { readDocsMarker, writeDocsMarker } from '../../server/docs/project-state.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { DocsSync } from '../../server/refine/docs-sync.js';
 import type { CommandResult, Exec } from '../../server/exec/command.js';
@@ -47,5 +48,15 @@ describe('DocsSync skips the push when nothing is ahead of origin main', () => {
     await sync.tick();
     await sync.publish();
     expect(pushes).toBe(0);
+  });
+
+  it('a skipped push still records the first sha when the marker has none', async () => {
+    const marker = await readDocsMarker(ws);
+    await writeDocsMarker(ws, { ...marker!, firstSha: null });
+    const sync = new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], timer: { set: () => 0, clear: () => undefined } });
+    await sync.tick();
+    await sync.publish();
+    expect(pushes).toBe(0);
+    expect((await readDocsMarker(ws))?.firstSha).toMatch(/^[0-9a-f]{40}$/);
   });
 });
