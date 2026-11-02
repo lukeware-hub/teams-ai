@@ -24,8 +24,8 @@ const savedToken = (secretsDir: string): Promise<string | undefined> =>
 export function withGitAuth(exec: Exec, secretsDir: string): Exec {
   return async (spec) => {
     if (spec.bin !== 'git') return exec(spec);
-    const auth = gitAuthEnv(await savedToken(secretsDir));
-    return Object.keys(auth).length === 0 ? exec(spec) : exec({ ...spec, env: { ...(spec.env ?? {}), ...auth } });
+    const token = await savedToken(secretsDir);
+    return token ? exec({ ...spec, env: withGitAuthEnv(spec.env ?? {}, token) }) : exec(spec);
   };
 }
 
