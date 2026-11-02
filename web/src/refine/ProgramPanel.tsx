@@ -14,6 +14,7 @@ const ITEM_HELP = {
   pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
   running: 'Os agentes estão executando esta spec agora.',
   completing: 'A spec foi entregue e está sendo concluída.',
+  delivered: 'A run entregou a spec. Ela só fica concluída quando você valida e conclui.',
   waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
   done: 'A spec foi entregue e concluída.',
   partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
@@ -22,12 +23,13 @@ const ITEM_HELP = {
   interrupted: 'O processo parou antes do fim. Abra a run para retomar.',
 } as const;
 const OWNER_HELP: Record<string, string> = { Sistema: 'Quem precisa agir: o sistema, que resolve sozinho ou precisa de um ajuste da plataforma.', Plano: 'Quem precisa agir: o plano ou a spec precisa ser corrigido.', Você: 'Quem precisa agir: você.' };
-const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', waiting: 'aguardando', done: 'concluída', partial: 'concluída parcialmente', failed: 'falhou', blocked: 'bloqueada', interrupted: 'interrompida' } as const;
+const LABEL = { pending: 'na fila', running: 'em execução', completing: 'concluindo', delivered: 'aguarda sua validação', waiting: 'aguardando', done: 'concluída', partial: 'concluída parcialmente', failed: 'falhou', blocked: 'bloqueada', interrupted: 'interrompida' } as const;
 // Same pills as the hub's spec rows; a live spec's dot pulses.
 const PILL = {
   pending: 'status-pill',
   running: 'status-pill tone-neutral motion-safe:before:animate-pulse',
   completing: 'status-pill tone-neutral motion-safe:before:animate-pulse',
+  delivered: 'status-pill tone-warn',
   waiting: 'status-pill tone-warn',
   done: 'status-pill tone-good',
   partial: 'status-pill tone-warn',

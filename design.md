@@ -1247,15 +1247,22 @@ No lugar do painel `Serviços` da página do projeto, depois de `Execuções`, u
 
 ### 27.3 Painel do repositório
 
-Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `repoId`.
+Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `repoId`. Uma página só, rolável, com a atividade real dos agentes no repositório. Atualiza sozinha a cada 5 segundos, enquanto a aba está visível.
 
 - Migalha `Projetos › <projeto> › <repositório>`.
-- Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e o botão do GitHub.
-- Faixa de quatro cartões: specs, planos, tarefas, `concluídas n de m`, bloqueios.
+- Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e os atalhos.
+- Botões conforme o tipo, sempre visíveis: API e Workers mostram `Abrir Swagger`; Web mostra `Abrir aplicação`; Monólito mostra os dois. O botão abre o endereço do último deploy verificado quando a sonda confirma o caminho. Quando não pode abrir, fica desabilitado com o motivo em palavras: `sem dados` antes de qualquer deploy, `sistema desligado`, `o plano não declara a documentação da API`, `a documentação não responde`, `a aplicação não responde na raiz` ou `a porta do serviço não está publicada`. Com o sistema desligado, aparece também o botão `Iniciar`.
+- Sete cartões, na mesma fileira: `Tarefas` (total, com concluídas, pendentes e em execução); `Runs` (total, com em andamento); `Falhas` (runs e tarefas com falha); `Bloqueios` (tarefas, perguntas, segredos e paradas do programa); `Entregas` (tarefas entregues, com specs entregues e aguardando validação); `Progresso geral` (tarefas entregues sobre o total, com barra determinada); `Custo` (soma do custo em US$ das runs do repositório, com o número de runs). Desktop: sete colunas. Entre 768 px e 1279 px: quatro e três. Celular de 390 px: duas colunas, com `Custo` ocupando a linha inteira.
+- `Entregas por spec`: as specs agrupadas por estado, nesta ordem: `Aguarda validação`, `Falhou`, `Bloqueado`, `Em desenvolvimento`, `Pendente`, `Não iniciado`, `Entregue`. Grupo vazio não aparece. Cada linha mostra a spec, a prioridade, o chip de estado e `n de m tarefas`. Uma linha expande as suas tarefas, com estado, tentativas, motivo, pull request e `Abrir run`, que leva a `/runs/:runId?task=<id>`.
+- Classificação da tarefa: `Falhou` é a tarefa parada pela própria causa, sem decisão pendente. `Bloqueada` é a tarefa que espera uma dependência ou uma decisão do dono. Uma run pausada aparece em `Bloqueios`, não como tarefa bloqueada.
+- `Atividade por agente`: uma linha por papel que atuou, com o nome que a run já usa para ele. Cada linha mostra etapas com sucesso e falha, tarefas criadas, iniciadas e concluídas, arquivos alterados, testes que passaram e falharam, custo e última atividade. Papel sem atividade não aparece.
+- `Runs`: tabela no padrão de §11.16, com run, tipo, estado, início, tarefas mescladas e custo. Uma linha abre `/runs/:runId`.
+- `Falhas e bloqueios`: só aparece com item. Cada item traz o motivo e, quando há uma run ou tarefa, o link `Abrir run`, que leva à decisão pendente.
 - `Integrações`, com as linhas da arquitetura que tocam o repositório.
-- `Especificações`, no padrão da tabela de execuções: ordenação, filtro, faceta de estado e paginação. Colunas: spec, prioridade, estado, plano, tarefas `n de m`, depende de. Uma linha abre as suas tarefas, com estado, tentativas e critérios com resultado.
-- `Aguardando dependências` e `Falhas de execução` só aparecem quando têm itens.
-- `Histórico` (últimos 50 eventos) num recolhível.
+- `Linha do tempo`: os eventos de todas as runs da spec, em frase, com agente, hora, resultado (ponto `good` ou `bad`) e link para a run. Mostra até 200 eventos, paginados de 10 em 10 como a tabela de runs, com o aviso do total. Recolhível, aberta por padrão.
+- A tabela de `Especificações` sai desta página; o board de entregas ocupa o lugar dela.
+- Em telas estreitas, os cartões ficam em duas colunas e as tabelas viram cartões (§11.16).
+- Premissas: `Entregas` e `Progresso` contam tarefas. Run parada pelo dono não é falha. O cartão de tarefas do repositório na página do projeto usa a mesma contagem.
 
 Dado que a fonte não existe mostra `sem dados`, nunca um número.
 
@@ -1338,6 +1345,20 @@ Ordem da linha: tarefas mescladas · em andamento · bloqueadas · **atividade**
 - A entrega só se valida quando a run termina sem tarefa bloqueada. Com tarefa bloqueada, "Concluir especificação" e "Relatar problema" ficam desabilitados e a nota diz quantas tarefas estão bloqueadas.
 - "Abrir aplicação" aparece só quando o serviço responde com página web (ou é front). "Abrir Swagger" aparece só quando o caminho de documentação declarado no plano responde com sucesso.
 - A run que terminou com tarefa bloqueada mostra "Enviar para o agente corrigir". Reinicia só as tarefas bloqueadas; o que já foi mesclado fica. Com "Autorizo os agentes a tomar decisões: Sim", a run volta sozinha ao agente até 3 vezes antes de parar.
+
+### 27.5 Excluir projeto
+
+Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Ação destrutiva e irreversível, então o verbo vai no botão e nunca há "OK".
+
+- **Passo 1, só quando o projeto tem repositório no GitHub.** Título "Excluir projeto?", nome do projeto em `confirm-subject`, depois "Repositórios no GitHub" com a lista `owner/name` de cada repositório (projeto e serviços). Checkbox "Apagar também no GitHub", desmarcado por padrão. Botão "Continuar". Sem repositório no GitHub, o passo 1 some e a exclusão começa no passo 2.
+- **Passo 2, confirmação.** Título "Confirmar exclusão". Resumo: specs, execuções e arquivos locais; com o checkbox marcado, "N repositórios no GitHub" e a lista; "Execuções em andamento são paradas"; "Não pode ser desfeito". Campo para digitar o nome do projeto, exigido sempre: o botão "Excluir projeto" fica desabilitado até o texto bater com o nome. Botões: ✕ (cancelar, foco inicial) e "Excluir projeto".
+- **Aviso antes de começar.** No passo 2, em bloco próprio logo abaixo do resumo, com borda e cor de perigo: "Depois que a exclusão começar, não tem como cancelar."
+- **Repositórios.** No passo 1, o título "Repositórios no GitHub (N)" com a contagem. No passo 2, "Também serão apagados no GitHub (N)" com a lista quando o checkbox está marcado, e "Os repositórios no GitHub não serão apagados." quando não está. O ícone do passo 1 é a lixeira, porque a etapa já trata de exclusão.
+- **Em background.** Ao confirmar, o diálogo fecha e a exclusão roda em background. O botão Excluir do cartão mostra um spinner no lugar do ícone e fica com `aria-disabled` (sem perder o foco); "Abrir" e "Nova spec" desse cartão ficam inativos até a exclusão terminar. Ao fechar ou confirmar, o foco volta ao botão Excluir do cartão. A página mostra "O projeto <id> está sendo excluído em background." enquanto a exclusão roda. A exclusão segue no servidor mesmo se a página for fechada. O servidor guarda quais projetos estão sendo excluídos (`GET /api/project-deletions`), então ao recarregar a página o spinner e o aviso voltam, e um segundo DELETE do mesmo projeto responde 409.
+- **Erro na exclusão.** Falha do servidor aparece na página, em `role="alert"`, com o id do projeto e o motivo (por exemplo, o repositório que falhou no GitHub e o comando `gh auth refresh -h github.com -s delete_repo`). O spinner some e o projeto continua na lista.
+- **Erro ao listar repositórios.** Aparece dentro do diálogo, e a exclusão segue só com os arquivos locais.
+- **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
+- Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
 
 ## 28. Copy
 

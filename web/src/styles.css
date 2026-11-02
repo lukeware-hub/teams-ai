@@ -328,7 +328,18 @@ td.num { color: var(--ink); font-weight: 500; }
 .confirm-danger { border-color: transparent; color: var(--on-bad); background: var(--bad); box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.18); }
 .confirm-danger:hover:not(:disabled) { background: var(--bad); filter: brightness(0.93); }
 .confirm-danger:focus-visible { outline-color: var(--bad); }
-.dialog-backdrop:has(.confirm) { backdrop-filter: blur(6px); animation: backdrop-in 180ms ease-out; }
+.confirm-detail { display: grid; gap: 0.625rem; width: 100%; margin-top: 0.75rem; text-align: left; }
+.confirm-detail p { margin: 0; }
+.confirm-detail .error { margin: 0; font-size: 0.875rem; }
+.confirm-check { display: flex; align-items: center; gap: 0.5rem; color: var(--ink); font-size: 0.875rem; font-weight: 550; }
+.confirm-repos { display: grid; gap: 0.25rem; max-height: 11rem; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.confirm-repos code { color: var(--ink-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.confirm-field { display: grid; gap: 0.375rem; color: var(--ink-soft); font-size: 0.8125rem; }
+.confirm-field input { width: 100%; }
+.confirm-field code { overflow-wrap: anywhere; }
+.confirm-label { margin: 0; color: var(--ink); font-size: 0.8125rem; font-weight: 600; text-align: left; }
+.confirm-warning { margin: 0; padding: 0.5rem 0.75rem; border: 1px solid var(--bad-line); border-radius: 10px; color: var(--bad); background: var(--bad-soft); font-size: 0.8125rem; font-weight: 600; text-align: left; }
+.dialog-backdrop:has(.confirm) { backdrop-filter: blur(6px); animation: backdrop-in 180ms ease-out; align-items: safe center; overflow-y: auto; }
 @keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
 @keyframes backdrop-in { from { opacity: 0; } }
 @keyframes dialog-in { from { opacity: 0; transform: scale(0.96); } }
@@ -426,6 +437,7 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 
 @media (pointer: coarse) {
   .info-tip, .dialog-close { position: relative; }
+  .confirm-actions button { min-height: 2.75rem; }
   .info-tip::after, .dialog-close::after { content: ''; position: absolute; inset: -13px; }
   .refine-breadcrumb a { position: relative; }
   .refine-breadcrumb a::after { content: ''; position: absolute; inset: -12px -4px; }

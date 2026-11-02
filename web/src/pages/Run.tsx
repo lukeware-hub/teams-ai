@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
 import { runApi, startedPath, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -16,6 +16,7 @@ import { TaskDetail } from '../components/TaskDetail.js';
 import { Workspace } from '../components/Workspace.js';
 import { type BlockExplanation, type ModelUse, blockExplanation, cascadeBlockers, currentActivity, evidence, explainPhase, finishedEvent, formatDuration, groupCauses, lastDeployFailure, liveBlocked, mergedPrs, pausedUntil, phaseActivity, phases, phaseState, phaseTitle, problemItems, rootBlockers, runState, stepDoing, stopBefore, stopSummary, taskDetail, tokens, type ActivityItem, type PhaseRow, type StopOwner } from '../run/selectors.js';
 import { useTestLinks } from '../run/useTestLinks.js';
+import { ROLE_LABEL } from '../run/roles.js';
 import { useJournal } from '../useSse.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
@@ -71,7 +72,6 @@ const steps = (n: number) => `${n} ${n === 1 ? 'etapa' : 'etapas'}`;
 // Journal keys of the token breakdown by phase; any other key shows as recorded.
 const PHASE_LABEL: Record<string, string> = { decide: 'Decisões automáticas', phase: 'Especificação, plano e relatório', phase3: 'Tarefas' };
 // Journal role ids. The id stays beside the name because plan owners and step rows on this screen use it.
-const ROLE_LABEL: Record<string, string> = { dev: 'Desenvolvimento', front: 'Front-end', sm: 'Scrum Master', po: 'Product Owner', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', system1: 'Decisões automáticas' };
 const TIP = {
   merged: 'Tarefas cujo pull request já entrou na branch main. A barra mostra a mesma proporção.',
   steps: 'Cada chamada a um agente (Dev, Scrum Master, revisão, segurança) ou decisão automática conta como uma etapa.',
@@ -613,6 +613,17 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const activity = phaseActivity(unique);
   // The trigger gets focus back when the dialog closes.
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
+  // A link from the repository dashboard names the task to open: `?task=<id>` opens its dialog once, then the parameter goes.
+  const [params, setParams] = useSearchParams();
+  const wantedTask = params.get('task');
+  useEffect(() => {
+    if (wantedTask === null || opened !== null || !state.tasks.has(wantedTask)) return;
+    setOpened({ kind: 'task', taskId: wantedTask, opener: document.body });
+    setParams((p) => {
+      p.delete('task');
+      return p;
+    }, { replace: true });
+  }, [wantedTask, opened, state.tasks]);
   const openDetail = (target: DetailTarget) => (e: ReactMouseEvent<HTMLButtonElement>) => setOpened({ ...target, opener: e.currentTarget });
   // Once the process is gone, the tasks in flight form one interrupted group in place of the running ones.
   const groupOf = (s: string) => (interruptedRun && IN_FLIGHT.has(s) ? 'interrupted' : s);

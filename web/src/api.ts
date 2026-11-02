@@ -1,4 +1,6 @@
 import type { Divergence } from '@server/refine/checklist';
+import type { RepoDashboard } from '@server/api/repository-dashboard.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
 import type { DocsSyncView } from '@server/refine/docs-sync';
@@ -22,9 +24,17 @@ export type SessionState =
 export type Cli = 'claude' | 'gh';
 
 const P = '/api/onboarding';
+/** A request the server answered with an error: its message, and the status it answered with. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 async function json<T>(res: Response): Promise<T> {
   const body = (await res.json().catch(() => ({}))) as T & { error?: string }; // a non-JSON body still reports the status
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(body.error ?? `HTTP ${res.status}`, res.status);
   return body;
 }
 export const api = {
@@ -281,9 +291,12 @@ export interface RepoDetailView extends RepoCardView {
 export const runApi = {
   repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
+  repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
-  deleteProject: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
+  deleteProject: (projectId: string, deleteGithub: boolean) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub }) }).then((r) => json<{ deleted: true }>(r)),
+  githubRepos: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/github-repos`).then((r) => json<{ repos: string[] }>(r)).then((b) => b.repos),
+  deletingProjects: () => fetch(`${R}/project-deletions`).then((r) => json<{ deleting: string[] }>(r)).then((b) => b.deleting),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   docs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/docs`).then((r) => json<{ docs: ProjectDoc[] }>(r)),
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */
@@ -454,7 +467,7 @@ export interface ProgramViewItem {
   key: string;
   rank: number;
   dependsOn: string[];
-  status: 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
+  status: 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
   runId: string | null;
   completeRunId: string | null;
   startedAt: string | null;

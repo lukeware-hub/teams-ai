@@ -486,13 +486,14 @@ describe('project apps', () => {
     view({ web: 'http://h:20052', swagger: null }, project);
     expect(screen.queryByTestId('project-apps')).toBeNull();
   });
-  it('appLinks needs the service online; Web UI also needs a page on its root', () => {
+  it('appLinks needs the service online; Web UI also needs a page on its root; Swagger needs its path to answer now', () => {
     const service = { url: 'http://dind:20052', healthcheck: 'ok', smoke: [], port: 20052, kind: 'api' as const, docsPath: '/docs' };
     const report = { service } as unknown as Parameters<typeof appLinks>[0];
     const at = (s: object) => appLinks(report, { checkedAt: '', status: 200, online: false, ...s }, 'h');
-    expect(at({ online: true, ui: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
-    expect(at({ online: true, ui: false })).toEqual({ swagger: 'http://h:20052/docs', web: null });
-    expect(at({ online: false, ui: true })).toEqual({ swagger: null, web: null });
+    expect(at({ online: true, ui: true, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
+    expect(at({ online: true, ui: false, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: null });
+    expect(at({ online: true, ui: true, docs: false })).toEqual({ swagger: null, web: 'http://h:20052' });
+    expect(at({ online: false, ui: true, docs: true })).toEqual({ swagger: null, web: null });
   });
 });
 
@@ -526,8 +527,8 @@ describe('the backlog banner on the project page', () => {
   afterEach(() => vi.restoreAllMocks());
 });
 
-describe('the attention banner', () => {
-  it('shows a run that waits for the owner, with a button to open it', () => {
+describe('the runs table on the project page', () => {
+  it('shows a run that waits for the owner only in the table, with no banner above it', () => {
     const o = on();
     const waiting = [row({ runId: 'hello-003-r1', specId: 'hello-003', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-25T10:00:00.000Z', tokens: 10, cost: 0.01, stoppable: false })];
     render(
@@ -535,9 +536,8 @@ describe('the attention banner', () => {
         <ProjectHubView project={project} notFound={false} runs={waiting} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
-    const banner = screen.getByTestId('attention-banner');
-    expect(banner.textContent).toContain('hello-003');
-    expect(banner.textContent).toContain('Precisa de você');
-    expect(within(banner).getByRole('link', { name: 'Abrir run' })).toBeTruthy();
+    expect(screen.queryByTestId('attention-banner')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Abrir run' })).toBeNull();
+    expect(screen.getByTitle('hello-003-r1').getAttribute('href')).toBe('/runs/hello-003-r1');
   });
 });

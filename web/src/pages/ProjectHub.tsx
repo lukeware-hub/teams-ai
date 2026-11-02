@@ -94,29 +94,11 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
     const own = status.services?.find((x) => x.service === s.service) ?? status;
     if (!own.online) continue;
     const links = serviceLinks(s, hostname);
-    found.swagger ??= links.docsUrl;
+    // The documentation link needs its path to answer now, not only a path the old report declares.
+    if (own.docs) found.swagger ??= links.docsUrl;
     if (own.ui) found.web ??= links.appUrl;
   }
   return found;
-}
-
-/** Runs that stop and wait for the owner: blocked, deadlocked, or awaiting validation. */
-const NEEDS_OWNER = new Set(['blocked', 'deadlocked', 'awaiting-validation']);
-
-/** The yellow strip at the top of the project: one line per run that waits for the owner, with a button to open it. */
-function AttentionBanner({ runs }: { runs: RunRow[] }) {
-  const waiting = runs.filter((r) => NEEDS_OWNER.has(r.status));
-  if (waiting.length === 0) return null;
-  return (
-    <div className="grid gap-2" role="status" data-testid="attention-banner">
-      {waiting.map((r) => (
-        <div key={r.runId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn-line bg-warn-soft px-4 py-3">
-          <span className="text-[0.9375rem] text-warn">{runName(r)} de {r.specId}: {LABEL[r.status] ?? r.status}. Precisa de você.</span>
-          <Link className={action.primary} to={`/runs/${r.runId}`}>Abrir run</Link>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export function ProjectHubView(p: {
@@ -342,7 +324,6 @@ export function ProjectHubView(p: {
           )}
         </div>
       </section>
-      <AttentionBanner runs={p.runs} />
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
           <div className={section}>

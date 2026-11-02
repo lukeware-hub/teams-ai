@@ -30,6 +30,8 @@ export interface RepoSpec {
   dependsOn: string[];
   plan: boolean;
   tasks: number;
+  /** Tasks the journals of the spec's runs deliver on main; absent when no journal was read for the spec. */
+  delivered?: number;
   /** Fix tasks the orchestrator added in the spec's runs (Phase 4), counted apart from the planned tasks. */
   fixes?: number;
   /** Deploy-fix tasks the orchestrator added in the spec's runs (Phase 5), counted apart from the planned tasks. */
@@ -59,7 +61,7 @@ export interface RepoCard {
   specs: number;
   plans: number;
   tasks: number;
-  /** Tasks of the specs delivered on main: a task counts done when its spec is done. */
+  /** Tasks delivered on main, read from the journals; a spec with no journal counts its tasks when it is done. */
   tasksDone: number;
   /** Fix tasks of the repository's runs, apart from the planned tasks. */
   fixes: number;
@@ -95,7 +97,6 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
   const ctx = repositoryContext(src.architecture, name);
   if (!ctx) return null;
   const rows = rowsOf(src, name);
-  const delivered = rows.filter((r) => r.status === 'done');
   const keys = new Set(rows.map((r) => r.key).filter((k): k is string => k !== null));
   const questions = (src.questions ?? []).filter((q) => q.itemKey !== null && keys.has(q.itemKey)).length;
   return {
@@ -106,7 +107,7 @@ function cardOf(src: RepoSource, name: string): RepoCard | null {
     specs: rows.length,
     plans: rows.filter((r) => r.plan).length,
     tasks: rows.reduce((sum, r) => sum + r.tasks, 0),
-    tasksDone: delivered.reduce((sum, r) => sum + r.tasks, 0),
+    tasksDone: rows.reduce((sum, r) => sum + (r.delivered ?? (r.status === 'done' ? r.tasks : 0)), 0),
     fixes: rows.reduce((sum, r) => sum + (r.fixes ?? 0), 0),
     deployFixes: rows.reduce((sum, r) => sum + (r.deployFixes ?? 0), 0),
     blockers: rows.filter((r) => r.blocked || r.status.startsWith('paused:')).length + questions,

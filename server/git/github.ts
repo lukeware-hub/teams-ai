@@ -81,6 +81,12 @@ async function reconcileRemote(cwd: string, url: string, exec: Exec): Promise<vo
   }
 }
 
+/** Deletes a repository on GitHub. One already gone counts as deleted, so a retry after a partial delete goes on. */
+export async function deleteRepo(input: { fullName: string; cwd: string }, exec: Exec): Promise<void> {
+  const r = await gh(input.cwd, ['repo', 'delete', input.fullName, '--yes'], exec);
+  if (r.exitCode !== 0 && !NOT_FOUND.test(r.stderr)) throw new GitHubError(`gh repo delete ${input.fullName} failed (${r.exitCode}): ${r.stderr.trim()}`);
+}
+
 export async function ensurePr(
   input: { cwd: string; head: string; base: string; title: string; body: string },
   exec: Exec,

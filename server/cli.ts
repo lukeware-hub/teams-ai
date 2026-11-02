@@ -36,7 +36,7 @@ import { chatRoutes } from './api/chat-routes.js';
 import { ChatService } from './chat/service.js';
 import { isConfidential } from './chat/confidential.js';
 import { ChatStore } from './chat/store.js';
-import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
+import { readProject, runsDir, writePid, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
@@ -197,7 +197,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,
@@ -442,6 +442,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     // new run of the spec, and 'stop' ends here. A blocked run the owner let the agents decide goes back to them first.
     let next: 'stop' | 'return' | 'successor' = 'stop';
     for (let turn = 1; ; turn++) {
+      // The run before closed the knowledge index with its run: a later turn of this process opens it again.
+      if (turn > 1 && deps) deps.knowledge = await openProjectKnowledge(deps.ws.knowledgeDb, projectDir);
       const run = manual
         ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
         : await factory(deps, runId, turn === 1 ? explicitId : undefined);
@@ -449,6 +451,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       // A resumed run is a fresh process that continues it, as Retomar does.
       if (next === 'return') await run.retryBlocked({ auto: true });
       runId = run.runId;
+      // A run this process carries on (a return or a successor) is alive exactly as long as this process: its pid is this one.
+      if (turn > 1 && deps) await writePid(deps.ws.runs, run.runId, process.pid);
       io.stderr(next === 'successor' ? `run ${run.runId} started by the agents, as the next run of the spec` : next === 'return' ? `run ${run.runId} sent back to the agents` : `run ${run.runId} started`);
       const off = (hooks.signals ?? realSignals)(() => {
         io.stderr('stop requested: draining');

@@ -146,7 +146,7 @@ describe('program service outcomes', () => {
 });
 
 describe('program service tick', () => {
-  it('delivers a spec to completion: marks the draft spec awaiting-validation, then launches the complete run', async () => {
+  it('a delivered spec waits for the owner to validate it: the program launches no complete run', async () => {
     const spec = makeFrozenSpec({ specId: 'd-a' });
     const specFile = path.join(root, 'draft', 'docs', 'specs', 'd-a', 'spec.json');
     await fs.mkdir(path.dirname(specFile), { recursive: true });
@@ -155,10 +155,9 @@ describe('program service tick', () => {
     await journal('d-a-r1', [started('d-a'), finished('awaiting-validation')]);
     const s = service();
     const program = await s.tick('shop', 'd');
-    expect(program!.items[0]).toMatchObject({ status: 'completing', completeRunId: 'shop--d-a--complete-run-1' });
-    expect(JSON.parse(await fs.readFile(specFile, 'utf8')).status).toBe('awaiting-validation');
-    expect(spawned.map((x) => x.args.slice(1, 4))).toEqual([['spec', 'complete', '--project']]);
-    expect(JSON.parse(await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8')).items[0].status).toBe('completing');
+    expect(program!.items[0]).toMatchObject({ status: 'delivered', completeRunId: null });
+    expect(spawned).toEqual([]);
+    expect(JSON.parse(await fs.readFile(path.join(root, 'draft', 'program.json'), 'utf8')).items[0].status).toBe('delivered');
   });
 
   it('redacts a secret in the log tail of a launch that failed (audit M3)', async () => {

@@ -1,37 +1,63 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { runApi, type RepoDetailView } from '../api.js';
-import { Icon } from '../components/Icons.js';
-import { panel, sectionHeading, sectionTitle } from './project-shared.js';
+import { ApiError, runApi, type RepoDashboard, type RepoDetailView } from '../api.js';
+import { usePolling } from '../usePolling.js';
+import { action, panel, sectionHeading, sectionTitle } from './project-shared.js';
+import { AgentActivity } from './repository/AgentActivity.js';
+import { DeliveryBoard } from './repository/DeliveryBoard.js';
+import { FailuresBlockers } from './repository/FailuresBlockers.js';
+import { IndicatorCards } from './repository/IndicatorCards.js';
+import { RepoHeader } from './repository/RepoHeader.js';
+import { RunsTable } from './repository/RunsTable.js';
+import { Timeline } from './repository/Timeline.js';
 
-const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
-  blocked: 'Bloqueado',
-  running: 'Em execução',
-  waiting: 'Aguardando você',
-  refining: 'Em refinamento',
-  done: 'Concluído',
-  empty: 'Sem specs',
-};
+const POLL_MS = 5000;
 
-const KIND_LABEL: Record<string, string> = { api: 'API', jobs: 'Workers', web: 'Web', mobile: 'Mobile', workflow: 'Workflow', monolith: 'Monólito' };
-
-/** A repository's dashboard, built from the real read model: a value the data does not have reads "sem dados". */
+/** A repository's dashboard: its state and shortcuts, its indicators, its specs, what each agent did, its runs and its timeline. */
 export function RepositoryPage() {
   const { projectId = '', repoId = '' } = useParams<{ projectId: string; repoId: string }>();
   const [detail, setDetail] = useState<RepoDetailView | null | undefined>(undefined);
+  // Why there is no detail: the server does not know the repository, or the request failed.
+  const [failure, setFailure] = useState<'missing' | 'failed' | null>(null);
+  const [dashboard, setDashboard] = useState<RepoDashboard | null | undefined>(undefined);
 
-  useEffect(() => {
-    let alive = true;
-    runApi.repository(projectId, repoId).then(
-      (d) => alive && setDetail(d),
-      () => alive && setDetail(null),
+  const loadDetail = useCallback(() => {
+    setDetail(undefined);
+    setFailure(null);
+    return runApi.repository(projectId, repoId).then(
+      (d) => setDetail(d),
+      (err: unknown) => {
+        setDetail(null);
+        setFailure(err instanceof ApiError && err.status === 404 ? 'missing' : 'failed');
+      },
     );
-    return () => {
-      alive = false;
-    };
   }, [projectId, repoId]);
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
+
+  // A failed refresh keeps the last dashboard on screen; only a first failure reads as no data.
+  const loadDashboard = useCallback(
+    () => runApi.repositoryDashboard(projectId, repoId).then(setDashboard, () => setDashboard((prev) => (prev === undefined ? null : prev))),
+    [projectId, repoId],
+  );
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+  usePolling(loadDashboard, POLL_MS);
 
   if (detail === undefined) return <p className="hint" role="status">Carregando o repositório…</p>;
+  if (detail === null && failure === 'failed') {
+    return (
+      <section className={panel} data-testid="repo-error">
+        <h1 className="m-0 text-[1.25rem] font-semibold">Não foi possível carregar o repositório.</h1>
+        <p className="hint">Verifique a conexão com o servidor e tente de novo.</p>
+        <button type="button" className={action.secondary} onClick={() => void loadDetail()}>
+          Tentar de novo
+        </button>
+      </section>
+    );
+  }
   if (detail === null) {
     return (
       <section className={panel} data-testid="repo-missing">
@@ -42,99 +68,38 @@ export function RepositoryPage() {
     );
   }
 
-  const done = detail.rows.filter((r) => r.status === 'done').reduce((sum, r) => sum + r.tasks, 0);
   return (
     <div className="grid min-w-0 gap-4" data-testid="repo-page">
       <nav aria-label="Migalhas" className="hint">
         <Link to="/">Projetos</Link> › <Link to={`/projects/${encodeURIComponent(projectId)}`}>{projectId}</Link> › <span>{detail.name}</span>
       </nav>
+      <RepoHeader detail={detail} projectId={projectId} deploy={dashboard?.lastDeploy ?? null} />
+      {dashboard === undefined && <p className="hint" role="status">Carregando os indicadores…</p>}
+      {dashboard === null && <p className="hint">sem dados: os indicadores deste repositório não puderam ser lidos.</p>}
+      {dashboard && (
+        <>
+          <IndicatorCards dashboard={dashboard} />
+          <DeliveryBoard specs={dashboard.specs} tasks={dashboard.tasks.list} />
+          <AgentActivity agents={dashboard.agents} />
+          <RunsTable runs={dashboard.runs} />
+          <FailuresBlockers failures={dashboard.failures} blockers={dashboard.blockers} />
+        </>
+      )}
       <section className={panel}>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
-          <span className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
-          <span className="count-pill" data-testid="repo-status">{STATUS_LABEL[detail.status]}</span>
+        <div className={sectionTitle}>
+          <h2 className={sectionHeading}>Integrações</h2>
         </div>
-        <p className="hint">{detail.responsibility}</p>
-      </section>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5" data-testid="repo-stats">
-        <Stat label="Specs" value={String(detail.specs)} />
-        <Stat label="Planos" value={String(detail.plans)} />
-        <Stat label="Tarefas" value={String(detail.tasks)} />
-        <Stat label="Concluídas" value={`${done} de ${detail.tasks}`} />
-        <Stat label="Bloqueios" value={String(detail.blockers)} />
-      </div>
-      <section className={panel}>
-        <div className={sectionTitle}><h2 className={sectionHeading}>Integrações</h2></div>
         {detail.integrations.length > 0 ? (
           <ul className="m-0 grid list-none gap-1 p-0 text-[0.875rem]">
-            {detail.integrations.map((link) => <li key={link}>{link}</li>)}
+            {detail.integrations.map((link) => (
+              <li key={link}>{link}</li>
+            ))}
           </ul>
         ) : (
           <p className="hint">Nenhuma integração.</p>
         )}
       </section>
-      <section className={panel} data-testid="repo-specs">
-        <div className={sectionTitle}><h2 className={sectionHeading}>Especificações</h2></div>
-        {detail.rows.length === 0 ? (
-          <p className="hint">Nenhuma spec neste repositório.</p>
-        ) : (
-          <div className="-mx-1 overflow-x-auto">
-          <table className="w-full text-[0.8125rem]">
-            <thead>
-              <tr className="text-left text-ink-soft">
-                <th scope="col">Spec</th>
-                <th scope="col">Prioridade</th>
-                <th scope="col">Estado</th>
-                <th scope="col">Plano</th>
-                <th scope="col">Tarefas</th>
-                <th scope="col">Depende de</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.rows.map((row) => (
-                <tr key={row.specId} data-testid={`repo-spec-${row.specId}`}>
-                  <td>{row.title ?? row.specId}</td>
-                  <td>{row.priority ?? 'sem dados'}</td>
-                  <td>{row.blocked ? 'Bloqueada' : row.status}</td>
-                  <td>{row.plan ? 'Sim' : 'Não'}</td>
-                  <td>{`${row.status === 'done' ? row.tasks : 0} de ${row.tasks}`}</td>
-                  <td>{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        )}
-      </section>
-      {detail.rows.some((r) => r.blocked) && (
-        <section className={panel} data-testid="repo-blocked">
-          <div className={sectionTitle}><h2 className={sectionHeading}>Falhas de execução</h2></div>
-          <ul className="m-0 grid list-none gap-1 p-0 text-[0.875rem]">
-            {detail.rows.filter((r) => r.blocked).map((r) => <li key={r.specId}>{r.title ?? r.specId}</li>)}
-          </ul>
-        </section>
-      )}
-      <details className={panel} data-testid="repo-history">
-        <summary className="cursor-pointer font-semibold">Histórico (últimos {detail.history.length} eventos)</summary>
-        {detail.history.length === 0 ? (
-          <p className="hint">sem dados</p>
-        ) : (
-          <ol className="m-0 grid list-none gap-1 p-0 text-[0.8125rem]">
-            {detail.history.map((e, i) => (
-              <li key={i}><Icon name="clock" size={12} /> {e.at} · {e.specId} · {e.type}</li>
-            ))}
-          </ol>
-        )}
-      </details>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="card grid gap-1 p-3">
-      <span className="hint">{label}</span>
-      <strong className="text-[1.125rem]">{value}</strong>
+      {dashboard && <Timeline timeline={dashboard.timeline} />}
     </div>
   );
 }
