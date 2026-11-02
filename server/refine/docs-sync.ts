@@ -40,6 +40,8 @@ export class DocsSync {
   private pending = 0;
   private labels: string[] = [];
   private lastError: string | null = null;
+  /** Set by a run the store refused; only a run without a refusal clears it. */
+  private refused = false;
   private queued = false;
   private chain: Promise<void> = Promise.resolve();
 
@@ -138,11 +140,11 @@ export class DocsSync {
     this.lastError = null;
   }
 
-  /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary. */
+  /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary; a failure stays while a change is pending or a document is refused. */
   private async pushLocal(): Promise<void> {
     try {
       await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
-      this.lastError = null;
+      if (this.pending === 0 && !this.refused) this.lastError = null;
     } catch (err) {
       this.lastError = messageOf(err);
     }
@@ -150,6 +152,7 @@ export class DocsSync {
 
   /** Commits the projection and pushes it; the labels stay while a document is refused, so the next flush tries it again. */
   private async run(): Promise<void> {
+    this.refused = false;
     try {
       const store = await openStore(this.input.ws, this.input.style, this.input.exec);
       const seen = { pending: this.pending, labels: this.labels.length };
@@ -159,6 +162,7 @@ export class DocsSync {
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
       await pushLocalCommits(store);
       if (refused.length > 0) {
+        this.refused = true;
         this.lastError = refusedMessage(refused);
         return;
       }

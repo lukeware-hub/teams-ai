@@ -143,6 +143,30 @@ describe('DocsSync keeps a refused flush out of history', () => {
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
+
+  it('a retry that only pushes keeps the refusal until the refused document is committed', async () => {
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side',
+      files: { 'docs/project.md': 'theirs\n' }, bases: { 'docs/project.md': '# project.md\n' },
+    });
+    const s = sync();
+    await edit('project.md', 'mine\n');
+    s.edit();
+    await edit('stack.md', 'stack changed\n');
+    s.edit();
+    await s.flush();
+    const refusal = s.view.lastError;
+    expect(refusal).toContain('docs/project.md');
+    await s.tick();
+    expect(s.view).toEqual({ pending: 2, lastError: refusal });
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side undone',
+      files: { 'docs/project.md': '# project.md\n' },
+    });
+    await s.flush();
+    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
+  });
 });
 
 describe('DocsSync retries only a pending boundary', () => {
@@ -214,5 +238,29 @@ describe('DocsSync publishes the start tags in turn with the closings', () => {
     release();
     await Promise.all([tagging, closing]);
     expect(await readClosingRecord(ws, draft.specId)).toMatchObject({ aliases: ['hello-app-002'], pendingTags: ['dev-start/hello-app-002'] });
+  });
+});
+
+describe('DocsSync keeps a refusal at open when no change is pending', () => {
+  it('a tick that pushes accepted commits keeps the refusal, and a run without a refusal clears it', async () => {
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side',
+      files: { 'docs/project.md': 'theirs\n' }, bases: { 'docs/project.md': '# project.md\n' },
+    });
+    const s = sync();
+    await edit('project.md', 'mine\n');
+    await edit('stack.md', 'stack changed\n');
+    await s.flush();
+    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md') });
+    expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
+    await s.tick();
+    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md') });
+    await commitProjection(storeOf(ws, 'monolith', exec), {
+      draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side undone',
+      files: { 'docs/project.md': '# project.md\n' },
+    });
+    await s.flush();
+    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
 });
