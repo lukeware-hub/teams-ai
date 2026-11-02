@@ -3,11 +3,22 @@ import type { SpecDecision } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { RepositoryContext } from '../contracts/architecture.js';
-import { planFileOf, taskFileOf } from './plan-file.js';
+import { legacyPath, SPEC_FILES, type Kind } from '../docs/layout.js';
 import { ADJUST_NOTE, PLAN_INPUTS, questionLedger } from './plan-inputs.js';
 import type { QuestionRow } from './state.js';
 
+/** The layout a pack names the spec files by: the legacy docs/specs folder, or the bare names of a documentation-repository spec folder. */
+export type PackLayout = 'legacy' | 'docs-repo';
+
+/** How a pack names one file of a spec: its repository path in the legacy layout, its bare name in a documentation-repository folder. */
+const fileRef = (layout: PackLayout, kind: Kind, specId: string): string => (layout === 'legacy' ? legacyPath(kind, specId) : SPEC_FILES[kind]);
+
+/** The rule that keeps a documentation-repository spec folder to its three files. */
+const ONLY_SPEC_FILES = '- Never create other doc files: the spec folder holds spec.md, plan.md and task.md only.';
+
 export interface PlanPackInput {
+  /** The layout of the spec files the pack names; legacy when absent. */
+  layout?: PackLayout;
   specHash: string;
   /** The folder of the six Markdown inputs, relative to the step's folder. */
   inputDir: string;
@@ -43,13 +54,15 @@ export function repositoryNote(repo: RepositoryContext): string {
 /** The plan of one backlog item: the writing-plans skill runs unattended in the staging folder and writes only the plan file. */
 export function planPack(input: PlanPackInput): ContextPackInput {
   const inputs = PLAN_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
-  const file = planFileOf(input.specId);
+  const layout = input.layout ?? 'legacy';
+  const file = fileRef(layout, 'plan', input.specId);
   const feedback = [
     `Write the implementation plan of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}", with the writing-plans skill of Superpowers: load it with the Skill tool and follow it, with the overrides below.`,
     '- Nobody is present: never stop to ask a question in the chat. Answer the handoff question of the skill "no": no execution choice, no commit, no worktree, no subagent and no other skill.',
     `- Your inputs are these six Markdown files, read with the Read tool: ${inputs}. The spec is the section "## ${input.key}: ${input.title}" of specs.md, with its acceptance criteria and its pre-plan. Every criterion id of that section must be named in a task's **Criteria:** line: ${input.criteria.join(', ')}.`,
     `- Save the plan to ${file} in this folder, and write no other file. Never change the inputs or .claude/.`,
-    `- The header of the plan is the title, then **Goal:**, **Architecture:**, **Tech Stack:** and **Spec:** (the repository path docs/specs/${input.specId}/spec.md, the spec the plan implements), then ## Global Constraints (the project principles and the stack values, copied exactly), then ## Review Focus (up to five lines, each one a case the spec implies with the behavior a reasonable person expects, citing the document it comes from or marked as an assumption).`,
+    ...(layout === 'docs-repo' ? [ONLY_SPEC_FILES] : []),
+    `- The header of the plan is the title, then **Goal:**, **Architecture:**, **Tech Stack:** and **Spec:** (${layout === 'legacy' ? 'the repository path' : 'the relative link'} ${fileRef(layout, 'spec', input.specId)}, the spec the plan implements), then ## Global Constraints (the project principles and the stack values, copied exactly), then ## Review Focus (up to five lines, each one a case the spec implies with the behavior a reasonable person expects, citing the document it comes from or marked as an assumption).`,
     '- Each task is a "### Task N: <name>" block with **Files:** (the paths it creates or changes), **Criteria:** (the ids it delivers, separated by commas), its interfaces, and its test-first steps. Leave out commit, git and worktree steps.',
     "- A fact or a rule comes from the six files or from the owner's decisions, and the plan cites the file for it. Never invent a business rule, and never change existing behavior to follow good practice, unless a failing test or a security fix requires it.",
     '- When nothing settles a point, take the smallest choice that changes nothing else, and record it under ## Assumptions as a bullet ending with "Reason: <why no document settles it>". An assumption is never presented as a fact.',
@@ -68,6 +81,8 @@ ${input.graphContext}`] : []),
 }
 
 export interface TaskPackInput {
+  /** The layout of the spec files the pack names; legacy when absent. */
+  layout?: PackLayout;
   specHash: string;
   /** The folder of the six Markdown inputs, relative to the step's folder. */
   inputDir: string;
@@ -84,11 +99,13 @@ export interface TaskPackInput {
 /** The task list of one spec: QA writes it from the plan in the staging folder, one entry per plan task, each proven by its criteria. */
 export function taskPack(input: TaskPackInput): ContextPackInput {
   const inputs = PLAN_INPUTS.map((file) => path.posix.join(input.inputDir, file)).join(', ');
+  const layout = input.layout ?? 'legacy';
   const feedback = [
-    `Write the task list of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}". Read the implementation plan docs/specs/${input.specId}/implementation-plan.md in this folder, and the six Markdown inputs read with the Read tool: ${inputs}.`,
+    `Write the task list of the spec ${input.specId}, the backlog item "${input.key}: ${input.title}". Read the implementation plan ${fileRef(layout, 'plan', input.specId)} in this folder, and the six Markdown inputs read with the Read tool: ${inputs}.`,
     `- ${skillClause('superpowers:writing-plans')} Use it for the granularity of the entries.`,
-    `- Write only ${taskFileOf(input.specId)} in this folder, and never change the plan, the inputs or .claude/.`,
-    `- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (docs/specs/${input.specId}/spec.md), **Plan:** (docs/specs/${input.specId}/implementation-plan.md), **Repository:**${input.repository ? ` (${input.repository.name})` : ''}, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.`,
+    `- Write only ${fileRef(layout, 'task', input.specId)} in this folder, and never change the plan, the inputs or .claude/.`,
+    ...(layout === 'docs-repo' ? [ONLY_SPEC_FILES] : []),
+    `- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (${fileRef(layout, 'spec', input.specId)}), **Plan:** (${fileRef(layout, 'plan', input.specId)}), **Repository:**${input.repository ? ` (${input.repository.name})` : ''}, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.`,
     '- Every criterion id of the spec must appear in at least one entry. Never invent a criterion, and never invent a business rule: a fact comes from the six files, and the entry cites the file for it.',
     '- Each entry says which of the spec\'s business rules it keeps, under **Business rules preserved:**, and lists its dependencies under **Dependencies:** as task numbers.',
     ...(input.graphContext ? [`### Graph context

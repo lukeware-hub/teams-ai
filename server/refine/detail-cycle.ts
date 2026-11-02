@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ConflictsOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
 import { Governor } from '../budget/governor.js';
+import { writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Preplan } from '../contracts/preplan.js';
@@ -57,9 +58,9 @@ const readJson = (file: string): Promise<unknown> => fs.readFile(file, 'utf8').t
 async function writeItemSpec(draft: Draft, spec: Spec, status: 'refining' | 'planned'): Promise<void> {
   const dir = itemDir(draft, spec.specId);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.posix.join(dir, 'spec.json'), json({ ...spec, status }));
+  await writeFileAtomic(path.posix.join(dir, 'spec.json'), json({ ...spec, status }));
   const sources = (spec.derivedFrom?.sources ?? []).map((s) => `${s.doc} › ${s.heading}${s.hash ? ` (${s.hash.slice(0, 15)}…)` : ''}`).join('; ');
-  await fs.writeFile(path.posix.join(dir, 'spec.md'), `> Gerado pelo teams-ai a partir de spec.json; não edite. Fontes: ${sources}\n\n${renderBriefMd(spec)}`);
+  await writeFileAtomic(path.posix.join(dir, 'spec.md'), `> Gerado pelo teams-ai a partir de spec.json; não edite. Fontes: ${sources}\n\n${renderBriefMd(spec)}`);
 }
 
 /** The item's last valid generated spec on disk, or null. */

@@ -1,4 +1,5 @@
 import type { Backlog, BacklogItem, Priority } from '../contracts/backlog.js';
+import { isAlias } from '../docs/layout.js';
 import { itemCites } from '../refine/coverage.js';
 import type { BacklogDocs } from '../refine/details.js';
 import { onlySubsections, resolveHeading } from '../refine/sections.js';
@@ -27,7 +28,7 @@ export function flowHeadings(flow: string): string[] {
 }
 
 /** Deterministic rules on a derived backlog, against the docs by the names items cite; the agent gets the messages back when it breaks one. */
-export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs: Partial<BacklogDocs>; frozen?: ReadonlySet<string>; /** The architecture's repositories: when given, every item names one of them. */ repositories?: readonly string[] }): string[] {
+export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly string[]; docs: Partial<BacklogDocs>; frozen?: ReadonlySet<string>; /** The architecture's repositories: when given, every item names one of them. */ repositories?: readonly string[]; /** A documentation-repository draft: every key is also the name of a spec folder. */ docsRepo?: boolean }): string[] {
   const errors: string[] = [];
   if (backlog.items.length > MAX_ITEMS) errors.push(`o backlog tem ${backlog.items.length} itens; o máximo é ${MAX_ITEMS}`);
   const epics = new Set<string>();
@@ -40,6 +41,7 @@ export function validateBacklog(backlog: Backlog, opts: { flowHeadings: readonly
     if (byKey.has(i.key)) errors.push(`chave duplicada: ${i.key}`);
     else byKey.set(i.key, i);
     if (RESERVED_KEY.test(i.key)) errors.push(`chave reservada: ${i.key}`);
+    if (opts.docsRepo && !isAlias(i.key)) errors.push(`chave ${i.key} não serve de pasta do spec: use até 40 caracteres, letras minúsculas, números e hífens, sem nomes de dispositivo do Windows`);
     if (!epics.has(i.epic)) errors.push(`item ${i.key}: épico desconhecido ${i.epic}`);
     if (opts.repositories && !i.repository) errors.push(`item ${i.key}: sem repositório`);
     else if (opts.repositories && !opts.repositories.includes(i.repository!)) errors.push(`item ${i.key}: repositório desconhecido ${i.repository}`);

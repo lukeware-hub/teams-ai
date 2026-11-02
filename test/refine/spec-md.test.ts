@@ -35,4 +35,45 @@ describe('renderSpecMd', () => {
     expect(md).not.toContain('## Tarefas');
     expect(md).not.toContain('## Dependências externas');
   });
+
+  it('pins the exact bytes of a bug spec', () => {
+    expect(renderSpecMd(spec)).toBe(
+      [
+        '# Spec todo-001',
+        '',
+        'Tipo: bug',
+        '',
+        '## Objetivos',
+        '',
+        '- Listar tarefas',
+        '',
+        '## Funcionalidades',
+        '',
+        '- Nenhum',
+        '',
+        '## Bug',
+        '',
+        '- Comportamento atual: 500',
+        '- Comportamento esperado: 200',
+        '- Como reproduzir: GET /todos',
+        '',
+        '## Critérios de aceite',
+        '',
+        '- AC-1: Dado uma lista, quando abrir, então ver os itens',
+        '',
+        '## Tarefas',
+        '',
+        '- Rota: Criar GET /todos',
+        '',
+        '## Fora do escopo',
+        '',
+        '- Nenhum',
+        '',
+        '## Dependências externas',
+        '',
+        '- Postgres: dados (DB_URL)',
+        '',
+      ].join('\n'),
+    );
+  });
 });

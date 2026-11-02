@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { SpeckitOutput } from '../agents/outputs.js';
 import { sha256 } from '../contracts/hash.js';
+import { writeFileAtomic } from '../core/atomic-write.js';
 import { OwnerError } from '../core/owner-error.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import type { StepOutcome } from '../runner/step.js';
@@ -75,7 +76,7 @@ export async function taskFileFor(draftRoot: string, specId: string): Promise<st
 async function publish(draft: Draft, staging: string, file: string): Promise<void> {
   const target = path.join(draft.docs, path.posix.relative('docs', file));
   await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.copyFile(path.join(staging, file), target);
+  await writeFileAtomic(target, await fs.readFile(path.join(staging, file), 'utf8'));
 }
 
 /** What a task list reads: its plan, so a change to the plan re-writes the tasks it has. */
