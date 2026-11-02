@@ -15,6 +15,7 @@ const { execFileSync } = await import('node:child_process');
 const { homedir } = await import('node:os');
 const { join } = await import('node:path');
 const { disallowedFiles } = await import('./allowlist.mjs');
+const { docsPaths, repoPath } = await import('./tree.mjs');
 
 const api = async (method, path, body) => {
   const r = await fetch(`${BASE}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -27,12 +28,16 @@ const snap = async () => (await api('GET', S)).json;
 
 const CONTAINER = process.env.TEAMS_AI_CONTAINER;
 const STORE = CONTAINER ? `/home/node/.teams-ai/workspaces/${projectId}/docs-store` : join(homedir(), '.teams-ai', 'workspaces', projectId, 'docs-store');
-/** Runs git in the documentation store, inside the container when TEAMS_AI_CONTAINER is set. */
-const storeGit = (...args) => {
+/** Runs a command on the host, or inside the container when TEAMS_AI_CONTAINER is set. */
+const runTool = (bin, ...args) => {
   const options = { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } };
-  if (CONTAINER) return execFileSync('docker', ['exec', CONTAINER, 'git', '-C', STORE, ...args], options);
-  return execFileSync('git', ['-C', STORE, ...args], options);
+  if (CONTAINER) return execFileSync('docker', ['exec', CONTAINER, bin, ...args], options);
+  return execFileSync(bin, args, options);
 };
+/** Runs git in the documentation store. */
+const storeGit = (...args) => runTool('git', '-C', STORE, ...args);
+/** Reads a GitHub API path with the gh login of the host or the container. */
+const ghApi = (path) => runTool('gh', 'api', path);
 /** Prints the number of documentation commits in the store after a step. */
 function report(label) {
   let commits;
@@ -44,10 +49,10 @@ function printTags() {
   const tags = storeGit('tag', '--list', 'dev-start/*').trim().split('\n').filter(Boolean);
   console.log('start tags:', tags.length > 0 ? tags.join(', ') : 'none');
 }
-/** Fails the report when origin main holds a file under docs/ outside the eight kinds. */
+/** Fails the report when origin main holds a file under docs/ outside the eight kinds; it reads GitHub and writes nothing. */
 function checkAllowlist() {
-  storeGit('fetch', '--quiet', 'origin', 'main');
-  const files = storeGit('ls-tree', '-r', '--name-only', 'origin/main', '--', 'docs/').trim().split('\n').filter(Boolean);
+  const repo = repoPath(storeGit('remote', 'get-url', 'origin'));
+  const files = docsPaths(JSON.parse(ghApi(`repos/${repo}/git/trees/main?recursive=1`)));
   const extra = disallowedFiles(files);
   console.log(`allowlist: ${files.length} files under docs/ on origin main, ${extra.length} outside the eight kinds`);
   for (const file of extra) console.log(` - ${file}`);
