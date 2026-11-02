@@ -1,6 +1,7 @@
 import type { Divergence } from '@server/refine/checklist';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
+import type { DocsSyncView } from '@server/refine/docs-sync';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
   | { state: 'missing' }
@@ -581,11 +582,7 @@ export interface Snapshot {
   /** The documentation repository sync: the changes waiting, and the last failure in plain words. */
   docsSync?: DocsSyncView;
 }
-/** The documentation repository sync as the snapshot shows it. */
-export interface DocsSyncView {
-  pending: number;
-  lastError: string | null;
-}
+export type { DocsSyncView };
 export interface DraftRow {
   projectId: string;
   specId: string;
