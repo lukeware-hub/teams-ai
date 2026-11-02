@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { runApi, type RepoDashboard, type RepoDetailView, type ServiceStatus } from '../api.js';
+import { ApiError, runApi, type RepoDashboard, type RepoDetailView, type ServiceStatus } from '../api.js';
 import { RepositoryPage } from './RepositoryPage.js';
 
 const detail = (over: Partial<RepoDetailView> = {}): RepoDetailView => ({
@@ -137,10 +137,21 @@ describe('RepositoryPage', () => {
     expect(screen.queryByText('verificando se o sistema responde')).toBeNull();
   });
 
-  it('says the repository is missing when the server does not give it', async () => {
-    vi.spyOn(runApi, 'repository').mockRejectedValue(new Error('404'));
-    vi.spyOn(runApi, 'repositoryDashboard').mockRejectedValue(new Error('404'));
+  it('says the repository is missing when the server answers 404', async () => {
+    vi.spyOn(runApi, 'repository').mockRejectedValue(new ApiError('unknown repository shop-api', 404));
+    vi.spyOn(runApi, 'repositoryDashboard').mockRejectedValue(new ApiError('unknown repository shop-api', 404));
     renderAt();
     await waitFor(() => expect(screen.getByTestId('repo-missing')).toBeTruthy());
+  });
+
+  it('says the request failed, not that the repository is missing, and tries again on the owner\'s click', async () => {
+    const load = vi.spyOn(runApi, 'repository').mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    renderAt();
+    expect(await screen.findByTestId('repo-error')).toBeTruthy();
+    expect(screen.queryByTestId('repo-missing')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
+    expect(await screen.findByTestId('repo-page')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });

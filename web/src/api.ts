@@ -23,9 +23,17 @@ export type SessionState =
 export type Cli = 'claude' | 'gh';
 
 const P = '/api/onboarding';
+/** A request the server answered with an error: its message, and the status it answered with. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 async function json<T>(res: Response): Promise<T> {
   const body = (await res.json().catch(() => ({}))) as T & { error?: string }; // a non-JSON body still reports the status
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(body.error ?? `HTTP ${res.status}`, res.status);
   return body;
 }
 export const api = {
