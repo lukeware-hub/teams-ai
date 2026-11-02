@@ -14,7 +14,7 @@ import { fetch as gitFetch, git } from '../git/git.js';
 import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
-import { CENTRAL_REPO } from '../docs/layout.js';
+import { assertAlias, CENTRAL_REPO } from '../docs/layout.js';
 import { docsRepoLayoutEnabled, isDocsRepo, listState, readDocsMarker, readState, readStateText, type DocsMarker } from '../docs/project-state.js';
 import { aliasesOnStore, storeOf } from '../docs/store.js';
 import { loadEvents } from '../store/event-store.js';
@@ -71,6 +71,14 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+/** A spec of a documentation repository takes an alias, which also names its folder; the refusal is in plain words. */
+const aliasOrConflict = (specId: string): void => {
+  try {
+    assertAlias(specId);
+  } catch {
+    throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul`);
+  }
+};
 /** Opens the index for one query only, so no file handle stays open between turns. */
 const searchKnowledge = (file: string, query: string) => {
   const knowledge = KnowledgeIndex.open(file);
@@ -175,7 +183,9 @@ export class SessionRegistry {
     if (name.trim() === '') throw new RangeError('name must not be empty');
     const ws = await this.ws(projectId);
     if (this.docsRepoLayout && projectId === CENTRAL_REPO) throw new RangeError(`${CENTRAL_REPO} é o nome do repositório central de documentos; escolha outro nome para o projeto.`);
-    const draft = draftPaths(ws, firstSpecId || `${projectId}-001`);
+    const specId = firstSpecId || `${projectId}-001`;
+    if (this.docsRepoLayout) aliasOrConflict(specId);
+    const draft = draftPaths(ws, specId);
     if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo)) || (this.docsRepoLayout && (await isDocsRepo(ws)))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
     }
@@ -231,6 +241,7 @@ export class SessionRegistry {
     slug(specId, 'specId');
     cleanDescription(description);
     const ws = await this.ws(projectId);
+    if (await isDocsRepo(ws)) aliasOrConflict(specId);
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);
