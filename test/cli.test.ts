@@ -346,6 +346,10 @@ describe('loadRunDeps', () => {
     expect(hits.map((h) => h.docId)).toEqual(['docs/specs/hello-001/spec.md']);
   });
 
+  it('runs the legacy layout when the project has no documentation repository marker', async () => {
+    expect(await fromRunDeps(async () => {}, (deps) => deps.docsRepo)).toBe(false);
+  });
+
   it('gives the run of a spec the implementation plan its preparation wrote', async () => {
     const plan = await fromRunDeps(async (draftRoot) => {
       await fs.mkdir(path.join(draftRoot, 'docs', 'specs', 'hello-001'), { recursive: true });

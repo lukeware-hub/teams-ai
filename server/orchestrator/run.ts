@@ -103,6 +103,8 @@ export interface RunDeps {
   target?: DeployTarget;
   /** Runs gates and smoke; absent means docker over `exec`. */
   gateExecutor?: GateExecutor;
+  /** Set when the project's documents live in a documentation repository; its machine files are read from the mirror. */
+  docsRepo?: boolean;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
