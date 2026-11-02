@@ -381,7 +381,7 @@ export async function pushWithRecovery(store: Store): Promise<PushOutcome> {
   const net = networkExec(store.exec);
   for (let attempt = 1; attempt <= PUSH_TRIES; attempt++) {
     const sha = await withRepoLock(store.dir, () => headSha(store.dir, store.exec));
-    const r = await pushMain(store.dir, sha, net);
+    const r = await withRepoLock(store.dir, () => pushMain(store.dir, sha, net));
     if (r.ok) return { ok: true, sha };
     if (r.kind !== 'non-fast-forward') return failure(r.kind);
     if (!(await git(store.dir, ['fetch', '-q', '--prune', 'origin'], net).then(() => true, () => false))) return failure('other');

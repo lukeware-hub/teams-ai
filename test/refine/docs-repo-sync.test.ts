@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Exec, CommandResult } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import type { RefineSession } from '../../server/refine/session.js';
@@ -14,6 +14,7 @@ let ghRoot = '';
 let offline = false;
 
 afterEach(async () => {
+  vi.useRealTimers();
   await rig?.close();
   rig = null;
   if (ghRoot) await fs.rm(ghRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -144,7 +145,9 @@ describe('a documentation repository session syncs its documents', () => {
     await s.tickDocs();
     const failed = (await s.snapshot()).docsSync;
     expect(failed?.lastError).toMatch(/could not be reached/);
-    expect(failed?.pending).toBe(0);
+    expect(failed?.pending).toBe(1);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 60_000);
     offline = false;
     await s.tickDocs();
     expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
@@ -157,6 +160,8 @@ describe('a documentation repository session syncs its documents', () => {
     await s.enableBacklog();
     await s.tickDocs();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
   });

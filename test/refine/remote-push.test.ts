@@ -20,6 +20,7 @@ let draft: Draft;
 let gh: FakeGhRepos;
 let offline = false;
 let pushes = 0;
+let attempts = 0;
 
 /** A push timer that runs the debounced push only when the test fires it. */
 class ManualTimer implements PushTimer {
@@ -46,6 +47,7 @@ const failed = (stderr: string): CommandResult => ({ exitCode: 1, signal: null, 
 const exec: Exec = async (spec): Promise<CommandResult> => {
   const create = spec.bin === 'gh' && spec.args[0] === 'repo' && spec.args[1] === 'create';
   const network = spec.bin === 'git' && (spec.args.includes('fetch') || spec.args.includes('push'));
+  if (spec.bin === 'git' && spec.args.includes('push')) attempts += 1;
   if (offline && (create || network)) return failed('Could not resolve host: api.github.com');
   if (spec.bin === 'git' && spec.args.includes('push')) pushes += 1;
   return gh.exec(spec);
@@ -61,6 +63,7 @@ beforeEach(async () => {
   gh = new FakeGhRepos(root);
   offline = false;
   pushes = 0;
+  attempts = 0;
   timer = new ManualTimer();
   await fs.mkdir(draft.docs, { recursive: true });
   for (const doc of DOCS) await fs.writeFile(path.join(draft.docs, doc), `# ${doc}\n`);
@@ -70,8 +73,17 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
-const sync = (): DocsSync => new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], timer, secretDirs: async () => [] });
+const sync = (clock?: () => number): DocsSync => new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], timer, secretDirs: async () => [], clock });
 const edit = (doc: string, text: string): Promise<void> => fs.writeFile(path.join(draft.docs, doc), text);
+
+/** Another writer changes a file on origin main, from a clone, so the next push is not a fast-forward. */
+async function divergeOrigin(file: string, text: string): Promise<void> {
+  const clone = path.join(root, 'other-clone');
+  await git(root, ['clone', '-q', origin(), clone]);
+  await fs.writeFile(path.join(clone, file), text);
+  await git(clone, ['-c', 'user.name=other', '-c', 'user.email=other@example.com', 'commit', '-q', '-am', 'other side']);
+  await git(clone, ['push', '-q', 'origin', 'main']);
+}
 
 describe('a bind publishes its remote part in the background, and a failed remote is retried', () => {
   it('a remote failure leaves the bind successful, shows the error in the sync view, and the retry publishes once the remote recovers', async () => {
@@ -119,6 +131,68 @@ describe('normal flushes push after a trailing debounce', () => {
     await settle(s);
     expect(pushes).toBe(1);
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('second');
+  });
+
+  it('a debounced commit stays counted in pending until its push succeeds', async () => {
+    await bind(ws, { style: 'monolith', target, draftId: 'hello-app-001', documents }, exec);
+    const s = sync();
+    await s.publish();
+
+    await edit('project.md', 'counted\n');
+    s.boundary('spec hello-app-001-login');
+    await s.tick();
+    expect(s.view.pending).toBe(1);
+
+    await settle(s);
+    expect(s.view.pending).toBe(0);
+  });
+
+  it('a debounced commit reset by a non-fast-forward push is projected again on the next tick, and the other documents are not lost', async () => {
+    await bind(ws, { style: 'monolith', target, draftId: 'hello-app-001', documents }, exec);
+    const s = sync();
+    await s.publish();
+
+    await edit('project.md', 'counted\n');
+    await edit('stack.md', 'stack kept\n');
+    s.boundary('spec hello-app-001-login');
+    await s.tick();
+    await divergeOrigin('docs/project.md', 'theirs\n');
+    timer.fire();
+    await s.publish();
+    expect(s.view.lastError).toMatch(/Another change reached main first/);
+    expect(s.view.pending).toBe(1);
+
+    await s.tick();
+    await settle(s);
+    expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack kept');
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('theirs');
+    expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md'), refused: true });
+  });
+
+  it('a failed sync is retried at most once a minute: two ticks inside a minute run one retry, and a tick after a minute runs another', async () => {
+    await bind(ws, { style: 'monolith', target, draftId: 'hello-app-001', documents }, exec);
+    let now = 0;
+    const s = sync(() => now);
+    await s.publish();
+
+    await edit('project.md', 'retried\n');
+    s.edit();
+    await s.flush();
+    offline = true;
+    timer.fire();
+    await s.publish();
+    expect(s.view.lastError).not.toBeNull();
+
+    attempts = 0;
+    now = 0;
+    await s.tick();
+    expect(attempts).toBe(1);
+    now = 10_000;
+    await s.tick();
+    expect(attempts).toBe(1);
+    now = 60_000;
+    await s.tick();
+    expect(attempts).toBe(2);
   });
 
   it('a PlansPrepared boundary pushes at once, without waiting for the debounce', async () => {
