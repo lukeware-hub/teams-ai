@@ -574,6 +574,17 @@ export interface Snapshot {
   architectureStale?: boolean;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
   stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
+  /** True when the session has the documentation-repository stamp. */
+  docsRepo?: boolean;
+  /** The repository the backlog step creates, once the architecture is decided. */
+  docsTarget?: { owner: string; name: string };
+  /** The documentation repository sync: the changes waiting, and the last failure in plain words. */
+  docsSync?: DocsSyncView;
+}
+/** The documentation repository sync as the snapshot shows it. */
+export interface DocsSyncView {
+  pending: number;
+  lastError: string | null;
 }
 export interface DraftRow {
   projectId: string;
