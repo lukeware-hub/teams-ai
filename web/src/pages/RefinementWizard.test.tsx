@@ -16,7 +16,7 @@ const checks = (value: number) => ({ complete: value, concrete: value, consisten
 const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, { score, checks: { complete: 0.44, concrete: 0.72, consistent: 0.84, scoped: 0.6 } }])) });
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -382,6 +382,9 @@ describe('the final review', () => {
     show(reviewSnap());
     expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('pending-project.md'));
+    expect(window.location.search).toContain('etapa=project.md');
+    expect(screen.getByTestId('doc-project.md')).toBeTruthy();
   });
 
   it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
@@ -479,7 +482,8 @@ describe('the final review', () => {
     expect(screen.getByTestId('graph-row-flow.md').textContent).toContain('no Graphify');
     expect(screen.getByTestId('graph-row-stack.md').textContent).toContain('fora do Graphify');
     fireEvent.click(screen.getByTestId('graph-add-stack.md'));
-    expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md');
+    expect(handlers.onAddToGraph).toHaveBeenCalledWith('stack.md');
+    expect(handlers.onContinueStage).not.toHaveBeenCalled();
   });
 
   it('shows the review done once closed, and does not close it again', () => {

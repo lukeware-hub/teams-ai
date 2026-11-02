@@ -225,6 +225,8 @@ export interface ViewProps {
   onPreparePlans?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
+  /** The final review puts a document in the Graphify graph as it is now; `false` says the server refused. */
+  onAddToGraph?(doc: DocFile): void | boolean | Promise<unknown>;
   /** The owner moves on from the final review to the backlog; `false` says the server refused. */
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
@@ -1139,7 +1141,7 @@ export function RefinementView(p: ViewProps) {
               return (
                 <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
                   <span>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
-                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onContinueStage?.(file)}>Adicionar ao Graphify</button>}
+                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onAddToGraph?.(file)}>Adicionar ao Graphify</button>}
                 </div>
               );
             })}
@@ -1147,9 +1149,10 @@ export function RefinementView(p: ViewProps) {
           <div className="grid gap-3" data-testid="final-pending">
             <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
             {byDoc.map(({ file, count }) => (
-              <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink">
-                <span>{docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}</span>
-              </div>
+              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
+                <Icon name="arrow-right" size={16} />
+              </button>
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
@@ -1452,6 +1455,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onAddToGraph={(doc) => refineApi.addToGraph(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}

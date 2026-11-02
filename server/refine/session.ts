@@ -565,6 +565,19 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 
+  /** The final review puts a finished document in the graph as it is now: the review, question and suggestion gates do not apply. */
+  async addToGraph(file: DocFile): Promise<void> {
+    this.guard();
+    if (this.state.repositories !== true || this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo com repositórios tem Graphify por etapa');
+    this.guardStagesDone();
+    if ((this.state.graphed ?? []).includes(file)) throw new ConflictError(`${file} já está no Graphify`);
+    const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
+    if (problem) throw new ConflictError(problem);
+    if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+    // The stage does not move: it is already done.
+    await this.startIndexing(file, false);
+  }
+
   /** The owner moves on from the final review to the backlog; the review then shows as done. */
   async closeReview(): Promise<void> {
     this.guard();
