@@ -282,7 +282,8 @@ export const runApi = {
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
-  deleteProject: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ deleted: true }>(r)),
+  deleteProject: (projectId: string, deleteGithub: boolean) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub }) }).then((r) => json<{ deleted: true }>(r)),
+  githubRepos: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/github-repos`).then((r) => json<{ repos: string[] }>(r)).then((b) => b.repos),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
   docs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/docs`).then((r) => json<{ docs: ProjectDoc[] }>(r)),
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */

@@ -61,7 +61,9 @@ export function ProjectsView(p: {
   onNewProject: (projectId: string, name: string, description: string, firstSpecId: string) => void | Promise<void>;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
   onDeleteDraft: (projectId: string, specId: string) => void | Promise<void>;
-  onDeleteProject: (projectId: string) => void | Promise<void>;
+  onDeleteProject: (projectId: string, deleteGithub: boolean) => void | Promise<void>;
+  /** The GitHub repositories of a project and its services, as owner/name. */
+  onGithubRepos?: (projectId: string) => Promise<string[]>;
 }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
@@ -97,6 +99,69 @@ export function ProjectsView(p: {
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<{ projectId: string; specId: string } | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectRow | null>(null);
+  const [deleteStep, setDeleteStep] = useState<'loading' | 'repos' | 'confirm'>('loading');
+  const [githubRepos, setGithubRepos] = useState<string[]>([]);
+  const [deleteGithub, setDeleteGithub] = useState(false);
+  const [typedName, setTypedName] = useState('');
+  const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
+  const openDeleteProject = async (project: ProjectRow) => {
+    setPendingDeleteProject(project);
+    setDeleteStep('loading');
+    setGithubRepos([]);
+    setDeleteGithub(false);
+    setTypedName('');
+    setDeleteDialogError(null);
+    try {
+      const repos = (await p.onGithubRepos?.(project.projectId)) ?? [];
+      setGithubRepos(repos);
+      setDeleteStep(repos.length > 0 ? 'repos' : 'confirm');
+    } catch (e) {
+      setDeleteDialogError(`Não foi possível listar os repositórios no GitHub: ${(e as Error).message}. Só os arquivos locais serão apagados.`);
+      setDeleteStep('confirm');
+    }
+  };
+  const confirmDeleteProject = async () => {
+    if (!pendingDeleteProject) return;
+    setDeleteDialogError(null);
+    try {
+      await p.onDeleteProject(pendingDeleteProject.projectId, deleteGithub);
+      setPendingDeleteProject(null);
+    } catch (e) {
+      setDeleteDialogError((e as Error).message);
+    }
+  };
+  const deleteReposDetail = (
+    <>
+      <label className="confirm-check">
+        <input type="checkbox" checked={deleteGithub} onChange={(e) => setDeleteGithub(e.target.checked)} />
+        Apagar também no GitHub
+      </label>
+      <ul className="confirm-repos">
+        {githubRepos.map((r) => (
+          <li key={r}><code>{r}</code></li>
+        ))}
+      </ul>
+    </>
+  );
+  const deleteConfirmDetail = (
+    <>
+      {deleteGithub ? (
+        <>
+          <p>Também serão apagados no GitHub:</p>
+          <ul className="confirm-repos">
+            {githubRepos.map((r) => (
+              <li key={r}><code>{r}</code></li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {deleteDialogError ? <div className="error" role="alert">{deleteDialogError}</div> : null}
+      <label className="confirm-field">
+        <span>Digite <code>{pendingDeleteProject?.projectId}</code> para confirmar</span>
+        <input data-testid="delete-project-name" value={typedName} onChange={(e) => setTypedName(e.target.value)} autoComplete="off" />
+      </label>
+    </>
+  );
   return (
     <main>
       <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
@@ -224,7 +289,7 @@ export function ProjectsView(p: {
                   </p>
                 </div>
                 <div className={cardActions}>
-                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => setPendingDeleteProject(pr)}>
+                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => void openDeleteProject(pr)}>
                     Excluir
                     <Icon name="trash" size={14} />
                   </button>
@@ -285,16 +350,22 @@ export function ProjectsView(p: {
       ) : null}
       {pendingDeleteProject ? (
         <ConfirmDialog
-          title="Excluir projeto?"
-          subject={pendingDeleteProject.name || pendingDeleteProject.projectId}
-          confirmLabel="Excluir projeto"
+          key={deleteStep}
+          title={deleteStep === 'confirm' ? 'Confirmar exclusão' : 'Excluir projeto?'}
+          subject={pendingDeleteProject.projectId}
+          confirmLabel={deleteStep === 'confirm' ? 'Excluir projeto' : 'Continuar'}
+          tone={deleteStep === 'confirm' ? 'danger' : 'accent'}
+          icon={deleteStep === 'confirm' ? 'trash' : 'check'}
+          confirmDisabled={deleteStep === 'loading' || (deleteStep === 'confirm' && typedName !== pendingDeleteProject.projectId)}
+          detail={deleteStep === 'confirm' ? deleteConfirmDetail : deleteStep === 'repos' ? deleteReposDetail : null}
           onCancel={() => setPendingDeleteProject(null)}
-          onConfirm={async () => {
-            await p.onDeleteProject(pendingDeleteProject.projectId);
-            setPendingDeleteProject(null);
-          }}
+          onConfirm={deleteStep === 'confirm' ? confirmDeleteProject : () => setDeleteStep('confirm')}
         >
-          Apaga specs, execuções e arquivos do projeto no disco. O repositório no GitHub não é apagado. Essa ação não pode ser desfeita. Pare execuções em andamento antes de excluir.
+          {deleteStep === 'loading'
+            ? 'Carregando repositórios…'
+            : deleteStep === 'repos'
+              ? 'Marque para apagar também os repositórios no GitHub. Os arquivos locais são apagados de qualquer forma.'
+              : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
         </ConfirmDialog>
       ) : null}
     </main>
@@ -362,7 +433,14 @@ export function Projects() {
         }
         await refresh();
       })()}
-      onDeleteProject={(projectId) => act(() => runApi.deleteProject(projectId))()}
+      onDeleteProject={async (projectId, deleteGithub) => {
+        try {
+          await runApi.deleteProject(projectId, deleteGithub);
+        } finally {
+          await refresh();
+        }
+      }}
+      onGithubRepos={(projectId) => runApi.githubRepos(projectId)}
     />
   );
 }

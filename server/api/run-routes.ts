@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
@@ -16,7 +17,7 @@ import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { buildProjectGraph } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
-import { expandHome, serviceWorkspace, workspacePaths } from '../orchestrator/workspace.js';
+import { expandHome, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { pairDecisions, readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
 import { execCommand, type Exec } from '../exec/command.js';
@@ -36,6 +37,8 @@ import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './r
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
+import { probeProcess, type ProbeProcess } from './process-identity.js';
+import { deleteRepo } from '../git/github.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS } from '../core/ids.js';
@@ -64,6 +67,10 @@ export interface RunRoutesDeps {
   queueInProgram?: (projectId: string, specId: string) => Promise<{ draftId: string } | { refused: string } | null>;
   /** Starts the backlog of a project imported from git; the import answers without waiting for it. */
   importBacklog?: (projectId: string) => Promise<void>;
+  /** Closes a project's refinements before its files go, so no agent writes after the delete. */
+  closeDrafts?: (projectId: string) => Promise<void>;
+  /** Reads a process's identity, so a run's process is never confused with a reused pid; the real one by default. */
+  probeProcess?: ProbeProcess;
 }
 
 const str = (v: unknown, field: string): string => {
@@ -97,6 +104,48 @@ const originOf = (dir: string): Promise<string | null> =>
 async function repoUrlOf(repoDir: string): Promise<string | null> {
   const remote = await execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: repoDir, timeoutMs: 5_000 }).catch(() => null);
   return remote?.exitCode === 0 ? githubRepoUrl(remote.stdout) : null;
+}
+
+/** The clones of a project: its own repository, then one per service, each in its own folder. */
+function repoDirsOf(ws: Workspace, services: readonly string[]): string[] {
+  return [ws.repo, ...[...new Set(services)].map((s) => serviceWorkspace(ws, s).repo)];
+}
+
+/** The GitHub repositories behind the clones, as owner/name with their clone; a clone with no GitHub origin is skipped. */
+async function githubReposOf(dirs: readonly string[]): Promise<Array<{ fullName: string; dir: string }>> {
+  const found = await Promise.all(dirs.map(async (dir) => ({ dir, url: await repoUrlOf(dir) })));
+  return found.flatMap(({ dir, url }) => (url === null ? [] : [{ fullName: url.replace('https://github.com/', ''), dir }]));
+}
+
+/** Deletes each repository on GitHub. One that fails stops the delete and is named, so the owner can fix it and try again. */
+async function deleteGithubRepos(repos: ReadonlyArray<{ fullName: string; dir: string }>, exec: Exec): Promise<void> {
+  for (const repo of repos) {
+    await deleteRepo({ fullName: repo.fullName, cwd: repo.dir }, exec).catch((err: Error) => {
+      throw new HttpError(409, `não foi possível apagar ${repo.fullName} no GitHub: ${err.message}. Se faltar a permissão delete_repo, renove o login do gh no ambiente em que o servidor roda: gh auth refresh -h github.com -s delete_repo`);
+    });
+  }
+}
+
+/** The owner of an event-log lock, written `<pid>@<host>`; null when the lock belongs to another host or names no pid. */
+async function lockOwner(lockFile: string): Promise<number | null> {
+  const owner = await fs.readFile(lockFile, 'utf8').then((text) => text.trim().split('@'), () => null);
+  if (owner === null || owner[1] !== os.hostname()) return null;
+  const pid = Number(owner[0]);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/**
+ * The live process of a claiming run. Its pid file names it. A run started from a terminal has none, so its event-log lock
+ * names it, but only when that process carries the run id: a reused pid is never signalled. An interrupted run has no process.
+ */
+async function processOfRun(run: RunRow, runs: string, control: RunControlDeps, probe: ProbeProcess): Promise<number | null> {
+  const pid = await readPid(runs, run.runId);
+  if (pid !== null) return isAlive(control, pid) ? pid : null;
+  if (run.status === 'interrupted') return null;
+  const owner = await lockOwner(path.join(runs, run.runId, 'events.ndjson.lock'));
+  if (owner === null || !isAlive(control, owner)) return null;
+  if (!(await probe(owner))?.argv.includes(run.runId)) throw new HttpError(409, `a execução ${run.runId} roda no processo ${owner}, que este servidor não consegue identificar; pare-o antes de excluir`);
+  return owner;
 }
 
 /** More tests than this in one repository are not located: the search grows with each of them. */
@@ -471,11 +520,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       },
     },
     {
-      method: 'DELETE',
-      path: `${P}/projects/:projectId`,
+      method: 'GET',
+      path: `${P}/projects/:projectId/github-repos`,
       handler: async ({ params, json }) => {
         const idx = await index();
+        const dir = await projectDir(idx, params.projectId!);
+        const { project } = await readProject(dir);
+        const repos = await githubReposOf(repoDirsOf(workspacePaths(idx.cfg, params.projectId!, deps.home), project.services ?? []));
+        json(200, { repos: repos.map((r) => r.fullName) });
+      },
+    },
+    {
+      method: 'DELETE',
+      path: `${P}/projects/:projectId`,
+      handler: async ({ params, body, json }) => {
+        const idx = await index();
         const projectId = params.projectId!;
+        const wantsGithub = ((await body()) as { deleteGithub?: unknown } | null)?.deleteGithub === true;
         const dirs: string[] = [];
         const specIds = new Set<string>();
         const services: string[] = [];
@@ -488,14 +549,19 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         }
         if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
         const runs = runsDir(idx);
+        const probe = deps.probeProcess ?? probeProcess;
         for (const run of (await listRuns(idx, projectId)).filter(claimsSpec)) {
-          const pid = await readPid(runs, run.runId);
-          if (pid === null || !isAlive(deps.control, pid)) throw new HttpError(409, `project ${projectId} has an active run (${run.runId}) this server cannot stop; stop it before deleting`);
           await markStopRequested(runs, run.runId);
-          await stop(deps.control, pid);
+          const pid = await processOfRun(run, runs, deps.control, probe);
+          if (pid === null) continue;
+          await stop(deps.control, pid, 3_000);
           await clearPid(runs, run.runId);
+          if (isAlive(deps.control, pid)) throw new HttpError(409, `a execução ${run.runId} segue no processo ${pid} depois de parada; pare-o antes de excluir`);
         }
         const ws = workspacePaths(idx.cfg, projectId, deps.home);
+        if (wantsGithub) await deleteGithubRepos(await githubReposOf(repoDirsOf(ws, services)), deps.exec ?? execCommand);
+        // Last, so no refinement reopens between its close and the removal of its files.
+        await deps.closeDrafts?.(projectId);
         await removeTree(ws.root);
         for (const dir of dirs) await removeTree(dir);
         const gates = expandHome(idx.cfg.paths.gateCache, deps.home);

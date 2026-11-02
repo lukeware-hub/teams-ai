@@ -34,6 +34,9 @@ let probe: HttpGet;
 let probed: string[];
 const docker: string[] = [];
 let resolved: Record<string, string> = {};
+let processes: Map<number, { start: string; argv: string[] }>;
+let closedDrafts: string[];
+let failGh: boolean;
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 const del = (p: string) => fetch(`${base()}${p}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } });
@@ -51,6 +54,9 @@ beforeEach(async () => {
   probed = [];
   probe = async () => ({ status: 200 });
   resolved = {};
+  processes = new Map();
+  closedDrafts = [];
+  failGh = false;
   onSpawn = async () => {};
   onSignal = () => {};
   // A real wait loop yields real time; an instant one let the fake child lose the race under a loaded suite.
@@ -79,7 +85,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   docker.length = 0;
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return { exitCode: 0, stdout: "", stderr: "", timedOut: false } as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], importBacklog: async (projectId) => { backlogStarted.push(projectId); }, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('backlog-app')) await fs.writeFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), (await fs.readFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8')).replace('"status": "running"', '"status": "planned"'));if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return (failGh && s.bin === 'gh' ? { exitCode: 1, stdout: '', stderr: 'HTTP 403: Must have admin rights to Repository', timedOut: false } : { exitCode: 0, stdout: "", stderr: "", timedOut: false }) as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), closeDrafts: async (id) => { closedDrafts.push(id); }, probeProcess: async (pid) => processes.get(pid) ?? null, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], importBacklog: async (projectId) => { backlogStarted.push(projectId); }, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('backlog-app')) await fs.writeFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), (await fs.readFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8')).replace('"status": "running"', '"status": "planned"'));if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -319,6 +325,69 @@ describe('projects', () => {
     expect(await fs.access(project).then(() => true, () => false)).toBe(false);
   });
 
+  it('deletes a project whose run was interrupted: its process is long gone', async () => {
+    await useProjectCopy();
+    const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.writeFile(path.join(dir, 'pid.gone'), '');
+    const res = await del('/api/projects/hello-app');
+    expect(res.status).toBe(200);
+    expect(closedDrafts).toEqual(['hello-app']);
+    expect(await fs.access(path.join(home, 'project')).then(() => true, () => false)).toBe(false);
+  });
+
+  it('stops a run started from a terminal, found through its event-log lock, when that process carries the run id', async () => {
+    await useProjectCopy();
+    const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.writeFile(path.join(dir, 'events.ndjson.lock'), `7001@${os.hostname()}`);
+    alive.add(7001);
+    processes.set(7001, { start: 'boot:1', argv: ['node', 'cli', 'run', '--run-id', 'hello-001-r1'] });
+    expect((await del('/api/projects/hello-app')).status).toBe(200);
+    expect(alive.has(7001)).toBe(false);
+  });
+
+  it('refuses a process it cannot identify, and signals nothing', async () => {
+    const project = await useProjectCopy();
+    const dir = await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.writeFile(path.join(dir, 'events.ndjson.lock'), `7002@${os.hostname()}`);
+    alive.add(7002);
+    processes.set(7002, { start: 'boot:2', argv: ['node', 'something-else'] });
+    const res = await del('/api/projects/hello-app');
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain('7002');
+    expect(signals.filter(([pid, sig]) => Math.abs(pid) === 7002 && sig !== 0)).toEqual([]);
+    expect(await fs.access(project).then(() => true, () => false)).toBe(true);
+  });
+
+  it('lists the GitHub repositories of a project and of its services, from each clone', async () => {
+    await useGithubProject();
+    const res = await fetch(`${base()}/api/projects/hello-app/github-repos`);
+    expect(await res.json()).toEqual({ repos: ['acme/hello-app', 'acme/orders-api'] });
+  });
+
+  it('deletes the GitHub repositories too only when asked, then the local project', async () => {
+    const project = await useGithubProject();
+    const res = await fetch(`${base()}/api/projects/hello-app`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub: true }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(docker).toEqual(expect.arrayContaining(['repo delete acme/hello-app --yes', 'repo delete acme/orders-api --yes']));
+    expect(await fs.access(project).then(() => true, () => false)).toBe(false);
+  });
+
+  it('keeps the GitHub repositories when the delete does not ask for them', async () => {
+    await useGithubProject();
+    expect((await del('/api/projects/hello-app')).status).toBe(200);
+    expect(docker.some((c) => c.startsWith('repo delete'))).toBe(false);
+  });
+
+  it('keeps the local project when a GitHub repository cannot be deleted, and names it', async () => {
+    const project = await useGithubProject();
+    failGh = true;
+    const res = await fetch(`${base()}/api/projects/hello-app`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub: true }) });
+    expect(res.status).toBe(409);
+    expect(await res.text()).toContain('acme/hello-app');
+    expect(await fs.access(project).then(() => true, () => false)).toBe(true);
+  });
+
   it('404s deleting an unknown project', async () => {
     expect((await del('/api/projects/nobody')).status).toBe(404);
   });
@@ -356,6 +425,33 @@ describe('projects', () => {
     expect((await fetch(`${base()}/api/projects/hello-app/docs`)).status).toBe(500);
   });
 });
+
+/** Registers a copy of the hello project, so a delete test may remove it; `services` are listed in its project.json. */
+async function useProjectCopy(services: string[] = []): Promise<string> {
+  const project = path.join(home, 'project');
+  await fs.cp(HELLO, project, { recursive: true });
+  if (services.length > 0) {
+    const json = path.join(project, 'docs', 'project.json');
+    await fs.writeFile(json, JSON.stringify({ ...JSON.parse(await fs.readFile(json, 'utf8')), services }));
+  }
+  await fs.writeFile(path.join(home, '.teams-ai', 'config.json'), JSON.stringify({ paths: { runs: runs.replace(/\\/g, '/') }, projects: [{ dir: project }] }));
+  return project;
+}
+
+/** A project of hello-app with one service, both cloned from GitHub: only the origins are set, no network is used. */
+async function useGithubProject(): Promise<string> {
+  const project = await useProjectCopy(['orders-api']);
+  const ws = workspacePaths((await readUserConfig(home)).cfg, 'hello-app', home);
+  await githubClone(ws.repo, 'https://github.com/acme/hello-app.git');
+  await githubClone(path.join(ws.root, 'services', 'orders-api', 'repo'), 'https://github.com/acme/orders-api.git');
+  return project;
+}
+
+async function githubClone(dir: string, origin: string): Promise<void> {
+  await fs.mkdir(dir, { recursive: true });
+  await execCommand({ bin: 'git', args: ['init', '-q'], cwd: dir, timeoutMs: 30_000 });
+  await execCommand({ bin: 'git', args: ['remote', 'add', 'origin', origin], cwd: dir, timeoutMs: 30_000 });
+}
 
 /** Puts a clone of a seed repository at the project's workspace; the clone's origin/main holds `files`. */
 async function workspaceClone(files: Record<string, string>): Promise<void> {

@@ -324,6 +324,18 @@ export class SessionRegistry {
     session.evaluate().catch((err: Error) => console.error(`backlog import ${projectId}: ${err.message}`));
   }
 
+  /** Stops a project's refinements from writing: each session is closed, its files stay until the project goes. */
+  async closeProjectDrafts(projectId: string): Promise<void> {
+    for (const row of (await this.list()).filter((d) => d.projectId === projectId)) {
+      const session = await this.get(projectId, row.specId).catch(() => null);
+      if (session === null) continue;
+      session.beginDiscard();
+      await session.abort();
+      await session.close();
+      this.sessions.delete(`${projectId}/${row.specId}`);
+    }
+  }
+
   /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */
   async deleteDraft(projectId: string, specId: string): Promise<void> {
     const session = await this.get(projectId, specId);
