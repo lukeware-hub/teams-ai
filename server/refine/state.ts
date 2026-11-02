@@ -554,7 +554,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.StageAdvanced:
       s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
       s.stageStartCycle = Number(d.cycle);
-      s.reprocessedStages = (s.reprocessedStages ?? []).filter((file) => file !== docName(d.doc));
+      if (s.reprocessedStages) s.reprocessedStages = s.reprocessedStages.filter((file) => file !== docName(d.doc));
       break;
     case RefineEvent.StagePassed:
       s.passedStages = [...new Set([...(s.passedStages ?? []), docName(d.file)])];
