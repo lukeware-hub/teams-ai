@@ -1,0 +1,52 @@
+import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
+import { readDocsMarker, type DocsMarker } from '../docs/project-state.js';
+import { adoptionProblem, bind } from '../docs/store.js';
+import type { Exec } from '../exec/command.js';
+import { repoInfo, viewerLogin, type RepoInfo } from '../git/github.js';
+import type { Workspace } from '../orchestrator/workspace.js';
+
+/** A bind refused for a reason the owner reads, in plain words. */
+export class DocsBindRefused extends Error {}
+
+export interface DocsBindInput {
+  ws: Workspace;
+  style: Style;
+  projectId: string;
+  draftId: string;
+  /** The five documents by file name, as the draft holds them now. */
+  docs: Record<string, string>;
+  /** The owner the configuration names, used when the project document names none. */
+  configuredOwner: string | undefined;
+  exec: Exec;
+}
+
+const full = (target: RepoTarget): string => `${target.owner}/${target.name}`;
+
+/** Why the repository cannot take the documents, in plain words, or null when it can; a non-empty repository is ours only if this project bound it. */
+export function refusalOf(info: RepoInfo | null, target: RepoTarget, bound: DocsMarker | null): string | null {
+  if (info === null) return null;
+  const name = full(target);
+  const problem = adoptionProblem(info);
+  if (problem !== null) return problem;
+  const ours = bound?.target.owner === target.owner && bound.target.name === target.name;
+  if (!info.isEmpty && !ours) return `O repositório ${name} já tem histórico e não é deste projeto; escolha um repositório vazio.`;
+  return null;
+}
+
+/** Why a decided style cannot be kept, in plain words; null when the style is the published one or nothing is published. */
+export function styleRefusal(bound: DocsMarker | null, style: Style): string | null {
+  if (bound === null || bound.style === style) return null;
+  return `O repositório ${full(bound.target)} já foi publicado no estilo ${bound.style}; a arquitetura não pode mudar de estilo depois da publicação.`;
+}
+
+/** Read-only checks first, then the bind: nothing is written when a check refuses. */
+export async function bindDocumentRepo(input: DocsBindInput): Promise<void> {
+  const login = await viewerLogin(input.ws.root, input.exec);
+  if (login === null) throw new DocsBindRefused('Entre no GitHub antes de liberar o backlog: informe um token ou faça login no gh.');
+  const owner = githubOwnerOf(input.docs['project.md'] ?? '') ?? input.configuredOwner ?? login;
+  const target = docsTarget(input.style, input.projectId, owner);
+  const refusal = refusalOf(await repoInfo(input.ws.root, full(target), input.exec), target, await readDocsMarker(input.ws));
+  if (refusal) throw new DocsBindRefused(refusal);
+  const documents = Object.fromEntries(FIVE_DOCS.map((doc) => [`docs/${doc}`, input.docs[doc] ?? '']));
+  await bind(input.ws, { style: input.style, target, draftId: input.draftId, documents }, input.exec);
+}

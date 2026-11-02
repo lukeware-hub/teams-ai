@@ -10,7 +10,7 @@ import { writeFileAtomic } from './core/atomic-write.js';
 import { redactSecrets } from './core/redact.js';
 import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
-import { gitAuthEnv, withGitAuth } from './git/auth.js';
+import { gitAuthEnv, withGhAuth, withGitAuth } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
 import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
@@ -144,6 +144,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),
     exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
+    ghExec: withGhAuth(withGitAuth(execCommand, expandHome(cfg.paths.secrets)), expandHome(cfg.paths.secrets)),
     projectDir: projectDirOf,
     control: defaultRunControl(repoRoot),
     runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),

@@ -184,6 +184,8 @@ export interface RefineState {
   stages?: boolean;
   /** Created with the repository flow (plan increment A): the stages gate each other, and the backlog, plans and final review wait for all five. */
   repositories?: boolean;
+  /** Created with the documentation repository layout (plan 119): the owner's Backlog step binds the repository, and nothing else does. */
+  docsRepo?: boolean;
   /** The documents reviewed since their last edit, kept only by a repository session: a human edit takes a document out; an accepted patch or an answer keeps it. */
   reviewedStages?: DocFile[];
   /** The documents in the Graphify graph; a later edit of a document takes it out until it is added again. */
@@ -540,6 +542,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.stages = d.stages === true;
       if (d.featureKey !== undefined) s.featureKey = String(d.featureKey);
       if (d.repositories === true) s.repositories = true;
+      if (d.docsRepo === true) s.docsRepo = true;
       break;
     case RefineEvent.ConfidentialityAnswered:
       s.confidential = d.confidential === true;

@@ -14,7 +14,8 @@ import { fetch as gitFetch, git } from '../git/git.js';
 import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
-import { isDocsRepo, readState } from '../docs/project-state.js';
+import { CENTRAL_REPO } from '../docs/layout.js';
+import { docsRepoLayoutEnabled, isDocsRepo, readState } from '../docs/project-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
@@ -30,6 +31,8 @@ import { refineLimits } from './limits.js';
 export interface RegistryDeps {
   /** Whether a new project takes the repository flow; the server default is REPOSITORY_FLOW, a test that predates it passes false. */
   repositoryFlow?: boolean;
+  /** Whether a new project takes the documentation repository layout; the server default is the TEAMS_AI_DOCS_REPO_LAYOUT flag. */
+  docsRepoLayout?: boolean;
   /** Extracts the documents of a folder into a graph folder for a repository session (plan increment B). */
   extractDocs?: (dir: string, outDir: string) => Promise<void>;
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
@@ -43,6 +46,8 @@ export interface RegistryDeps {
   decider?: CycleDeps['decider'];
   secretsDir: string;
   exec: Exec;
+  /** The git and gh exec with the saved token, used only to bind a documentation repository; absent in tests that predate it. */
+  ghExec?: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
   projectDir: (projectId: string) => Promise<string | null>;
   control: RunControlDeps;
@@ -98,6 +103,11 @@ export class SessionRegistry {
     });
   }
 
+  /** Whether a new project takes the documentation repository layout: the dependency when given, else the environment flag. */
+  private get docsRepoLayout(): boolean {
+    return this.deps.docsRepoLayout ?? docsRepoLayoutEnabled();
+  }
+
   protected async ws(projectId: string): Promise<Workspace> {
     return workspacePaths(await this.deps.cfg(), projectId, this.deps.home);
   }
@@ -111,12 +121,13 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents, docsBind: this.deps.ghExec ? { exec: this.deps.ghExec, configuredOwner: async () => (await this.deps.cfg()).github.owner } : undefined };
       // A follow-on draft is a repository session when main holds the architecture its documents came from.
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
-      // A new project follows the rollout flag; a follow-on draft is stamped only when main holds its architecture.
+      // A new project follows the rollout flags; a follow-on draft is stamped only when main holds its architecture.
       const stamp = create === 'new-project' ? (this.deps.repositoryFlow ?? REPOSITORY_FLOW) : architecture;
-      return create ? RefineSession.create(deps, create, { repositories: stamp === true }) : RefineSession.open(deps);
+      const docsRepo = create === 'new-project' && this.docsRepoLayout;
+      return create ? RefineSession.create(deps, create, { repositories: stamp === true, docsRepo }) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
     // Only drop the entry this attempt added: a later attempt's entry must survive this one failing.
@@ -160,8 +171,9 @@ export class SessionRegistry {
     cleanDescription(description);
     if (name.trim() === '') throw new RangeError('name must not be empty');
     const ws = await this.ws(projectId);
+    if (this.docsRepoLayout && projectId === CENTRAL_REPO) throw new RangeError(`${CENTRAL_REPO} é o nome do repositório central de documentos; escolha outro nome para o projeto.`);
     const draft = draftPaths(ws, firstSpecId || `${projectId}-001`);
-    if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo))) {
+    if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo)) || (this.docsRepoLayout && (await isDocsRepo(ws)))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
     }
     await createNewProject(draft, name, description);

@@ -42,6 +42,9 @@ import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
 import { flowIsMermaid } from './sections.js';
+import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
+import { DocsStoreError } from '../docs/store.js';
+import { readDocsMarker } from '../docs/project-state.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -118,6 +121,8 @@ export interface SessionDeps {
   extractDocs?: (dir: string, outDir: string) => Promise<void>;
   /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
+  /** Binds the documentation repository at the Backlog step: the git and gh exec with the token, and the configured owner. */
+  docsBind?: { exec: Exec; configuredOwner: () => Promise<string | undefined> };
 }
 /** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
 export function declaredDependencies(state: RefineState): ExternalDependency[] {
@@ -216,6 +221,8 @@ export class RefineSession {
   private starting = false;
   /** Set when the owner throws the draft away: no run starts on it after that. */
   private discarding = false;
+  /** The Backlog step in flight: a second call awaits it, so the repository is bound and the backlog enabled once. */
+  private binding: Promise<void> | null = null;
 
   private constructor(
     private readonly deps: SessionDeps,
@@ -244,13 +251,14 @@ export class RefineSession {
     return new RefineSession(deps, journal);
   }
 
-  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean } = {}): Promise<RefineSession> {
+  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean; docsRepo?: boolean } = {}): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
     // A continued spec keeps the backlog key that names its plan file, which its next derivation no longer carries.
     const featureKey = mode === 'continue' ? s.state.derived?.spec.derivedFrom?.backlogKey : undefined;
     // Only a new project takes the repository flow; the stamp is written once, here, and the event without it is the same as before.
-    const repositories = options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW);
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}) });
+    // A documentation repository decides its architecture, so it is a repository session too.
+    const repositories = options.docsRepo === true || (options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW));
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}), ...(options.docsRepo === true ? { docsRepo: true } : {}) });
     if (repositories) await s.adoptArchitecture();
     return s;
   }
@@ -587,9 +595,31 @@ export class RefineSession {
 
   /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec, and the
    *  briefing becomes the target project's docs/briefing.md. */
-  async enableBacklog(): Promise<void> {
+  enableBacklog(): Promise<void> {
+    this.binding ??= this.enableBacklogOnce().finally(() => {
+      this.binding = null;
+    });
+    return this.binding;
+  }
+
+  private async enableBacklogOnce(): Promise<void> {
     this.guard();
-    await this.enableBacklogStep();
+    await this.enableBacklogStep(true);
+  }
+
+  /** Binds the documentation repository of this project, once; a refusal is a conflict whose message the owner reads. */
+  private async bindDocsRepo(): Promise<void> {
+    const docsBind = this.deps.docsBind;
+    if (!docsBind) throw new ConflictError('O GitHub não está configurado: não é possível criar o repositório de documentos.');
+    const architecture = this.state.architecture;
+    if (!architecture) throw new ConflictError('Decida a arquitetura antes do backlog.');
+    const { draft } = this.deps;
+    try {
+      await bindDocumentRepo({ ws: this.deps.ws, style: architecture.decision.style, projectId: draft.projectId, draftId: draft.specId, docs: await this.docsNow(), configuredOwner: await docsBind.configuredOwner(), exec: docsBind.exec });
+    } catch (err) {
+      if (err instanceof DocsStoreError || err instanceof DocsBindRefused) throw new ConflictError(err.message);
+      throw err;
+    }
   }
 
   /** The five documents as they are now, by file name. */
@@ -629,6 +659,9 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       const out = await this.decideOnDocs(docs, ctl.signal);
+      const bound = this.state.docsRepo === true ? await readDocsMarker(this.deps.ws) : null;
+      const lock = styleRefusal(bound, out.style);
+      if (lock) throw new Error(lock);
       const arch: Architecture = { style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations };
       await writeArchitectureFiles(this.deps.draft.root, arch);
       // The questions get ids from the journal's length, so a replay names them the same way.
@@ -663,12 +696,14 @@ export class RefineSession {
     throw new OwnerError('A arquitetura não fechou com as regras.', issues.join(' '));
   }
 
-  private async enableBacklogStep(): Promise<void> {
+  /** `bindRepo` is set only by the owner's Backlog step: no evaluation binds a documentation repository. */
+  private async enableBacklogStep(bindRepo = false): Promise<void> {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
     this.guardGraphed();
     const why = await this.architectureProblem();
     if (why) throw new ConflictError(why);
+    if (bindRepo && this.state.docsRepo === true) await this.bindDocsRepo();
     // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
     const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
     if (answered.length > 0) {
@@ -785,6 +820,8 @@ export class RefineSession {
         if (backlog?.enabled) return;
         // A repository session waits for the architecture of the documents as they are now.
         if (await this.architectureProblem()) return;
+        // A documentation repository is bound only by the owner's Backlog step, so an evaluation stops here.
+        if (this.state.docsRepo === true) return;
         await this.enableBacklogStep();
         continue;
       }

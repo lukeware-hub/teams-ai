@@ -30,6 +30,18 @@ function prNumber(url: string): number {
 
 export const NOT_FOUND = /Could not resolve to a Repository|HTTP 404/i;
 
+/** The login of the account the token or the gh login is signed in as; null when no account is signed in. */
+export async function viewerLogin(cwd: string, exec: Exec): Promise<string | null> {
+  const r = await gh(cwd, ['api', 'user'], exec);
+  if (r.exitCode !== 0) return null;
+  try {
+    const login = (JSON.parse(r.stdout) as { login?: unknown } | null)?.login;
+    return typeof login === 'string' && login !== '' ? login : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Idempotent repository bootstrap (spec §7.4). A half-finished `gh repo create --push` (remote
  * created, origin missing or main never pushed) is reconciled instead of reported as "exists".
