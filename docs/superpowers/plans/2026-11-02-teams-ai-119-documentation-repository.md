@@ -148,12 +148,12 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I2a - Git and GitHub primitives, probe (size M, weight 2)
 
-- [ ] `server/git/git.ts`: non-force push to `main` with classified failures, optional timeout per call, ancestor check, ahead count, annotated tag helpers, peeled tag lookup, atomic tag push.
-- [ ] `server/git/github.ts`: repository information from `gh repo view --json`, private repository creation without `--source` and `--push`.
-- [ ] `server/git/auth.ts`: `withGitConfig` (appends the entries at the current count) and `withGhAuth` (gh receives the token).
-- [ ] `server/core/redact.ts`: `findCredential` for the high-confidence token shapes and known secret values.
-- [ ] Unit tests with real git on bare origins, and a fake for gh.
-- [ ] Probe script `scripts/probes/docs-store.ts` written.
+- [x] `server/git/git.ts`: non-force push to `main` with classified failures, optional timeout per call, ancestor check, ahead count, annotated tag helpers, peeled tag lookup, atomic tag push.
+- [x] `server/git/github.ts`: repository information from `gh repo view --json`, private repository creation without `--source` and `--push`.
+- [x] `server/git/auth.ts`: `withGitConfig` (appends the entries at the current count) and `withGhAuth` (gh receives the token).
+- [x] `server/core/redact.ts`: `findCredential` for the high-confidence token shapes and known secret values.
+- [x] Unit tests with real git on bare origins, and a fake for gh.
+- [x] Probe script `scripts/probes/docs-store.ts` written.
 - [ ] Owner-gated: the probe runs on a throwaway owner and its output is saved under `docs/superpowers/probes/`.
 
 ## I2b - Documentation store (size L, weight 3)
@@ -167,11 +167,11 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I3 - Draft writers and spec renderer (size S, weight 1)
 
-- [ ] Atomic writes in the four draft writers of allowlisted files (`draft.ts`, `plan-prepare.ts`, `detail-cycle.ts`).
-- [ ] Projector-only renderer of `spec.md` for the store; `renderSpecMd`, `renderSpecsMd`, `renderBriefMd` and `planBasis` stay byte-identical (golden tests).
-- [ ] Docs-repo variants of the plan and task text: relative links, "never create other doc files"; legacy text byte-identical.
-- [ ] Alias rules in `validateBacklog` (stamped sessions only) and in the registry slug.
-- [ ] `KIND_WRITE_DIRS` unchanged: the draft tree does not move (decision D1), so no write rule changes.
+- [x] Atomic writes in the four draft writers of allowlisted files (`draft.ts`, `plan-prepare.ts`, `detail-cycle.ts`).
+- [x] Projector-only renderer of `spec.md` for the store; `renderSpecMd`, `renderSpecsMd`, `renderBriefMd` and `planBasis` stay byte-identical (golden tests).
+- [x] Docs-repo variants of the plan and task text: relative links, "never create other doc files"; legacy text byte-identical.
+- [ ] Alias rules in `validateBacklog` (stamped sessions only) and in the registry slug. The validator rule is done; the registry slug check moves to I5 with the stamp.
+- [x] `KIND_WRITE_DIRS` unchanged: the draft tree does not move (decision D1), so no write rule changes.
 
 ## I4 - Mirror and run side (size L, weight 3)
 
