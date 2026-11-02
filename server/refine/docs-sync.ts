@@ -3,6 +3,7 @@ import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
 import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushDocuments, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
+import { aheadCount } from '../git/git.js';
 import { readUserConfig } from '../onboarding/config-store.js';
 import { expandHome, type Workspace } from '../orchestrator/workspace.js';
 import { baseAliases, draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -209,7 +210,10 @@ export class DocsSync {
   private async pushLocal(): Promise<void> {
     if (this.resync) return;
     try {
-      await this.push(await openStore(this.input.ws, this.input.style, this.input.exec));
+      const store = await openStore(this.input.ws, this.input.style, this.input.exec);
+      // Nothing ahead of origin main: every local commit is already published, so the network push is skipped.
+      if ((await aheadCount(store.dir, 'origin/main', this.input.exec)) === 0) this.published();
+      else await this.push(store);
       if (this.pending === 0 && !this.refused) this.lastError = null;
     } catch (err) {
       this.refused = false;
