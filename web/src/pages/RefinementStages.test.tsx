@@ -138,12 +138,18 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('names the closing check that keeps the start locked, and does not say it can start', () => {
+  it('lists the unmet checks in plain words, with a button that opens the review step', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
-    renderView({ ...wizard({ repositories: true, speckit: speckit() as never }), closing } as never, handlersWithSpeckit());
+    const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('start-reason').textContent).toContain('po.scope-explicit');
+    const reason = screen.getByTestId('start-reason');
+    expect(reason.textContent).toContain('Ainda não dá para iniciar');
+    expect(reason.textContent).toContain('Escopo explícito');
+    expect(reason.textContent).not.toContain('po.scope-explicit');
     expect(screen.queryByText(/Pode iniciar/)).toBeNull();
+    fireEvent.click(screen.getByTestId('start-reason-action'));
+    expect(window.location.search).toContain('etapa=revisao');
   });
 
   it('shows the questions the plan asked, for the owner to answer, and keeps the start locked while one blocks', () => {

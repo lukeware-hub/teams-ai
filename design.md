@@ -1237,7 +1237,7 @@ Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repo
 - uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
 - `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
 
-Uma verificação que falha desliga a primária e diz por quê. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+Uma verificação que falha desliga a primária e diz por quê: ao lado do botão, um bloco lista em palavras simples cada item que falta, com a orientação de corrigir os documentos e avaliar de novo, e o botão `Ver o que falta`, que leva à etapa Revisão. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
 
 ### 27.2 Projeto: repositórios
 

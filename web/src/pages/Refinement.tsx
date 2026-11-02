@@ -1176,13 +1176,25 @@ export function RefinementView(p: ViewProps) {
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
     </ActionButton>
   );
-  // A failing closing check keeps the start locked, and the owner reads why here.
+  // A failing closing check keeps the start locked: the owner reads each unmet item and opens the review step that explains it.
   const closingFailing = snap.closing?.checks.find((check) => !check.ok);
+  const unmetChecks = st.checklist.filter((c) => !c.passed).map((c) => checkLabel[c.id] ?? c.id);
+  const unmet = unmetChecks.length > 0 || closingFailing === undefined ? unmetChecks : [closingFailing.detail];
+  const closingGate = !canStart && speckitReady && !speckitRunning && !speckitAsked.some((q) => q.blocking) && st.backlog?.detail === true && closingFailing !== undefined;
   // What the start waits for, in plain words, while it cannot start: the one primary action is the next step.
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
-    : speckitReason ?? (closingFailing && `Não dá para iniciar: ${closingFailing.detail}.`);
-  const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
+    : speckitReason;
+  const startNote = closingGate ? (
+    <div role="status" data-testid="start-reason" className="grid basis-full gap-2 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
+      <p className="m-0 font-semibold">Ainda não dá para iniciar. Falta:</p>
+      <ul className="m-0 grid list-disc gap-1 pl-5">{unmet.map((item) => <li key={item}>{item}</li>)}</ul>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-ink-soft">Na Revisão, cada item mostra o motivo. Corrija os documentos e avalie de novo.</span>
+        <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
+      </div>
+    </div>
+  ) : startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
   // The architecture step: the decision of the five documents, and Continuar once it is current.
   const architectureDecided = st.architecture != null && snap.architectureStale !== true;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
