@@ -444,6 +444,15 @@ describe('the final review', () => {
     expect(handlers.onEnableBacklog).toHaveBeenCalledTimes(1);
   });
 
+  it('continues from the review to the architecture step in a repository session, not to the backlog', async () => {
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ repositories: true }));
+    expect(screen.queryByTestId('enable-backlog')).toBeNull();
+    fireEvent.click(screen.getByTestId('open-backlog'));
+    await waitFor(() => expect(window.location.search).toContain('etapa=arquitetura'));
+    expect(handlers.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
   it('opens stage 7 when the backlog exists, and comes back to the review from it', async () => {
     open('?etapa=revisao');
     show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
