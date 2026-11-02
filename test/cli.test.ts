@@ -197,6 +197,26 @@ describe('teams-ai cli', () => {
     expect(calls).toEqual([{ runId: undefined }, { runId: 'spec-001-r3', auto: true }]);
   });
 
+  it('a blocked run whose returns are spent starts one successor of the spec by itself, and the successor starts none', async () => {
+    const calls: Array<{ runId?: string }> = [];
+    const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001']);
+    await main(a.io, async (_deps, runId) => {
+      const first = calls.length === 0;
+      calls.push({ runId });
+      return {
+        runId: runId ?? `spec-001-r${calls.length + 4}`,
+        retryBlocked: async () => { throw new Error('a successor is a new run, not a resumed one'); },
+        execute: async () => 'blocked',
+        canReturnBlocked: async () => false,
+        canReprocessAutomatically: async () => first,
+        requestStop: async () => {},
+        close: async () => {},
+      } as never;
+    });
+    expect(calls).toEqual([{ runId: undefined }, { runId: undefined }]);
+    expect(a.err.join('|')).toContain('started by the agents, as the next run of the spec');
+  });
+
   it('a blocked run goes back to the agents only while the owner lets them decide', async () => {
     let factories = 0;
     const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001']);
@@ -207,6 +227,7 @@ describe('teams-ai cli', () => {
         retryBlocked: async () => { throw new Error('a run the owner decides on is not sent back'); },
         execute: async () => 'blocked',
         canReturnBlocked: async () => false,
+        canReprocessAutomatically: async () => false,
         requestStop: async () => {},
         close: async () => {},
       } as never;

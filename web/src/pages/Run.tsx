@@ -1,7 +1,7 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
-import { runApi, startedPath, type RunDecision, type RunDetail, type StoredEvent, type TestLink } from '../api.js';
+import { runApi, startedPath, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
@@ -919,7 +919,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                 {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
                               </ActionButton>
                             ) : null}
-                            {reprocessAction && !detail.locked && (!autonomous || status === 'blocked') ? (
+                            {reprocessAction && !detail.locked && !autonomous ? (
                               <span className="inline-flex items-center gap-[0.35rem]">
                                 <ActionButton className={redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                   {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
@@ -1058,7 +1058,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                             {p.result === 'failed' ? (
                               <div className="col-span-full grid min-w-0 justify-items-start gap-2">
                                 <p className="m-0 text-[0.8125rem] leading-[1.45] text-ink">
-                                  <strong>O que fazer:</strong> {explainPhase(p).hint}
+                                  <strong>O que fazer:</strong> {explainPhase(p, autonomous).hint}
                                 </p>
                                 <button type="button" className={DETAIL_BUTTON} aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
                                   Ver detalhe
@@ -1160,6 +1160,18 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
 }
 
 // The start route answers 409 in English when the spec already has a live run.
+/** The run a queued spec gets: a program launches it a moment after the click, so the page waits for the newest run of the spec after `current`. */
+export async function awaitNewRun(projectId: string, specId: string, current: string): Promise<string | null> {
+  for (let tick = 0; tick < 30; tick++) {
+    const rows: RunRow[] = await runApi.runs(projectId).catch(() => []);
+    const afterN = rows.find((r) => r.runId === current)?.n ?? 0;
+    const next = rows.filter((r) => r.specId === specId && r.kind === 'run' && r.n > afterN).sort((a, b) => b.n - a.n)[0];
+    if (next) return next.runId;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return null;
+}
+
 const reprocessError = (message: string) => {
   const live = /already has run (\S+) \(([^)]+)\)/.exec(message);
   return live ? `Esta spec já tem a run ${live[1]} (${statusLabel(live[2]!)}). Abra essa run em vez de iniciar outra.` : `Não foi possível reprocessar: ${message}`;
@@ -1251,7 +1263,11 @@ function RunScreen({ runId }: { runId: string | undefined }) {
     setReprocessFailure(null);
     runApi
       .startRun(detail.projectId, detail.specId)
-      .then((r) => navigate(startedPath(detail.projectId, r)))
+      .then(async (r) => {
+        // Straight to the new run; the program page only when the run does not appear in time.
+        const started = r.queued ? await awaitNewRun(detail.projectId, detail.specId, detail.runId) : r.runId;
+        navigate(started ? `/runs/${started}` : startedPath(detail.projectId, r));
+      })
       .catch((e: Error) => {
         setReprocessing(false);
         setReprocessFailure(reprocessError(e.message));

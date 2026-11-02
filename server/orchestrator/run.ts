@@ -68,6 +68,8 @@ export interface RunDeps {
   /** The owner's answers to this spec's blocks, read at the start of the run; each is a binding assumption. */
   ownerDecisions?: OwnerDecision[];
   firstSpec: boolean;
+  /** Set when a blocked run with its returns spent starts the one automatic successor: that run is not chained again. */
+  autoReprocess?: boolean;
   requireDelivery?: boolean;
   requireSecurityTooling?: boolean;
   requireE2e?: boolean;
@@ -167,6 +169,11 @@ export function withInflightClaimed(state: RunState, inflight: Iterable<string>)
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
 
+/** After a fix task's loop the run goes on unless a task is blocked. A fix task replanned into replacements is judged by its replacements. */
+export function fixTasksOutcome(state: RunState): 'merged' | 'blocked' {
+  return [...state.tasks.values()].some((t) => t.state === 'blocked') ? 'blocked' : 'merged';
+}
+
 /** How many times a blocked run goes back to the agents on its own, when the owner lets them decide. */
 export const MAX_AUTO_RETURNS = 3;
 
@@ -240,7 +247,7 @@ export class Run {
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
-    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec });
+    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec, ...(deps.autoReprocess ? { autoReprocess: true } : {}) });
     return new Run(id, journal, deps, await Run.loadPriorGateFixes(deps, id));
   }
 
@@ -277,6 +284,12 @@ export class Run {
   async canReturnBlocked(): Promise<boolean> {
     const returns = this.journal.events.filter((e) => e.type === RunEvent.RunReopened && e.data.auto === true).length;
     return returns < MAX_AUTO_RETURNS && (await this.autonomous());
+  }
+
+  /** With the owner's agents deciding, a blocked run whose returns are spent starts one successor of the spec; a successor starts none. */
+  async canReprocessAutomatically(): Promise<boolean> {
+    const successor = this.journal.events.some((e) => e.type === OrchEvent.RunStarted && e.data.autoReprocess === true);
+    return !successor && (await this.autonomous());
   }
 
   /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */
@@ -846,7 +859,7 @@ export class Run {
     for (const t of tasks) if (this.journal.state.tasks.get(t.id)?.state === 'planned') await this.journal.fact(RunEvent.TaskStateChanged, { taskId: t.id, to: 'ready' });
     const r = await this.loop({ final: false });
     if (r !== 'complete') return r; // loop() already journaled RUN_FINISHED for a non-complete outcome
-    return tasks.every((t) => this.journal.state.tasks.get(t.id)?.state === 'merged') ? 'merged' : 'blocked';
+    return fixTasksOutcome(this.journal.state);
   }
 
   /** Spec (run API) §5: a signal drains — in-flight steps finish, nothing new starts. Idempotent. */

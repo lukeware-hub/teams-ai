@@ -414,28 +414,34 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     const manual = completing || readming || deploying;
     let runId = command === 'resume' ? String(f.run) : undefined;
     let result: ExecuteResult;
+    // How the next turn starts: 'return' resumes this run once more (its blocked tasks restart), 'successor' starts one
+    // new run of the spec, and 'stop' ends here. A blocked run the owner let the agents decide goes back to them first.
+    let next: 'stop' | 'return' | 'successor' = 'stop';
     for (let turn = 1; ; turn++) {
       const run = manual
         ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
-        : await factory(deps, runId, explicitId);
+        : await factory(deps, runId, turn === 1 ? explicitId : undefined);
       if (turn === 1 && command === 'resume' && f['retry-blocked'] === true) await run.retryBlocked();
-      // A blocked run the owner let the agents decide goes back to them on its own: a fresh process resumes it, as Retomar does.
-      if (turn > 1) await run.retryBlocked({ auto: true });
+      // A resumed run is a fresh process that continues it, as Retomar does.
+      if (next === 'return') await run.retryBlocked({ auto: true });
       runId = run.runId;
-      io.stderr(turn === 1 ? `run ${run.runId} started` : `run ${run.runId} sent back to the agents (${turn - 1} of ${MAX_AUTO_RETURNS})`);
+      io.stderr(next === 'successor' ? `run ${run.runId} started by the agents, as the next run of the spec` : next === 'return' ? `run ${run.runId} sent back to the agents` : `run ${run.runId} started`);
       const off = (hooks.signals ?? realSignals)(() => {
         io.stderr('stop requested: draining');
         void run.requestStop();
       });
-      let again = false;
       try {
         result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : deploying ? await run.deployOnly() : await run.execute();
-        again = !manual && result === 'blocked' && (await run.canReturnBlocked());
+        next = manual || result !== 'blocked' ? 'stop' : (await run.canReturnBlocked()) ? 'return' : (await run.canReprocessAutomatically()) ? 'successor' : 'stop';
       } finally {
         off();
         await run.close();
       }
-      if (!again) break;
+      if (next === 'stop') break;
+      if (next === 'successor') {
+        runId = undefined;
+        if (deps) deps.autoReprocess = true;
+      }
     }
     if (result === 'awaiting-validation' && deps) await markAwaitingValidation(projectDir, deps.spec.specId, deps.ws.repo);
     if (result === 'paused:auth') io.stderr('run paused: claude auth expired; run "claude auth login" and resume');
