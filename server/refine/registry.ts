@@ -229,8 +229,9 @@ export class SessionRegistry {
 
   /** R11.4: starts the program of a detailed backlog; the first item's run is the one the screen follows. */
   private async startProgram(projectId: string, specId: string, session: RefineSession, summaryHash?: string): Promise<{ runId: string; program: Program }> {
-    const entries = await session.freezeProgram(summaryHash);
+    session.beginStart();
     try {
+      const entries = await session.freezeProgram(summaryHash);
       const program = await this.programs.start(projectId, specId, entries);
       const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
       if (runId === null) {
@@ -312,23 +313,34 @@ export class SessionRegistry {
     await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec));
     if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session, summaryHash);
     if (session.state.mode === 'new-project') throw new ConflictError('O backlog ainda não está pronto: avalie o projeto até ele ficar pronto antes de iniciar a análise.');
+    // Any failure until the session records the run releases the start lock, so the session never stays locked by a start.
+    session.beginStart();
+    try {
+      const runId = await this.launchSpec(draft, specId, session);
+      await session.markStarted(runId);
+      return { runId };
+    } catch (err) {
+      session.failStart();
+      throw err;
+    }
+  }
+
+  /** Freezes the spec and spawns its draft run; a run that never writes its journal is abandoned and reported as a 500. */
+  private async launchSpec(draft: Draft, specId: string, session: RefineSession): Promise<string> {
     await session.freeze();
     const runs = await this.deps.runsDir();
-    const runId = await nextRunId({ runs, projectId }, specId);
+    const runId = await nextRunId({ runs, projectId: draft.projectId }, specId);
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });
     const { pid } = spawnRun(this.deps.control, { projectDir: draft.root, specId, runId, mode: 'run', draft: true, logFile: path.posix.join(runs, runId, 'ui.log') });
-    // Any failure until the session records the run stops it, so the session never stays locked by a start.
     try {
       await waitForRunJournal(this.deps.control, runs, runId, pid, this.deps.secretsDir);
       await writePid(runs, runId, pid);
       await this.deps.register(draft.root);
-      await session.markStarted(runId);
     } catch (err) {
       await abandonLaunch(this.deps.control, runs, runId, pid);
-      session.failStart();
       throw new HttpError(500, err instanceof Error ? err.message : String(err));
     }
-    return { runId };
+    return runId;
   }
 
   /**

@@ -345,8 +345,15 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.AutopilotPaused, { reason });
   }
 
+  /** Takes the start lock at once, before any await; it is held until `markStarted` or `failStart`. */
+  beginStart(): void {
+    this.guardStarting();
+    this.starting = true;
+  }
+
   /** The owner throws this draft away: no run starts on it from now on, and the heal driver leaves it. */
   beginDiscard(): void {
+    this.guardStarting();
     this.discarding = true;
   }
 
@@ -1046,25 +1053,16 @@ export class RefineSession {
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
     const inputHash = this.state.derived && (await planInputHash(this.deps.draft, this.state));
-    // Another freeze may have passed the same checks while this one awaited the running cycle.
-    if (this.starting) throw new ConflictError('a start is already in progress');
     // A spec not derived yet is refused below; a derived one needs its plan preparation first.
     if (inputHash) this.refuseWithoutSpeckit(inputHash);
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    this.starting = true;
-    try {
-      const derived = this.state.derived!;
-      // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
-      const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
-      await writeDerived(this.deps.draft, value);
-      return value;
-    } catch (err) {
-      this.starting = false;
-      throw err;
-    }
+    const derived = this.state.derived!;
+    // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
+    const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
+    await writeDerived(this.deps.draft, value);
+    return value;
   }
 
   /**
@@ -1104,14 +1102,12 @@ export class RefineSession {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
     const backlog = this.state.backlog;
     // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
     const specs = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     const inputHash = await planInputHash(this.deps.draft, this.state);
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     this.refuseWithoutSpeckit(inputHash);
     let closing: { ok: boolean } | undefined;
@@ -1126,10 +1122,7 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    // Built before the start lock, so a refused start leaves the session free to try again.
-    const entries = programEntries(this.deps.draft.specId, backlog, onMain);
-    this.starting = true;
-    return entries;
+    return programEntries(this.deps.draft.specId, backlog, onMain);
   }
 
   /** R11.4: freezes one planned item spec at its turn (specVersion+1, running, specHash) in the draft, where its run reads it. Idempotent. */
@@ -1156,9 +1149,10 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: 'não aplicada: a execução começou sem ela' });
     }
     await this.journal.fact(RefineEvent.StartedRun, { runId });
+    this.starting = false;
   }
 
-  /** The spawned run died before writing its journal (e.g. a precondition failed); undo the `starting` lock so the session can retry. */
+  /** The start failed before its run was recorded; undo the `starting` lock so the session can retry. */
   failStart(): void {
     this.starting = false;
   }

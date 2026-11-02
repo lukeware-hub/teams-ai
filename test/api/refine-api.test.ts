@@ -1001,6 +1001,28 @@ describe('refine api', () => {
     expect(spawns).toHaveLength(2);
   });
 
+  it('a spawn that throws before any run is written releases the start lock, so the session can start again', async () => {
+    await specDraft();
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    await preparePlans('/api/refine/hello-app/hello-app-001');
+    const control = (registry as unknown as { deps: { control: RunControlDeps } }).deps.control;
+    const spawn = control.spawn;
+    control.spawn = () => {
+      throw new Error('spawn EACCES');
+    };
+    try {
+      expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(500);
+    } finally {
+      control.spawn = spawn;
+    }
+    expect((await snapshot()).state.status).toBe('ready');
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(200);
+  });
+
   it('redacts a secret in the log tail of a start that failed (audit M3)', async () => {
     await specDraft();
     script['derive/po'] = [derived];
