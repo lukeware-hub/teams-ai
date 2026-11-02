@@ -37,6 +37,7 @@ let resolved: Record<string, string> = {};
 let processes: Map<number, { start: string; argv: string[] }>;
 let closedDrafts: string[];
 let failGh: boolean;
+let holdGh: Promise<void> | null;
 const base = () => `http://127.0.0.1:${api.port}`;
 const post = (p: string, body?: unknown) => fetch(`${base()}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 const del = (p: string) => fetch(`${base()}${p}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } });
@@ -57,6 +58,7 @@ beforeEach(async () => {
   processes = new Map();
   closedDrafts = [];
   failGh = false;
+  holdGh = null;
   onSpawn = async () => {};
   onSignal = () => {};
   // A real wait loop yields real time; an instant one let the fake child lose the race under a loaded suite.
@@ -85,7 +87,7 @@ beforeEach(async () => {
     repoRoot: '/repo',
   };
   docker.length = 0;
-  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); return (failGh && s.bin === 'gh' ? { exitCode: 1, stdout: '', stderr: 'HTTP 403: Must have admin rights to Repository', timedOut: false } : { exitCode: 0, stdout: "", stderr: "", timedOut: false }) as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), closeDrafts: async (id) => { closedDrafts.push(id); }, probeProcess: async (pid) => processes.get(pid) ?? null, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], importBacklog: async (projectId) => { backlogStarted.push(projectId); }, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('backlog-app')) await fs.writeFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), (await fs.readFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8')).replace('"status": "running"', '"status": "planned"'));if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
+  api = await startApi({ routes: runRoutes({ cfg: async () => (await readUserConfig(home)).cfg, home, control, exec: async (s) => { docker.push(s.args.join(" ")); if (s.bin === 'gh' && holdGh) await holdGh; return (failGh && s.bin === 'gh' ? { exitCode: 1, stdout: '', stderr: 'HTTP 403: Must have admin rights to Repository', timedOut: false } : { exitCode: 0, stdout: "", stderr: "", timedOut: false }) as never; }, httpGet: async (u, t) => { probed.push(u); return probe(u, t); }, clearChat: async (id) => fs.rm(path.join(home, '.teams-ai', 'chats', `${id}.json`), { force: true }), closeDrafts: async (id) => { closedDrafts.push(id); }, probeProcess: async (pid) => processes.get(pid) ?? null, resolveHost: async (n) => [resolved[n] ?? '140.82.112.3'], importBacklog: async (projectId) => { backlogStarted.push(projectId); }, cloneProject: async (url, destination) => { cloned.push({ url, destination }); await (url.includes('no-docs') ? fs.mkdir(destination, { recursive: true }) : fs.cp(HELLO, destination, { recursive: true })); if (url.includes('backlog-app')) await fs.writeFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), (await fs.readFile(path.join(destination, 'docs', 'specs', 'hello-001', 'spec.json'), 'utf8')).replace('"status": "running"', '"status": "planned"'));if (url.includes('walks-out')) await fs.writeFile(path.join(destination, 'docs', 'project.json'), JSON.stringify({ ...JSON.parse(await fs.readFile(path.join(HELLO, 'docs', 'project.json'), 'utf8')), services: ['../../../escaped'] })); } }) }, 0);
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -386,6 +388,24 @@ describe('projects', () => {
     expect(res.status).toBe(409);
     expect(await res.text()).toContain('acme/hello-app');
     expect(await fs.access(project).then(() => true, () => false)).toBe(true);
+  });
+
+  it('lists a project being deleted, and refuses a second delete of it until the first one ends', async () => {
+    await useGithubProject();
+    let release = () => {};
+    holdGh = new Promise<void>((r) => { release = r; });
+    const first = fetch(`${base()}/api/projects/hello-app`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub: true }) });
+    let deleting: string[] = [];
+    for (let i = 0; i < 200 && !deleting.includes('hello-app'); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      deleting = (await (await fetch(`${base()}/api/project-deletions`)).json()).deleting;
+    }
+    expect(deleting).toEqual(['hello-app']);
+    expect((await del('/api/projects/hello-app')).status).toBe(409);
+    release();
+    holdGh = null;
+    expect((await first).status).toBe(200);
+    expect(await (await fetch(`${base()}/api/project-deletions`)).json()).toEqual({ deleting: [] });
   });
 
   it('404s deleting an unknown project', async () => {

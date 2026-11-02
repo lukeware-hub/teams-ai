@@ -145,11 +145,43 @@ describe('ProjectsView', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(screen.getByText(/está sendo excluído em background/)).toBeTruthy();
     const card = screen.getByTestId('delete-project-hello-app') as HTMLButtonElement;
-    expect(card.disabled).toBe(true);
+    expect(card.getAttribute('aria-disabled')).toBe('true');
     expect(card.querySelector('.button-spinner')).not.toBeNull();
+    fireEvent.click(card);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(deleteProject).toHaveBeenCalledTimes(1);
     finish();
     await waitFor(() => expect(screen.queryByText(/está sendo excluído em background/)).toBeNull());
-    expect((screen.getByTestId('delete-project-hello-app') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('delete-project-hello-app').getAttribute('aria-disabled')).toBeNull();
+  });
+  it('names the GitHub repositories with their count, and says they stay when the box is unchecked', async () => {
+    const o = on();
+    const repos = vi.fn(async () => ['acme/hello-app', 'acme/orders-api']);
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} onGithubRepos={repos} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('delete-project-hello-app'));
+    await screen.findByRole('checkbox', { name: 'Apagar também no GitHub' });
+    expect(screen.getByText('Repositórios no GitHub (2)')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('delete-confirm'));
+    await screen.findByTestId('delete-project-name');
+    expect(screen.getByRole('alertdialog').textContent).toContain('Os repositórios no GitHub não serão apagados.');
+  });
+  it('shows a project the server is still deleting, even when this page did not start it', async () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} deleting={['hello-app']} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/está sendo excluído em background/)).toBeTruthy();
+    const card = screen.getByTestId('delete-project-hello-app');
+    expect(card.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(card);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(o.deleteProject).not.toHaveBeenCalled();
   });
   it('warns that a delete cannot be cancelled once it starts', async () => {
     render(

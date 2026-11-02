@@ -336,7 +336,10 @@ td.num { color: var(--ink); font-weight: 500; }
 .confirm-repos code { color: var(--ink-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .confirm-field { display: grid; gap: 0.375rem; color: var(--ink-soft); font-size: 0.8125rem; }
 .confirm-field input { width: 100%; }
-.dialog-backdrop:has(.confirm) { backdrop-filter: blur(6px); animation: backdrop-in 180ms ease-out; }
+.confirm-field code { overflow-wrap: anywhere; }
+.confirm-label { margin: 0; color: var(--ink); font-size: 0.8125rem; font-weight: 600; text-align: left; }
+.confirm-warning { margin: 0; padding: 0.5rem 0.75rem; border: 1px solid var(--bad-line); border-radius: 10px; color: var(--bad); background: var(--bad-soft); font-size: 0.8125rem; font-weight: 600; text-align: left; }
+.dialog-backdrop:has(.confirm) { backdrop-filter: blur(6px); animation: backdrop-in 180ms ease-out; align-items: safe center; overflow-y: auto; }
 @keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
 @keyframes backdrop-in { from { opacity: 0; } }
 @keyframes dialog-in { from { opacity: 0; transform: scale(0.96); } }
@@ -434,6 +437,7 @@ button[aria-busy='true']:disabled { cursor: progress; opacity: 0.75; }
 
 @media (pointer: coarse) {
   .info-tip, .dialog-close { position: relative; }
+  .confirm-actions button { min-height: 2.75rem; }
   .info-tip::after, .dialog-close::after { content: ''; position: absolute; inset: -13px; }
   .refine-breadcrumb a { position: relative; }
   .refine-breadcrumb a::after { content: ''; position: absolute; inset: -12px -4px; }

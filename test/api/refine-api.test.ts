@@ -959,6 +959,17 @@ describe('refine api', () => {
     expect(await fs.access(`${home}/ws/other-app/refine/other-app-001`).then(() => true, () => false)).toBe(true);
   });
 
+  it('closes every refinement of a project and keeps its files, leaving another project open', async () => {
+    await specDraft();
+    await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other' });
+    const closed = await registry.get('hello-app', 'hello-app-001');
+    const other = await registry.get('other-app', 'other-app-001');
+    await registry.closeProjectDrafts('hello-app');
+    expect(await registry.get('hello-app', 'hello-app-001')).not.toBe(closed);
+    expect(await registry.get('other-app', 'other-app-001')).toBe(other);
+    expect(await fs.access(`${home}/ws/hello-app/refine/hello-app-001`).then(() => true, () => false)).toBe(true);
+  });
+
   it('a child that dies before writing its journal reports 500 with the log tail and leaves the session retryable', async () => {
     await specDraft();
     script['derive/po'] = [derived];

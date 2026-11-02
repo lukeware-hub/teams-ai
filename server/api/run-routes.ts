@@ -227,6 +227,8 @@ async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: str
 }
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {
+  /** Projects whose deletion runs now: a page reloaded mid-delete still shows them as being deleted. */
+  const deleting = new Set<string>();
   const index = async (): Promise<IndexDeps> => ({ cfg: await deps.cfg(), home: deps.home, isAlive: (pid) => isAlive(deps.control, pid) });
   /** A project as the screens get it: its GitHub page and each service's, from its own clone (null until Phase 0 made it). */
   const projectView = async (idx: IndexDeps, r: ProjectRow) => {
@@ -560,6 +562,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       },
     },
     {
+      method: 'GET',
+      path: `${P}/project-deletions`,
+      handler: async ({ json }) => json(200, { deleting: [...deleting] }),
+    },
+    {
       method: 'DELETE',
       path: `${P}/projects/:projectId`,
       handler: async ({ params, body, json }) => {
@@ -577,37 +584,43 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           services.push(...(read.project.services ?? []));
         }
         if (dirs.length === 0) throw new HttpError(404, `unknown project ${projectId}`);
-        const runs = runsDir(idx);
-        const probe = deps.probeProcess ?? probeProcess;
-        for (const run of (await listRuns(idx, projectId)).filter(claimsSpec)) {
-          await markStopRequested(runs, run.runId);
-          const pid = await processOfRun(run, runs, deps.control, probe);
-          if (pid === null) continue;
-          await stop(deps.control, pid, 3_000);
-          await clearPid(runs, run.runId);
-          if (isAlive(deps.control, pid)) throw new HttpError(409, `a execução ${run.runId} segue no processo ${pid} depois de parada; pare-o antes de excluir`);
+        if (deleting.has(projectId)) throw new HttpError(409, `o projeto ${projectId} já está sendo excluído`);
+        deleting.add(projectId);
+        try {
+          const runs = runsDir(idx);
+          const probe = deps.probeProcess ?? probeProcess;
+          for (const run of (await listRuns(idx, projectId)).filter(claimsSpec)) {
+            await markStopRequested(runs, run.runId);
+            const pid = await processOfRun(run, runs, deps.control, probe);
+            if (pid === null) continue;
+            await stop(deps.control, pid, 3_000);
+            await clearPid(runs, run.runId);
+            if (isAlive(deps.control, pid)) throw new HttpError(409, `a execução ${run.runId} segue no processo ${pid} depois de parada; pare-o antes de excluir`);
+          }
+          const ws = workspacePaths(idx.cfg, projectId, deps.home);
+          if (wantsGithub) await deleteGithubRepos(await githubReposOf(repoDirsOf(ws, services)), deps.exec ?? execCommand);
+          // Last, so no refinement reopens between its close and the removal of its files.
+          await deps.closeDrafts?.(projectId);
+          await removeTree(ws.root);
+          for (const dir of dirs) await removeTree(dir);
+          const gates = expandHome(idx.cfg.paths.gateCache, deps.home);
+          await removeTree(gateCacheDir(gates, projectId));
+          await removeTree(path.join(gates, 'cargo-root', projectId));
+          const runNames = (await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
+          for (const runId of runNames) {
+            const row = await runRow(idx, runId).catch(() => null);
+            // A crashed legacy run names no project; only then does its spec id decide (another project may share it).
+            if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
+          }
+          await removeProjectDirs(dirs, deps.home);
+          await removeProjectSettings(projectId, deps.home);
+          await deps.clearChat?.(projectId);
+          await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
+          await releaseDeployPort(path.dirname(ws.root), projectId);
+          json(200, { deleted: true });
+        } finally {
+          deleting.delete(projectId);
         }
-        const ws = workspacePaths(idx.cfg, projectId, deps.home);
-        if (wantsGithub) await deleteGithubRepos(await githubReposOf(repoDirsOf(ws, services)), deps.exec ?? execCommand);
-        // Last, so no refinement reopens between its close and the removal of its files.
-        await deps.closeDrafts?.(projectId);
-        await removeTree(ws.root);
-        for (const dir of dirs) await removeTree(dir);
-        const gates = expandHome(idx.cfg.paths.gateCache, deps.home);
-        await removeTree(gateCacheDir(gates, projectId));
-        await removeTree(path.join(gates, 'cargo-root', projectId));
-        const runNames =(await fs.readdir(runs).catch(() => [] as string[])).filter((n) => SAFE_ID.test(n));
-        for (const runId of runNames) {
-          const row = await runRow(idx, runId).catch(() => null);
-          // A crashed legacy run names no project; only then does its spec id decide (another project may share it).
-          if (row && (row.projectId === projectId || (row.projectId === '' && specIds.has(row.specId)))) await fs.rm(path.join(runs, runId), { recursive: true, force: true });
-        }
-        await removeProjectDirs(dirs, deps.home);
-        await removeProjectSettings(projectId, deps.home);
-        await deps.clearChat?.(projectId);
-        await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
-        await releaseDeployPort(path.dirname(ws.root), projectId);
-        json(200, { deleted: true });
       },
     },
     {

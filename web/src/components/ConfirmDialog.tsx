@@ -27,7 +27,7 @@ export function ConfirmDialog({ title, subject, confirmLabel, tone = 'danger', i
         return;
       }
       if (e.key !== 'Tab' || !box.current) return;
-      const items = [...box.current.querySelectorAll<HTMLElement>('button:not(:disabled)')];
+      const items = [...box.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)')];
       const first = items[0];
       const last = items.at(-1);
       if (!first || !last) return;

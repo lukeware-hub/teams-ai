@@ -64,6 +64,8 @@ export function ProjectsView(p: {
   onDeleteProject: (projectId: string, deleteGithub: boolean) => void | Promise<void>;
   /** The GitHub repositories of a project and its services, as owner/name. */
   onGithubRepos?: (projectId: string) => Promise<string[]>;
+  /** Projects whose deletion the server is running now, possibly started by an earlier page load. */
+  deleting?: string[];
 }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [newProjectId, setNewProjectId] = useState('');
@@ -105,7 +107,13 @@ export function ProjectsView(p: {
   const [typedName, setTypedName] = useState('');
   const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const busyIds = [...deletingIds, ...(p.deleting ?? []).filter((id) => !deletingIds.includes(id))];
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const closeDelete = () => {
+    setPendingDeleteProject(null);
+    setTimeout(() => opener.current?.focus(), 0);
+  };
   const openDeleteProject = async (project: ProjectRow) => {
     setPendingDeleteProject(project);
     setDeleteStep('loading');
@@ -125,7 +133,7 @@ export function ProjectsView(p: {
   const confirmDeleteProject = () => {
     const project = pendingDeleteProject;
     if (!project) return;
-    setPendingDeleteProject(null);
+    closeDelete();
     setDeleteFailure(null);
     setDeletingIds((ids) => [...ids, project.projectId]);
     void Promise.resolve(p.onDeleteProject(project.projectId, deleteGithub))
@@ -134,6 +142,7 @@ export function ProjectsView(p: {
   };
   const deleteReposDetail = (
     <>
+      <p className="confirm-label">Repositórios no GitHub ({githubRepos.length})</p>
       <label className="confirm-check">
         <input type="checkbox" checked={deleteGithub} onChange={(e) => setDeleteGithub(e.target.checked)} />
         Apagar também no GitHub
@@ -147,16 +156,19 @@ export function ProjectsView(p: {
   );
   const deleteConfirmDetail = (
     <>
-      {deleteGithub ? (
+      {githubRepos.length === 0 ? null : deleteGithub ? (
         <>
-          <p>Também serão apagados no GitHub:</p>
+          <p className="confirm-label">Também serão apagados no GitHub ({githubRepos.length}):</p>
           <ul className="confirm-repos">
             {githubRepos.map((r) => (
               <li key={r}><code>{r}</code></li>
             ))}
           </ul>
         </>
-      ) : null}
+      ) : (
+        <p className="confirm-label">Os repositórios no GitHub não serão apagados.</p>
+      )}
+      <p className="confirm-warning">Depois que a exclusão começar, não tem como cancelar.</p>
       {deleteDialogError ? <div className="error" role="alert">{deleteDialogError}</div> : null}
       <label className="confirm-field">
         <span>Digite <code>{pendingDeleteProject?.projectId}</code> para confirmar</span>
@@ -243,7 +255,7 @@ export function ProjectsView(p: {
         </form>
       ) : null}
       {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
-      {deletingIds.map((id) => (
+      {busyIds.map((id) => (
         <p key={id} className="m-0 text-[0.875rem] text-ink-soft" role="status">O projeto {id} está sendo excluído em background.</p>
       ))}
       {deleteFailure ? <p className="error m-0" role="alert">{deleteFailure}</p> : null}
@@ -284,6 +296,7 @@ export function ProjectsView(p: {
         <div className={grid}>
           {visible.map((pr) => {
             const percent = pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100);
+            const busy = busyIds.includes(pr.projectId);
             return (
               <article className={card} key={pr.projectId}>
                 <div className={cardBody}>
@@ -295,15 +308,15 @@ export function ProjectsView(p: {
                   </p>
                 </div>
                 <div className={cardActions}>
-                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} disabled={deletingIds.includes(pr.projectId)} aria-busy={deletingIds.includes(pr.projectId) || undefined} onClick={() => void openDeleteProject(pr)}>
+                  <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>
                     Excluir
-                    {deletingIds.includes(pr.projectId) ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
+                    {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
                   </button>
-                  <Link className={action.secondary} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} to={`/projects/${pr.projectId}?novaSpec=1`}>
+                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={`/projects/${pr.projectId}?novaSpec=1`}>
                     Nova spec
                     <Icon name="plus" size={14} />
                   </Link>
-                  <Link className={action.secondary} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} to={`/projects/${pr.projectId}`}>
+                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={`/projects/${pr.projectId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>
@@ -361,17 +374,17 @@ export function ProjectsView(p: {
           subject={pendingDeleteProject.projectId}
           confirmLabel={deleteStep === 'confirm' ? 'Excluir projeto' : 'Continuar'}
           tone={deleteStep === 'confirm' ? 'danger' : 'accent'}
-          icon={deleteStep === 'confirm' ? 'trash' : 'check'}
+          icon="trash"
           confirmDisabled={deleteStep === 'loading' || (deleteStep === 'confirm' && typedName !== pendingDeleteProject.projectId)}
           detail={deleteStep === 'confirm' ? deleteConfirmDetail : deleteStep === 'repos' ? deleteReposDetail : null}
-          onCancel={() => setPendingDeleteProject(null)}
+          onCancel={closeDelete}
           onConfirm={deleteStep === 'confirm' ? confirmDeleteProject : () => setDeleteStep('confirm')}
         >
           {deleteStep === 'loading'
             ? 'Carregando repositórios…'
             : deleteStep === 'repos'
               ? 'Marque para apagar também os repositórios no GitHub. Os arquivos locais são apagados de qualquer forma.'
-              : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito. Depois que a exclusão começar, não tem como cancelar.'}
+              : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
         </ConfirmDialog>
       ) : null}
     </main>
@@ -381,6 +394,7 @@ export function ProjectsView(p: {
 export function Projects() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
+  const [deleting, setDeleting] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<{ projectId: string; specId: string; message: string } | null>(null);
@@ -389,6 +403,7 @@ export function Projects() {
     try {
       setProjects(await runApi.projects());
       setDrafts(await refineApi.list());
+      setDeleting(await runApi.deletingProjects());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -426,6 +441,7 @@ export function Projects() {
       drafts={drafts}
       loading={loading}
       error={error}
+      deleting={deleting}
       onAdd={(d) => act(() => runApi.addProject(d))()}
       onNewProject={(id, name, description, firstSpecId) => go(() => refineApi.newProject(id, name, description, firstSpecId))()}
       onSuggestName={refineApi.suggestName}

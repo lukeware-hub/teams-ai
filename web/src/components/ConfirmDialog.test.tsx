@@ -18,6 +18,13 @@ describe('ConfirmDialog tone', () => {
     expect(document.querySelector('.confirm-icon')!.className).toContain('is-accent');
   });
 
+  it('keeps Shift+Tab inside the dialog when focus is on a field in it', () => {
+    render(<ConfirmDialog title="Excluir" confirmLabel="Excluir" detail={<input aria-label="Nome" />} onConfirm={vi.fn()} onCancel={vi.fn()}>Texto.</ConfirmDialog>);
+    screen.getByLabelText('Nome').focus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(screen.getByTestId('delete-confirm'));
+  });
+
   it('confirms through the test id it was given, and cancels with the close button', () => {
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
