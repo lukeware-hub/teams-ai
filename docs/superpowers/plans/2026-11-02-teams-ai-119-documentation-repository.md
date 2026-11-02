@@ -220,11 +220,13 @@ Notes from the I7 review: the start flag is taken after the main sync, because t
 
 ## I9 - Follow-on drafts on direct main (size M, weight 2)
 
-- [ ] `MainView`: five documents and `docs/briefing.md` from store HEAD; JSON from the mirror.
-- [ ] A follow-on draft without the mirror project is refused; an alias already present is refused.
-- [ ] Closing sync is a three-way merge without union; conflict markers refuse the start.
-- [ ] Discarding a draft that did not start removes its aliases; restarting keeps them.
-- [ ] Two drafts on one store keep a linear history.
+- [x] `MainView`: five documents and `docs/briefing.md` from store HEAD; JSON from the mirror.
+- [x] A follow-on draft without the mirror project is refused; an alias already present is refused.
+- [x] Closing sync is a three-way merge without union; conflict markers refuse the start.
+- [x] Discarding a draft that did not start removes its aliases; restarting keeps them.
+- [x] Two drafts on one store keep a linear history.
+
+Notes from the I9 review: a continuation discard keeps every folder that main already had (the retire skips aliases of the base copy); a discard whose removal push was refused is published by the next flush, not by a retry of the discard; the main fallback for an unbound docs-repo project stays non-strict (open).
 
 ## I10 - Web: documents notice and backlog button (size S, weight 1, owner-gated)
 
