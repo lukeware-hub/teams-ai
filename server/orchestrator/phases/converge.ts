@@ -3,6 +3,7 @@ import type { PlanTask } from '../../contracts/plan.js';
 import { git } from '../../git/git.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { OrchEvent } from '../events.js';
+import { devChangedFiles } from '../sandbox-placeholders.js';
 import { convergePack } from '../steps.js';
 import { docsWorktree, PAUSED_AUTH, pauseForFailure, type PhaseDeps } from './shared.js';
 import { smFixTasks } from './verify.js';
@@ -10,9 +11,10 @@ import { smFixTasks } from './verify.js';
 /** `done`: the code meets the plan; `gaps`: the review found what to build; `paused`: a login or quota stop; `failed`: the round stops the run. */
 export type ReviewRound = { kind: 'done' } | { kind: 'gaps'; gaps: string[] } | { kind: 'paused' } | { kind: 'failed'; reason: string };
 
-/** Paths the review changed: a review changes none. */
-async function changedPaths(worktree: string, exec: PhaseDeps['exec']): Promise<string[]> {
-  return (await git(worktree, ['ls-files', '--modified', '--others'], exec)).split('\n').filter((l) => l !== '');
+/** Paths the review changed: a review changes none, and ignored output or a tool cache is not its work. */
+export async function changedPaths(worktree: string, exec: PhaseDeps['exec']): Promise<string[]> {
+  const names = (await git(worktree, ['ls-files', '--modified', '--others', '--exclude-standard'], exec)).split('\n').filter((l) => l !== '');
+  return devChangedFiles(names);
 }
 
 /** One read-only review of the merged code against the implementation plan. Its verdict is journaled; nothing is committed. */
