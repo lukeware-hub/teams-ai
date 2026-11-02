@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
-import { CENTRAL_REPO, FIVE_DOCS, FIVE_DOC_PATHS, repoPath, type DocsRun, type Style } from '../../docs/layout.js';
+import { CENTRAL_REPO, FIVE_DOCS, FIVE_DOC_PATHS, SPEC_FILES, parseRepoPath, repoPath, type DocsRun, type Style } from '../../docs/layout.js';
 import type { Spec } from '../../contracts/spec.js';
 import { docsSnapshotDir, writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
@@ -37,7 +37,20 @@ async function missingSnapshotFile(docs: DocsRun, spec: Pick<Spec, 'specId' | 'r
   const service = docs.style === 'microservices' ? spec.repository : undefined;
   const files = [...FIVE_DOC_PATHS, repoPath(docs.style, 'plan', spec.specId, service), repoPath(docs.style, 'task', spec.specId, service)];
   for (const file of files) if (!(await exists(path.join(docs.snapshot, file)))) return file;
+  for (const folder of await specFoldersOf(docs.snapshot)) {
+    for (const kind of ['plan', 'task'] as const) {
+      const file = `${folder}/${SPEC_FILES[kind]}`;
+      if (!(await exists(path.join(docs.snapshot, file)))) return file;
+    }
+  }
   return null;
+}
+
+/** The folder of every spec the closing snapshot holds, by its repository path. */
+async function specFoldersOf(snapshot: string): Promise<string[]> {
+  return (await listFiles(snapshot))
+    .filter((rel) => path.posix.basename(rel) === SPEC_FILES.spec && parseRepoPath(rel) !== null)
+    .map((rel) => path.posix.dirname(rel));
 }
 
 /** The machine files of a docs-repo start: the project's JSON and the spec's own folder, the spec's spec.json last. */
