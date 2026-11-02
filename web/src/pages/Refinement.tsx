@@ -1192,7 +1192,7 @@ export function RefinementView(p: ViewProps) {
           <Icon name="file" size={16} />
           <div className="grid min-w-0 gap-1">
             <b className="text-[0.875rem] font-semibold">Documentos</b>
-            <span>{`Cria o repositório privado ${snap.docsTarget.owner}/${snap.docsTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
+            <span className="break-words">{`Cria o repositório privado ${snap.docsTarget.owner}/${snap.docsTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
           </div>
         </div>
       )}
