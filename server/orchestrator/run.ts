@@ -169,6 +169,22 @@ export function withInflightClaimed(state: RunState, inflight: Iterable<string>)
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
 
+/** The blocked tasks of a finished run as one comparable signature: each task with the first line of its reason. */
+export function blockSignature(blocked: unknown): string {
+  if (!Array.isArray(blocked)) return '';
+  return blocked.map((b: { taskId: string; reason: string }) => `${b.taskId}\u0000${String(b.reason).split('\n')[0]}`).sort().join('\u0001');
+}
+
+/** The last two finishes of the run ended blocked with the same blocked tasks for the same reason: another try repeats it. */
+export function repeatedBlock(events: readonly { type: string; data: Record<string, unknown> }[]): boolean {
+  const finishes = events.filter((e) => e.type === OrchEvent.RunFinished);
+  if (finishes.length < 2) return false;
+  const [before, last] = finishes.slice(-2) as Array<{ data: Record<string, unknown> }>;
+  if (before!.data.result !== 'blocked' || last!.data.result !== 'blocked') return false;
+  const signature = blockSignature(last!.data.blocked);
+  return signature !== '' && signature === blockSignature(before!.data.blocked);
+}
+
 /** After a fix task's loop the run goes on unless a task is blocked. A fix task replanned into replacements is judged by its replacements. */
 export function fixTasksOutcome(state: RunState): 'merged' | 'blocked' {
   return [...state.tasks.values()].some((t) => t.state === 'blocked') ? 'blocked' : 'merged';
@@ -283,13 +299,13 @@ export class Run {
   /** The agents take the blocked tasks back on their own: the owner lets them decide, and fewer than MAX_AUTO_RETURNS returns ran. */
   async canReturnBlocked(): Promise<boolean> {
     const returns = this.journal.events.filter((e) => e.type === RunEvent.RunReopened && e.data.auto === true).length;
-    return returns < MAX_AUTO_RETURNS && (await this.autonomous());
+    return returns < MAX_AUTO_RETURNS && !repeatedBlock(this.journal.events) && (await this.autonomous());
   }
 
-  /** With the owner's agents deciding, a blocked run whose returns are spent starts one successor of the spec; a successor starts none. */
+  /** With the owner's agents deciding, a blocked run whose returns are spent starts one successor of the spec; a successor starts none, and a repeated block starts none. */
   async canReprocessAutomatically(): Promise<boolean> {
     const successor = this.journal.events.some((e) => e.type === OrchEvent.RunStarted && e.data.autoReprocess === true);
-    return !successor && (await this.autonomous());
+    return !successor && !repeatedBlock(this.journal.events) && (await this.autonomous());
   }
 
   /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */
