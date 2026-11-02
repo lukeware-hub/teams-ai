@@ -317,12 +317,6 @@ export async function isAncestor(dir: string, ancestor: string, descendant: stri
   throw new GitError(`git merge-base --is-ancestor failed (${r.exitCode}): ${r.stderr.trim()}`);
 }
 
-/** How many commits `head` has beyond `base` (ahead) and how many `base` has beyond `head` (behind). */
-export async function aheadBehind(dir: string, base: string, head: string, exec: Exec = execCommand): Promise<{ ahead: number; behind: number }> {
-  const [behind, ahead] = (await git(dir, ['rev-list', '--left-right', '--count', `${base}...${head}`], exec)).split(/\s+/).map(Number);
-  return { ahead: ahead!, behind: behind! };
-}
-
 /** An annotated tag at `sha`; an existing tag of that name fails, never moves. */
 export async function createAnnotatedTag(dir: string, name: string, sha: string, message: string, exec: Exec = execCommand): Promise<void> {
   await git(dir, ['tag', '--no-sign', '-a', name, sha, '-m', message], exec);

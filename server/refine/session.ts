@@ -26,7 +26,7 @@ import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
-import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
@@ -43,9 +43,10 @@ import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from 
 import { healRunsOf, type HealView } from './heal.js';
 import { flowIsMermaid } from './sections.js';
 import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
-import { DocsStoreError } from '../docs/store.js';
+import { DocsStoreError, holdsConflictMarkers, openStore, readStoreText } from '../docs/store.js';
 import { readDocsMarker } from '../docs/project-state.js';
-import { docsTarget, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
+import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
+import { mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import { boundaryLabel, isDocumentEdit } from './docs-boundary.js';
 import { DocsSync, type DocsSyncView } from './docs-sync.js';
 import type { SpecAlias } from './docs-projection.js';
@@ -699,10 +700,31 @@ export class RefineSession {
   /** Closes the documentation repository before the launch; a refusal is a conflict, and nothing launches. A legacy session has nothing to close. */
   async closeDocs(aliases: readonly string[]): Promise<void> {
     if (this.state.docsRepo !== true) return;
-    if (!this.docs) throw new ConflictError('O repositório de documentos não está ligado a este refinamento.');
-    await this.docs.close(aliases).catch((err: unknown) => {
+    const exec = this.deps.docsBind?.exec;
+    const docs = this.docs;
+    if (!docs || !exec) throw new ConflictError('O repositório de documentos não está ligado a este refinamento.');
+    await this.mergeClosingDocs(exec).then(() => docs.close(aliases)).catch((err: unknown) => {
       throw new ConflictError(err instanceof Error ? err.message : String(err));
     });
+  }
+
+  /** Merges each document the store changed since the draft began into the draft; a conflict keeps its markers in the draft and refuses. */
+  private async mergeClosingDocs(exec: Exec): Promise<void> {
+    const marker = await readDocsMarker(this.deps.ws);
+    if (!marker) return;
+    const draft = this.deps.draft;
+    const store = await openStore(this.deps.ws, marker.style, exec);
+    const conflicts: string[] = [];
+    for (const doc of FIVE_DOCS) {
+      const base = await readBase(draft, doc);
+      const theirs = await readStoreText(store, `docs/${doc}`);
+      if (base === null || theirs === null || sameDoc(theirs, base)) continue;
+      const merged = await mergeDocStrict(`docs/${doc}`, base, theirs, await readDoc(draft, doc), exec);
+      await writeDoc(draft, doc, merged);
+      if (holdsConflictMarkers(merged)) conflicts.push(doc);
+      else await fs.writeFile(path.posix.join(draft.base!, doc), theirs);
+    }
+    if (conflicts.length > 0) throw new ConflictError(`O documento ${conflicts.join(', ')} mudou na loja e conflita com o rascunho: resolva as marcas no rascunho e inicie de novo.`);
   }
 
   /** A discarded draft that never started takes its alias folders out of the store; a refusal is a conflict. */
