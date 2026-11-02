@@ -16,7 +16,7 @@ import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
 import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
-import { Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
+import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
@@ -400,25 +400,35 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
-    const run = completing || readming || deploying
-      ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
-      : await factory(deps, command === 'resume' ? String(f.run) : undefined, explicitId);
-    if (command === 'resume' && f['retry-blocked'] === true) await run.retryBlocked();
-    io.stderr(`run ${run.runId} started`);
-    const off = (hooks.signals ?? realSignals)(() => {
-      io.stderr('stop requested: draining');
-      void run.requestStop();
-    });
+    const manual = completing || readming || deploying;
+    let runId = command === 'resume' ? String(f.run) : undefined;
     let result: ExecuteResult;
-    try {
-      result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : deploying ? await run.deployOnly() : await run.execute();
-    } finally {
-      off();
-      await run.close();
+    for (let turn = 1; ; turn++) {
+      const run = manual
+        ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
+        : await factory(deps, runId, explicitId);
+      if (turn === 1 && command === 'resume' && f['retry-blocked'] === true) await run.retryBlocked();
+      // A blocked run the owner let the agents decide goes back to them on its own: a fresh process resumes it, as Retomar does.
+      if (turn > 1) await run.retryBlocked({ auto: true });
+      runId = run.runId;
+      io.stderr(turn === 1 ? `run ${run.runId} started` : `run ${run.runId} sent back to the agents (${turn - 1} of ${MAX_AUTO_RETURNS})`);
+      const off = (hooks.signals ?? realSignals)(() => {
+        io.stderr('stop requested: draining');
+        void run.requestStop();
+      });
+      let again = false;
+      try {
+        result = completing ? await run.completeSpec() : readming ? await run.writeReadme() : deploying ? await run.deployOnly() : await run.execute();
+        again = !manual && result === 'blocked' && (await run.canReturnBlocked());
+      } finally {
+        off();
+        await run.close();
+      }
+      if (!again) break;
     }
     if (result === 'awaiting-validation' && deps) await markAwaitingValidation(projectDir, deps.spec.specId, deps.ws.repo);
     if (result === 'paused:auth') io.stderr('run paused: claude auth expired; run "claude auth login" and resume');
-    else io.stderr(`run ${run.runId} finished: ${result}`);
+    else io.stderr(`run ${runId} finished: ${result}`);
     return exitCode(result);
   } catch (err) {
     io.stderr((err as Error).message);

@@ -140,6 +140,11 @@ Contract: ${SMOKE_CONTRACT}${history}`, affectedPaths: ['tests/smoke/**', 'tests
 
 Contract: ${E2E_CONTRACT}${history}`, affectedPaths: [...(suite ? [suite] : []), 'e2e/**', 'tests/e2e/**', ...MANIFESTS], owner: 'dev' };
   }
+  if (stage === 'docs') {
+    // The plan declares the documentation path, so a Dev task builds that page; the path itself is not removed.
+    const devPaths = deps.plan!.tasks.filter((t) => t.owner === 'dev').flatMap((t) => t.affectedPaths);
+    return { ...base, title: 'Build the documentation page', description: `Deploy attempt ${attempt} succeeded and the smoke and e2e suites passed, but the documentation path the plan declares does not answer: ${detail}. Serve the page at that path.${history}`, affectedPaths: devPaths.length > 0 ? devPaths : ['src/**'], owner: 'dev' };
+  }
   if (stage === 'ui') {
     const screens = deps.plan!.tasks.filter((t) => t.owner === 'front').flatMap((t) => t.affectedPaths);
     return { ...base, title: `Fix UI check`, description: `Deploy attempt ${attempt} succeeded and the HTTP e2e suite passed but the browser check of a front-owned screen failed: ${detail}${history}`, affectedPaths: screens.length > 0 ? screens : ['web/**', 'src/**'], owner: 'front' };
@@ -252,6 +257,10 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     if (!e.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('e2e', e.detail, rb, rh, previous); }
     e2eRows = e.rows;
   }
+  // The documentation the plan declares must answer: a missing page is a failure the Dev fixes, like a failed suite.
+  const docsPath = deps.plan!.deploy.docsPath;
+  const docs = docsPath && deps.target.verifyPath ? await deps.target.verifyPath(intent, docsPath) : null;
+  if (docs && !docs.ok) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('docs', docs.detail, rb, rh, previous); }
   const ui = await runUiCheck(deps, { url, plan: deps.plan!, ws: deps.ws, attempt });
   if (ui.error !== null) return { ok: false, reason: `UI check did not run; the deploy stays up: ${ui.error}` };
   if (ui.defect !== null) { let rb = false; let rh: boolean | null = null; if (previous) { await deps.target.rollback(intent, previous); rb = true; rh = (await deps.target.verify(intent)).healthy; } else await deps.target.destroy(intent).catch(() => undefined); return failed('ui', ui.defect, rb, rh, previous); }

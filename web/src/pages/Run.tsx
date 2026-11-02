@@ -620,6 +620,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // from its own TASK_BLOCKED event, instead of waiting for the whole run to stop before anyone can see why.
   const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
   const causes = rootBlockers(blocked);
+  // Blocked tasks end the run unfinished: the button sends them back to the agents, also for runs delivered before that rule.
+  const sendBack = status === 'blocked' || (status === 'awaiting-validation' && blocked.length > 0);
   const causeGroups = groupCauses(causes);
   const waiting = cascadeBlockers(blocked).map((b) => b.taskId);
   // Every blocked task that blocked in this phase and is still blocked, its own cause or waiting on another.
@@ -761,12 +763,13 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
             {status === 'interrupted' ? <span data-testid="interrupted-hint" className="hint">o processo não está mais rodando; use Retomar</span> : null}
             {status === 'verification-failed' ? <span data-testid="verification-hint" className="hint">Retomar reinicia só as tarefas bloqueadas; o que já foi mesclado fica</span> : null}
+            {sendBack ? <span data-testid="blocked-hint" className="hint">Enviar reinicia só as tarefas bloqueadas; o que já foi mesclado fica</span> : null}
           </div>
         </div>
         <div className={RUN_UI.actions}>
-          {resumeAction && !detail.locked && RESUMABLE.has(status) ? (
+          {resumeAction && !detail.locked && (RESUMABLE.has(status) || sendBack) ? (
             <ActionButton className={`primary-button ${RUN_UI.action}`} data-testid="resume" busy={resumeAction.busy} onClick={resumeAction.onResume} icon={<Icon name="play" size={16} />}>
-              {resumeAction.busy ? 'Retomando…' : 'Retomar'}
+              {resumeAction.busy ? (sendBack ? 'Enviando…' : 'Retomando…') : sendBack ? 'Enviar para o agente corrigir' : 'Retomar'}
             </ActionButton>
           ) : null}
           {stopAction && STOPPABLE.has(status) ? (

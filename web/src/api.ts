@@ -172,9 +172,11 @@ export interface ServiceStatus {
   status: number | null;
   /** The root of the service answers with a page: it has a web UI. */
   ui?: boolean;
+  /** The documentation path the plan declares answers with a success. */
+  docs?: boolean;
   checkedAt: string;
   /** A services run answers for each service. */
-  services?: Array<{ service: string; online: boolean; status: number | null; ui?: boolean }>;
+  services?: Array<{ service: string; online: boolean; status: number | null; ui?: boolean; docs?: boolean }>;
 }
 /** Why a doc section is open, as the run recorded it. */
 export type GapCause =

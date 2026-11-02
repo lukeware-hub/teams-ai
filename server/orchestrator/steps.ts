@@ -275,7 +275,7 @@ export const COVERAGE_CONTRACT =
 export function planRules(firstSpec: boolean | 'services', requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
-    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath to the path that serves its Swagger/OpenAPI page (for example /docs); deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
+    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath only when one of its tasks builds the page that serves its Swagger/OpenAPI docs (for example /docs), because the deploy checks that the path answers; deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
     firstSpec === 'services'
       ? "- a datastore only one service uses publishes no host port: it stays on that service's private compose network, so two services' databases never collide on the host; a datastore several services share is a platform container in project.json, never a compose service"
       : '- a database or other datastore service in docker-compose (Postgres, MySQL, Redis, ...) publishes its own port to the host too, on a port outside 20000-20099; an integration test against a real database needs a route to it exactly like the app has for deploy.port, and one that only the compose-internal network can reach has none',

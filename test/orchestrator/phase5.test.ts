@@ -50,6 +50,22 @@ describe('Phase 5', () => {
     if (fix.summary) await journal.fact(OrchEvent.DevCommitted, { taskId: fix.id, sha: 'abc', changedFiles: fix.files ?? [], summary: fix.summary });
   }
 
+  it('a declared documentation path that does not answer fails at docs and plans a fix that builds the page', async () => {
+    const d = deps('');
+    const plan = makePlan(spec);
+    const missing = { ...d, smoke: async () => ({ ok: true, rows: [], detail: 'ok', result: null }), plan: { ...plan, deploy: { ...plan.deploy, docsPath: '/docs' } }, target: { ...d.target, verifyPath: async () => ({ ok: false, detail: '/docs did not answer' }) } } as unknown as PhaseDeps;
+    const r = await runPhase5(missing, 1);
+    expect(r.ok ? '' : r.reason).toBe('deploy failed at docs; deploy-fix task planned');
+    expect(r.ok ? '' : r.fixTask?.description).toContain('does not answer: /docs did not answer. Serve the page at that path.');
+  });
+
+  it('a declared documentation path that answers lets the deploy finish', async () => {
+    const d = deps('');
+    const plan = makePlan(spec);
+    const answering = { ...d, smoke: async () => ({ ok: true, rows: [], detail: 'ok', result: null }), plan: { ...plan, deploy: { ...plan.deploy, docsPath: '/docs' } }, target: { ...d.target, verifyPath: async () => ({ ok: true, detail: 'HTTP 200' }) } } as unknown as PhaseDeps;
+    expect((await runPhase5(answering, 1)).ok).toBe(true);
+  });
+
   it('a deploy fix lists every earlier failure of the run and what the fix after it changed', async () => {
     await earlierAttempt(1, 'smoke', 'AC-001: no smoke test\n' + 'gate log line\n'.repeat(2000), { id: 'T950-deploy-fix-1', state: 'merged', summary: 'added the smoke suite', files: ['smoke/smoke.test.mjs'] });
     const r = await runPhase5(deps('AC-002: smoke test failed'), 2);

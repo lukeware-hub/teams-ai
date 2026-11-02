@@ -163,6 +163,12 @@ const answersOf = (input: unknown): Array<{ taskId: string; answer: string }> =>
 };
 
 /** The questions a run asked the owner, each with the answer the owner gave it, if any. */
+/** Did the run end with blocked tasks? Read from its last RUN_FINISHED. */
+function endedBlocked(evs: readonly StoredEvent[]): boolean {
+  const finished = [...evs].reverse().find((e) => e.type === OrchEvent.RunFinished);
+  return Array.isArray(finished?.data.blocked) && finished.data.blocked.length > 0;
+}
+
 async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: string | null, specId: string) {
   const answers = root ? await readOwnerDecisions(root, specId) : [];
   const asked = evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => ({ taskId: String(e.data.taskId), runId, question: String(e.data.question), options: e.data.options }));
@@ -574,7 +580,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           try {
             const { row, dir } = await findRun(idx, runId);
             if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
-            if (!['paused:auth', 'interrupted', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted or verification-failed runs resume`);
+            // A run delivered before blocked runs stopped short ends awaiting-validation with blocked tasks: it goes back to the agents too.
+            const blocked = row.status === 'blocked' || (row.status === 'awaiting-validation' && endedBlocked(await events(runs, runId)));
+            if (!blocked && !['paused:auth', 'interrupted', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted, verification-failed or blocked runs resume`);
             const later = (await listRuns(idx, row.projectId)).find((r) => r.specId === row.specId && r.kind === row.kind && r.n > row.n);
             if (later) throw new HttpError(409, `run ${runId} is behind ${later.runId} of spec ${row.specId}; only the latest run of a spec resumes`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
@@ -657,6 +665,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           const rows = await listRuns(idx, params.projectId!);
           const active = rows.find((r) => r.specId === specId && claimsSpec(r));
           if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
+          // The run that delivered the spec must end with no blocked task: a blocked one goes back to the agents first.
+          const delivered = rows.filter((r) => r.specId === specId && r.kind === 'run').sort((a, b) => b.n - a.n)[0];
+          if (delivered && endedBlocked(await events(runsDir(idx), delivered.runId).catch(() => []))) throw new HttpError(409, `run ${delivered.runId} ended with blocked tasks; send it back to the agents before validating`);
           const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId, 'complete');
           await launch(idx, { projectDir: dir, specId, runId: id, mode: 'complete' });
           return id;
@@ -721,19 +732,21 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED');
         if (!deployed) throw new HttpError(404, 'this run has no deployed service');
         // Reports from before the health path was recorded only prove the host answers: any HTTP status then means online.
-        const probe = async (url: string, healthPath: unknown) => {
+        const probe = async (url: string, healthPath: unknown, docsPath: unknown) => {
           const health = typeof healthPath === 'string' ? healthPath : null;
           const get = deps.httpGet ?? httpGet;
           const res = await get(`${url}${health ?? '/'}`, 3000);
           // A web UI exists when the root answers with a page.
           const root = health === null ? res : await get(`${url}/`, 3000);
-          return { online: res !== null && (health === null || (res.status >= 200 && res.status < 400)), status: res?.status ?? null, ui: root?.html === true && root.status < 400 };
+          // The documentation exists only when the path the plan declares answers with a success.
+          const docs = typeof docsPath === 'string' ? await get(`${url}${docsPath}`, 3000) : null;
+          return { online: res !== null && (health === null || (res.status >= 200 && res.status < 400)), status: res?.status ?? null, ui: root?.html === true && root.status < 400, docs: docs !== null && docs.status >= 200 && docs.status < 400 };
         };
-        const cards = Array.isArray(deployed.data.services) ? (deployed.data.services as Array<{ service: string; url: string; healthcheckPath?: string }>) : null;
+        const cards = Array.isArray(deployed.data.services) ? (deployed.data.services as Array<{ service: string; url: string; healthcheckPath?: string; docsPath?: string }>) : null;
         // A services run answers for each service, and is online only when every one answers.
-        const checked = cards ? await Promise.all(cards.map(async (c) => ({ service: c.service, ...(await probe(c.url, c.healthcheckPath)) }))) : null;
-        const own = checked?.[0] ?? (await probe(String(deployed.data.url), deployed.data.healthcheckPath));
-        json(200, { online: checked ? checked.every((c) => c.online) : own.online, status: own.status, ui: own.ui, checkedAt: new Date().toISOString(), ...(checked ? { services: checked } : {}) });
+        const checked = cards ? await Promise.all(cards.map(async (c) => ({ service: c.service, ...(await probe(c.url, c.healthcheckPath, c.docsPath)) }))) : null;
+        const own = checked?.[0] ?? (await probe(String(deployed.data.url), deployed.data.healthcheckPath, deployed.data.docsPath));
+        json(200, { online: checked ? checked.every((c) => c.online) : own.online, status: own.status, ui: own.ui, docs: own.docs, checkedAt: new Date().toISOString(), ...(checked ? { services: checked } : {}) });
       },
     },
     {

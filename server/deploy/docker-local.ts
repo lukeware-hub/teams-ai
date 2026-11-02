@@ -339,6 +339,12 @@ export class DockerLocalTarget implements DeployTarget {
     return waitHealthy(`${this.baseUrl(intent)}${intent.healthcheckPath}`, this.deps.get, { timeoutMs: 120_000, intervalMs: 2_000 });
   }
 
+  async verifyPath(intent: DeploymentIntent, path: string): Promise<{ ok: boolean; detail: string }> {
+    const res = await this.deps.get(`${this.baseUrl(intent)}${path}`, 5_000);
+    if (res && res.status >= 200 && res.status < 400) return { ok: true, detail: `HTTP ${res.status}` };
+    return { ok: false, detail: res ? `${path} answered HTTP ${res.status}` : `${path} did not answer` };
+  }
+
   async rollback(intent: DeploymentIntent, previous: string): Promise<void> {
     if (intent.compose) {
       // No previous image: nothing to go back to, take the failed stack down.

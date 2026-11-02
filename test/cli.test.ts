@@ -159,6 +159,43 @@ describe('teams-ai cli', () => {
     }
   });
 
+  it('a blocked run the owner let the agents decide goes back to them on its own, its blocked tasks given a fresh start', async () => {
+    const calls: Array<{ runId?: string; auto?: boolean }> = [];
+    const results = ['blocked', 'complete'] as const;
+    const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--run-id', 'spec-001-r3']);
+    const code = await main(a.io, async (_deps, runId, explicitId) => {
+      const result = results[calls.length]!;
+      calls.push({ runId });
+      return {
+        runId: runId ?? explicitId ?? 'x',
+        retryBlocked: async (opts?: { auto?: boolean }) => { calls.at(-1)!.auto = opts?.auto; },
+        execute: async () => result,
+        canReturnBlocked: async () => true,
+        requestStop: async () => {},
+        close: async () => {},
+      } as never;
+    });
+    expect(code).toBe(0);
+    expect(calls).toEqual([{ runId: undefined }, { runId: 'spec-001-r3', auto: true }]);
+  });
+
+  it('a blocked run goes back to the agents only while the owner lets them decide', async () => {
+    let factories = 0;
+    const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001']);
+    await main(a.io, async () => {
+      factories += 1;
+      return {
+        runId: 'spec-001-r4',
+        retryBlocked: async () => { throw new Error('a run the owner decides on is not sent back'); },
+        execute: async () => 'blocked',
+        canReturnBlocked: async () => false,
+        requestStop: async () => {},
+        close: async () => {},
+      } as never;
+    });
+    expect(factories).toBe(1);
+  });
+
   it('run accepts --draft and still reaches the factory', async () => {
     const a = io(['run', '--project', '/tmp/p', '--spec', 'spec-001', '--draft']);
     let reached = false;

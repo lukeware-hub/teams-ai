@@ -177,8 +177,6 @@ const SERVICE = {
 };
 interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => unknown; onRecheck: () => void }
 
-const appLabel = (docsUrl: string | null, kind?: string) => (docsUrl || kind === 'front' ? 'Abrir aplicação' : 'Abrir serviço');
-
 /** Is the service up, where to open it, and a button to bring it up when it is not. */
 function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']> } & ControlProps) {
   const links = serviceLinks(service, window.location.hostname);
@@ -191,8 +189,8 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
         {recheckButton(checking, onRecheck)}
       </div>
       <div className={SERVICE.actions}>
-        {online && links.appUrl ? openLink(links.appUrl, 'open-app', appLabel(links.docsUrl, service.kind), true) : null}
-        {online && links.docsUrl ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', false) : null}
+        {online && links.appUrl && (status?.ui === true || service.kind === 'front') ? openLink(links.appUrl, 'open-app', 'Abrir aplicação', true) : null}
+        {online && links.docsUrl && status?.docs === true ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', false) : null}
         {!checking && !online ? startButton(starting, canStart, onStart, ['Subir serviço', 'Subindo o serviço…']) : null}
       </div>
       {!links.appUrl ? (
@@ -217,7 +215,8 @@ function ArtifactDownload({ runId, artifact }: { runId: string; artifact: string
 /** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
 function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
   const checking = status === null;
-  const onlineOf = (service: string) => status?.services?.find((s) => s.service === service)?.online === true;
+  const entryOf = (service: string) => status?.services?.find((s) => s.service === service);
+  const onlineOf = (service: string) => entryOf(service)?.online === true;
   return (
     <div className={SERVICE.controls}>
       <ul className="m-0 grid list-none gap-2 p-0">
@@ -227,8 +226,8 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
             <li key={s.service} data-testid={`service-${s.service}`} className="flex flex-wrap items-center gap-3">
               <strong>{s.service}</strong>
               <StatePill checking={checking} online={onlineOf(s.service)} />
-              {onlineOf(s.service) && links.appUrl ? openLink(links.appUrl, `open-app-${s.service}`, appLabel(links.docsUrl, s.kind), false, `${appLabel(links.docsUrl, s.kind)} (${s.service})`) : null}
-              {onlineOf(s.service) && links.docsUrl ? openLink(links.docsUrl, `open-${s.service}`, 'Abrir Swagger', false, `Abrir Swagger (${s.service})`) : null}
+              {onlineOf(s.service) && links.appUrl && (entryOf(s.service)?.ui === true || s.kind === 'front') ? openLink(links.appUrl, `open-app-${s.service}`, 'Abrir aplicação', false, `Abrir aplicação (${s.service})`) : null}
+              {onlineOf(s.service) && links.docsUrl && entryOf(s.service)?.docs === true ? openLink(links.docsUrl, `open-${s.service}`, 'Abrir Swagger', false, `Abrir Swagger (${s.service})`) : null}
               {!links.appUrl ? <span className="hint">porta fora da faixa publicada ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to})</span> : null}
             </li>
           );
@@ -349,13 +348,16 @@ export function ValidationView({ detail, specStatus, actionError = null, service
     setChecks(next);
     writeChecks(detail.runId, next);
   };
-  const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation' && !completing;
-  const specState = specStatus ? ` e a especificação está “${statusLabel(specStatus)}”` : '';
-  const note = enabled ? null : specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.';
-  const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
-  const stepsDone = steps.filter((id) => checks[id]).length;
   // The same explanation the Run page gives a run that stopped, so the cause is at the top here too.
   const blocked = (detail.finished?.blocked ?? report?.blocked ?? []) as Array<{ taskId: string; reason: string }>;
+  // A run that ended with blocked tasks (its RUN_FINISHED) is not delivered: the owner validates only a run whose every task merged.
+  const endedBlocked = (detail.finished?.blocked ?? []) as Array<{ taskId: string; reason: string }>;
+  const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation' && !completing && endedBlocked.length === 0;
+  const specState = specStatus ? ` e a especificação está “${statusLabel(specStatus)}”` : '';
+  const blockedNote = endedBlocked.length > 0 ? `${endedBlocked.length === 1 ? 'Há 1 tarefa bloqueada' : `Há ${endedBlocked.length} tarefas bloqueadas`}: a entrega não está pronta para validar. Envie a run de volta para o agente corrigir, na página da run.` : null;
+  const note = enabled ? null : blockedNote ?? (specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.');
+  const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
+  const stepsDone = steps.filter((id) => checks[id]).length;
   const causes = rootBlockers(blocked);
   const stop = stopSummary({ status: detail.status, reason: typeof detail.finished?.reason === 'string' ? detail.finished.reason : null, causes, deployFailure: report?.deploy.lastFailure ?? null });
   const before = stop ? stopBefore(detail.status, blocked) : null;

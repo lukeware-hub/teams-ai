@@ -22,6 +22,8 @@ export interface DeployTarget {
   build(intent: DeploymentIntent): Promise<void>;
   apply(intent: DeploymentIntent): Promise<{ previous: string | null }>;
   verify(intent: DeploymentIntent): Promise<{ healthy: boolean; detail: string }>;
+  /** One request to a path of the running service: ok when it answers with a success. */
+  verifyPath?(intent: DeploymentIntent, path: string): Promise<{ ok: boolean; detail: string }>;
   /** Image reference currently serving the project, or null when nothing runs. */
   currentImage(intent: DeploymentIntent): Promise<string | null>;
   rollback(intent: DeploymentIntent, previous: string): Promise<void>;
@@ -41,7 +43,7 @@ export interface DeployTarget {
   serviceEnv?(projectId: string, service: string, variable: string): Promise<string | null>;
 }
 
-export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e' | 'ui';
+export type DeployStage = 'validate' | 'build' | 'apply' | 'verify' | 'smoke' | 'e2e' | 'docs' | 'ui';
 
 export type DeployResult =
   | { ok: true; previous: string | null }

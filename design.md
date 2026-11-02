@@ -1291,6 +1291,12 @@ Ordem da linha: tarefas mescladas · em andamento · bloqueadas · **atividade**
 [barra ████████░░░░░░░░░░]  0 de 4 tarefas mescladas · 1 em andamento · Desenvolvimento implementando a tarefa T0-scaffold há 1 min 12 s · 23 etapas · US$ 0.0961
 ```
 
+### 27.1 Validação e volta para o agente
+
+- A entrega só se valida quando a run termina sem tarefa bloqueada. Com tarefa bloqueada, "Concluir especificação" e "Relatar problema" ficam desabilitados e a nota diz quantas tarefas estão bloqueadas.
+- "Abrir aplicação" aparece só quando o serviço responde com página web (ou é front). "Abrir Swagger" aparece só quando o caminho de documentação declarado no plano responde com sucesso.
+- A run que terminou com tarefa bloqueada mostra "Enviar para o agente corrigir". Reinicia só as tarefas bloqueadas; o que já foi mesclado fica. Com "Autorizo os agentes a tomar decisões: Sim", a run volta sozinha ao agente até 3 vezes antes de parar.
+
 ## 28. Copy
 
 Brazilian Portuguese, sentence case, short, action-oriented. Technical detail stays inside disclosures. Controls name their action; errors name the problem **and** the recovery. System behavior is stated, not requested.

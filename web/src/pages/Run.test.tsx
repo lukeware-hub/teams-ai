@@ -503,6 +503,15 @@ describe('RunView', () => {
       expect(onResume).toHaveBeenCalledTimes(1);
     });
 
+    it('offers Enviar para o agente corrigir for a run that ended blocked, saying only its blocked tasks restart', () => {
+      const onResume = vi.fn();
+      render(view({ events: ghost, ended: true, detail: { ...detail, status: 'blocked' }, resumeAction: { onResume, busy: false, error: null } }));
+      expect(screen.getByTestId('resume').textContent).toBe('Enviar para o agente corrigir');
+      expect(screen.getByTestId('blocked-hint').textContent).toContain('só as tarefas bloqueadas');
+      fireEvent.click(screen.getByTestId('resume'));
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+
     it('offers Retomar for an interrupted run, wired to the action', () => {
       const onResume = vi.fn();
       const { rerender } = render(view({ events: ghost, ended: false, detail: { ...detail, status: 'running' }, resumeAction: { onResume, busy: false, error: null } }));
@@ -621,6 +630,15 @@ describe('RunView phase blocks', () => {
     const finished = ev(8, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }, { taskId: 'T7', reason: 'a dependency is blocked' }], tokens: {} });
     render(running({ events: [...blocking, finished], ended: true, detail: { ...detail, status: 'blocked' } }));
     expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada · 1 tarefa espera por ela');
+  });
+
+  it('offers Enviar para o agente corrigir for a run delivered as awaiting-validation with blocked tasks, as the run-7 case', () => {
+    const onResume = vi.fn();
+    const finished = ev(8, 'RUN_FINISHED', { result: 'awaiting-validation', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }], tokens: {} });
+    render(running({ events: [...blocking, finished], ended: true, detail: { ...detail, status: 'awaiting-validation' }, resumeAction: { onResume, busy: false, error: null } }));
+    expect(screen.getByTestId('resume').textContent).toBe('Enviar para o agente corrigir');
+    fireEvent.click(screen.getByTestId('resume'));
+    expect(onResume).toHaveBeenCalledTimes(1);
   });
 
   it('has no dialog for the phase blocks: the card lists the tasks that wait on them', () => {

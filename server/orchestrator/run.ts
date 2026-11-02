@@ -167,6 +167,9 @@ export function withInflightClaimed(state: RunState, inflight: Iterable<string>)
 /** Docs merges run no gates. */
 const NO_GATES = async (): Promise<{ results: GateResult[]; blockingFailure: GateResult | null }> => ({ results: [], blockingFailure: null });
 
+/** How many times a blocked run goes back to the agents on its own, when the owner lets them decide. */
+export const MAX_AUTO_RETURNS = 3;
+
 export class Run {
   readonly accounting = new Accounting();
   private readonly governor: Governor;
@@ -262,12 +265,18 @@ export class Run {
     return run;
   }
 
-  /** A human's resume gives every blocked task a fresh start: the cause may be fixed now (live: a Go download the sandbox refused). A finished run is reopened first. */
-  async retryBlocked(): Promise<void> {
+  /** A resume gives every blocked task a fresh start: the cause may be fixed now (live: a Go download the sandbox refused). A finished run is reopened first; `auto` marks a return the agents made on their own. */
+  async retryBlocked(opts: { auto?: boolean } = {}): Promise<void> {
     const events = this.journal.events;
-    if (events.findLastIndex((e) => e.type === OrchEvent.RunFinished) > events.findLastIndex((e) => e.type === RunEvent.RunReopened)) await this.journal.fact(RunEvent.RunReopened, { manual: true });
+    if (events.findLastIndex((e) => e.type === OrchEvent.RunFinished) > events.findLastIndex((e) => e.type === RunEvent.RunReopened)) await this.journal.fact(RunEvent.RunReopened, opts.auto ? { auto: true } : { manual: true });
     const blocked = [...this.journal.state.tasks].filter(([, t]) => t.state === 'blocked').map(([id]) => id);
     if (blocked.length > 0) await this.journal.fact(RunEvent.TasksUnblocked, { taskIds: blocked });
+  }
+
+  /** The agents take the blocked tasks back on their own: the owner lets them decide, and fewer than MAX_AUTO_RETURNS returns ran. */
+  async canReturnBlocked(): Promise<boolean> {
+    const returns = this.journal.events.filter((e) => e.type === RunEvent.RunReopened && e.data.auto === true).length;
+    return returns < MAX_AUTO_RETURNS && (await this.autonomous());
   }
 
   /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */

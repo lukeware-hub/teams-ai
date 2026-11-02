@@ -157,13 +157,13 @@ describe('ValidationView', () => {
 
 describe('ValidationView service card', () => {
   const withService = (svc: Partial<NonNullable<Report['service']>>) => detail({ report: { ...report, service: { ...report.service!, url: 'http://dind:3000', ...svc } } });
-  const view = (d: RunDetail, extra: { serviceStatus?: { online: boolean; status: number | null; checkedAt: string } | null; specStatus?: string; onStartService?: () => void; onRecheck?: () => void; startingService?: boolean } = {}) =>
+  const view = (d: RunDetail, extra: { serviceStatus?: { online: boolean; status: number | null; checkedAt: string; ui?: boolean; docs?: boolean } | null; specStatus?: string; onStartService?: () => void; onRecheck?: () => void; startingService?: boolean } = {}) =>
     render(<MemoryRouter><ValidationView detail={d} specStatus={extra.specStatus ?? 'awaiting-validation'} serviceStatus={extra.serviceStatus ?? null} onStartService={extra.onStartService ?? vi.fn()} onRecheckService={extra.onRecheck ?? vi.fn()} startingService={extra.startingService ?? false} onReport={vi.fn()} onComplete={vi.fn()} /></MemoryRouter>);
   const online = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z' };
   const offline = { online: false, status: null, checkedAt: '2026-10-06T10:00:00.000Z' };
 
-  it('an online api offers the app and Swagger buttons and no start button', () => {
-    view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: online });
+  it('an online api with a web page and a live Swagger offers the app and Swagger buttons and no start button', () => {
+    view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: { ...online, ui: true, docs: true } });
     expect(screen.getByTestId('service-online').textContent).toContain('No ar');
     expect(screen.getByTestId('open-docs').getAttribute('href')).toBe(`http://${window.location.hostname}:3000/docs`);
     // The buttons already open the service, so no separate url or past healthcheck line.
@@ -172,6 +172,22 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('open-app').getAttribute('href')).toBe(`http://${window.location.hostname}:3000`);
     expect(screen.getByTestId('open-app').textContent).toContain('Abrir aplicação');
     expect(screen.queryByTestId('start-service')).toBeNull();
+  });
+
+  it('an online api with no web page offers no app button, and Swagger only when its declared path answers', () => {
+    const { unmount } = view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: { ...online, ui: false, docs: true } });
+    expect(screen.queryByTestId('open-app')).toBeNull();
+    expect(screen.getByTestId('open-docs')).toBeTruthy();
+    unmount();
+    view(withService({ port: 3000, kind: 'api', docsPath: '/docs' }), { serviceStatus: { ...online, ui: false, docs: false } });
+    expect(screen.queryByTestId('open-app')).toBeNull();
+    expect(screen.queryByTestId('open-docs')).toBeNull();
+  });
+
+  it('a run with blocked tasks cannot be validated and says why', () => {
+    view(detail({ finished: { blocked: [{ taskId: 'T900-fix-1-r1', reason: 'Dev reported done but produced no changes' }] } as unknown as RunDetail['finished'] }));
+    expect((screen.getByTestId('complete-spec') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('actions-note').textContent).toContain('Há 1 tarefa bloqueada');
   });
 
   it('an online front-end offers the app button', () => {
@@ -209,7 +225,7 @@ describe('ValidationView service card', () => {
   it('names each service in its smoke rows and links, keeps the recheck at button height and gives the published range', () => {
     const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health', kind: 'api' as const, docsPath: '/docs' });
     const smoke = [{ acId: 'AC-001', testId: 's::[AC-001] a', status: 'passed' as const, service: 'orders' }, { acId: 'AC-001', testId: 's::[AC-001] b', status: 'passed' as const, service: 'inventory' }];
-    const status = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: ['orders', 'inventory', 'ledger'].map((service) => ({ service, online: true, status: 200 })) };
+    const status = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: ['orders', 'inventory', 'ledger'].map((service) => ({ service, online: true, status: 200, docs: service === 'orders' })) };
     view(detail({ report: { ...report, service: { ...report.service!, smoke }, services: [card('orders', 20001), card('inventory', 20002), card('ledger', 8080)] } }), { serviceStatus: status });
     expect(screen.getByTestId('smoke-orders-AC-001').textContent).toContain('orders');
     expect(screen.getByTestId('smoke-inventory-AC-001').textContent).toContain('inventory');
@@ -221,7 +237,7 @@ describe('ValidationView service card', () => {
   it('lists every service of a services run with its state and its link, and one start button for all', () => {
     const card = (service: string, port: number, extra = {}) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health', ...extra });
     const services = [card('orders', 20001, { kind: 'api', docsPath: '/docs' }), card('inventory', 20002, { kind: 'front' }), card('ledger', 8080)];
-    const status = { online: false, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: [{ service: 'orders', online: true, status: 200 }, { service: 'inventory', online: false, status: null }, { service: 'ledger', online: true, status: 200 }] };
+    const status = { online: false, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: [{ service: 'orders', online: true, status: 200, docs: true }, { service: 'inventory', online: false, status: null }, { service: 'ledger', online: true, status: 200 }] };
     view(detail({ report: { ...report, service: { ...report.service!, url: 'http://dind:20001', port: 20001 }, services } }), { serviceStatus: status });
     expect(screen.getByTestId('service-orders').textContent).toContain('No ar');
     expect(screen.getByTestId('open-orders').getAttribute('href')).toBe(`http://${window.location.hostname}:20001/docs`);
