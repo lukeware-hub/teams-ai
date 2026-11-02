@@ -38,6 +38,14 @@ export async function draftBases(draft: Draft): Promise<Record<string, string>> 
   return bases;
 }
 
+/** The aliases whose spec main held when the draft began, by their spec file in the base copy: their folders are never retired. */
+export async function baseAliases(draft: Draft): Promise<string[]> {
+  if (!draft.base) return [];
+  const names = await fs.readdir(path.posix.join(draft.base, 'specs')).catch(() => [] as string[]);
+  const held = await Promise.all(names.map(async (name) => ((await readBase(draft, `specs/${name}/spec.json`)) === null ? null : name)));
+  return held.filter((name): name is string => name !== null);
+}
+
 /** The repository files of a draft: its five documents, then the spec, plan and task of each alias it owns. */
 export async function projectDraftFiles(draft: Draft, style: Style, aliases: readonly SpecAlias[]): Promise<Record<string, string>> {
   const files: Record<string, string> = {};

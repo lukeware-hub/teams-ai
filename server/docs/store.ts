@@ -164,18 +164,18 @@ export async function aliasesOnStore(store: Store): Promise<string[]> {
   return [...new Set((await specFilesAtHead(store)).map((p) => parseRepoPath(p)!))];
 }
 
-/** The alias folders whose last commit this draft made: the only folders it may remove. */
-async function ownedAliasFolders(store: Store, draftId: string): Promise<string[]> {
+/** The alias folders whose last commit this draft made, except the aliases in `keep`: the only folders it may remove. */
+async function ownedAliasFolders(store: Store, draftId: string, keep: readonly string[]): Promise<string[]> {
   const c: Ctx = { store, draftId, born: true };
   const folders = [...new Set((await specFilesAtHead(store)).map((p) => path.posix.dirname(p)))];
   const owned: string[] = [];
-  for (const folder of folders) if (await aliasWritable(c, folder)) owned.push(folder);
+  for (const folder of folders) if (!keep.includes(path.posix.basename(folder)) && (await aliasWritable(c, folder))) owned.push(folder);
   return owned;
 }
 
-/** Removes the alias folders a discarded draft committed; the five documents and other drafts' folders stay. */
-export async function retireAliases(store: Store, draftId: string): Promise<FlushResult> {
-  const retire = await ownedAliasFolders(store, draftId);
+/** Removes the alias folders a discarded draft committed; the five documents, other drafts' folders and the `keep` aliases stay. */
+export async function retireAliases(store: Store, draftId: string, keep: readonly string[] = []): Promise<FlushResult> {
+  const retire = await ownedAliasFolders(store, draftId, keep);
   return commitProjection(store, { draftId, stepKey: 'discard', scope: 'refine', label: 'draft discarded', files: {}, retire });
 }
 

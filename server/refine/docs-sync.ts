@@ -3,7 +3,7 @@ import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../d
 import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
+import { baseAliases, draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
 /** What the session shows of the sync: the changes waiting for a commit, and the last failure, in plain words. */
@@ -123,7 +123,7 @@ export class DocsSync {
   private async retireNow(): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
-    const flushed = await retireAliases(store, draft.specId);
+    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
     if (flushed.sha !== null) await pushLocalCommits(store);
   }
 
