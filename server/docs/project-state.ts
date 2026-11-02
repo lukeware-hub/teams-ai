@@ -116,6 +116,30 @@ export async function updateState(ws: Pick<Workspace, 'root'>, rel: string, upda
   });
 }
 
+export const ClosingRecord = z.object({
+  commit: z.string().regex(/^[0-9a-f]{40}$/),
+  aliases: z.array(z.string()),
+  pendingTags: z.array(z.string()),
+});
+export type ClosingRecord = z.infer<typeof ClosingRecord>;
+
+/** The closing record of a draft, or null when the draft has not closed. */
+export async function readClosingRecord(ws: Pick<Workspace, 'root'>, draftId: string): Promise<ClosingRecord | null> {
+  const text = await fs.readFile(docsClosingPath(ws, draftId), 'utf8').catch(() => null);
+  return text === null ? null : ClosingRecord.parse(JSON.parse(text));
+}
+
+export async function writeClosingRecord(ws: Pick<Workspace, 'root'>, draftId: string, record: ClosingRecord): Promise<void> {
+  await fs.mkdir(docsClosingRoot(ws), { recursive: true });
+  await writeFileAtomic(docsClosingPath(ws, draftId), `${JSON.stringify(ClosingRecord.parse(record), null, 2)}
+`);
+}
+
+/** Drops the closing record of a draft; a launch that never happened leaves none. */
+export async function removeClosingRecord(ws: Pick<Workspace, 'root'>, draftId: string): Promise<void> {
+  await fs.rm(docsClosingPath(ws, draftId), { force: true });
+}
+
 export async function removeDocsMarker(ws: Pick<Workspace, 'root'>): Promise<void> {
   await fs.rm(docsMarkerPath(ws), { force: true });
 }

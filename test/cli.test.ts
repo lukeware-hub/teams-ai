@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { chooseSpecId, failedDecision, loadRunDeps, main, markAwaitingValidation, markRunningAgain, startsAsDraft } from '../server/cli.js';
 import { makeFrozenSpec } from './fixtures/contracts.js';
 import { loadConfig } from '../server/config/config.js';
@@ -348,6 +348,16 @@ describe('loadRunDeps', () => {
 
   it('runs the legacy layout when the project has no documentation repository marker', async () => {
     expect(await fromRunDeps(async () => {}, (deps) => deps.docsRepo)).toBe(false);
+  });
+
+  it('a legacy project reads the documentation repository marker twice: once in its preconditions, once for its run', async () => {
+    const spy = vi.spyOn(fs, 'readFile');
+    try {
+      const reads = await fromRunDeps(async () => {}, () => spy.mock.calls.filter(([file]) => String(file).endsWith('docs-store.json')).length);
+      expect(reads).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('gives the run of a spec the implementation plan its preparation wrote', async () => {

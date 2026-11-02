@@ -233,9 +233,10 @@ export interface ClosingSummary {
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
-  /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
-   *  through the window between freezing the spec and the run being marked started. */
+  /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
   private starting = false;
+  /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
+  private syncing = false;
   /** Set when the owner throws the draft away: no run starts on it after that. */
   private discarding = false;
   /** The Backlog step in flight: a second call awaits it, so the repository is bound and the backlog enabled once. */
@@ -312,7 +313,7 @@ export class RefineSession {
   }
 
   private guardStarting(): void {
-    if (this.starting) throw new BusyError('a start is already in progress');
+    if (this.starting || this.syncing) throw new BusyError('a start is already in progress');
   }
 
   private guard(): void {
@@ -345,8 +346,15 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.AutopilotPaused, { reason });
   }
 
+  /** Takes the start lock at once, before any await; it is held until `markStarted` or `failStart`. */
+  beginStart(): void {
+    this.guardStarting();
+    this.starting = true;
+  }
+
   /** The owner throws this draft away: no run starts on it from now on, and the heal driver leaves it. */
   beginDiscard(): void {
+    this.guardStarting();
     this.discarding = true;
   }
 
@@ -655,9 +663,9 @@ export class RefineSession {
     if (atOpen) void this.docs.flush();
   }
 
-  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts. */
+  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts or syncs. */
   private onFact(e: StoredEvent): void {
-    if (!this.docs || this.state.status === 'started' || this.discarding) return;
+    if (!this.docs || this.state.status === 'started' || this.discarding || this.starting || this.syncing) return;
     const label = boundaryLabel(e, this.state.backlog);
     if (label !== null) this.docs.boundary(label);
     else if (isDocumentEdit(e.type)) this.docs.edit();
@@ -668,9 +676,25 @@ export class RefineSession {
     return Object.values(this.state.backlog?.specs ?? {}).flatMap((row) => (row.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
   }
 
-  /** The registry tick: a waiting boundary or a failed flush is committed and pushed again. */
-  tickDocs(): Promise<void> {
-    return this.docs?.tick() ?? Promise.resolve();
+  /** Closes the documentation repository before the launch; a refusal is a conflict, and nothing launches. A legacy session has nothing to close. */
+  async closeDocs(aliases: readonly string[]): Promise<void> {
+    if (this.state.docsRepo !== true) return;
+    if (!this.docs) throw new ConflictError('O repositório de documentos não está ligado a este refinamento.');
+    await this.docs.close(aliases).catch((err: unknown) => {
+      throw new ConflictError(err instanceof Error ? err.message : String(err));
+    });
+  }
+
+  /** The registry tick: a waiting boundary or a failed flush is committed and pushed again, and the start tags are retried. */
+  async tickDocs(): Promise<void> {
+    await this.docs?.tick();
+    await this.publishStartTags();
+  }
+
+  /** After a marked start: the start tags of the closing. Never fails the start; a tag left pending is retried by the tick. */
+  publishStartTags(): Promise<void> {
+    if (this.state.status !== 'started') return Promise.resolve();
+    return this.docs?.publishTags() ?? Promise.resolve();
   }
 
   /** The five documents as they are now, by file name. */
@@ -1021,7 +1045,7 @@ export class RefineSession {
   /** Before a start: `sync` brings in what main changed since this draft began; a changed project doc needs a new evaluation. */
   async syncWithMain(sync: () => Promise<Array<{ file: string; hash: string }>>): Promise<void> {
     this.guard();
-    this.starting = true; // no evaluation reads the docs while main's changes come in
+    this.syncing = true;
     try {
       const changed = await sync();
       for (const c of changed) await this.journal.fact(RefineEvent.DocEdited, { ...c, source: 'main' });
@@ -1029,7 +1053,7 @@ export class RefineSession {
         throw new ConflictError(`A main mudou desde o início deste refinamento (${changed.map((c) => c.file).join(', ')}): os documentos foram atualizados com essas mudanças. Avalie de novo para iniciar.`);
       }
     } finally {
-      this.starting = false;
+      this.syncing = false;
     }
   }
 
@@ -1046,31 +1070,18 @@ export class RefineSession {
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
     const inputHash = this.state.derived && (await planInputHash(this.deps.draft, this.state));
-    // Another freeze may have passed the same checks while this one awaited the running cycle.
-    if (this.starting) throw new ConflictError('a start is already in progress');
     // A spec not derived yet is refused below; a derived one needs its plan preparation first.
     if (inputHash) this.refuseWithoutSpeckit(inputHash);
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    this.starting = true;
-    try {
-      const derived = this.state.derived!;
-      // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
-      const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
-      await writeDerived(this.deps.draft, value);
-      return value;
-    } catch (err) {
-      this.starting = false;
-      throw err;
-    }
+    const derived = this.state.derived!;
+    // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
+    const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
+    await writeDerived(this.deps.draft, value);
+    return value;
   }
 
-  /**
-   * R11.4: the whole backlog is detailed, reviewed and ready, so the program may run it. Nothing is frozen here (each spec
-   * freezes at its turn, `freezeItem`); this checks the gate, takes the `starting` lock and hands back the items in rank order.
-   */
   /** The summary of a repository session: its seven checks, each repository's counts, and the assumptions taken; hashed for the authorization. */
   async closingSummary(): Promise<ClosingSummary> {
     const docs = await this.docsNow();
@@ -1100,18 +1111,17 @@ export class RefineSession {
     return [...planned.flat(), ...decided];
   }
 
+  /** R11.4: checks the gate of a backlog start and hands back its items in rank order; `beginStart()` takes the starting lock first. */
   async freezeProgram(summaryHash?: string): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (this.running) await this.running;
     const backlog = this.state.backlog;
     // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
     const specs = buildSpecsIndex(this.deps.draft.specId, backlog).specs;
     const onMain = Object.fromEntries(await Promise.all(specs.map(async (s) => [s.specId, (await readMainSpec(this.deps.draft, s.specId))?.status] as const)));
     const inputHash = await planInputHash(this.deps.draft, this.state);
-    if (this.starting) throw new ConflictError('a start is already in progress');
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     this.refuseWithoutSpeckit(inputHash);
     let closing: { ok: boolean } | undefined;
@@ -1126,9 +1136,8 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    // Built before the start lock, so a refused start leaves the session free to try again.
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);
-    this.starting = true;
+    await this.closeDocs(entries.map((e) => e.specId));
     return entries;
   }
 
@@ -1156,10 +1165,12 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: 'não aplicada: a execução começou sem ela' });
     }
     await this.journal.fact(RefineEvent.StartedRun, { runId });
+    this.starting = false;
   }
 
-  /** The spawned run died before writing its journal (e.g. a precondition failed); undo the `starting` lock so the session can retry. */
-  failStart(): void {
+  /** The start failed before its run was recorded: undo the `starting` lock and drop the closing of that launch. */
+  async failStart(): Promise<void> {
     this.starting = false;
+    await this.docs?.discardClosing();
   }
 }

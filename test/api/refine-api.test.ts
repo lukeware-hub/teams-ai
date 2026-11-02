@@ -626,6 +626,7 @@ describe('refine api', () => {
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [{ from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' }] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await waitForEvaluation();
     await settle();
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/notices/move-po-c1-0/close')).status).toBe(200);
     expect((await snapshot()).state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', closed: true }]);
@@ -999,6 +1000,28 @@ describe('refine api', () => {
     const retried = await call('POST', '/api/refine/hello-app/hello-app-001/start');
     expect(retried.status).toBe(200); // the earlier failure must not leave the session locked with 'a start is already in progress'
     expect(spawns).toHaveLength(2);
+  });
+
+  it('a spawn that throws before any run is written releases the start lock, so the session can start again', async () => {
+    await specDraft();
+    script['derive/po'] = [derived];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await settle();
+    await preparePlans('/api/refine/hello-app/hello-app-001');
+    const control = (registry as unknown as { deps: { control: RunControlDeps } }).deps.control;
+    const spawn = control.spawn;
+    control.spawn = () => {
+      throw new Error('spawn EACCES');
+    };
+    try {
+      expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(500);
+    } finally {
+      control.spawn = spawn;
+    }
+    expect((await snapshot()).state.status).toBe('ready');
+    expect((await call('POST', '/api/refine/hello-app/hello-app-001/start')).status).toBe(200);
   });
 
   it('redacts a secret in the log tail of a start that failed (audit M3)', async () => {

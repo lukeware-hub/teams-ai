@@ -790,7 +790,7 @@ export class Run {
   /** Phase 0: the docs reach main (a draft) or are fetched, then every service gets its repository; public so tests can drive it without scripting Phases 1–3. */
   async executePhase0(): Promise<PhaseResult> {
     // Phases 1 and 2 read the docs from origin/main; a later run must see what was merged since the last one.
-    const docs = this.deps.bootstrap ? await runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap) : await gitFetch(this.deps.ws.repo, this.deps.exec).then((): PhaseResult => ({ ok: true }));
+    const docs = this.deps.bootstrap ? await runPhase0({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, { ...this.deps.bootstrap, docs: this.deps.docs }) : await gitFetch(this.deps.ws.repo, this.deps.exec).then((): PhaseResult => ({ ok: true }));
     if (!docs.ok) return docs;
     return ensureServiceRepos({ ...this.phaseDeps(), ghExec: this.deps.ghExec }, this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner, this.deps.bootstrap?.docsDir);
   }

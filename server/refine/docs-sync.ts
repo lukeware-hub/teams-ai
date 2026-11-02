@@ -1,5 +1,6 @@
 import type { Style } from '../docs/layout.js';
-import { commitProjection, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
+import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -71,6 +72,36 @@ export class DocsSync {
     return this.chain;
   }
 
+  /** The closing of the refinement: the flush, the closing commit, its push and the snapshot. It throws, and launches nothing, when one fails. */
+  close(aliases: readonly string[]): Promise<void> {
+    const done = this.chain.then(() => this.closeNow(aliases));
+    this.chain = done.catch(() => undefined);
+    return done;
+  }
+
+  /** Drops the closing of a launch that never happened, so no start tag is ever published for it. */
+  discardClosing(): Promise<void> {
+    return this.enqueue(() => removeClosingRecord(this.input.ws, this.input.draft.specId).catch((err) => console.error(`closing of ${this.input.draft.specId}: ${messageOf(err)}`)));
+  }
+
+  /** The start tags of the closing, published once on the serial chain; a failure keeps them pending for the next tick and never fails the start. */
+  publishTags(): Promise<void> {
+    return this.enqueue(() => this.publishPendingTags());
+  }
+
+  private async publishPendingTags(): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    try {
+      const record = await readClosingRecord(ws, draft.specId);
+      if (record === null || record.pendingTags.length === 0) return;
+      const { pushed } = await createStartTags(await openStore(ws, style, exec), record.aliases, record.commit);
+      if (!pushed) throw new DocsStoreError('the start tags could not be published');
+      await writeClosingRecord(ws, draft.specId, { ...record, pendingTags: [] });
+    } catch (err) {
+      console.error(`start tags of ${draft.specId}: ${messageOf(err)}`);
+    }
+  }
+
   /** The registry tick: a pending boundary is flushed again, and a failure without one only pushes the local commits. */
   tick(): Promise<void> {
     if (this.labels.length > 0) return this.flush();
@@ -80,6 +111,17 @@ export class DocsSync {
   private enqueue(task: () => Promise<void>): Promise<void> {
     this.chain = this.chain.then(task);
     return this.chain;
+  }
+
+  private async closeNow(aliases: readonly string[]): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    const store = await openStore(ws, style, exec);
+    const files = await projectDraftFiles(draft, style, this.input.aliases());
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files };
+    await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
+    this.labels = [];
+    this.pending = 0;
+    this.lastError = null;
   }
 
   /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary. */
