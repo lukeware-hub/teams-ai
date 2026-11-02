@@ -581,6 +581,8 @@ export interface ResumeAction {
   onResume: () => void;
   busy: boolean;
   error: string | null;
+  /** The run was just sent back to the agents: the button stays away until the run shows its own state again. */
+  sent?: boolean;
 }
 
 type DetailTarget = { kind: 'outcome' } | { kind: 'phase'; phase: number } | { kind: 'cause'; reason: string } | { kind: 'task'; taskId: string };
@@ -621,7 +623,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
   const causes = rootBlockers(blocked);
   // Blocked tasks end the run unfinished: the button sends them back to the agents, also for runs delivered before that rule.
-  const sendBack = status === 'blocked' || (status === 'awaiting-validation' && blocked.length > 0);
+  const sendBack = !resumeAction?.sent && (status === 'blocked' || (status === 'awaiting-validation' && blocked.length > 0));
   const causeGroups = groupCauses(causes);
   const waiting = cascadeBlockers(blocked).map((b) => b.taskId);
   // Every blocked task that blocked in this phase and is still blocked, its own cause or waiting on another.
@@ -777,7 +779,13 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               {stopAction.busy ? 'Parando…' : 'Parar execução'}
             </ActionButton>
           ) : null}
-          {detail.report ? (
+          {detail.report && blocked.length > 0 ? (
+            // A run with blocked tasks is not validated: the link stays visible but cannot be followed.
+            <span className={`link-button ${RUN_UI.action} pointer-events-none opacity-50`} data-testid="validation-link" aria-disabled="true" title="Há tarefas bloqueadas: envie a run de volta para o agente antes de validar">
+              Validação
+              <Icon name="arrow-right" size={16} />
+            </span>
+          ) : detail.report ? (
             <Link className={`link-button ${RUN_UI.action}`} data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
               Validação
               <Icon name="arrow-right" size={16} />
@@ -1184,6 +1192,14 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [stopFailure, setStopFailure] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [resumeFailure, setResumeFailure] = useState<string | null>(null);
+  // Sent back to the agents: the button goes away at once. The run's own journal takes a moment to show it running, so
+  // the flag lapses after a while and a run that ended blocked again shows the button again.
+  const [sentBack, setSentBack] = useState(false);
+  useEffect(() => {
+    if (!sentBack) return;
+    const id = setTimeout(() => setSentBack(false), 15_000);
+    return () => clearTimeout(id);
+  }, [sentBack]);
   // The server ends the event stream at the run's finish, so a resumed run needs a new one to show what it does.
   const [resumes, setResumes] = useState(0);
   useEffect(() => {
@@ -1275,10 +1291,9 @@ function RunScreen({ runId }: { runId: string | undefined }) {
     setResumeFailure(null);
     runApi
       .resumeRun(runId)
-      .then(() => runApi.run(runId))
-      .then((d) => {
+      .then(() => {
         setResuming(false);
-        setDetail(d);
+        setSentBack(true);
         setResumes((n) => n + 1);
       })
       .catch((e: Error) => {
@@ -1311,7 +1326,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure }}
       decideAction={{ onDecide: decide, busy: deciding || reprocessing, error: decideFailure ?? reprocessFailure }}
       stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
-      resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure }}
+      resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure, sent: sentBack }}
       testLinks={testLinks}
     />
   );

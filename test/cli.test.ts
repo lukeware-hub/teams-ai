@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { chooseSpecId, failedDecision, loadRunDeps, main, markAwaitingValidation, startsAsDraft } from '../server/cli.js';
+import { chooseSpecId, failedDecision, loadRunDeps, main, markAwaitingValidation, markRunningAgain, startsAsDraft } from '../server/cli.js';
+import { makeFrozenSpec } from './fixtures/contracts.js';
 import { loadConfig } from '../server/config/config.js';
 import type { RunControlDeps, SpawnArgs } from '../server/api/run-control.js';
 import type { RunDeps } from '../server/orchestrator/run.js';
@@ -156,6 +157,23 @@ describe('teams-ai cli', () => {
       }) as never);
       expect(code).toBe(0);
       expect(retried).toBe(expected);
+    }
+  });
+
+  it('sending a blocked run back marks its spec running again, and only when it was awaiting validation', async () => {
+    const dirs = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-sendback-'));
+    try {
+      const specFile = path.join(dirs, 'project', 'docs', 'specs', 'greeting', 'spec.json');
+      await fs.mkdir(path.dirname(specFile), { recursive: true });
+      const spec = (status: string) => JSON.stringify({ ...makeFrozenSpec(), specId: 'greeting', status });
+      await fs.writeFile(specFile, spec('awaiting-validation'));
+      await markRunningAgain(path.join(dirs, 'project'), 'greeting', path.join(dirs, 'repo'));
+      expect(JSON.parse(await fs.readFile(specFile, 'utf8')).status).toBe('running');
+      await fs.writeFile(specFile, spec('done'));
+      await markRunningAgain(path.join(dirs, 'project'), 'greeting', path.join(dirs, 'repo'));
+      expect(JSON.parse(await fs.readFile(specFile, 'utf8')).status).toBe('done');
+    } finally {
+      await fs.rm(dirs, { recursive: true, force: true });
     }
   });
 

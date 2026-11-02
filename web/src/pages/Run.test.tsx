@@ -503,7 +503,21 @@ describe('RunView', () => {
       expect(onResume).toHaveBeenCalledTimes(1);
     });
 
-    it('offers Enviar para o agente corrigir for a run that ended blocked, saying only its blocked tasks restart', () => {
+    it('keeps the validation link visible but not followable while the run has blocked tasks', () => {
+    const finished = { seq: 9998, at: '2026-09-24T12:00:00.000Z', runId: 'hello-001-r1', specHash: 'h', type: 'RUN_FINISHED', kind: 'fact' as const, data: { result: 'awaiting-validation', reason: null, merged: [], blocked: [{ taskId: 'T6', reason: 'x' }], tokens: {} } };
+    render(view({ events: [...ghost, finished], ended: true, detail: { ...detail, status: 'awaiting-validation', report: { summary: 's' } as never } }));
+    const link = screen.getByTestId('validation-link');
+    expect(link.tagName).toBe('SPAN');
+    expect(link.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('hides Enviar para o agente corrigir once the run was just sent back, until its own state shows again', () => {
+    render(view({ events: ghost, ended: true, detail: { ...detail, status: 'blocked' }, resumeAction: { onResume: vi.fn(), busy: false, error: null, sent: true } }));
+    expect(screen.queryByTestId('resume')).toBeNull();
+    expect(screen.queryByTestId('blocked-hint')).toBeNull();
+  });
+
+  it('offers Enviar para o agente corrigir for a run that ended blocked, saying only its blocked tasks restart', () => {
       const onResume = vi.fn();
       render(view({ events: ghost, ended: true, detail: { ...detail, status: 'blocked' }, resumeAction: { onResume, busy: false, error: null } }));
       expect(screen.getByTestId('resume').textContent).toBe('Enviar para o agente corrigir');

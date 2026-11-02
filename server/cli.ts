@@ -246,6 +246,15 @@ export async function markAwaitingValidation(projectDir: string, specId: string,
 `);
 }
 
+/** A blocked run sent back to the agents: its spec runs again until the run ends, as it did before the delivery. */
+export async function markRunningAgain(projectDir: string, specId: string, repo: string): Promise<void> {
+  if (path.resolve(projectDir) === path.resolve(repo)) return;
+  const file = path.join(projectDir, 'docs', 'specs', specId, 'spec.json');
+  const spec = await readJson(file, (v) => Spec.parse(v));
+  if (spec.status === 'awaiting-validation') await writeFileAtomic(file, `${JSON.stringify({ ...spec, status: 'running' }, null, 2)}
+`);
+}
+
 /** A draft root whose spec main lacks (Phase 0 stopped before publishing it) publishes it first, also when started again. */
 export async function startsAsDraft(exec: Exec, projectDir: string, ws: { root: string; repo: string }, specId: string): Promise<boolean> {
   if (!path.resolve(projectDir).startsWith(path.resolve(ws.root, 'refine') + path.sep)) return false;
@@ -278,7 +287,7 @@ async function preconditions(exec: Exec, repo: string, specId: string, draft: bo
 /** Which spec a command works on: `--spec`, else the spec of the run being resumed, else the last spec directory. */
 export const chooseSpecId = (explicit: string | undefined, fromRun: string | null, dirs: readonly string[]): string | undefined => explicit ?? fromRun ?? [...dirs].sort().at(-1);
 
-export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; resumeRun?: string; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local' }): Promise<RunDeps> {
+export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; resumeRun?: string; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local'; sendBack?: boolean }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
@@ -289,7 +298,8 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const spec = await readJson(path.join(projectDir, 'docs', 'specs', specId, 'spec.json'), (v) => Spec.parse(v));
   // A README is written for any spec whose code is on main, whatever its lifecycle status.
   // A deploy needs the spec's code on main: delivered (awaiting validation) or done.
-  const allowed = opts.readme ? spec.status !== 'refining' : opts.deploy ? spec.status === 'awaiting-validation' || spec.status === 'done' : opts.complete ? spec.status === 'awaiting-validation' : spec.status === 'running';
+  // A blocked run sent back to the agents is resumed from a spec the delivery already marked awaiting-validation.
+  const allowed = opts.readme ? spec.status !== 'refining' : opts.deploy ? spec.status === 'awaiting-validation' || spec.status === 'done' : opts.complete ? spec.status === 'awaiting-validation' : opts.sendBack === true ? spec.status === 'running' || spec.status === 'awaiting-validation' : spec.status === 'running';
   if (!allowed || !spec.specHash) throw new Error(`spec ${specId} is not ${opts.readme ? 'past refinement' : opts.deploy ? 'delivered (awaiting-validation or done)' : opts.complete ? 'awaiting-validation' : 'running'} (status ${spec.status}); finish Gate 1 first`);
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   await ensureGeneratedSecrets(path.posix.join(ws.root, 'secrets'), [...generatedSecretNames(spec.externalDependencies), ...DATASTORE_CREDENTIALS, ...cfg.environment.generatedSecrets], platformSecrets);
@@ -396,8 +406,9 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       }
       return 0;
     }
-    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, resumeRun: command === 'resume' ? String(f.run) : undefined, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'docker-local' | undefined) : undefined });
+    const load = loadRunDeps(io, projectDir, typeof f.spec === 'string' ? f.spec : undefined, { dryRun: f['dry-run'] === true, resumeRun: command === 'resume' ? String(f.run) : undefined, draft: f.draft === true, maxParallel: typeof f['max-parallel'] === 'string' ? Number(f['max-parallel']) : undefined, complete: completing, readme: readming, deploy: deploying, target: deploying ? (targetFlag as 'docker-local' | undefined) : undefined, sendBack: command === 'resume' && f['retry-blocked'] === true });
     const deps = factory === defaultFactory ? await load : await load.catch(() => null as unknown as RunDeps);
+    if (deps && command === 'resume' && f['retry-blocked'] === true) await markRunningAgain(projectDir, deps.spec.specId, deps.ws.repo);
     const explicitId = typeof f['run-id'] === 'string' ? f['run-id'] : undefined;
     if (explicitId !== undefined && !/^[A-Za-z0-9_.-]+$/.test(explicitId)) throw new Error('--run-id must match ^[A-Za-z0-9_.-]+$');
     const manual = completing || readming || deploying;
