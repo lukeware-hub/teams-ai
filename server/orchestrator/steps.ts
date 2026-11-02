@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { charterRulesFor } from '../agents/document-charter.js';
 import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
@@ -150,6 +151,7 @@ const sourceRules = (base: PackBase): string[] => [
   planRule(shown(base, base.planFile)),
   ...(base.taskFile ? [taskListRule(shown(base, base.taskFile))] : []),
   base.docsRoot === undefined ? sourceDocsRule(base.spec.specId) : docsRepoRule(base.docsRoot),
+  ...charterRulesFor(base.docsRoot !== undefined),
 ];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */

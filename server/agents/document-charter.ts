@@ -9,6 +9,12 @@ export const DOCUMENT_CHARTER = `Project documents (paths as the agents see them
 - docs/design.md: how the interface looks, feels and responds: brand, color and type tokens, spacing, breakpoints, component anatomy, visual states, motion, accessibility, and the list of screens or portals with what each one shows. Does not hold business rules, the order or conditions of a step (docs/flow.md), endpoints, data or technologies.
 When one piece of content fits two documents: a rule that decides who may act belongs to docs/project.md; a business rule (a deadline, a limit, what is allowed) belongs to the briefing as its testable form, and docs/flow.md keeps only the branch that applies it; docs/design.md keeps only how the screen shows it. Where the product runs belongs to docs/project.md; the tool that builds or runs it belongs to docs/stack.md. A step, an order or a branch that docs/flow.md does not draw belongs to docs/flow.md; a written explanation of a step that docs/flow.md draws stays in the briefing.`;
 
+/** The documentation repository's part of the charter: its snapshot is read only and the spec folder is the only place to write. */
+export const DOCS_REPO_CHARTER = `Documentation repository: the five documents and docs/briefing.md are read-only in the snapshot. Write only the files of the spec folder, and never create other document files. Use relative links between spec documents.`;
+
+/** The charter rules a step adds for its layout: the documentation repository adds its variant, a source repository adds none. */
+export const charterRulesFor = (docsRepo: boolean): string[] => (docsRepo ? [DOCS_REPO_CHARTER] : []);
+
 /** What each document must hold, in one line each; the Jev's scoring questions quote it. */
 export const DOCUMENT_PURPOSE: Record<DocFile, string> = {
   'project.md': 'what the product is: its vision, goals, the deliverables it must produce, personas, constraints, principles, who may act and under what authority, legal rules, deploy target and GitHub owner',
