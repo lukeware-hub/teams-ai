@@ -20,6 +20,7 @@ import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
 import { ClosingDialog } from '../refine/ClosingDialog.js';
 import { ArchitectureCard } from '../refine/ArchitectureCard.js';
+import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, startInputOf, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
@@ -1182,8 +1183,20 @@ export function RefinementView(p: ViewProps) {
   const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
   // The architecture step: the decision of the five documents, and Continuar once it is current.
   const architectureDecided = st.architecture != null && snap.architectureStale !== true;
+  // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
+  const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
+      {docsRepoNoBacklog && snap.docsTarget && (
+        <div role="status" data-testid="architecture-docs-notice" className="flex gap-3 rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink">
+          <Icon name="file" size={16} />
+          <div className="grid min-w-0 gap-1">
+            <b className="text-[0.875rem] font-semibold">Documentos</b>
+            <span>{`Cria o repositório privado ${snap.docsTarget.owner}/${snap.docsTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
+          </div>
+        </div>
+      )}
+      <DocsSyncNotice docsSync={snap.docsSync} />
       <header className="grid gap-1">
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
@@ -1221,7 +1234,7 @@ export function RefinementView(p: ViewProps) {
       )}
     </>
   ) : step === 'architecture' ? (
-    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided} title={architectureDecided ? undefined : 'Decida a arquitetura antes de quebrar o backlog.'} onClick={() => goTo('backlog')} icon={<Icon name="arrow-right" size={16} />}>
+    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided} title={architectureDecided ? undefined : 'Decida a arquitetura antes de quebrar o backlog.'} onClick={() => (docsRepoNoBacklog ? p.onEnableBacklog?.() : goTo('backlog'))} icon={<Icon name="arrow-right" size={16} />}>
       Quebrar o backlog por repositório
     </ActionButton>
   ) : (
