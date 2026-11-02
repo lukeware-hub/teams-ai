@@ -1,6 +1,6 @@
 import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
-import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -79,6 +79,13 @@ export class DocsSync {
     return done;
   }
 
+  /** A discarded draft that never started: its alias folders leave the store, and the removal is published. */
+  retire(): Promise<void> {
+    const done = this.chain.then(() => this.retireNow());
+    this.chain = done.catch(() => undefined);
+    return done;
+  }
+
   /** Drops the closing of a launch that never happened, so no start tag is ever published for it. */
   discardClosing(): Promise<void> {
     return this.enqueue(() => removeClosingRecord(this.input.ws, this.input.draft.specId).catch((err) => console.error(`closing of ${this.input.draft.specId}: ${messageOf(err)}`)));
@@ -111,6 +118,13 @@ export class DocsSync {
   private enqueue(task: () => Promise<void>): Promise<void> {
     this.chain = this.chain.then(task);
     return this.chain;
+  }
+
+  private async retireNow(): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    const store = await openStore(ws, style, exec);
+    const flushed = await retireAliases(store, draft.specId);
+    if (flushed.sha !== null) await pushLocalCommits(store);
   }
 
   private async closeNow(aliases: readonly string[]): Promise<void> {

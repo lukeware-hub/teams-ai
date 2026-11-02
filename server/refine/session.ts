@@ -685,6 +685,13 @@ export class RefineSession {
     });
   }
 
+  /** A discarded draft that never started takes its alias folders out of the store; a refusal is a conflict. */
+  async retireDocs(): Promise<void> {
+    await this.docs?.retire().catch((err: unknown) => {
+      throw new ConflictError(err instanceof Error ? err.message : String(err));
+    });
+  }
+
   /** The registry tick: a waiting boundary or a failed flush is committed and pushed again, and the start tags are retried. */
   async tickDocs(): Promise<void> {
     await this.docs?.tick();

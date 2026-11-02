@@ -152,11 +152,31 @@ async function headText(c: Ctx, rel: string): Promise<string | null> {
   return c.born ? textAtHead(c.store, rel) : null;
 }
 
-/** The aliases that have a spec file at the store's HEAD: every spec folder the documentation repository holds. */
-export async function aliasesOnStore(store: Store): Promise<string[]> {
+/** The spec files at the store's HEAD, by repository path. */
+async function specFilesAtHead(store: Store): Promise<string[]> {
   if (!(await hasHead(store))) return [];
   const paths = (await git(store.dir, ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'docs'], store.exec)).split('\n');
-  return [...new Set(paths.map((p) => parseRepoPath(p)).filter((alias): alias is string => alias !== null))];
+  return paths.filter((p) => parseRepoPath(p) !== null);
+}
+
+/** The aliases that have a spec file at the store's HEAD: every spec folder the documentation repository holds. */
+export async function aliasesOnStore(store: Store): Promise<string[]> {
+  return [...new Set((await specFilesAtHead(store)).map((p) => parseRepoPath(p)!))];
+}
+
+/** The alias folders whose last commit this draft made: the only folders it may remove. */
+async function ownedAliasFolders(store: Store, draftId: string): Promise<string[]> {
+  const c: Ctx = { store, draftId, born: true };
+  const folders = [...new Set((await specFilesAtHead(store)).map((p) => path.posix.dirname(p)))];
+  const owned: string[] = [];
+  for (const folder of folders) if (await aliasWritable(c, folder)) owned.push(folder);
+  return owned;
+}
+
+/** Removes the alias folders a discarded draft committed; the five documents and other drafts' folders stay. */
+export async function retireAliases(store: Store, draftId: string): Promise<FlushResult> {
+  const retire = await ownedAliasFolders(store, draftId);
+  return commitProjection(store, { draftId, stepKey: 'discard', scope: 'refine', label: 'draft discarded', files: {}, retire });
 }
 
 /** The text a file holds at the store's HEAD, or null when the store has no commit or the file. */
