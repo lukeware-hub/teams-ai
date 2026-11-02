@@ -121,10 +121,11 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(alert.querySelector('pre')!.textContent).toBe(stderr);
   });
 
-  it('warns that a preparation is out of date and keeps the start locked', () => {
+  it('keeps the start locked for an out-of-date preparation, and says why under the coverage, with no warning at the top', () => {
     renderView(wizard({ speckit: speckit({ stale: true }) as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-stale')).toBeTruthy();
+    expect(screen.queryByTestId('speckit-stale')).toBeNull();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('start-reason').textContent).toBe('Os documentos mudaram: prepare os planos de novo.');
   });
 
   it('opens "Iniciar desenvolvimento" once the preparation is done and current', () => {

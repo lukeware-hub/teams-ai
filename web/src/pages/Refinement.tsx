@@ -408,10 +408,11 @@ export function RefinementView(p: ViewProps) {
     if (newProject && onStage) setTab(onStage);
   }, [onStage, newProject]);
   const stageStep = newProject ? stageAction(st) : null;
-  const backlogBlock = (
+  // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
+  const backlogBlock = (note: ReactNode) => (
     <>
       <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
-      {st.backlog?.detail && <MemoSpecTree backlog={st.backlog} evaluating={evaluating} />}
+      {st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} /> : note}
     </>
   );
   // What the plan preparation covers: each backlog item, or the single spec as one item.
@@ -929,7 +930,7 @@ export function RefinementView(p: ViewProps) {
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
-      {!newProject && backlogBlock}
+      {!newProject && backlogBlock(null)}
       <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
         <>
@@ -1181,7 +1182,7 @@ export function RefinementView(p: ViewProps) {
       {backlogOn && speckitStatus}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
-      {backlogBlock}
+      {backlogBlock(startLine)}
     </div>
   );
   const developButton = (
@@ -1207,7 +1208,9 @@ export function RefinementView(p: ViewProps) {
         <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
       </div>
     </div>
-  ) : startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
+  ) : null;
+  // The plain reason the start waits for sits under the coverage; the closing gate keeps its own block in the footer.
+  const startLine = closingGate || !startReason ? null : <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.

@@ -1227,7 +1227,7 @@ Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`,
 
 ### 26.8 Backlog por repositório
 
-Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo.
+Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo. A etapa só gera specs, planos e tarefas: não valida os arquivos e não mostra aviso de documento mudado no topo. O motivo que impede iniciar aparece em texto simples logo abaixo de `Cobertura`, e o rodapé fica só com os botões.
 
 ### 26.9 Diálogo de resumo do refinamento
 

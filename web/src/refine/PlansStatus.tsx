@@ -110,7 +110,8 @@ function Status({ speckit, titles, plan = [], waiting = false, startable = false
       </ProcessBox>
     );
   }
-  if (speckit.stale) return <p className={`${line} text-warn`} data-testid="speckit-stale"><Icon name="alert" size={20} /><span>Os documentos ou o backlog mudaram depois da preparação. Prepare de novo antes de iniciar.</span></p>;
+  // A stale preparation is named under the coverage, by the start reason, not here.
+  if (speckit.stale) return null;
   if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span>Responda à pergunta dos planos abaixo para poder iniciar o desenvolvimento.</span></p>;
   return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>{startable ? 'Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.' : 'Tudo preparado: um plano de implementação por item.'}</span></p>;
 }
