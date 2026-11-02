@@ -670,10 +670,10 @@ describe('the architecture step names what the documentation repository does', (
     expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
   });
 
-  it('shows no sync line once the backlog of a documentation-repository session is enabled', () => {
+  it('keeps the sync line once the backlog of a documentation-repository session is enabled, while changes wait', () => {
     const backlog = { enabled: true, detail: false, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
     render(<MemoryRouter><RefinementView snap={architectureStep({ backlog }, { ...docsRepo, docsSync: { pending: 2, lastError: null, refused: false } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
-    expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
+    expect(screen.getByTestId('docs-sync-notice').textContent).toBe('2 alterações esperam publicação no repositório de documentos.');
   });
 
   it('shows no notice once the backlog of a documentation-repository session is enabled', () => {

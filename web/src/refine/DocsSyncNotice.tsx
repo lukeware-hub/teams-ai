@@ -16,7 +16,7 @@ export function DocsSyncNotice({ docsSync }: { docsSync?: DocsSyncView }) {
   const failed = lastError !== null;
   const text = lastError !== null ? failureLine(refused, lastError) : pendingLine(pending);
   return (
-    <div role="status" data-testid="docs-sync-notice" data-state={failed ? 'error' : 'pending'} className={`rounded-lg border p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink ${failed ? 'border-bad-line bg-bad-soft' : 'border-accent-line bg-accent-soft'}`}>
+    <div role="status" data-testid="docs-sync-notice" data-state={failed ? 'error' : 'pending'} className={`mb-4 rounded-lg border p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink ${failed ? 'border-bad-line bg-bad-soft' : 'border-accent-line bg-accent-soft'}`}>
       {text}
     </div>
   );

@@ -1200,7 +1200,6 @@ export function RefinementView(p: ViewProps) {
           </div>
         </div>
       )}
-      {docsNoticeTarget && <DocsSyncNotice docsSync={snap.docsSync} />}
       <header className="grid gap-1">
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
@@ -1279,6 +1278,7 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
+          {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
           {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
         </WizardShell>
         {reevaluateDialog}
@@ -1287,6 +1287,8 @@ export function RefinementView(p: ViewProps) {
     );
   }
   return (
+    <>
+      {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
     <Workspace
       columns="lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)_minmax(0,1fr)]"
       // Below lg, review and quality share one column with one scroll; from lg each panel gets its own column.
@@ -1297,6 +1299,7 @@ export function RefinementView(p: ViewProps) {
         { id: 'quality', label: 'Verificação', content: qualityPanel, group: 'side' },
       ]}
     />
+    </>
   );
 }
 
