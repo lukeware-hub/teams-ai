@@ -209,12 +209,12 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I8 - Development side (size L, weight 3)
 
-- [ ] Agents read documents from `docs-at/<draftId>` through the read-only grant; `sourceFiles` keeps store-relative names.
-- [ ] A required document missing from the snapshot fails the step.
-- [ ] Monolith: a build task that changes `docs/` (except README, RUNBOOK, API) fails the scope check as frozen.
-- [ ] Monolith merge queue tolerates a `main` moved only by allowlisted document paths.
-- [ ] Charters and packs are layout-neutral; legacy goldens byte-identical.
-- [ ] Knowledge indexer, chat documents, graph input and main-docs read the store for docs-repo projects.
+- [x] Agents read documents from `docs-at/<draftId>` through the read-only grant; `sourceFiles` keeps store-relative names. The run wiring waits for I7, which creates the snapshot.
+- [x] A required document missing from the snapshot fails the step.
+- [x] Monolith: a build task that changes `docs/` (except README, RUNBOOK, API) fails the scope check as frozen.
+- [x] Monolith merge queue tolerates a `main` moved only by allowlisted document paths.
+- [x] Charters and packs are layout-neutral; legacy goldens byte-identical.
+- [ ] Knowledge indexer, chat documents, graph input and main-docs read the store for docs-repo projects. Open: chat documents still read the project repository (I9).
 
 ## I9 - Follow-on drafts on direct main (size M, weight 2)
 
