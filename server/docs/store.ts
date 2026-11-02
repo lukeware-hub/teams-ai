@@ -403,7 +403,7 @@ export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: 
   await writeDocsMarker(ws, marker);
   const store = storeOf(ws, input.style, exec);
   await initStore(store);
-  if (!(await hasHead(store))) {
+  if (!(await withRepoLock(store.dir, () => hasHead(store)))) {
     await commitProjection(store, { draftId: input.draftId, stepKey: 'bind', scope: 'refine', label: 'initial documents', files: input.documents });
   }
   const created = await attach(store, input.target, exec);
