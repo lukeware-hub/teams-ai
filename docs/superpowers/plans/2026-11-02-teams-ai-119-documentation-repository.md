@@ -175,12 +175,12 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I4 - Mirror and run side (size L, weight 3)
 
-- [ ] `readState`, `writeState`, `updateState` over `writeFileAtomic`; mirror at `<ws.root>/state/docs/`.
-- [ ] For docs-repo projects, every read of machine JSON from `origin/main` moves to the mirror: preconditions, startsAsDraft, specOnMain, startedOnMain, readDocs, run.ts, deploy.ts, report.ts, the service rules, run-routes plan and report reads.
-- [ ] Phase 0 for docs-repo: strict check of the draft docs folder (the snapshot check arrives with I7), mirror writes, no document copies, `publishServiceDocs` not called.
-- [ ] Phase 1 skipped for docs-repo; technical text empty; stack line in the plan pack; ADRs empty.
-- [ ] Phase 2, Phase 6 and completion write to the mirror; no docs pull request for `plan.json` and `report.json`.
-- [ ] Legacy projects keep their path; the existing phase tests are unedited and green.
+- [x] `readState`, `writeState`, `updateState` over `writeFileAtomic`; mirror at `<ws.root>/state/docs/`.
+- [x] For docs-repo projects, every read of machine JSON from `origin/main` moves to the mirror: preconditions, startsAsDraft, specOnMain, startedOnMain, readDocs, run.ts, deploy.ts, report.ts, the service rules, run-routes plan and report reads (`startedOnMain` stays unchanged: only the legacy copy loop calls it).
+- [x] Phase 0 for docs-repo: strict check of the draft docs folder (the snapshot check arrives with I7), mirror writes, no document copies, `publishServiceDocs` not called.
+- [x] Phase 1 skipped for docs-repo; technical text empty; stack line in the plan pack; ADRs empty.
+- [x] Phase 2, Phase 6 and completion write to the mirror; no docs pull request for `plan.json` and `report.json`.
+- [x] Legacy projects keep their path; existing tests keep every assertion (additions only) and stay green.
 
 ## I5 - Bind at step 7 (size M, weight 2)
 
