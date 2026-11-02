@@ -672,6 +672,16 @@ describe('the architecture step names what the documentation repository does', (
     expect(h.onEnableBacklog).toHaveBeenCalledOnce();
   });
 
+  it('the architecture button stays disabled for a documentation-repository session with no target', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
+    const button = screen.getByTestId('architecture-continue') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe('Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.');
+    fireEvent.click(button);
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
   it('the architecture button only moves to the backlog step for a legacy session', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({})} busy={false} events={[]} {...h} /></MemoryRouter>);
