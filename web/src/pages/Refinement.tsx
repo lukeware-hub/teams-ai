@@ -1214,7 +1214,9 @@ export function RefinementView(p: ViewProps) {
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
   const docsTargetMissing = docsRepoNoBacklog && !snap.docsTarget;
   // The architecture step only names the style: its button is always enabled and checks the decision on the click.
-  const architectureBlock = (): string | null => (st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
+  const architectureBusy = evaluating || (st.evaluation != null && st.evaluation.endedAt === null);
+  const architectureBlock = (): string | null => (architectureBusy ? 'A arquitetura ainda está sendo decidida: espere ela terminar.'
+    : st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
     : snap.architectureStale === true ? 'Os documentos mudaram: decida a arquitetura de novo.'
     : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.'
     : null);
@@ -1233,7 +1235,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (

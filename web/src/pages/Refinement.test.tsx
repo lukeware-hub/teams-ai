@@ -707,6 +707,15 @@ describe('the architecture step names what the documentation repository does', (
     expect(window.location.search).toContain('etapa=arquitetura');
   });
 
+  it('the architecture button blocks on the click while a decision is running, and does not move', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({ evaluation: { startedAt: new Date().toISOString(), endedAt: null } } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(screen.getByTestId('architecture-note').textContent).toBe('A arquitetura ainda está sendo decidida: espere ela terminar.');
+    expect(window.location.search).toContain('etapa=arquitetura');
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
   it('the architecture button blocks on the click when the documents changed since the decision, and does not move', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
