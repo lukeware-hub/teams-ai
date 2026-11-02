@@ -139,11 +139,11 @@ Each increment is one or more commits pushed to the branch. Commit messages are 
 
 Goal: one pure module owns every document path; legacy output does not change.
 
-- [ ] `server/docs/layout.ts`: paths of the eight kinds, allowlist, alias rules, target, owner parse, tag name.
-- [ ] `server/docs/project-state.ts`: store, mirror, marker, snapshot and closing paths; marker read and write; environment flag reader.
-- [ ] Characterization tests: `planFileOf` and `taskFileOf` return the legacy strings; the docs-repo tables are tested.
-- [ ] Layout seam guard: no code outside `layout.ts` builds a `docs/specify` path.
-- [ ] `planFileOf` and `taskFileOf` delegate to the legacy layout, output unchanged.
+- [x] `server/docs/layout.ts`: paths of the eight kinds, allowlist, alias rules, target, owner parse, tag name.
+- [x] `server/docs/project-state.ts`: store, mirror, marker, snapshot and closing paths; marker read and write; environment flag reader.
+- [x] Characterization tests: `planFileOf` and `taskFileOf` return the legacy strings; the docs-repo tables are tested.
+- [x] Layout seam guard: no code outside `layout.ts` builds a `docs/specify` path.
+- [x] `planFileOf` and `taskFileOf` delegate to the legacy layout, output unchanged.
 - [ ] Gate green, and no existing test edited.
 
 ## I2a - Git and GitHub primitives, probe (size M, weight 2)
