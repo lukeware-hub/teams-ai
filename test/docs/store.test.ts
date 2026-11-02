@@ -273,3 +273,13 @@ describe('ownership', () => {
     expect(await exists('docs/project.md')).toBe(true);
   });
 });
+
+describe('draft id of a flush', () => {
+  useStore();
+
+  it('refuses a draft id that is not a slug before anything is written', async () => {
+    const before = await head();
+    await expect(commitProjection(store, { ...flush({ 'docs/project.md': 'x\n' }), draftId: '../escape' })).rejects.toThrow(RangeError);
+    expect(await head()).toBe(before);
+  });
+});

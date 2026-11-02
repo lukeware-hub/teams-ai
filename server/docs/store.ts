@@ -15,6 +15,7 @@ import {
   docsSnapshotDir,
   docsSnapshotRoot,
   docsStoreDir,
+  draftFolderName,
   readDocsMarker,
   removeDocsMarker,
   writeDocsMarker,
@@ -278,6 +279,8 @@ async function commitStaged(store: Store, p: Projection, stagedCount: number): P
 
 /** Projects the files onto the store and commits them; nothing is written unless every check passes. */
 export async function commitProjection(store: Store, p: Projection): Promise<FlushResult> {
+  // The draft id reaches a commit trailer and a folder name, so it is checked first.
+  draftFolderName(p.draftId);
   const files = projectFiles(store.style, p.files);
   assertNoSecrets(files, p.known ?? []);
   assertAliasFolders(store.style, p.retire ?? []);

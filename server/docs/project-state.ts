@@ -23,7 +23,7 @@ export const docsMarkerPath = (ws: Pick<Workspace, 'root'>): string => path.posi
 export const docsSnapshotRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'docs-at');
 
 /** A draft id names a folder, so it must be a slug. */
-function draftFolderName(draftId: string): string {
+export function draftFolderName(draftId: string): string {
   if (!ID_PATTERNS.SLUG.test(draftId)) throw new RangeError(`draft id must be a lowercase slug, got "${draftId}"`);
   return draftId;
 }
