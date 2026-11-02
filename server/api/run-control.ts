@@ -35,6 +35,10 @@ export interface RunTarget {
 }
 
 const POLL_MS = 250;
+/** How long a stop waits for a run to drain before the kill. */
+export const DRAIN_STOP_MS = 15_000;
+/** A deploy, a completion or a README never drains at a step boundary, so its stop waits only this long before the kill. */
+export const NO_DRAIN_STOP_MS = 1_000;
 
 export function runCommand(deps: RunControlDeps, o: RunTarget): SpawnArgs {
   const { bin, prefix } = deps.cliEntry();
@@ -62,7 +66,7 @@ export function isAlive(deps: RunControlDeps, pid: number): boolean {
  * The pid must come from `readPid`, which refuses a number that now belongs to another process: `isAlive` only says that some
  * process has it, and its group would get the signal.
  */
-export async function stop(deps: RunControlDeps, pid: number, timeoutMs = 15_000): Promise<'terminated' | 'killed' | 'gone'> {
+export async function stop(deps: RunControlDeps, pid: number, timeoutMs = DRAIN_STOP_MS): Promise<'terminated' | 'killed' | 'gone'> {
   if (!deps.kill(-pid, 'SIGTERM')) return 'gone';
   for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
     await deps.sleep(POLL_MS);

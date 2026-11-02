@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
-import { appLinks, ProjectHub, ProjectHubView } from './ProjectHub.js';
+import { appLinks, ProjectHub, ProjectHubView, shouldAutoDeploy } from './ProjectHub.js';
 
 const project = {
   projectId: 'hello-app',
@@ -490,10 +490,10 @@ describe('project apps', () => {
     const service = { url: 'http://dind:20052', healthcheck: 'ok', smoke: [], port: 20052, kind: 'api' as const, docsPath: '/docs' };
     const report = { service } as unknown as Parameters<typeof appLinks>[0];
     const at = (s: object) => appLinks(report, { checkedAt: '', status: 200, online: false, ...s }, 'h');
-    expect(at({ online: true, ui: true, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
-    expect(at({ online: true, ui: false, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: null });
-    expect(at({ online: true, ui: true, docs: false })).toEqual({ swagger: null, web: 'http://h:20052' });
-    expect(at({ online: false, ui: true, docs: true })).toEqual({ swagger: null, web: null });
+    expect(at({ online: true, ui: true, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052', online: true });
+    expect(at({ online: true, ui: false, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: null, online: true });
+    expect(at({ online: true, ui: true, docs: false })).toEqual({ swagger: null, web: 'http://h:20052', online: true });
+    expect(at({ online: false, ui: true, docs: true })).toEqual({ swagger: null, web: null, online: false });
   });
 });
 
@@ -525,6 +525,105 @@ describe('the backlog banner on the project page', () => {
     expect(runsHeading.compareDocumentPosition(screen.getByTestId('project-specs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   afterEach(() => vi.restoreAllMocks());
+});
+
+const concluded = { ...project, specs: [{ specId: 'hello-001', status: 'done', activeRunId: null }] };
+const deployRow = (status: Row['status'], n = 34): Row => row({ runId: `hello-app--hello-001--deploy-run-${n}`, specId: 'hello-001', projectId: 'hello-app', status, at: '2026-11-02T16:27:21.000Z', tokens: 0, cost: 0, stoppable: false, kind: 'deploy', n });
+const up = { swagger: null, web: null, online: true };
+const down = { swagger: null, web: null, online: false };
+
+describe('auto deploy of a concluded project', () => {
+  it('brings a down app up when nothing has deployed yet, as with an import, or when the last deploy is done', () => {
+    expect(shouldAutoDeploy(down, [])).toBe(true);
+    expect(shouldAutoDeploy(down, [deployRow('done')])).toBe(true);
+  });
+  it('never redeploys over a service that answers, even with no link: that repeated deploy was the loop', () => {
+    expect(shouldAutoDeploy(up, [deployRow('done')])).toBe(false);
+  });
+  it('never redeploys while one service still has a link, though another is down', () => {
+    expect(shouldAutoDeploy({ swagger: null, web: 'http://h:20052', online: false }, [deployRow('done')])).toBe(false);
+  });
+  it('never repeats a deploy that was stopped or failed', () => {
+    expect(shouldAutoDeploy(down, [deployRow('interrupted')])).toBe(false);
+    expect(shouldAutoDeploy(down, [deployRow('deploy-failed')])).toBe(false);
+  });
+  it('waits while a run is active, and while the project is not concluded', () => {
+    expect(shouldAutoDeploy(down, [deployRow('running')])).toBe(false);
+    expect(shouldAutoDeploy(null, [])).toBe(false);
+  });
+});
+
+describe('the app that answers without links', () => {
+  const viewOf = (apps: Parameters<typeof ProjectHubView>[0]['apps'], rows: Row[] = []) => {
+    const o = on();
+    return render(
+      <MemoryRouter>
+        <ProjectHubView project={concluded} notFound={false} runs={rows} drafts={[]} apps={apps} onStartApp={o.start} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+  };
+  it('says the app is up and offers no new deploy', () => {
+    viewOf(up);
+    expect(screen.getByTestId('apps-up-no-links').textContent).toContain('Nenhum deploy novo foi iniciado.');
+    expect(screen.queryByTestId('start-app')).toBeNull();
+  });
+  it('offers Retomar for an interrupted run, but not for an interrupted deploy: a resume would run the whole spec', () => {
+    viewOf(null, [row({ runId: 'hello-001-r2', specId: 'hello-001', projectId: 'hello-app', status: 'interrupted', at: '2026-11-02T10:00:00.000Z', tokens: 0, cost: 0, stoppable: false }), deployRow('interrupted', 35)]);
+    expect(screen.getByTestId('resume-hello-001-r2')).toBeTruthy();
+    expect(screen.queryByTestId('resume-hello-app--hello-001--deploy-run-35')).toBeNull();
+  });
+});
+
+describe('the project page brings the app up', () => {
+  const mockPage = (online: boolean, rows: Row[]) => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue([concluded]);
+    vi.spyOn(runApi, 'runs').mockResolvedValue(rows);
+    vi.spyOn(runApi, 'repositories').mockResolvedValue([]);
+    vi.spyOn(runApi, 'docs').mockResolvedValue({ docs: [] });
+    vi.spyOn(refineApi, 'list').mockResolvedValue([]);
+    vi.spyOn(runApi, 'run').mockResolvedValue({ report: null } as never);
+    vi.spyOn(runApi, 'serviceStatus').mockResolvedValue({ checkedAt: '', status: 200, online, ui: false, docs: false } as never);
+    return vi.spyOn(runApi, 'deployAgain').mockResolvedValue({ runId: 'hello-app--hello-001--deploy-run-35' });
+  };
+  const renderPage = () => render(
+    <MemoryRouter initialEntries={['/projects/hello-app']}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectHub />} /></Routes>
+    </MemoryRouter>,
+  );
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not deploy over a service that answers without Swagger or a web UI: the repeated deploy of each reload', async () => {
+    const deployAgain = mockPage(true, [deployRow('done')]);
+    renderPage();
+    expect(await screen.findByTestId('apps-up-no-links')).toBeTruthy();
+    expect(deployAgain).not.toHaveBeenCalled();
+  });
+  it('brings a down app up once when its last deploy is done', async () => {
+    const deployAgain = mockPage(false, [deployRow('done')]);
+    renderPage();
+    await waitFor(() => expect(deployAgain).toHaveBeenCalledWith('hello-app', 'hello-001'));
+    expect(deployAgain).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the stop button of a running run', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('stays locked until the stop is answered, so the click visibly took', async () => {
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(runApi, 'runs').mockResolvedValue(runs);
+    vi.spyOn(runApi, 'repositories').mockResolvedValue([]);
+    vi.spyOn(runApi, 'docs').mockResolvedValue({ docs: [] });
+    vi.spyOn(refineApi, 'list').mockResolvedValue([]);
+    const stopRun = vi.spyOn(runApi, 'stopRun').mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter initialEntries={['/projects/hello-app']}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectHub />} /></Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByTestId('stop-hello-002-r1'));
+    expect(stopRun).toHaveBeenCalledWith('hello-002-r1');
+    await waitFor(() => expect(screen.getByTestId('stop-hello-002-r1').getAttribute('aria-busy')).toBe('true'));
+  });
 });
 
 describe('the runs table on the project page', () => {

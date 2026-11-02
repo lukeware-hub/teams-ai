@@ -830,6 +830,26 @@ describe('start, resume, stop', () => {
     expect((await post('/api/runs/hello-001-r2/stop')).status).toBe(409);
   });
 
+  it('a deploy cannot drain, so its stop waits a 1 s grace before SIGKILL; a run keeps the 15 s grace', async () => {
+    // The process ignores SIGTERM, as a drain-less deploy does: only the SIGKILL at the end of the grace ends it.
+    const kill = control.kill;
+    control.kill = (pid, sig) => (sig === 'SIGTERM' ? (signals.push([pid, sig]), true) : kill(pid, sig));
+    const sleep = control.sleep;
+    const waits = { n: 0 };
+    control.sleep = async (ms) => { waits.n += 1; await sleep(ms); };
+    const DEPLOY = 'hello-app--hello-001--deploy-run-1';
+    await writeRun(runs, DEPLOY, [started(DEPLOY)], state('running'), 960);
+    alive.add(960);
+    expect(await (await post(`/api/runs/${DEPLOY}/stop`)).json()).toEqual({ stopped: true, how: 'killed' });
+    expect(waits.n).toBe(4); // 1 s in 250 ms polls
+    const RUN = 'hello-app--hello-001--run-1';
+    await writeRun(runs, RUN, [started(RUN)], state('running'), 961);
+    alive.add(961);
+    waits.n = 0;
+    expect(await (await post(`/api/runs/${RUN}/stop`)).json()).toEqual({ stopped: true, how: 'killed' });
+    expect(waits.n).toBe(60); // 15 s in 250 ms polls
+  });
+
   it('a run stopped from the UI stays stopped: the supervisor leaves it alone until the user resumes it', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
     alive.add(950);

@@ -105,6 +105,29 @@ describe('run index', () => {
     expect((await listProjects(deps()))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: 'hello-001-r1' }]);
   });
 
+  it('reads a deploy whose process is alive but has no state.json yet as running, dated by its start', async () => {
+    const DEPLOY = 'hello-app--hello-001--deploy-run-1';
+    await writeRun(runs, DEPLOY, [started(DEPLOY)], null, 782);
+    alive.add(782);
+    const [row] = await listRuns(deps(), 'hello-app');
+    expect(row).toMatchObject({ runId: DEPLOY, status: 'running', stoppable: true, at: '2026-09-24T10:00:00.000Z' });
+  });
+
+  it('reads a deploy the user stopped before its state.json as interrupted and stopped, so the list says why it ended', async () => {
+    const DEPLOY = 'hello-app--hello-001--deploy-run-1';
+    await writeRun(runs, DEPLOY, [started(DEPLOY)], null, 780); // the kill left no state.json behind
+    await fs.writeFile(path.join(runs, DEPLOY, 'stop-requested'), '');
+    const [row] = await listRuns(deps(), 'hello-app');
+    expect(row).toMatchObject({ runId: DEPLOY, status: 'interrupted', stopped: true, stoppable: false, at: '2026-09-24T10:00:00.000Z' });
+  });
+
+  it('reads a deploy whose process died without a stop request as unknown, so the supervisor does not resume it', async () => {
+    const DEPLOY = 'hello-app--hello-001--deploy-run-1';
+    await writeRun(runs, DEPLOY, [started(DEPLOY)], null, 781);
+    const [row] = await listRuns(deps(), 'hello-app');
+    expect(row).toMatchObject({ runId: DEPLOY, status: 'unknown', stoppable: false });
+  });
+
   it('listProjects reports specs with their active run and skips unreadable dirs', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:quota'), 1);
     const d = deps();

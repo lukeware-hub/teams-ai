@@ -86,10 +86,11 @@ function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: st
 }
 
 /** Where the finished project can be opened: the Swagger and the web UI, each only when it exists and answers. */
-export interface AppLinks { swagger: string | null; web: string | null }
+/** `online` says the service answers now, even when no link can be shown. */
+export interface AppLinks { swagger: string | null; web: string | null; online?: boolean }
 
 export function appLinks(report: Report | null, status: ServiceStatus, hostname: string): AppLinks {
-  const found: AppLinks = { swagger: null, web: null };
+  const found: AppLinks = { swagger: null, web: null, online: status.online };
   for (const s of report?.services ?? (report?.service ? [{ service: '', ...report.service }] : [])) {
     const own = status.services?.find((x) => x.service === s.service) ?? status;
     if (!own.online) continue;
@@ -302,7 +303,7 @@ export function ProjectHubView(p: {
                                 Parar
                               </ActionButton>
                             ) : null}
-                            {!r.locked && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
+                            {!r.locked && r.kind === 'run' && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
                               <ActionButton className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)} icon={<Icon name="play" size={14} />}>
                                 Retomar
                               </ActionButton>
@@ -337,7 +338,10 @@ export function ProjectHubView(p: {
                 {p.apps.swagger ? <a className="link-button" data-testid="open-swagger" href={p.apps.swagger} target="_blank" rel="noreferrer">Abrir Swagger<Icon name="external" size={16} /></a> : null}
               </div>
             </div>
-            {p.apps.web || p.apps.swagger ? null : (
+            {p.apps.web || p.apps.swagger || !p.apps.online ? null : (
+              <p className="hint m-0" data-testid="apps-up-no-links">A aplicação responde, mas não tem Swagger nem interface web para abrir. Nenhum deploy novo foi iniciado.</p>
+            )}
+            {p.apps.web || p.apps.swagger || p.apps.online ? null : (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="hint m-0" data-testid="apps-offline">A aplicação não está no ar.</p>
                 {p.onStartApp ? <button type="button" className="primary-button" data-testid="start-app" disabled={activeRuns.length > 0} onClick={p.onStartApp}>{activeRuns.length > 0 ? 'Subindo a aplicação…' : 'Iniciar aplicação'}</button> : null}
@@ -591,11 +595,20 @@ export function ProjectHubView(p: {
   );
 }
 
+const newestFirst = (a: RunRow, b: RunRow) => (b.at ?? '').localeCompare(a.at ?? '');
+
+/** Brings a concluded project's app up once: only while nothing runs, no service answers or links, and the newest deploy did not fail or stop. */
+export function shouldAutoDeploy(apps: AppLinks | null, rows: RunRow[]): boolean {
+  const newest = rows.filter((r) => r.kind === 'deploy').sort(newestFirst)[0];
+  return apps !== null && !apps.web && !apps.swagger && !apps.online && !rows.some((r) => ACTIVE.has(r.status)) && (newest === undefined || newest.status === 'done');
+}
+
 /** Links of the latest delivery, once every spec is concluded; null until then or when its status cannot be read. */
 async function latestApps(project: ProjectRow, rows: RunRow[]): Promise<AppLinks | null> {
   if (project.specs.length === 0 || !project.specs.every((s) => s.status === 'done' || s.status === 'complete')) return null;
-  const last = rows.filter((r) => r.kind === 'run' || r.kind === 'deploy').sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''))[0];
-  if (!last) return { swagger: null, web: null }; // an import has no run here: nothing is up yet
+  // An active run has no outcome yet: the links stay those of the last run that ended.
+  const last = rows.filter((r) => (r.kind === 'run' || r.kind === 'deploy') && !ACTIVE.has(r.status)).sort(newestFirst)[0];
+  if (!last) return { swagger: null, web: null, online: false }; // an import has no run here: nothing is up yet
   try {
     const [detail, status] = await Promise.all([runApi.run(last.runId), runApi.serviceStatus(last.runId)]);
     return appLinks(detail.report, status, window.location.hostname);
@@ -644,8 +657,7 @@ export function ProjectHub() {
   // A concluded project with nothing answering is brought up once; the polling below then shows its links.
   useEffect(() => {
     const last = project?.specs.at(-1);
-    const down = apps !== null && !apps.web && !apps.swagger;
-    if (!projectId || !last || !down || autoStarted.current || runs.some((r) => ACTIVE.has(r.status))) return;
+    if (!projectId || !last || autoStarted.current || !shouldAutoDeploy(apps, runs)) return;
     autoStarted.current = true;
     runApi.deployAgain(projectId, last.specId).then(refresh, (e: Error) => setError(e.message));
   }, [project, apps, runs, projectId, refresh]);
@@ -702,7 +714,7 @@ export function ProjectHub() {
         if (r.queued) navigate(startedPath(projectId, r));
       })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
-      onStop={(runId) => void act(() => runApi.stopRun(runId))()}
+      onStop={(runId) => act(() => runApi.stopRun(runId))()}
       onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}

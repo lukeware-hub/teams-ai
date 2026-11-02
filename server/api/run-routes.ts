@@ -33,7 +33,7 @@ import { fetch as fetchRepo } from '../git/git.js';
 import { readProjectDocs } from '../git/main-docs.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
-import { abandonLaunch, isAlive, spawnRun, stop, type RunControlDeps } from './run-control.js';
+import { abandonLaunch, DRAIN_STOP_MS, isAlive, NO_DRAIN_STOP_MS, spawnRun, stop, type RunControlDeps } from './run-control.js';
 import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
@@ -41,7 +41,7 @@ import { probeProcess, type ProbeProcess } from './process-identity.js';
 import { deleteRepo } from '../git/github.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
-import { ID_PATTERNS } from '../core/ids.js';
+import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, loadRepoRuns, specViews } from './repository-dashboard.js';
@@ -756,7 +756,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         if (pid === null || !isAlive(deps.control, pid)) throw new HttpError(409, `run ${runId} has no live process started from the UI`);
         // Before the signal: once the process is gone, the supervisor must already find the user's intent on disk.
         await markStopRequested(runs, runId);
-        const how = await stop(deps.control, pid);
+        // Only a run drains at a step boundary; a deploy, a completion or a README is killed after the short grace.
+        const how = await stop(deps.control, pid, (parseRunId(runId)?.kind ?? 'run') === 'run' ? DRAIN_STOP_MS : NO_DRAIN_STOP_MS);
         await clearPid(runs, runId);
         json(200, { stopped: true, how: how === 'gone' ? 'terminated' : how });
       },

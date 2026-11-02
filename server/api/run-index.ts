@@ -202,18 +202,19 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
     .then((t) => JSON.parse(t) as StateFile)
     .catch(() => null);
   const { alive, interrupted } = await runLiveness(deps, runId);
+  const userStopped = await isStopRequested(runs, runId);
   // A launch that never wrote its journal leaves only ui.log behind.
   const launchLog = events.length === 0 && !state ? await fs.stat(path.join(runs, runId, 'ui.log')).catch(() => null) : null;
   let status: RunListStatus;
   if (finished) status = String(finished.data.result) as RunListStatus;
   // Phases 0-2 journal before the first state snapshot: a live process is running, not unknown (the spec must stay claimed).
-  else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : 'unknown';
+  else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : interrupted && userStopped ? 'interrupted' : 'unknown';
   // A run paused by an expired login exits on purpose and waits for a human, not for a resume on the same login.
   else if (interrupted && state.status !== 'paused:auth') status = 'interrupted';
   else status = state.status as RunListStatus;
-  const stopped = status === 'interrupted' && (await isStopRequested(runs, runId));
+  const stopped = status === 'interrupted' && userStopped;
   const tokens = (state?.tokens?.inputTokens ?? 0) + (state?.tokens?.outputTokens ?? 0);
-  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false, ...(stopped ? { stopped } : {}) };
+  return { runId, specId, projectId: projectId ?? '', status, at: state?.at ?? finished?.at ?? startedAt?.at ?? launchLog?.mtime.toISOString() ?? null, tokens, cost: state?.tokens?.costUsd ?? 0, stoppable: alive && ACTIVE.has(status), kind: parsed?.kind ?? 'run', n: parsed?.n ?? 0, locked: false, ...(stopped ? { stopped } : {}) };
 }
 
 type Read = Awaited<ReturnType<typeof readProject>>;
