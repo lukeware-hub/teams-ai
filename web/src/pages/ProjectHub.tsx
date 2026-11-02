@@ -101,25 +101,6 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
   return found;
 }
 
-/** Runs that stop and wait for the owner: blocked, deadlocked, or awaiting validation. */
-const NEEDS_OWNER = new Set(['blocked', 'deadlocked', 'awaiting-validation']);
-
-/** The yellow strip at the top of the project: one line per run that waits for the owner, with a button to open it. */
-function AttentionBanner({ runs }: { runs: RunRow[] }) {
-  const waiting = runs.filter((r) => NEEDS_OWNER.has(r.status));
-  if (waiting.length === 0) return null;
-  return (
-    <div className="grid gap-2" role="status" data-testid="attention-banner">
-      {waiting.map((r) => (
-        <div key={r.runId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn-line bg-warn-soft px-4 py-3">
-          <span className="text-[0.9375rem] text-warn">{runName(r)} de {r.specId}: {LABEL[r.status] ?? r.status}. Precisa de você.</span>
-          <Link className={action.primary} to={`/runs/${r.runId}`}>Abrir run</Link>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function ProjectHubView(p: {
   project: ProjectRow | null;
   /** The repositories of the project's architecture, as cards; empty for a project without one. */
@@ -343,7 +324,6 @@ export function ProjectHubView(p: {
           )}
         </div>
       </section>
-      <AttentionBanner runs={p.runs} />
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
           <div className={section}>
