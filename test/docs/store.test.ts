@@ -91,12 +91,14 @@ describe('openStore', () => {
     expect(await exists('.git/index.lock')).toBe(true);
   });
 
-  it('unstages what a crash left in the index and keeps the file', async () => {
+  it('unstages what a crash left in the index, keeps the file, and ignores temporary files', async () => {
     await fs.writeFile(path.join(store.dir, 'docs/project.md'), 'staged\n');
     await git(store.dir, ['add', 'docs/project.md']);
+    await fs.writeFile(path.join(store.dir, 'docs/project.md.123.tmp'), 'x');
     await openStore(ws, 'monolith', execCommand);
     expect(await git(store.dir, ['diff', '--cached', '--name-only'])).toBe('');
     expect(await fs.readFile(path.join(store.dir, 'docs/project.md'), 'utf8')).toBe('staged\n');
+    expect(await git(store.dir, ['status', '--porcelain'])).toBe('M docs/project.md');
   });
 
   it('aborts a rebase a crash left in progress', async () => {
@@ -109,11 +111,6 @@ describe('openStore', () => {
     expect(await git(store.dir, ['status', '--porcelain'])).toBe('');
   });
 
-  it('excludes temporary files from the status', async () => {
-    await fs.writeFile(path.join(store.dir, 'docs/project.md.123.tmp'), 'x');
-    await openStore(ws, 'monolith', execCommand);
-    expect(await git(store.dir, ['status', '--porcelain'])).toBe('');
-  });
 });
 
 describe('commitProjection', () => {
@@ -137,23 +134,18 @@ describe('commitProjection', () => {
     expect(await head()).not.toBe(before);
   });
 
-  it('refuses the whole commit when a document holds a credential, and names only the document', async () => {
+  it('refuses the whole commit for a credential or a known secret value, and names only the document', async () => {
     const before = await head();
     const token = `ghp_${'a'.repeat(36)}`;
-    const err = await commitProjection(store, flush({ 'docs/project.md': `token ${token}\n`, 'docs/flow.md': 'ok\n' })).catch((e: Error) => e);
-    expect(String(err)).toContain('docs/project.md');
-    expect(String(err)).not.toContain(token);
+    const secret = 'correct-horse-battery';
+    const shape = await commitProjection(store, flush({ 'docs/project.md': `token ${token}\n`, 'docs/flow.md': 'ok\n' })).catch((e: Error) => e);
+    const known = await commitProjection(store, flush({ 'docs/project.md': `note ${secret}\n` }, { known: [secret] })).catch((e: Error) => e);
+    expect(String(shape)).toContain('docs/project.md');
+    expect(String(shape)).not.toContain(token);
+    expect(String(known)).toContain('docs/project.md');
+    expect(String(known)).not.toContain(secret);
     expect(await head()).toBe(before);
     expect(await exists('docs/flow.md')).toBe(false);
-  });
-
-  it('refuses a known secret value of 12 characters or more, without naming it', async () => {
-    const before = await head();
-    const secret = 'correct-horse-battery';
-    const err = await commitProjection(store, flush({ 'docs/project.md': `note ${secret}\n` }, { known: [secret] })).catch((e: Error) => e);
-    expect(String(err)).toContain('docs/project.md');
-    expect(String(err)).not.toContain(secret);
-    expect(await head()).toBe(before);
   });
 
   it('refuses a staged link that the flush does not own, and unstages it', async () => {
@@ -205,5 +197,53 @@ describe('pushWithRecovery', () => {
     const r = await pushWithRecovery({ ...store, exec: guarded });
     expect(r).toMatchObject({ ok: false, kind: 'protected' });
     expect(pushes).toHaveLength(1);
+  });
+});
+
+describe('ownership', () => {
+  useStore();
+
+  const spec = (alias: string, text: string) => ({ [`docs/specify/${alias}/spec.md`]: text });
+
+  it('writes a document only when the store still holds what the draft started from', async () => {
+    await commitProjection(store, flush({ 'docs/project.md': 'v2\n' }));
+    await fs.writeFile(path.join(store.dir, 'docs/project.md'), 'v3\n');
+    await git(store.dir, ['commit', '-qam', 'docs: someone else']);
+    const r = await commitProjection(store, flush({ 'docs/project.md': 'mine\n', 'docs/flow.md': 'flow\n' }, { draftId: 'draft-2' }));
+    expect(r.diverged).toEqual(['docs/project.md']);
+    expect(await showFile(store.dir, 'HEAD', 'docs/project.md')).toBe('v3\n');
+    expect(await showFile(store.dir, 'HEAD', 'docs/flow.md')).toBe('flow\n');
+  });
+
+  it('writes a document the same draft last committed, even from an older base', async () => {
+    await commitProjection(store, flush({ 'docs/project.md': 'v2\n' }));
+    const r = await commitProjection(store, flush({ 'docs/project.md': 'v3\n' }, { bases: { 'docs/project.md': 'v0\n' } }));
+    expect(r.diverged).toEqual([]);
+    expect(await showFile(store.dir, 'HEAD', 'docs/project.md')).toBe('v3\n');
+  });
+
+  it('gives an alias to the draft that committed it first', async () => {
+    await commitProjection(store, flush(spec('alpha', 'one\n')));
+    const other = await commitProjection(store, flush(spec('alpha', 'two\n'), { draftId: 'draft-2' }));
+    expect(other.aliasTaken).toEqual(['alpha']);
+    expect(await showFile(store.dir, 'HEAD', 'docs/specify/alpha/spec.md')).toBe('one\n');
+    const own = await commitProjection(store, flush(spec('alpha', 'three\n')));
+    expect(own.aliasTaken).toEqual([]);
+    expect(await showFile(store.dir, 'HEAD', 'docs/specify/alpha/spec.md')).toBe('three\n');
+  });
+
+  it('refuses a frozen alias even to the draft that owns it', async () => {
+    await commitProjection(store, flush(spec('alpha', 'one\n')));
+    const r = await commitProjection(store, flush(spec('alpha', 'two\n'), { frozen: ['alpha'] }));
+    expect(r).toMatchObject({ sha: null, aliasTaken: ['alpha'] });
+  });
+
+  it('retires only the alias folders its draft owns', async () => {
+    await commitProjection(store, flush(spec('alpha', 'one\n')));
+    const other = await commitProjection(store, flush({}, { draftId: 'draft-2', retire: ['docs/specify/alpha'] }));
+    expect(other.aliasTaken).toEqual(['alpha']);
+    expect(await exists('docs/specify/alpha/spec.md')).toBe(true);
+    await commitProjection(store, flush({}, { retire: ['docs/specify/alpha'] }));
+    expect(await exists('docs/specify/alpha/spec.md')).toBe(false);
   });
 });

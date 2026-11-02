@@ -3,9 +3,9 @@ import path from 'node:path';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { findCredential } from '../core/redact.js';
 import { execCommand, type Exec } from '../exec/command.js';
-import { git, headSha, pushMain, withRepoLock } from '../git/git.js';
+import { git, headSha, pushMain, showFile, withRepoLock } from '../git/git.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { isAllowedPath, type Style } from './layout.js';
+import { FIVE_DOCS, isAllowedPath, type Style } from './layout.js';
 import { docsStoreDir } from './project-state.js';
 
 export class DocsStoreError extends Error {}
@@ -28,7 +28,7 @@ export interface Projection {
   bases?: Record<string, string>;
   /** Aliases that have started or been delivered: never written again. */
   frozen?: readonly string[];
-  /** Aliases to delete; only the ones this draft owns are removed. */
+  /** Alias folders to delete, such as docs/specify/<alias>; only the ones this draft owns are removed. */
   retire?: readonly string[];
   /** Known secret values of the platform and the project. */
   known?: readonly string[];
@@ -41,10 +41,18 @@ export interface ProjectedFile {
   text: string;
 }
 
+/** What a projection did: the commit (null for an empty diff) and what the store refused to take. */
+export interface FlushResult {
+  sha: string | null;
+  diverged: string[];
+  aliasTaken: string[];
+}
+
 const NETWORK_MS = 30_000;
 const MAX_FILE_BYTES = 1024 * 1024;
 const LOCK_STALE_MS = 60_000;
 const PUSH_TRIES = 5;
+const FIVE_PATHS: readonly string[] = FIVE_DOCS.map((doc) => `docs/${doc}`);
 
 export const storeOf = (ws: Pick<Workspace, 'root'>, style: Style, exec: Exec = execCommand): Store => ({ dir: docsStoreDir(ws), style, exec });
 
@@ -110,6 +118,102 @@ function assertNoSecrets(files: ProjectedFile[], known: readonly string[]): void
   }
 }
 
+/** The facts one projection reads from the store: its HEAD, read once, and the draft it works for. */
+interface Ctx {
+  store: Store;
+  draftId: string;
+  born: boolean;
+}
+
+async function hasHead(store: Store): Promise<boolean> {
+  return git(store.dir, ['rev-parse', '--verify', '--quiet', 'HEAD'], store.exec).then(() => true, () => false);
+}
+
+/** The text a file holds at HEAD, or null when HEAD does not have it. */
+async function headText(c: Ctx, rel: string): Promise<string | null> {
+  if (!c.born) return null;
+  const listed = await git(c.store.dir, ['ls-tree', 'HEAD', '--', rel], c.store.exec);
+  return listed === '' ? null : showFile(c.store.dir, 'HEAD', rel, c.store.exec);
+}
+
+/** Whether a folder has any file at HEAD. */
+async function folderAtHead(c: Ctx, folder: string): Promise<boolean> {
+  if (!c.born) return false;
+  return (await git(c.store.dir, ['ls-tree', '-r', '--name-only', 'HEAD', '--', folder], c.store.exec)) !== '';
+}
+
+interface Touch {
+  sha: string;
+  body: string;
+}
+
+/** The commits that touched a path, newest first, with their messages. */
+async function commitsTouching(c: Ctx, rel: string): Promise<Touch[]> {
+  if (!c.born) return [];
+  const out = await git(c.store.dir, ['log', '--format=%H%x1f%B%x1e', '--', rel], c.store.exec);
+  return out
+    .split('\x1e')
+    .map((record) => record.trim())
+    .filter((record) => record !== '')
+    .map((record) => {
+      const [sha, body = ''] = record.split('\x1f');
+      return { sha: sha!, body };
+    });
+}
+
+const trailerOf = (body: string, key: string): string | null => body.match(new RegExp(`^${key}: (\\S+)$`, 'm'))?.[1] ?? null;
+
+/** A document may be written when the store still holds the copy the draft started from, or the copy this draft last committed. */
+async function documentWritable(c: Ctx, rel: string, base: string | null): Promise<boolean> {
+  const head = await headText(c, rel);
+  if (head === base) return true;
+  if (head === null) return false;
+  const last = (await commitsTouching(c, rel)).find((t) => trailerOf(t.body, 'Refine-Draft') === c.draftId);
+  return last !== undefined && head === (await showFile(c.store.dir, last.sha, rel, c.store.exec));
+}
+
+/** An alias folder may be written when it is absent, or its last commit belongs to this draft. */
+async function aliasWritable(c: Ctx, folder: string): Promise<boolean> {
+  if (!(await folderAtHead(c, folder))) return true;
+  const last = (await commitsTouching(c, folder))[0];
+  return last !== undefined && trailerOf(last.body, 'Refine-Draft') === c.draftId;
+}
+
+interface Decision {
+  accepted: ProjectedFile[];
+  retire: string[];
+  diverged: string[];
+  aliasTaken: string[];
+}
+
+/** Which files may be written and which folders may be retired, by the ownership rules. */
+async function decide(c: Ctx, p: Projection, files: ProjectedFile[]): Promise<Decision> {
+  const frozen = p.frozen ?? [];
+  const decision: Decision = { accepted: [], retire: [], diverged: [], aliasTaken: [] };
+  const folderOk = new Map<string, boolean>();
+  const canWrite = async (folder: string): Promise<boolean> => {
+    if (!folderOk.has(folder)) folderOk.set(folder, !frozen.includes(path.posix.basename(folder)) && (await aliasWritable(c, folder)));
+    return folderOk.get(folder)!;
+  };
+  for (const f of files) {
+    if (FIVE_PATHS.includes(f.path)) {
+      if (await documentWritable(c, f.path, p.bases?.[f.path] ?? null)) decision.accepted.push(f);
+      else decision.diverged.push(f.path);
+    } else if (await canWrite(path.posix.dirname(f.path))) {
+      decision.accepted.push(f);
+    } else {
+      decision.aliasTaken.push(path.posix.basename(path.posix.dirname(f.path)));
+    }
+  }
+  for (const folder of p.retire ?? []) {
+    if (!(await folderAtHead(c, folder))) continue;
+    if (await canWrite(folder)) decision.retire.push(folder);
+    else decision.aliasTaken.push(path.posix.basename(folder));
+  }
+  decision.aliasTaken = [...new Set(decision.aliasTaken)];
+  return decision;
+}
+
 /** Writes the files atomically and stages exactly those paths. */
 async function stageFiles(store: Store, files: ProjectedFile[]): Promise<void> {
   for (const f of files) {
@@ -120,36 +224,45 @@ async function stageFiles(store: Store, files: ProjectedFile[]): Promise<void> {
   if (files.length > 0) await git(store.dir, ['add', '-f', '--', ...files.map((f) => f.path)], store.exec);
 }
 
-/** Refuses a staged path outside the allowlist or a link, and clears the index so nothing reaches a commit. */
-async function verifyStaged(store: Store): Promise<void> {
+/** Deletes the folders this draft owns from the index and the working tree. */
+async function removeFolders(store: Store, folders: readonly string[]): Promise<void> {
+  if (folders.length > 0) await git(store.dir, ['rm', '-r', '-q', '--', ...folders], store.exec);
+}
+
+/** Refuses a staged path outside the allowlist or a link, and clears the index so nothing reaches a commit. Returns the count staged. */
+async function verifyStaged(store: Store): Promise<number> {
   const raw = await git(store.dir, ['diff', '--cached', '--raw'], store.exec);
   const staged = raw.split('\n').filter((line) => line !== '').map((line) => {
     const [meta, file] = line.split('\t');
     return { mode: meta!.split(' ')[1], path: file! };
   });
   const bad = staged.filter((e) => !isAllowedPath(store.style, e.path) || e.mode === '120000');
-  if (bad.length === 0) return;
-  await git(store.dir, ['reset', '-q'], store.exec);
-  throw new DocsStoreError(`refused to commit ${bad.map((e) => e.path).join(', ')}: not a document path or a link`);
+  if (bad.length > 0) {
+    await git(store.dir, ['reset', '-q'], store.exec);
+    throw new DocsStoreError(`refused to commit ${bad.map((e) => e.path).join(', ')}: not a document path or a link`);
+  }
+  return staged.length;
 }
 
 /** Commits what is staged; an empty diff makes no commit unless the caller marks a milestone. */
-async function commitStaged(store: Store, p: Projection): Promise<string | null> {
-  const staged = await git(store.dir, ['diff', '--cached', '--name-only'], store.exec);
-  if (staged === '' && !p.milestone) return null;
+async function commitStaged(store: Store, p: Projection, stagedCount: number): Promise<string | null> {
+  if (stagedCount === 0 && !p.milestone) return null;
   const message = `docs(${p.scope}): ${p.label} [skip ci]\n\nRefine-Draft: ${p.draftId}\nStep: ${p.stepKey}`;
-  await git(store.dir, ['commit', '-q', ...(staged === '' ? ['--allow-empty'] : []), '-m', message], store.exec);
+  await git(store.dir, ['commit', '-q', ...(stagedCount === 0 ? ['--allow-empty'] : []), '-m', message], store.exec);
   return headSha(store.dir, store.exec);
 }
 
 /** Projects the files onto the store and commits them; nothing is written unless every check passes. */
-export async function commitProjection(store: Store, p: Projection): Promise<{ sha: string | null }> {
+export async function commitProjection(store: Store, p: Projection): Promise<FlushResult> {
   const files = projectFiles(store.style, p.files);
   assertNoSecrets(files, p.known ?? []);
   return withRepoLock(store.dir, async () => {
-    await stageFiles(store, files);
-    await verifyStaged(store);
-    return { sha: await commitStaged(store, p) };
+    const c: Ctx = { store, draftId: p.draftId, born: await hasHead(store) };
+    const d = await decide(c, p, files);
+    await stageFiles(store, d.accepted);
+    await removeFolders(store, d.retire);
+    const stagedCount = await verifyStaged(store);
+    return { sha: await commitStaged(store, p, stagedCount), diverged: d.diverged, aliasTaken: d.aliasTaken };
   });
 }
 
