@@ -84,8 +84,12 @@ export class DocsSync {
     return this.enqueue(() => removeClosingRecord(this.input.ws, this.input.draft.specId).catch((err) => console.error(`closing of ${this.input.draft.specId}: ${messageOf(err)}`)));
   }
 
-  /** The start tags of the closing, published once; a failure keeps them pending for the next tick and never fails the start. */
-  async publishTags(): Promise<void> {
+  /** The start tags of the closing, published once on the serial chain; a failure keeps them pending for the next tick and never fails the start. */
+  publishTags(): Promise<void> {
+    return this.enqueue(() => this.publishPendingTags());
+  }
+
+  private async publishPendingTags(): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     try {
       const record = await readClosingRecord(ws, draft.specId);

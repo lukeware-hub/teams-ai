@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readClosingRecord } from '../../server/docs/project-state.js';
 import { bind, commitProjection, storeOf } from '../../server/docs/store.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { boundaryLabel } from '../../server/refine/docs-boundary.js';
@@ -186,5 +187,32 @@ describe('DocsSync counts a change by the flush that projects it', () => {
     await s.tick();
     expect(s.view).toEqual({ pending: 0, lastError: null });
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('arrived');
+  });
+});
+
+describe('DocsSync publishes the start tags in turn with the closings', () => {
+  it('a tag publish that overlaps a new closing keeps the new closing record', async () => {
+    const calls: string[] = [];
+    let tagPush = -1;
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const recording: Exec = async (spec) => {
+      calls.push(spec.args.join(' '));
+      if (spec.args.includes('--atomic')) {
+        tagPush = calls.length - 1;
+        await held;
+      }
+      return exec(spec);
+    };
+    const s = new DocsSync({ ws, draft, style: 'monolith', exec: recording, aliases: () => [] });
+    await s.close(['hello-app-001']);
+    const tagging = s.publishTags();
+    while (tagPush < 0) await new Promise((r) => setTimeout(r, 10));
+    const closing = s.close(['hello-app-002']);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls.slice(tagPush + 1)).toEqual([]);
+    release();
+    await Promise.all([tagging, closing]);
+    expect(await readClosingRecord(ws, draft.specId)).toMatchObject({ aliases: ['hello-app-002'], pendingTags: ['dev-start/hello-app-002'] });
   });
 });
