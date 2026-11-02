@@ -109,4 +109,38 @@ describe('a documentation repository session syncs its documents', () => {
     await r.registry.tickDocs();
     expect(await commitCount()).toBe(2);
   });
+
+  it('the snapshot shows the changes waiting and the last failure, and a retry clears the failure without a journal fact', async () => {
+    const r = await openRig();
+    const s = await decided(r);
+    await s.enableBacklog();
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null });
+    const events = s.events.length;
+    offline = true;
+    await s.tickDocs();
+    const failed = (await s.snapshot()).docsSync;
+    expect(failed?.lastError).toMatch(/could not be reached/);
+    expect(failed?.pending).toBe(1);
+    offline = false;
+    await s.tickDocs();
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null });
+    expect(s.events.length).toBe(events);
+  });
+
+  it('a save counts as pending until the next boundary commits it', async () => {
+    const r = await openRig();
+    const s = await decided(r);
+    await s.enableBacklog();
+    await s.tickDocs();
+    await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
+    await s.tickDocs();
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null });
+  });
+
+  it('a session that is not a documentation repository has no docsSync', async () => {
+    const r = await makeRig({ docsRepoLayout: false, owner: 'acme', ghExec: exec(new FakeGhRepos(os.tmpdir())) });
+    rig = r;
+    const s = await r.registry.newProject(PROJECT, 'Hello');
+    expect((await s.snapshot()).docsSync).toBeUndefined();
+  });
 });

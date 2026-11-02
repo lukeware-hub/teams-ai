@@ -5,6 +5,12 @@ import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
+/** What the session shows of the sync: the changes waiting for a commit, and the last failure, in plain words. */
+export interface DocsSyncView {
+  pending: number;
+  lastError: string | null;
+}
+
 export interface DocsSyncInput {
   ws: Workspace;
   draft: Draft;
@@ -25,6 +31,10 @@ export class DocsSync {
   private chain: Promise<void> = Promise.resolve();
 
   constructor(private readonly input: DocsSyncInput) {}
+
+  get view(): DocsSyncView {
+    return { pending: this.pending, lastError: this.lastError };
+  }
 
   /** A document changed; it rides the next boundary. */
   edit(): void {

@@ -47,7 +47,7 @@ import { DocsStoreError } from '../docs/store.js';
 import { readDocsMarker } from '../docs/project-state.js';
 import type { Style } from '../docs/layout.js';
 import { boundaryLabel, isDocumentEdit } from './docs-boundary.js';
-import { DocsSync } from './docs-sync.js';
+import { DocsSync, type DocsSyncView } from './docs-sync.js';
 import type { SpecAlias } from './docs-projection.js';
 
 export type { RunAgent } from './cycle.js';
@@ -184,6 +184,8 @@ export interface Snapshot {
   busy: boolean;
   /** True when the architecture was decided on documents that have changed since. */
   architectureStale: boolean;
+  /** The documentation repository sync, in memory only: absent for a session that is not one. */
+  docsSync?: DocsSyncView;
   /** The closing summary of a repository session; absent for other sessions. */
   closing?: ClosingSummary;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
@@ -382,7 +384,7 @@ export class RefineSession {
     }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits() };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The rounds the current stage has used count against its limit. */
