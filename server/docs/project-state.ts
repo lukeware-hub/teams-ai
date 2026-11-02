@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { writeFileAtomic } from '../core/atomic-write.js';
+import { updateFileAtomic, writeFileAtomic } from '../core/atomic-write.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 
 /** The environment switch of the documentation repository layout: on only when it is set to 1. */
@@ -48,4 +48,43 @@ export async function writeDocsMarker(ws: Pick<Workspace, 'root'>, marker: DocsM
   const file = docsMarkerPath(ws);
   await fs.mkdir(path.posix.dirname(file), { recursive: true });
   await writeFileAtomic(file, `${JSON.stringify(DocsMarker.parse(marker), null, 2)}\n`);
+}
+
+const statePath = (ws: Pick<Workspace, 'root'>, rel: string): string => path.posix.join(docsMirrorDir(ws), rel);
+
+async function readText(file: string): Promise<string | undefined> {
+  try {
+    return await fs.readFile(file, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw err;
+  }
+}
+
+/** The parsed content, or undefined when the text is missing or is not JSON. */
+function parseState(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A machine file of the mirror, parsed; undefined when it is missing or not JSON. */
+export async function readState(ws: Pick<Workspace, 'root'>, rel: string): Promise<unknown> {
+  return parseState(await readText(statePath(ws, rel)));
+}
+
+export async function writeState(ws: Pick<Workspace, 'root'>, rel: string, text: string): Promise<void> {
+  const file = statePath(ws, rel);
+  await fs.mkdir(path.posix.dirname(file), { recursive: true });
+  await writeFileAtomic(file, text);
+}
+
+/** Rewrites a machine file of the mirror from its parsed content; returning undefined leaves it alone. */
+export async function updateState(ws: Pick<Workspace, 'root'>, rel: string, update: (current: unknown) => string | undefined): Promise<void> {
+  const file = statePath(ws, rel);
+  await fs.mkdir(path.posix.dirname(file), { recursive: true });
+  await updateFileAtomic(file, (text) => update(parseState(text)));
 }
