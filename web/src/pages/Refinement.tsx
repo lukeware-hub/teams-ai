@@ -1216,7 +1216,7 @@ export function RefinementView(p: ViewProps) {
       <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
         Avaliar tudo
       </ActionButton>
-      {backlogOn ? (
+      {backlogOn || st.repositories === true ? (
         <ActionButton
           data-testid="open-backlog"
           className="primary"

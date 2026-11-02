@@ -173,7 +173,7 @@ export class SessionRegistry {
     } else {
       const ws = await this.ws(slug(input.projectId ?? '', 'projectId'));
       const drafts = await fs.readdir(path.posix.join(ws.root, 'refine')).catch(() => [] as string[]);
-      const onMain = await fs.readdir(path.posix.join(ws.repo, 'docs', 'specs')).catch(() => [] as string[]);
+      const onMain = (await isDocsRepo(ws)) ? await listState(ws, 'specs') : await fs.readdir(path.posix.join(ws.repo, 'docs', 'specs')).catch(() => [] as string[]);
       taken = [...drafts, ...onMain];
     }
     return suggestName({ runAgent: this.deps.runAgent, workspacesRoot: root, model: cfg.decisions.modelTiers.small }, { kind, ...input, taken });

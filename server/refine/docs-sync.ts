@@ -1,12 +1,15 @@
+import { loadSecretValues } from '../core/secrets.js';
 import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
-import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushDocuments, recordPublishedSha, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
-import type { Workspace } from '../orchestrator/workspace.js';
+import { aheadCount } from '../git/git.js';
+import { readUserConfig } from '../onboarding/config-store.js';
+import { expandHome, type Workspace } from '../orchestrator/workspace.js';
 import { baseAliases, draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
-/** What the session shows of the sync: the changes waiting for a commit, and the last failure, in plain words. */
+/** What the session shows of the sync: the changes waiting for a push, and the last failure, in plain words. */
 export interface DocsSyncView {
   pending: number;
   lastError: string | null;
@@ -21,31 +24,66 @@ export interface DocsSyncInput {
   exec: Exec;
   /** The specs the draft owns, read at each flush. */
   aliases: () => SpecAlias[];
+  /** The secrets directories whose values a flush refuses to commit; the project's and the platform's by default. */
+  secretDirs?: () => Promise<string[]>;
+  /** The timer of the push debounce; the system timer by default. */
+  timer?: PushTimer;
+  /** The clock of the retry cadence, in milliseconds; the system clock by default. */
+  clock?: () => number;
 }
+
+/** The timer that runs a debounced push. */
+export interface PushTimer {
+  set(run: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
+const systemTimer: PushTimer = {
+  set: (run, ms) => setTimeout(run, ms),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/** A normal flush's push waits this long for the next flush, so a burst goes out as one push. */
+const PUSH_DEBOUNCE_MS = 3_000;
+
+/** A failed sync is retried at most this often. */
+const RETRY_MS = 60_000;
+
+/** The boundaries whose push goes out at once. */
+const IMMEDIATE_LABELS = ['plans prepared'];
 
 const FALLBACK_LABEL = 'documents synced';
 
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/** The project's secrets directory and the platform's, from the user configuration. */
+async function defaultSecretDirs(ws: Workspace): Promise<string[]> {
+  const { cfg } = await readUserConfig();
+  return [ws.secrets, expandHome(cfg.paths.secrets)];
+}
+
 /** Names the documents the store refused; the others are already published. */
 const refusedMessage = (refused: string[]): string =>
   `Não publicado: o documento ${refused.join(', ')} mudou na loja; os outros foram publicados.`;
 
-/** Pushes the local commits; a refusal is thrown in plain words. */
-async function pushLocalCommits(store: Store): Promise<void> {
-  const pushed = await pushWithRecovery(store);
-  if (!pushed.ok) throw new DocsStoreError(pushed.message);
-}
-
 /** Flushes one draft's documents to its store: a boundary waits for the tick, and a failed flush is retried there. */
 export class DocsSync {
+  /** The changes not yet pushed, committed or not. */
   private pending = 0;
+  /** The part of pending that is committed but not pushed yet. */
+  private committedPending = 0;
+  /** The labels of the commits not pushed yet; they leave the list with the push. */
   private labels: string[] = [];
+  private committedLabels = 0;
   private lastError: string | null = null;
   /** Set by a run the store refused; only a run without a refusal clears it. */
   private refused = false;
+  /** Set when a reset dropped local commits, so the next tick projects them again. */
+  private resync = false;
+  private lastRetryAt = -Infinity;
   private queued = false;
   private chain: Promise<void> = Promise.resolve();
+  private pushHandle: unknown = null;
 
   constructor(private readonly input: DocsSyncInput) {}
 
@@ -62,6 +100,11 @@ export class DocsSync {
   boundary(label: string): void {
     this.pending += 1;
     this.labels.push(label);
+  }
+
+  /** The first publication after a bind: pushes at once, and connects the repository when it is not connected yet. */
+  publish(): Promise<void> {
+    return this.enqueue(() => this.pushLocal());
   }
 
   /** One flush after the ones already queued; a flush not started yet takes every change made before it starts. */
@@ -113,10 +156,21 @@ export class DocsSync {
     }
   }
 
-  /** The registry tick: a pending boundary is flushed again, and a failure without one only pushes the local commits. */
+  /** The registry tick: a dropped projection is made again, a failed push is retried at most once a minute, and a pending boundary is flushed. */
   tick(): Promise<void> {
-    if (this.labels.length > 0) return this.flush();
-    return this.lastError === null ? this.chain : this.enqueue(() => this.pushLocal());
+    if (this.resync) return this.retryDue() ? this.flush() : this.chain;
+    if (this.lastError !== null && this.committedPending > 0) return this.retryDue() ? this.enqueue(() => this.pushLocal()) : this.chain;
+    if (this.labels.length > this.committedLabels) return this.flush();
+    if (this.lastError !== null) return this.retryDue() ? this.enqueue(() => this.pushLocal()) : this.chain;
+    return this.chain;
+  }
+
+  /** Whether a retry may run now: one retry at most every RETRY_MS. */
+  private retryDue(): boolean {
+    const now = (this.input.clock ?? Date.now)();
+    if (now - this.lastRetryAt < RETRY_MS) return false;
+    this.lastRetryAt = now;
+    return true;
   }
 
   private enqueue(task: () => Promise<void>): Promise<void> {
@@ -128,25 +182,40 @@ export class DocsSync {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
-    if (flushed.sha !== null) await pushLocalCommits(store);
+    if (flushed.sha !== null) await this.push(store);
   }
 
   private async closeNow(aliases: readonly string[]): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const files = await projectDraftFiles(draft, style, this.input.aliases());
-    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft) };
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft), known: await this.knownSecrets() };
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
+    this.committedLabels = 0;
     this.pending = 0;
+    this.committedPending = 0;
     this.refused = false;
+    this.resync = false;
     this.lastError = null;
+  }
+
+  /** The secret values a flush must not commit, read at each flush. */
+  private async knownSecrets(): Promise<string[]> {
+    const dirs = await (this.input.secretDirs ?? (() => defaultSecretDirs(this.input.ws)))();
+    return (await Promise.all(dirs.map((dir) => loadSecretValues(dir)))).flat();
   }
 
   /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary; a failure stays while a change is pending or a document is refused. */
   private async pushLocal(): Promise<void> {
+    if (this.resync) return;
     try {
-      await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
+      const store = await openStore(this.input.ws, this.input.style, this.input.exec);
+      // Nothing ahead of origin main: every local commit is already published, so the network push is skipped.
+      if ((await aheadCount(store.dir, 'origin/main', this.input.exec)) === 0) {
+        await recordPublishedSha(this.input.ws, store);
+        this.published();
+      } else await this.push(store);
       if (this.pending === 0 && !this.refused) this.lastError = null;
     } catch (err) {
       this.refused = false;
@@ -154,24 +223,61 @@ export class DocsSync {
     }
   }
 
-  /** Commits the projection and pushes it; the labels stay while a document is refused, so the next flush tries it again. */
+  /** Pushes the local commits; a push that leaves them out of origin keeps them pending and asks for a projection on the next tick. */
+  private async push(store: Store): Promise<void> {
+    const pushed = await pushDocuments(this.input.ws, store);
+    if (!pushed.ok) {
+      if (pushed.kind === 'busy') {
+        this.resync = true;
+        this.committedLabels = 0;
+        this.committedPending = 0;
+      }
+      throw new DocsStoreError(pushed.message);
+    }
+    this.published();
+  }
+
+  /** A push went out: the commits made before it are published, and their labels and changes leave the pending count. */
+  private published(): void {
+    this.labels.splice(0, this.committedLabels);
+    this.committedLabels = 0;
+    this.pending = Math.max(0, this.pending - this.committedPending);
+    this.committedPending = 0;
+  }
+
+  /** A normal flush's push waits for the debounce time; a newer flush restarts the wait, so the burst goes out as one push. */
+  private schedulePush(): void {
+    const timer = this.input.timer ?? systemTimer;
+    timer.clear(this.pushHandle);
+    this.pushHandle = timer.set(() => {
+      this.pushHandle = null;
+      void this.enqueue(() => this.pushLocal());
+    }, PUSH_DEBOUNCE_MS);
+  }
+
+  /** Commits the projection and pushes it; the labels and the pending count stay until the push lands, and a refused document keeps the labels for the next flush. */
   private async run(): Promise<void> {
     this.refused = false;
+    this.resync = false;
     try {
       const store = await openStore(this.input.ws, this.input.style, this.input.exec);
       const seen = { pending: this.pending, labels: this.labels.length };
       const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
-      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft) });
+      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft), known: await this.knownSecrets() });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
-      await pushLocalCommits(store);
+      const immediate = this.labels.slice(0, seen.labels).some((name) => IMMEDIATE_LABELS.includes(name));
+      if (refused.length === 0) {
+        this.committedLabels = seen.labels;
+        this.committedPending = seen.pending;
+      }
+      if (immediate) await this.push(store);
+      else this.schedulePush();
       if (refused.length > 0) {
         this.refused = true;
         this.lastError = refusedMessage(refused);
         return;
       }
-      this.labels.splice(0, seen.labels);
-      this.pending = Math.max(0, this.pending - seen.pending);
       this.lastError = null;
     } catch (err) {
       this.lastError = messageOf(err);
