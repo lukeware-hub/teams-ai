@@ -111,6 +111,14 @@ describe('Voltar and Continuar', () => {
     expect(handlers.onContinueStage).not.toHaveBeenCalled();
   });
 
+  it('a reprocessed stage says its mandatory question can be skipped, and Continuar moves on without the answer', async () => {
+    const handlers = show(base({ questions: [question('po-s1-0', { blocking: true, file: 'flow.md' })], passedStages: ['flow.md'], reprocessedStages: ['flow.md'] }));
+    expect(screen.getByText('Pode pular: Continuar avança sem resposta.')).toBeTruthy();
+    expect(screen.queryByText('Bloqueia o avanço até você responder.')).toBeNull();
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('flow.md'));
+  });
+
   it('stays on the screen when the server refuses to continue', async () => {
     const handlers = on();
     handlers.onContinueStage.mockReturnValue(false);

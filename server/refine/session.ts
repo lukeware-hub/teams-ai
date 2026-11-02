@@ -516,6 +516,7 @@ export class RefineSession {
       const text = await fs.readFile(kept, 'utf8');
       await writeDoc(this.deps.draft, file, text);
       await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
+      await this.journal.fact(RefineEvent.StageReprocessed, { file });
       return;
     }
     if ((this.state.passedStages ?? []).includes(file)) return;
@@ -558,11 +559,20 @@ export class RefineSession {
       const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
       if (problem) throw new ConflictError(problem);
       if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+      await this.skipOpenQuestions(target);
       // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
       await this.startIndexing(target);
       return;
     }
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
+  }
+
+  /** A reprocessed stage does not wait for its mandatory questions: moving on skips the open ones. */
+  private async skipOpenQuestions(file: DocFile): Promise<void> {
+    if (!(this.state.reprocessedStages ?? []).includes(file)) return;
+    for (const q of this.state.questions.filter((x) => x.file === file && x.status === 'pending' && x.blocking)) {
+      await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
+    }
   }
 
   /** The final review puts a finished document in the graph as it is now: the review, question and suggestion gates do not apply. */

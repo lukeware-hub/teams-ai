@@ -541,6 +541,8 @@ export interface RefineState {
   graphError?: { file: string; reason: string } | null;
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: string[];
+  /** The stages reprocessed from their passed text and not moved on from yet: their mandatory questions do not hold them. */
+  reprocessedStages?: string[];
   /** The owner moved on from the final review to the backlog. */
   reviewClosed?: boolean;
   stageStartCycle?: number;

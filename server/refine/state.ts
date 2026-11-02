@@ -214,6 +214,8 @@ export interface RefineState {
   doneStages?: DocFile[];
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: DocFile[];
+  /** The stages reprocessed from their passed text and not moved on from yet: their mandatory questions do not hold them. */
+  reprocessedStages?: DocFile[];
   /** The owner moved on from the final review to the backlog, so the review shows as done. */
   reviewClosed?: boolean;
   /** The round the current stage began at; its rounds count from here. */
@@ -552,9 +554,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.StageAdvanced:
       s.doneStages = [...new Set([...(s.doneStages ?? []), docName(d.doc)])];
       s.stageStartCycle = Number(d.cycle);
+      s.reprocessedStages = (s.reprocessedStages ?? []).filter((file) => file !== docName(d.doc));
       break;
     case RefineEvent.StagePassed:
       s.passedStages = [...new Set([...(s.passedStages ?? []), docName(d.file)])];
+      break;
+    case RefineEvent.StageReprocessed:
+      s.reprocessedStages = [...new Set([...(s.reprocessedStages ?? []), docName(d.file)])];
       break;
     case RefineEvent.ReviewClosed:
       s.reviewClosed = true;

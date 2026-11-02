@@ -158,4 +158,24 @@ describe('document graph in the stages', () => {
     expect(after.tokens.outputTokens).toBeGreaterThanOrEqual(90);
     await s.close();
   });
+
+  it('a reprocessed stage moves on without its mandatory question: the question is skipped and the document goes to the graph', async () => {
+    const mandatory = [{ text: 'Qual o fluxo de pagamento?', blocking: true, relatedAcIds: [], options: [] }];
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), mandatory)];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    await expect(s.continueStage()).rejects.toThrow('Responda as perguntas obrigatórias da etapa flow.md.');
+    script['refine/po'] = [refineOut(green(PO), mandatory)];
+    await s.reprocessStage('flow.md');
+    await s.settled();
+    await s.continueStage();
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
+    expect(s.state.graphed).toContain('flow.md');
+    expect(s.state.reprocessedStages ?? []).toEqual([]);
+    expect(s.state.questions.find((q) => q.text === 'Qual o fluxo de pagamento?')).toMatchObject({ status: 'skipped' });
+    await s.close();
+  });
 });

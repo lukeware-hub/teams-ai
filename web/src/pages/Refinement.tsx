@@ -586,7 +586,7 @@ export function RefinementView(p: ViewProps) {
     const graphError = st.graphError?.file === file ? st.graphError.reason : null;
     return stageChecklist({
       reviewed: st.reviewedStages?.includes(file) ?? false,
-      openQuestions: docQuestions(st, file).filter((q) => q.blocking).length,
+      openQuestions: (st.reprocessedStages ?? []).includes(file) ? 0 : docQuestions(st, file).filter((q) => q.blocking).length,
       pendingSuggestions: docPatches(st, file).length,
       formatProblem: snap.stageProblems?.[file] ?? null,
       graphed: st.graphed?.includes(file) ?? false,
@@ -750,7 +750,7 @@ export function RefinementView(p: ViewProps) {
               })}
             </div>
           )}
-          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : 'Bloqueia o avanço até você responder.'}</p>}
+          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
             <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
