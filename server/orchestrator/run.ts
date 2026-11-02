@@ -744,6 +744,7 @@ export class Run {
   }
 
   private async loadAdrs(): Promise<void> {
+    if (this.deps.docsRepo) return; // A documentation repository keeps no ADRs.
     const list = await this.gitLocked(['ls-tree', '--name-only', 'origin/main', 'docs/adr/']).catch(() => '');
     // Filled aside and swapped in whole, so a step building its pack meanwhile never reads a partial list.
     const adrs: typeof this.adrs = [];
@@ -802,9 +803,12 @@ export class Run {
   async execute(): Promise<ExecuteResult> {
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
-    const phase1 = await runPhase1(this.phaseDeps());
-    if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
-    this.techSpecText = phase1.techSpecText ?? '';
+    // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
+    if (!this.deps.docsRepo) {
+      const phase1 = await runPhase1(this.phaseDeps());
+      if (!phase1.ok) return phase1.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase1.reason);
+      this.techSpecText = phase1.techSpecText ?? '';
+    }
     await this.loadSharedDocs();
     const phase2 = await runPhase2(this.phaseDeps(), this.techSpecText);
     if (!phase2.ok) return phase2.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase2.reason);

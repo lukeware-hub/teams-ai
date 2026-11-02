@@ -16,7 +16,7 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
 const spec = makeFrozenSpec();
 const HASH = spec.specHash!;
-const project = makeProject();
+const project = makeProject({ stack: 'node-typescript' });
 const plan = makePlan(spec, { tasks: [makePlanTask({ id: 'T1', criteriaRefs: ['AC-001'] })] });
 const summary: ResultSummary = { found: true, isError: false, subtype: 'success', numTurns: 1, durationMs: 1, costUsd: 0, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, sessionId: null, resultText: null, structuredOutput: null } as ResultSummary;
 
@@ -33,6 +33,7 @@ beforeEach(async () => {
     'docs/project.json': JSON.stringify(project),
     'docs/specs/spec-001/spec.json': JSON.stringify(spec),
     'docs/specs/spec-001/plan.json': JSON.stringify(plan),
+    'docs/adr/ADR-001-stack.md': '# ADR-001 Stack\n\nThe stack is fixed.\n',
   });
   gh = new FakeGh();
   const root = path.join(remote.root, 'ws');
@@ -109,6 +110,23 @@ describe('readers of a docs-repo project', () => {
     const run = await Run.create(docsRepoDeps(noAgent, { target: target as never }), 'spec-001-deploy-m2');
     expect(await run.deployOnly()).toBe('phase-failed');
     expect(String(run.journal.events.find((e) => e.type === OrchEvent.RunFinished)!.data.reason)).toContain('main has no docs/specs/spec-001/plan.json');
+    await run.close();
+  });
+
+  it('plans without a technical spec and without ADRs, and names the stack in the plan pack', async () => {
+    await bind();
+    const kinds: string[] = [];
+    const prompts: string[] = [];
+    const script: Script = async (req) => {
+      kinds.push(req.kind);
+      if (req.kind === 'plan') prompts.push(req.prompt);
+      return { ok: false, failure: 'code', errors: ['not scripted'], summary, sandboxDisabled: false } as StepOutcome<any>;
+    };
+    const run = await Run.create(await withAgents(docsRepoDeps(script)), 'spec-001-plan-m1');
+    expect(await run.execute()).toBe('phase-failed');
+    expect(kinds).not.toContain('tech-spec');
+    expect(prompts[0]).toContain(`stack: ${project.stack}`);
+    expect(prompts[0]).not.toContain('ADR-001');
     await run.close();
   });
 

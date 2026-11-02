@@ -358,7 +358,7 @@ export function servicesPlanRules(opts: ServicesPack): string {
 
 export function planPack(
   base: PackBase,
-  opts: { techSpecText: string; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack; plan?: { file: string; outline: string } },
+  opts: { techSpecText: string; docsRepo?: boolean; preplan?: Preplan | null; godNodes: ReadonlyArray<{ label: string; edges: number }>; feedback: string | null; firstSpec?: boolean; requireDelivery?: boolean; requireSecurityTooling?: boolean; requireE2e?: boolean; requireCoverage?: boolean; deployPort?: number | null; services?: ServicesPack; plan?: { file: string; outline: string } },
 ): ContextPackInput {
   const human = (base.spec.tasks ?? []).map((t) => `- ${t.title}: ${t.description}`);
   const nodes = opts.godNodes.map((n) => `- ${n.label} (${n.edges} edges)`);
@@ -366,6 +366,7 @@ export function planPack(
     planRules(opts.services ? 'services' : opts.firstSpec ?? false, opts.requireDelivery ?? false, opts.requireSecurityTooling ?? false, opts.requireE2e ?? false, opts.requireCoverage ?? false),
     opts.services ? servicesPlanRules(opts.services) : '',
     !opts.services && opts.deployPort ? `deploy.port is exactly ${opts.deployPort}: the orchestrator assigned it so no two projects share a host port; the service listens on PORT=${opts.deployPort} and docker-compose publishes "${opts.deployPort}:${opts.deployPort}"` : '',
+    opts.docsRepo ? `stack: ${base.project.stack ?? ''}` : '',
     opts.preplan ? `Pre-plan reviewed at refinement time (context only: follow the real repository, not this; cover at least its acceptance criteria):\n${JSON.stringify(opts.preplan, null, 2)}` : '',
     opts.plan ? `The implementation plan of this spec is ${opts.plan.file}. Its ### Task blocks, with their files and criteria, are listed here: give every block a plan task that lists its number (T1, T2, ...) in planTasks; a block that no plan task lists fails the plan.\n\n${opts.plan.outline}` : '',
     human.length > 0 ? `Human-defined tasks (derive dependencies, keep them):\n${human.join('\n')}` : '',

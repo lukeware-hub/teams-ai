@@ -52,7 +52,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       ? await deps.runAgent<'services-plan'>({
           kind: 'services-plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, plan: planDoc }),
+          pack: planPack(deps.packBase(), { techSpecText, docsRepo: deps.docsRepo, preplan, godNodes: [], feedback, ...require, services: { names, newServices: services.newServices, ports: services.ports, platform: deps.project.platform ?? [], files: Object.fromEntries(Object.entries(services.repoFiles).map(([s, files]) => [s, [...files].sort()])) }, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
@@ -62,7 +62,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
       : await deps.runAgent<'plan'>({
           kind: 'plan',
           role: 'sm',
-          pack: planPack(deps.packBase(), { techSpecText, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, plan: planDoc }),
+          pack: planPack(deps.packBase(), { techSpecText, docsRepo: deps.docsRepo, preplan, godNodes: await deps.godNodes(), feedback, firstSpec: deps.firstSpec, ...require, deployPort: single!.ports.port, plan: planDoc }),
           cwd: worktree,
           phase: 'phase2',
           taskId: null,
