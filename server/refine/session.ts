@@ -42,8 +42,9 @@ import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
 import { flowIsMermaid } from './sections.js';
-import { bindDocumentRepo, DocsBindRefused } from './docs-bind.js';
+import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
 import { DocsStoreError } from '../docs/store.js';
+import { readDocsMarker } from '../docs/project-state.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -649,6 +650,8 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       const out = await this.decideOnDocs(docs, ctl.signal);
+      const lock = styleRefusal(await readDocsMarker(this.deps.ws), out.style);
+      if (lock) throw new Error(lock);
       const arch: Architecture = { style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations };
       await writeArchitectureFiles(this.deps.draft.root, arch);
       // The questions get ids from the journal's length, so a replay names them the same way.

@@ -34,6 +34,12 @@ export function refusalOf(info: RepoInfo | null, target: RepoTarget, bound: Docs
   return null;
 }
 
+/** Why a decided style cannot be kept, in plain words; null when the style is the published one or nothing is published. */
+export function styleRefusal(bound: DocsMarker | null, style: Style): string | null {
+  if (bound === null || bound.style === style) return null;
+  return `O repositório ${full(bound.target)} já foi publicado no estilo ${bound.style}; a arquitetura não pode mudar de estilo depois da publicação.`;
+}
+
 /** Read-only checks first, then the bind: nothing is written when a check refuses. */
 export async function bindDocumentRepo(input: DocsBindInput): Promise<void> {
   const login = await viewerLogin(input.ws.root, input.exec);
