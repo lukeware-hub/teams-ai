@@ -626,6 +626,7 @@ describe('refine api', () => {
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [{ from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' }] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await waitForEvaluation();
     await settle();
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/notices/move-po-c1-0/close')).status).toBe(200);
     expect((await snapshot()).state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', closed: true }]);
