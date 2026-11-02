@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { action, chip, emptyState, panel, plural, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
+import { action, chip, emptyState, plural, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const toolbar = 'flex flex-wrap items-center gap-x-4 gap-y-2';
 const filter = 'relative block min-w-0 flex-[0_1_24rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint';
