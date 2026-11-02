@@ -1277,6 +1277,20 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 Same parts as the hub, nothing new: the breadcrumb, a status card (spinner or check, "Executando o backlog · N de M concluídas", the progress bar, then one line per spec running now with a pulsing dot and "Acompanhar a run"), and a panel "Specs do backlog" with the count and total cost at its right. A run that lost its process (the owner's Stop, or a crash) reads as interrupted: the card says "Backlog interrompido" with an alert icon in place of the spinner once every spec running now is in that state, and each such line says "Interrompida:" with a static warning dot. Its list pill is the hub's "interrompida" pill. Each spec is one row on fixed columns — rank, title with its run id under it in mono, the hub's status pill, cost right-aligned, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip). A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
 
+### 27.4 Run — cabeçalho com atividade ao vivo
+
+A linha de progresso do cabeçalho do run ganha, enquanto um agente trabalha, um trecho em `accent-text` com o papel, o que ele faz, a tarefa (se houver) e o tempo decorrido. O tempo conta a cada segundo.
+
+- Um agente: `Desenvolvimento implementando a tarefa T0-scaffold há 1 min 12 s`, com o papel de `ROLE_LABEL` e o verbo de `STEP_DOING`.
+- Vários agentes: `3 agentes trabalhando, o mais antigo há 1 min 12 s`.
+- Nenhum agente aberto, ou a run fora de `em execução` e `finalizando`: o trecho não aparece.
+
+Ordem da linha: tarefas mescladas · em andamento · bloqueadas · **atividade** · etapas · custo. Quebra como o restante da linha (abaixo de 768px, uma coluna). Etapas e custo continuam subindo só quando a etapa termina, e o texto não promete custo parcial.
+
+```
+[barra ████████░░░░░░░░░░]  0 de 4 tarefas mescladas · 1 em andamento · Desenvolvimento implementando a tarefa T0-scaffold há 1 min 12 s · 23 etapas · US$ 0.0961
+```
+
 ## 28. Copy
 
 Brazilian Portuguese, sentence case, short, action-oriented. Technical detail stays inside disclosures. Controls name their action; errors name the problem **and** the recovery. System behavior is stated, not requested.

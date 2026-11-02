@@ -454,16 +454,31 @@ function ActivityList({ items }: { items: ActivityItem[] }) {
   );
 }
 
-/** What the run is doing right now: the agent steps in flight with a live timer, or else the last thing that happened. */
-function NowCard({ events }: { events: StoredEvent[] }) {
-  const { running, last } = currentActivity(events);
+type Running = ReturnType<typeof currentActivity>['running'];
+
+/** The current time, updated every second while `active`: the timers of the agent steps running now. */
+function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
-  const ticking = running.length > 0;
   useEffect(() => {
-    if (!ticking) return undefined;
+    if (!active) return undefined;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [ticking]);
+  }, [active]);
+  return now;
+}
+
+/** The header's line for the agent steps in flight: the one running, or how many and the oldest's time. */
+function runningLine(running: Running, now: number): string {
+  const oldest = running[0]!;
+  const elapsed = formatDuration(now - Date.parse(oldest.startedAt));
+  if (running.length > 1) return `${running.length} agentes trabalhando, o mais antigo há ${elapsed}`;
+  return `${ROLE_LABEL[oldest.role] ?? oldest.role} ${stepDoing(oldest.kind)}${oldest.taskId ? ` a tarefa ${oldest.taskId}` : ''} há ${elapsed}`;
+}
+
+/** What the run is doing right now: the agent steps in flight with a live timer, or else the last thing that happened. */
+function NowCard({ activity, now }: { activity: ReturnType<typeof currentActivity>; now: number }) {
+  const { running, last } = activity;
   return (
     <section className="card" data-testid="now">
       <div className={RUN_UI.panelHead}>
@@ -589,6 +604,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const interruptedRun = status === 'interrupted';
   const until = pausedUntil(unique);
   const t = tokens(unique);
+  const doing = currentActivity(unique);
+  const clock = useNow(doing.running.length > 0);
+  const runningNow = (status === 'running' || status === 'draining') && doing.running.length > 0;
   const phaseList = phases(unique);
   const activity = phaseActivity(unique);
   // The trigger gets focus back when the dialog closes.
@@ -813,6 +831,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   {tally.blocked} {tally.blocked === 1 ? 'bloqueada' : 'bloqueadas'}
                 </span>
               ) : null}
+              {runningNow ? (
+                <span data-testid="step-running" className="text-accent-text">
+                  {runningLine(doing.running, clock)}
+                </span>
+              ) : null}
               <span>
                 {steps(t.total.steps)}
                 <InfoTip label="Etapas" text={TIP.steps} />
@@ -988,7 +1011,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             label: 'Fases e consumo',
             content: (
               <aside className={RUN_UI.aside}>
-                {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard events={unique} /> : null}
+                {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard activity={doing} now={clock} /> : null}
                 <section className="card">
                   <div className={RUN_UI.panelHead}>
                     <h2>Fases</h2>

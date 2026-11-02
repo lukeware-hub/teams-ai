@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { RunDetail, StoredEvent } from '../api.js';
 import { RunView } from './Run.js';
@@ -622,5 +622,45 @@ describe('RunView phase blocks', () => {
     render(running());
     expect(screen.queryByRole('button', { name: 'Ver os bloqueios de 3 · Implementação' })).toBeNull();
     expect(screen.getByTestId('block-waiting').textContent).toContain('T7');
+  });
+});
+
+describe('RunView header: the step running now', () => {
+  const at = '2026-10-08T10:00:00.000Z';
+  const ev = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq: 50_000 + seq, at, runId: 'hello-001-r9', specHash: 'h', type, kind: 'fact' as const, data });
+  const planned = (seq: number, id: string) => ev(seq, 'TASK_PLANNED', { task: { id, title: id, description: 'd', criteriaRefs: ['AC-001'], dependsOn: [], affectedPaths: ['src'], owner: 'dev', origin: 'plan' }, replan: false });
+  const step = (seq: number, stepId: string, taskId: string | null = 'T0-scaffold') => ev(seq, 'STEP_STARTED', { stepId, kind: 'dev', role: 'dev', model: 'claude-sonnet-5-5', taskId, attempt: 1 });
+  const running = { ...detail, status: 'running' as const };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date('2026-10-08T10:01:12.000Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('shows the step running now with its role, task and elapsed time, and the time counts every second', () => {
+    render(view({ events: [planned(1, 'T0-scaffold'), step(2, 's1')], ended: false, detail: running }));
+    const span = screen.getByTestId('step-running');
+    expect(span.textContent).toContain('Desenvolvimento');
+    expect(span.textContent).toContain('T0-scaffold');
+    expect(span.textContent).toContain('há 1 min 12 s');
+    act(() => vi.advanceTimersByTime(3000));
+    expect(screen.getByTestId('step-running').textContent).toContain('há 1 min 15 s');
+  });
+
+  it('counts several steps in flight and names the oldest', () => {
+    render(view({ events: [planned(1, 'T0-scaffold'), step(2, 's1'), step(3, 's2', null)], ended: false, detail: running }));
+    expect(screen.getByTestId('step-running').textContent).toBe('2 agentes trabalhando, o mais antigo há 1 min 12 s');
+  });
+
+  it('goes away when the step finishes', () => {
+    const finished = ev(3, 'STEP_FINISHED', { stepId: 's1', kind: 'dev', taskId: 'T0-scaffold', attempt: 1, ok: true, model: 'claude-sonnet-5-5', effort: 'low', failure: null, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } });
+    render(view({ events: [planned(1, 'T0-scaffold'), step(2, 's1'), finished], ended: false, detail: running }));
+    expect(screen.queryByTestId('step-running')).toBeNull();
+  });
+
+  it('is not shown when the run is not running', () => {
+    render(view({ events: [planned(1, 'T0-scaffold'), step(2, 's1')], ended: true, detail: { ...detail, status: 'paused:quota' } }));
+    expect(screen.queryByTestId('step-running')).toBeNull();
   });
 });
