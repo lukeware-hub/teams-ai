@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bind } from '../../server/docs/store.js';
+import { bind, pushDocuments, storeOf } from '../../server/docs/store.js';
 import { docsStoreDir, readDocsMarker } from '../../server/docs/project-state.js';
 import type { Exec } from '../../server/exec/command.js';
 import { git, showFile } from '../../server/git/git.js';
@@ -48,26 +48,34 @@ async function existing(withHistory: boolean): Promise<string> {
 }
 
 const originMain = (origin: string) => git(origin, ['rev-parse', 'main']).catch(() => null);
+const localHead = () => git(docsStoreDir(ws), ['rev-parse', 'HEAD']);
+
+/** The remote part of a bind, as the first documents sync runs it. */
+const publish = (exec: Exec = gh.exec) => pushDocuments(ws, storeOf(ws, 'monolith', exec));
 
 describe('bind', () => {
-  it('writes the marker before any remote effect, and sets its first sha after the push', async () => {
+  it('writes the marker before any remote effect, and sets its first sha only once the publish lands', async () => {
     const seen: unknown[] = [];
     const probe: Exec = async (spec) => {
       if (spec.bin === 'gh') seen.push(await readDocsMarker(ws));
       return gh.exec(spec);
     };
-    const r = await bind(ws, input, probe);
+    await bind(ws, input, probe);
     expect(seen[0]).toEqual({ layout: 'docs-repo', style: 'monolith', target, firstSha: null });
-    expect(await readDocsMarker(ws)).toEqual({ layout: 'docs-repo', style: 'monolith', target, firstSha: r.sha });
+    expect(await readDocsMarker(ws)).toEqual({ layout: 'docs-repo', style: 'monolith', target, firstSha: null });
+    const sha = await localHead();
+    await publish();
+    expect(await readDocsMarker(ws)).toEqual({ layout: 'docs-repo', style: 'monolith', target, firstSha: sha });
   });
 
-  it('creates one private repository when GitHub reports it missing, and publishes the documents', async () => {
-    const r = await bind(ws, input, gh.exec);
-    expect(r.created).toBe(true);
+  it('leaves the repository to the publish: bind creates nothing, and the publish creates one private repository with the documents', async () => {
+    await bind(ws, input, gh.exec);
+    expect(gh.creates).toEqual([]);
+    await publish();
     expect(gh.creates).toEqual(['acme/kayron-hub']);
     const origin = gh.repos.get('acme/kayron-hub')!.origin;
     expect(gh.repos.get('acme/kayron-hub')!.isPrivate).toBe(true);
-    expect(await originMain(origin)).toBe(r.sha);
+    expect(await originMain(origin)).toBe(await localHead());
     expect(await showFile(origin, 'main', 'docs/project.md')).toBe('project\n');
     expect(await git(docsStoreDir(ws), ['log', '-1', '--format=%s'])).toBe('docs(refine): initial documents [skip ci]');
   });
@@ -75,31 +83,33 @@ describe('bind', () => {
   it('adopts an existing empty repository without creating one', async () => {
     const origin = await existing(false);
     gh.register('acme/kayron-hub', origin);
-    const r = await bind(ws, input, gh.exec);
-    expect(r.created).toBe(false);
+    await bind(ws, input, gh.exec);
+    await publish();
     expect(gh.creates).toEqual([]);
-    expect(await originMain(origin)).toBe(r.sha);
+    expect(await originMain(origin)).toBe(await localHead());
   });
 
-  it('refuses a repository with other history, and pushes nothing to it', async () => {
+  it('refuses a repository with other history at the publish, and pushes nothing to it; the marker stays unpublished', async () => {
     const origin = await existing(true);
     gh.register('acme/kayron-hub', origin);
     const before = await originMain(origin);
-    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/other history/);
+    await bind(ws, input, gh.exec);
+    await expect(publish()).rejects.toThrow(/other history/);
     expect(await originMain(origin)).toBe(before);
-    expect(await readDocsMarker(ws)).toBeNull();
+    expect((await readDocsMarker(ws))?.firstSha).toBeNull();
   });
 
-  it('refuses when the repository create answers HTTP 422, and enables nothing: no repository, no marker', async () => {
+  it('a create refused with HTTP 422 fails only the publish: bind keeps the local store and the marker, and nothing is created', async () => {
     const refuse: Exec = async (spec) => {
       if (spec.bin === 'gh' && spec.args[0] === 'repo' && spec.args[1] === 'create') {
         return { exitCode: 1, signal: null, stdout: '', stderr: 'HTTP 422: Repository creation failed.', timedOut: false, durationMs: 1, truncated: false };
       }
       return gh.exec(spec);
     };
-    await expect(bind(ws, input, refuse)).rejects.toThrow(/não foi possível criar o repositório privado/);
+    await bind(ws, input, refuse);
+    await expect(publish(refuse)).rejects.toThrow(/não foi possível criar o repositório privado/);
     expect(gh.creates).toEqual([]);
-    expect(await readDocsMarker(ws)).toBeNull();
+    expect((await readDocsMarker(ws))?.firstSha).toBeNull();
   });
 
   it('refuses a repository that is not private', async () => {
@@ -111,8 +121,7 @@ describe('bind', () => {
     gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
     await expect(bind(ws, input, gh.exec)).rejects.toThrow(/é público/);
     expect(await readDocsMarker(ws)).toBeNull();
-    const r = await bind(ws, { ...input, target: { owner: 'acme', name: 'other' } }, gh.exec);
-    expect(r.created).toBe(true);
+    await bind(ws, { ...input, target: { owner: 'acme', name: 'other' } }, gh.exec);
     expect((await readDocsMarker(ws))?.target).toEqual({ owner: 'acme', name: 'other' });
   });
 

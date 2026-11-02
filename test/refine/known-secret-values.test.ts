@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeSecret } from '../../server/core/secrets.js';
-import { bind } from '../../server/docs/store.js';
+import { bind, pushDocuments, storeOf } from '../../server/docs/store.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { DocsSync } from '../../server/refine/docs-sync.js';
 import type { Exec, CommandResult } from '../../server/exec/command.js';
@@ -31,6 +31,7 @@ beforeEach(async () => {
   for (const doc of DOCS) await fs.writeFile(path.join(draft.docs, doc), `# ${doc}\n`);
   const documents = Object.fromEntries(DOCS.map((doc) => [`docs/${doc}`, `# ${doc}\n`]));
   await bind(ws, { style: 'monolith', target, draftId: 'hello-app-001', documents }, gh.exec);
+  await pushDocuments(ws, storeOf(ws, 'monolith', gh.exec));
 });
 
 afterEach(async () => {
@@ -40,9 +41,9 @@ afterEach(async () => {
 const origin = (): string => gh.repos.get('acme/hello-app')!.origin;
 const exec: Exec = (spec): Promise<CommandResult> => gh.exec(spec);
 
-/** A documents sync that reads the test's secrets directory as its only one. */
+/** A documents sync that reads the test's secrets directory as its only one, and never pushes on a timer. */
 function sync(): DocsSync {
-  return new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], secretDirs: async () => [secretsDir] });
+  return new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], secretDirs: async () => [secretsDir], timer: { set: () => 0, clear: () => undefined } });
 }
 
 /** Changes one document of the draft on disk, as an owner save does. */
@@ -77,6 +78,7 @@ describe('DocsSync refuses a flush that holds a known secret value', () => {
     const s = sync();
     s.edit();
     await s.flush();
+    await s.publish();
     expect(s.view.lastError).toBeNull();
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mentions abc123 in plain words');
   });

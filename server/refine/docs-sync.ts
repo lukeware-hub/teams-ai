@@ -1,7 +1,7 @@
 import { loadSecretValues } from '../core/secrets.js';
 import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
-import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushDocuments, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import { readUserConfig } from '../onboarding/config-store.js';
 import { expandHome, type Workspace } from '../orchestrator/workspace.js';
@@ -25,7 +25,26 @@ export interface DocsSyncInput {
   aliases: () => SpecAlias[];
   /** The secrets directories whose values a flush refuses to commit; the project's and the platform's by default. */
   secretDirs?: () => Promise<string[]>;
+  /** The timer of the push debounce; the system timer by default. */
+  timer?: PushTimer;
 }
+
+/** The timer that runs a debounced push. */
+export interface PushTimer {
+  set(run: () => void, ms: number): unknown;
+  clear(handle: unknown): void;
+}
+
+const systemTimer: PushTimer = {
+  set: (run, ms) => setTimeout(run, ms),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+/** A normal flush's push waits this long for the next flush, so a burst goes out as one push. */
+const PUSH_DEBOUNCE_MS = 3_000;
+
+/** The boundaries whose push goes out at once. */
+const IMMEDIATE_LABELS = ['plans prepared'];
 
 const FALLBACK_LABEL = 'documents synced';
 
@@ -42,8 +61,8 @@ const refusedMessage = (refused: string[]): string =>
   `Não publicado: o documento ${refused.join(', ')} mudou na loja; os outros foram publicados.`;
 
 /** Pushes the local commits; a refusal is thrown in plain words. */
-async function pushLocalCommits(store: Store): Promise<void> {
-  const pushed = await pushWithRecovery(store);
+async function pushLocalCommits(ws: Workspace, store: Store): Promise<void> {
+  const pushed = await pushDocuments(ws, store);
   if (!pushed.ok) throw new DocsStoreError(pushed.message);
 }
 
@@ -56,6 +75,7 @@ export class DocsSync {
   private refused = false;
   private queued = false;
   private chain: Promise<void> = Promise.resolve();
+  private pushHandle: unknown = null;
 
   constructor(private readonly input: DocsSyncInput) {}
 
@@ -72,6 +92,11 @@ export class DocsSync {
   boundary(label: string): void {
     this.pending += 1;
     this.labels.push(label);
+  }
+
+  /** The first publication after a bind: pushes at once, and connects the repository when it is not connected yet. */
+  publish(): Promise<void> {
+    return this.enqueue(() => this.pushLocal());
   }
 
   /** One flush after the ones already queued; a flush not started yet takes every change made before it starts. */
@@ -138,7 +163,7 @@ export class DocsSync {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
-    if (flushed.sha !== null) await pushLocalCommits(store);
+    if (flushed.sha !== null) await pushLocalCommits(ws, store);
   }
 
   private async closeNow(aliases: readonly string[]): Promise<void> {
@@ -162,12 +187,22 @@ export class DocsSync {
   /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary; a failure stays while a change is pending or a document is refused. */
   private async pushLocal(): Promise<void> {
     try {
-      await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
+      await pushLocalCommits(this.input.ws, await openStore(this.input.ws, this.input.style, this.input.exec));
       if (this.pending === 0 && !this.refused) this.lastError = null;
     } catch (err) {
       this.refused = false;
       this.lastError = messageOf(err);
     }
+  }
+
+  /** A normal flush's push waits for the debounce time; a newer flush restarts the wait, so the burst goes out as one push. */
+  private schedulePush(): void {
+    const timer = this.input.timer ?? systemTimer;
+    timer.clear(this.pushHandle);
+    this.pushHandle = timer.set(() => {
+      this.pushHandle = null;
+      void this.enqueue(() => this.pushLocal());
+    }, PUSH_DEBOUNCE_MS);
   }
 
   /** Commits the projection and pushes it; the labels stay while a document is refused, so the next flush tries it again. */
@@ -180,7 +215,8 @@ export class DocsSync {
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
       const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft), known: await this.knownSecrets() });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
-      await pushLocalCommits(store);
+      if (this.labels.slice(0, seen.labels).some((label) => IMMEDIATE_LABELS.includes(label))) await pushLocalCommits(this.input.ws, store);
+      else this.schedulePush();
       if (refused.length > 0) {
         this.refused = true;
         this.lastError = refusedMessage(refused);
