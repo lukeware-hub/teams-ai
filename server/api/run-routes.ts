@@ -38,7 +38,8 @@ import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
-import { ID_PATTERNS } from '../core/ids.js';
+import { ID_PATTERNS, parseRunId } from '../core/ids.js';
+import { buildDashboard, specViews, type DashboardRun } from './repository-dashboard.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
 
@@ -346,7 +347,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // A spec is blocked when one of its runs needs the owner; its run list also feeds the history.
     const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
     const src = await loadRepoSource(row.dir, specs);
-    if (!src) return { src, runs, runsDir: runsDir(idx) };
+    // Each run's journal is read once here; the repository pages reduce the same events.
+    const journals = new Map(await Promise.all(runs.map(async (run) => [run.runId, await loadEvents(path.join(runsDir(idx), run.runId, 'events.ndjson')).catch(() => [] as StoredEvent[])] as const)));
+    if (!src) return { src, runs, runsDir: runsDir(idx), journals };
     const programStops = (await deps.stoppedItems?.(projectId).catch(() => [])) ?? [];
     // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
     const ws = workspacePaths(idx.cfg, projectId, deps.home);
@@ -367,7 +370,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // The fix and deploy-fix tasks the orchestrator added to each spec's runs, counted apart from the planned tasks.
     const added = new Map<string, { fixes: number; deployFixes: number }>();
     for (const run of runs) {
-      const events = await loadEvents(path.join(runsDir(idx), run.runId, 'events.ndjson')).catch(() => []);
+      const events = journals.get(run.runId) ?? [];
       const count = added.get(run.specId) ?? { fixes: 0, deployFixes: 0 };
       for (const e of events) for (const t of Array.isArray(e.data.tasks) ? (e.data.tasks as Array<{ origin?: string }>) : []) {
         if (t.origin === 'fix') count.fixes += 1;
@@ -378,8 +381,14 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
     }
     src.specs = src.specs.map((spec) => ({ ...spec, ...(added.get(spec.specId) ?? { fixes: 0, deployFixes: 0 }) }));
-    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx) };
+    // A spec's tasks and delivered tasks come from its journals, the count the dashboard shows.
+    const views = new Map(specViews(src.specs, dashboardRuns(runs, journals)).specs.map((v) => [v.specId, v] as const));
+    src.specs = src.specs.map((spec) => (views.has(spec.specId) ? { ...spec, tasks: views.get(spec.specId)!.total, delivered: views.get(spec.specId)!.delivered } : spec));
+    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals };
   };
+  /** The runs in the dashboard's shape, each with the journal read for it. */
+  const dashboardRuns = (rows: RunRow[], journals: Map<string, StoredEvent[]>): DashboardRun[] =>
+    rows.map((r) => ({ runId: r.runId, specId: r.specId, kind: parseRunId(r.runId)?.kind ?? 'run', n: r.n, status: r.status, at: r.at, cost: r.cost, stopped: r.stopped === true, events: journals.get(r.runId) ?? [] }));
   return [
     {
       method: 'GET',
@@ -400,6 +409,31 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         if (!detail) throw new HttpError(404, `unknown repository ${name}`);
         const ids = new Set(detail.rows.map((r) => r.specId));
         json(200, { ...detail, history: await historyOf(runsRoot, runs.filter((r) => ids.has(r.specId))) });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/dashboard`,
+      handler: async ({ params, json }) => {
+        const name = params.repo!;
+        if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
+        const { src, runs, journals } = await repoSource(params.projectId!);
+        const detail = src ? repositoryDetail(src, name) : null;
+        if (!detail) throw new HttpError(404, `unknown repository ${name}`);
+        const ids = new Set(detail.rows.map((r) => r.specId));
+        json(
+          200,
+          buildDashboard({
+            specs: detail.rows,
+            runs: dashboardRuns(
+              runs.filter((r) => ids.has(r.specId)),
+              journals,
+            ),
+            questions: detail.questions.map((q) => q.text),
+            missingSecrets: detail.missingSecrets,
+            programStops: detail.reasons.map((r) => ({ specId: r.specId, reason: r.reason })),
+          }),
+        );
       },
     },
     {
