@@ -358,7 +358,7 @@ export interface BindInput {
   documents: Record<string, string>;
 }
 
-const WRITE_PERMISSIONS = ['ADMIN', 'MAINTAIN', 'WRITE'];
+export const WRITE_PERMISSIONS = ['ADMIN', 'MAINTAIN', 'WRITE'];
 
 /** A repository that already exists must be private, not archived, and writable by the token's user. */
 function assertAdoptable(info: RepoInfo): void {

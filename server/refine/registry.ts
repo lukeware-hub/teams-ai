@@ -102,6 +102,11 @@ export class SessionRegistry {
     });
   }
 
+  /** Whether a new project takes the documentation repository layout: the dependency when given, else the environment flag. */
+  private get docsRepoLayout(): boolean {
+    return this.deps.docsRepoLayout ?? docsRepoLayoutEnabled();
+  }
+
   protected async ws(projectId: string): Promise<Workspace> {
     return workspacePaths(await this.deps.cfg(), projectId, this.deps.home);
   }
@@ -115,12 +120,12 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents, docsBind: this.deps.ghExec ? { exec: this.deps.ghExec, configuredOwner: async () => (await this.deps.cfg()).github.owner } : undefined };
       // A follow-on draft is a repository session when main holds the architecture its documents came from.
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
       // A new project follows the rollout flags; a follow-on draft is stamped only when main holds its architecture.
       const stamp = create === 'new-project' ? (this.deps.repositoryFlow ?? REPOSITORY_FLOW) : architecture;
-      const docsRepo = create === 'new-project' && (this.deps.docsRepoLayout ?? docsRepoLayoutEnabled());
+      const docsRepo = create === 'new-project' && this.docsRepoLayout;
       return create ? RefineSession.create(deps, create, { repositories: stamp === true, docsRepo }) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

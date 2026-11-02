@@ -10,6 +10,7 @@ import { draftPaths, writeDoc, type Draft, type DocFile } from '../../server/ref
 import { DOC_STAGES } from '../../server/refine/doc-stages.js';
 import { SessionRegistry } from '../../server/refine/registry.js';
 import type { RefineSession } from '../../server/refine/session.js';
+import { makeProject, makeSpec } from './contracts.js';
 import { makeFakeRunAgent, type Script } from './fake-run-agent.js';
 
 export const PROJECT = 'hello-app';
@@ -24,6 +25,9 @@ const DOCS: Record<DocFile, string> = {
   'flow.md': FLOW,
   'design.md': '# Design\n\nTela simples com um botão.\n',
 };
+
+/** The spec and project a derivation returns for the hello-app project. */
+export const DERIVED = { project: makeProject({ projectId: PROJECT }), spec: { ...makeSpec(), status: 'refining', specHash: null, repository: PROJECT } };
 
 export const MONOLITH = {
   style: 'monolith',
@@ -65,6 +69,7 @@ export interface RigOptions {
   /** The owner in the user's configuration, read when the project's document names none. */
   owner?: string;
   exec?: Exec;
+  ghExec?: Exec;
 }
 
 /** A registry on a temporary home with a scripted refine agent, the first draft of the hello-app project, and no real GitHub. */
@@ -84,6 +89,7 @@ export async function makeRig(opts: RigOptions = {}): Promise<Rig> {
     extractDocs,
     secretsDir: `${home}/secrets`,
     exec: opts.exec ?? (async () => ({ exitCode: 1, signal: null, stdout: '', stderr: 'no exec', timedOut: false, durationMs: 1, truncated: false })),
+    ghExec: opts.ghExec,
     projectDir: async () => null,
     control: {} as RunControlDeps,
     runsDir: async () => `${home}/runs`,
