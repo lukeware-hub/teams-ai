@@ -32,7 +32,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
     };
   }, [runId]);
 
-  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe);
+  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname);
   const start = () => {
     if (!deploy) return;
     setStarting(true);
@@ -50,22 +50,30 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
         <span className="count-pill" data-testid="repo-status">{STATUS_LABEL[detail.status]}</span>
       </div>
       <p className="hint">{detail.responsibility}</p>
-      <div className="flex flex-wrap items-center gap-2" data-testid="repo-shortcuts">
-        {deploy === null && <span className="hint">sem dados: nenhum deploy verificado ainda.</span>}
-        {deploy !== null && probe === null && <span className="hint">Verificando se o sistema responde…</span>}
-        {isOffline(deploy, probe) && (
-          <>
-            <span className="hint">Sistema desligado.</span>
-            <button type="button" className={action.primary} onClick={start} disabled={starting} data-testid="start-system">
-              Iniciar
-            </button>
-          </>
-        )}
+      <div className="flex flex-wrap items-start gap-3" data-testid="repo-shortcuts">
         {shortcuts.map((s) => (
-          <a key={s.kind} href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
-            {SHORTCUT_LABEL[s.kind]}
-          </a>
+          <div key={s.kind} className="grid gap-1">
+            {s.href ? (
+              <a href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
+                {SHORTCUT_LABEL[s.kind]}
+              </a>
+            ) : (
+              <button type="button" className={action.secondary} disabled aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
+                {SHORTCUT_LABEL[s.kind]}
+              </button>
+            )}
+            {s.reason && (
+              <span id={`why-${s.kind}`} className="hint text-[0.75rem]">
+                {s.reason}
+              </span>
+            )}
+          </div>
         ))}
+        {isOffline(deploy, probe) && (
+          <button type="button" className={action.primary} onClick={start} disabled={starting} data-testid="start-system">
+            Iniciar
+          </button>
+        )}
       </div>
     </section>
   );

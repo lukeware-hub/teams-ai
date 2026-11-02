@@ -2,35 +2,67 @@ import { describe, expect, it } from 'vitest';
 import type { LastDeploy, ServiceStatus } from '../../api.js';
 import { isOffline, shortcutsOf } from './shortcuts.js';
 
+const HOST = 'localhost';
 const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', docsPath: '/docs', services: null, ...over });
 const probe = (over: Partial<ServiceStatus> = {}): ServiceStatus => ({ online: true, status: 200, ui: true, docs: true, checkedAt: '2026-11-01T10:00:00.000Z', ...over });
 
-describe('shortcuts of a repository', () => {
-  it('gives the Swagger of an API only while the probe answers for its documentation', () => {
-    expect(shortcutsOf('api', 'shop-api', deploy(), probe())).toEqual([{ kind: 'swagger', href: 'http://localhost:3001/docs' }]);
-    expect(shortcutsOf('api', 'shop-api', deploy(), probe({ docs: false }))).toEqual([]);
+describe('the buttons of a repository, by its kind', () => {
+  it('shows the Swagger button for an API, open while the probe answers for its documentation', () => {
+    expect(shortcutsOf('api', 'shop-api', deploy(), probe(), HOST)).toEqual([{ kind: 'swagger', href: 'http://localhost:3001/docs', reason: null }]);
   });
 
-  it('gives the running application of a web repository while the probe sees its page', () => {
-    expect(shortcutsOf('web', 'shop-web', deploy(), probe())).toEqual([{ kind: 'app', href: 'http://localhost:3001' }]);
-    expect(shortcutsOf('web', 'shop-web', deploy(), probe({ ui: false }))).toEqual([]);
+  it('shows the application button for a web repository, open while the probe sees its page', () => {
+    expect(shortcutsOf('web', 'shop-web', deploy(), probe(), HOST)).toEqual([{ kind: 'app', href: 'http://localhost:3001', reason: null }]);
   });
 
-  it('gives both links for a monolith and only the Swagger for workers', () => {
-    expect(shortcutsOf('monolith', 'live-skill', deploy(), probe())).toHaveLength(2);
-    expect(shortcutsOf('jobs', 'worker', deploy(), probe())).toEqual([{ kind: 'swagger', href: 'http://localhost:3001/docs' }]);
+  it('shows both buttons for a monolith, and only the Swagger for workers', () => {
+    expect(shortcutsOf('monolith', 'live-skill', deploy(), probe(), HOST).map((s) => s.kind)).toEqual(['swagger', 'app']);
+    expect(shortcutsOf('jobs', 'worker', deploy(), probe(), HOST).map((s) => s.kind)).toEqual(['swagger']);
   });
 
-  it('gives nothing for a mobile or workflow repository, or while the system is down', () => {
-    expect(shortcutsOf('mobile', 'app', deploy(), probe())).toEqual([]);
-    expect(shortcutsOf('api', 'shop-api', deploy(), probe({ online: false }))).toEqual([]);
-    expect(shortcutsOf('api', 'shop-api', null, probe())).toEqual([]);
+  it('shows no button for a mobile or workflow repository', () => {
+    expect(shortcutsOf('mobile', 'app', deploy(), probe(), HOST)).toEqual([]);
+    expect(shortcutsOf('workflow', 'flow', deploy(), probe(), HOST)).toEqual([]);
+  });
+});
+
+describe('a button that cannot open', () => {
+  it('stays with the reason, and no address, when the plan declares no documentation', () => {
+    const monolith = shortcutsOf('monolith', 'live-skill', deploy({ docsPath: null }), probe({ ui: false, docs: false }), HOST);
+    expect(monolith).toEqual([
+      { kind: 'swagger', href: null, reason: 'o plano não declara a documentação da API' },
+      { kind: 'app', href: null, reason: 'a aplicação não responde na raiz' },
+    ]);
   });
 
+  it('says the documentation does not answer when the declared path fails', () => {
+    expect(shortcutsOf('api', 'shop-api', deploy(), probe({ docs: false }), HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'a documentação não responde' }]);
+  });
+
+  it('says the system is down while the probe does not answer', () => {
+    expect(shortcutsOf('api', 'shop-api', deploy(), probe({ online: false }), HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'sistema desligado' }]);
+  });
+
+  it('says there is no data before any deploy, and that it is checking while the probe is on its way', () => {
+    expect(shortcutsOf('api', 'shop-api', null, null, HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'sem dados: nenhum deploy verificado ainda' }]);
+    expect(shortcutsOf('api', 'shop-api', deploy(), null, HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'verificando se o sistema responde' }]);
+  });
+});
+
+describe('the address a browser opens', () => {
   it('takes the address of the repository\'s own service when the deploy has several', () => {
     const multi = deploy({ url: null, docsPath: null, services: [{ service: 'shop-api', url: 'http://localhost:3002', docsPath: '/swagger' }] });
     const answers = probe({ services: [{ service: 'shop-api', online: true, status: 200, ui: false, docs: true }] });
-    expect(shortcutsOf('api', 'shop-api', multi, answers)).toEqual([{ kind: 'swagger', href: 'http://localhost:3002/swagger' }]);
+    expect(shortcutsOf('api', 'shop-api', multi, answers, HOST)).toEqual([{ kind: 'swagger', href: 'http://localhost:3002/swagger', reason: null }]);
+  });
+
+  it('names the browser host instead of the internal one, on the published port', () => {
+    const internal = deploy({ url: 'http://dind:20074', docsPath: '/docs' });
+    expect(shortcutsOf('api', 'shop-api', internal, probe(), 'shop.lan')).toEqual([{ kind: 'swagger', href: 'http://shop.lan:20074/docs', reason: null }]);
+  });
+
+  it('gives no link to a port the platform does not publish, and says why', () => {
+    expect(shortcutsOf('api', 'shop-api', deploy({ url: 'http://dind:8080' }), probe(), HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'a porta do serviço não está publicada' }]);
   });
 });
 
