@@ -322,6 +322,7 @@ export function RefinementView(p: ViewProps) {
   const [askRe, setAskRe] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [architectureNote, setArchitectureNote] = useState<string | null>(null);
+  const [prepareClick, setPrepareClick] = useState<{ at: number; inputHash?: string } | null>(null);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
@@ -442,10 +443,13 @@ export function RefinementView(p: ViewProps) {
   // One plan step per item, so the plans box lists the ones still to come.
   const speckitPlan = useMemo(() => speckitList.map((item) => ({ command: 'plan', itemKey: item.key })), [speckitList]);
   const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} startable={canStart} />;
+  // A preparation whose inputs did not change reuses every plan: the owner is told, since nothing on screen changes.
+  const preparedUnchanged = prepareClick !== null && !speckitRunning && speckit?.status === 'done' && speckit.startedAt !== undefined
+    && Date.parse(speckit.startedAt) >= prepareClick.at && speckit.inputHash === prepareClick.inputHash;
   // A backlog prepares once it is detailed, a single spec once it is derived.
   const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
   const prepareButton = (
-    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => p.onPreparePlans?.()} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => { setPrepareClick({ at: Date.now(), inputHash: speckit?.inputHash }); p.onPreparePlans?.(); }} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
       {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar os planos'}
     </ActionButton>
   );
@@ -1180,6 +1184,7 @@ export function RefinementView(p: ViewProps) {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {backlogOn && speckitStatus}
+      {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       {backlogBlock(startLine)}

@@ -128,6 +128,17 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('start-reason').textContent).toBe('Os documentos mudaram: prepare os planos de novo.');
   });
 
+  it('says the plans were already current when a preparation reuses them all', () => {
+    const h = handlersWithSpeckit();
+    const view = (startedAt: string) => <MemoryRouter><RefinementView snap={wizard({ speckit: speckit({ inputHash: 'sha256:a', startedAt }) as never })} busy={false} events={[]} {...h} /></MemoryRouter>;
+    const { rerender } = render(view('2020-01-01T00:00:00.000Z'));
+    expect(screen.queryByTestId('speckit-unchanged')).toBeNull();
+    fireEvent.click(screen.getByTestId('speckit-prepare'));
+    expect(h.onPreparePlans).toHaveBeenCalledTimes(1);
+    rerender(view(new Date(Date.now() + 1000).toISOString()));
+    expect(screen.getByTestId('speckit-unchanged').textContent).toBe('Os planos já estavam atuais; nada foi refeito.');
+  });
+
   it('opens "Iniciar desenvolvimento" once the preparation is done and current', () => {
     const h = handlersWithSpeckit();
     renderView(wizard({ speckit: speckit() as never }), h);
