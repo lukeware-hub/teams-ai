@@ -143,10 +143,18 @@ async function hasHead(store: Store): Promise<boolean> {
 }
 
 /** The text a file holds at HEAD, or null when HEAD does not have it. */
+async function textAtHead(store: Store, rel: string): Promise<string | null> {
+  const listed = await git(store.dir, ['ls-tree', 'HEAD', '--', rel], store.exec);
+  return listed === '' ? null : showFile(store.dir, 'HEAD', rel, store.exec);
+}
+
 async function headText(c: Ctx, rel: string): Promise<string | null> {
-  if (!c.born) return null;
-  const listed = await git(c.store.dir, ['ls-tree', 'HEAD', '--', rel], c.store.exec);
-  return listed === '' ? null : showFile(c.store.dir, 'HEAD', rel, c.store.exec);
+  return c.born ? textAtHead(c.store, rel) : null;
+}
+
+/** The text a file holds at the store's HEAD, or null when the store has no commit or the file. */
+export async function readStoreText(store: Store, rel: string): Promise<string | null> {
+  return (await hasHead(store)) ? textAtHead(store, rel) : null;
 }
 
 /** Whether a folder has any file at HEAD. */

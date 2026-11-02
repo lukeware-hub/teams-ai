@@ -210,19 +210,43 @@ export async function createNewProject(d: Draft, name: string, description = '')
 const mainFiles = async (repo: string, exec: Exec, paths: readonly string[]): Promise<string[]> =>
   (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', ...paths], exec)).split('\n').filter((f) => f !== '');
 
+/**
+ * Main as a draft reads it: the project's clone for a legacy project, the documentation store for a documentation repository.
+ * Both answer with repository paths, so the draft code reads either one the same way.
+ */
+export interface MainCopy {
+  refresh(): Promise<void>;
+  /** The repository paths under docs/ that main holds. */
+  files(): Promise<string[]>;
+  /** The text of a repository path of main, or null when main does not hold it. */
+  text(rel: string): Promise<string | null>;
+  /** A documentation repository never merges text by union: an overlapping edit keeps conflict markers. */
+  strict: boolean;
+}
+
+/** Main as the project's clone holds it: a legacy project, merged by union. */
+export const repoMain = (repo: string, exec: Exec): MainCopy => ({
+  refresh: () => gitFetch(repo, exec),
+  files: () => mainFiles(repo, exec, ['docs/']),
+  text: (rel) => showFile(repo, 'origin/main', rel, exec),
+  strict: false,
+});
+
 /** Writes each file of main under `root`, at its repository path. */
-async function copyFromMain(repo: string, exec: Exec, files: readonly string[], root: string): Promise<void> {
+async function copyFromMain(source: MainCopy, files: readonly string[], root: string): Promise<void> {
   for (const rel of files) {
     const target = path.posix.join(root, rel);
+    const text = await source.text(rel);
+    if (text === null) throw new Error(`main does not hold ${rel}`);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, await showFile(repo, 'origin/main', rel, exec));
+    await fs.writeFile(target, text);
   }
 }
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }): Promise<void> {
-  await gitFetch(repo, exec);
-  const files = await mainFiles(repo, exec, ['docs/']);
-  await copyFromMain(repo, exec, files, d.root);
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }, source: MainCopy = repoMain(repo, exec)): Promise<void> {
+  await source.refresh();
+  const files = await source.files();
+  await copyFromMain(source, files, d.root);
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
   if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
@@ -298,13 +322,13 @@ const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stac
  * Before a start: what main changed since the draft began comes into the draft, merged with the draft's own edits, and the
  * base copy moves to main, so Phase 0 publishes only this spec's changes. Returns the project docs it changed.
  */
-export async function syncWithMain(d: Draft, repo: string, exec: Exec): Promise<Array<{ file: string; hash: string }>> {
+export async function syncWithMain(d: Draft, repo: string, exec: Exec, source: MainCopy = repoMain(repo, exec)): Promise<Array<{ file: string; hash: string }>> {
   if (!d.base || !(await fs.access(d.base).then(() => true, () => false))) return []; // a new project: main does not exist yet
-  await gitFetch(repo, exec);
+  await source.refresh();
   const own = `specs/${d.specId}/`;
   const changed: Array<{ file: string; hash: string }> = [];
-  for (const rel of (await mainFiles(repo, exec, ['docs/'])).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
-    const main = await showFile(repo, 'origin/main', `docs/${rel}`, exec);
+  for (const rel of (await source.files()).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
+    const main = (await source.text(`docs/${rel}`)) ?? '';
     const base = await readBase(d, rel);
     if (sameDoc(main, base)) continue;
     const file = path.posix.join(d.docs, rel);
