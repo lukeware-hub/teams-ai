@@ -105,7 +105,7 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(o.deleteProject).not.toHaveBeenCalled();
   });
-  it('shows a server error inside the dialog and keeps the dialog open', async () => {
+  it('shows a failed background delete on the page, with the project and the reason', async () => {
     const o = { ...on(), deleteProject: vi.fn(async () => { throw new Error('não foi possível apagar acme/hello-app no GitHub'); }) };
     render(
       <MemoryRouter>
@@ -115,8 +115,9 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByTestId('delete-project-hello-app'));
     fireEvent.change(await screen.findByTestId('delete-project-name'), { target: { value: 'hello-app' } });
     fireEvent.click(screen.getByTestId('delete-confirm'));
+    expect((await screen.findByRole('alert')).textContent).toContain('hello-app');
     expect((await screen.findByRole('alert')).textContent).toContain('acme/hello-app');
-    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
   it('keeps the local delete and says so when the repositories cannot be listed', async () => {
     const o = on();
@@ -129,6 +130,36 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByTestId('delete-project-hello-app'));
     expect((await screen.findByRole('alert')).textContent).toContain('Só os arquivos locais serão apagados');
     expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+  it('closes the dialog at once, spins the card button and says the delete runs in background', async () => {
+    let finish = () => {};
+    const deleteProject = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={vi.fn()} onNewProject={vi.fn()} onDeleteDraft={vi.fn()} onDeleteProject={deleteProject} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('delete-project-hello-app'));
+    fireEvent.change(await screen.findByTestId('delete-project-name'), { target: { value: 'hello-app' } });
+    fireEvent.click(screen.getByTestId('delete-confirm'));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByText(/está sendo excluído em background/)).toBeTruthy();
+    const card = screen.getByTestId('delete-project-hello-app') as HTMLButtonElement;
+    expect(card.disabled).toBe(true);
+    expect(card.querySelector('.button-spinner')).not.toBeNull();
+    finish();
+    await waitFor(() => expect(screen.queryByText(/está sendo excluído em background/)).toBeNull());
+    expect((screen.getByTestId('delete-project-hello-app') as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('warns that a delete cannot be cancelled once it starts', async () => {
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={vi.fn()} onNewProject={vi.fn()} onDeleteDraft={vi.fn()} onDeleteProject={vi.fn()} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('delete-project-hello-app'));
+    await screen.findByTestId('delete-project-name');
+    expect(screen.getByRole('alertdialog').textContent).toContain('Depois que a exclusão começar, não tem como cancelar.');
   });
   it('submits a directory to add and shows the error', () => {
     const o = on();

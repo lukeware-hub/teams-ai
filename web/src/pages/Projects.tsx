@@ -104,6 +104,8 @@ export function ProjectsView(p: {
   const [deleteGithub, setDeleteGithub] = useState(false);
   const [typedName, setTypedName] = useState('');
   const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
   const openDeleteProject = async (project: ProjectRow) => {
     setPendingDeleteProject(project);
     setDeleteStep('loading');
@@ -120,15 +122,15 @@ export function ProjectsView(p: {
       setDeleteStep('confirm');
     }
   };
-  const confirmDeleteProject = async () => {
-    if (!pendingDeleteProject) return;
-    setDeleteDialogError(null);
-    try {
-      await p.onDeleteProject(pendingDeleteProject.projectId, deleteGithub);
-      setPendingDeleteProject(null);
-    } catch (e) {
-      setDeleteDialogError((e as Error).message);
-    }
+  const confirmDeleteProject = () => {
+    const project = pendingDeleteProject;
+    if (!project) return;
+    setPendingDeleteProject(null);
+    setDeleteFailure(null);
+    setDeletingIds((ids) => [...ids, project.projectId]);
+    void Promise.resolve(p.onDeleteProject(project.projectId, deleteGithub))
+      .catch((e: Error) => setDeleteFailure(`Não foi possível excluir ${project.projectId}: ${e.message}`))
+      .finally(() => setDeletingIds((ids) => ids.filter((id) => id !== project.projectId)));
   };
   const deleteReposDetail = (
     <>
@@ -241,6 +243,10 @@ export function ProjectsView(p: {
         </form>
       ) : null}
       {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
+      {deletingIds.map((id) => (
+        <p key={id} className="m-0 text-[0.875rem] text-ink-soft" role="status">O projeto {id} está sendo excluído em background.</p>
+      ))}
+      {deleteFailure ? <p className="error m-0" role="alert">{deleteFailure}</p> : null}
       {p.loading ? <ProjectsSkeleton /> : p.projects.length === 0 ? (
         <div className={emptyState}>
           <Icon name="list" size={24} />
@@ -289,9 +295,9 @@ export function ProjectsView(p: {
                   </p>
                 </div>
                 <div className={cardActions}>
-                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} onClick={() => void openDeleteProject(pr)}>
+                  <button type="button" className={action.danger} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} disabled={deletingIds.includes(pr.projectId)} aria-busy={deletingIds.includes(pr.projectId) || undefined} onClick={() => void openDeleteProject(pr)}>
                     Excluir
-                    <Icon name="trash" size={14} />
+                    {deletingIds.includes(pr.projectId) ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
                   </button>
                   <Link className={action.secondary} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} to={`/projects/${pr.projectId}?novaSpec=1`}>
                     Nova spec
@@ -365,7 +371,7 @@ export function ProjectsView(p: {
             ? 'Carregando repositórios…'
             : deleteStep === 'repos'
               ? 'Marque para apagar também os repositórios no GitHub. Os arquivos locais são apagados de qualquer forma.'
-              : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
+              : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito. Depois que a exclusão começar, não tem como cancelar.'}
         </ConfirmDialog>
       ) : null}
     </main>

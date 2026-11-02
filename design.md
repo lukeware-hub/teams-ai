@@ -1303,7 +1303,10 @@ Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Aç�
 
 - **Passo 1, só quando o projeto tem repositório no GitHub.** Título "Excluir projeto?", nome do projeto em `confirm-subject`, depois "Repositórios no GitHub" com a lista `owner/name` de cada repositório (projeto e serviços). Checkbox "Apagar também no GitHub", desmarcado por padrão. Botão "Continuar". Sem repositório no GitHub, o passo 1 some e a exclusão começa no passo 2.
 - **Passo 2, confirmação.** Título "Confirmar exclusão". Resumo: specs, execuções e arquivos locais; com o checkbox marcado, "N repositórios no GitHub" e a lista; "Execuções em andamento são paradas"; "Não pode ser desfeito". Campo para digitar o nome do projeto, exigido sempre: o botão "Excluir projeto" fica desabilitado até o texto bater com o nome. Botões: ✕ (cancelar, foco inicial) e "Excluir projeto".
-- **Erro.** Falha do servidor aparece dentro do diálogo, em `role="alert"`, com o nome do repositório que falhou e o comando `gh auth refresh -h github.com -s delete_repo`. O diálogo continua aberto para tentar de novo ou cancelar.
+- **Aviso antes de começar.** No passo 2, logo abaixo do resumo: "Depois que a exclusão começar, não tem como cancelar."
+- **Em background.** Ao confirmar, o diálogo fecha e a exclusão roda em background. O botão Excluir do cartão mostra um spinner no lugar do ícone e fica desabilitado. A página mostra "O projeto <id> está sendo excluído em background." enquanto a exclusão roda. A exclusão segue no servidor mesmo se a página for fechada; o spinner vive só na página.
+- **Erro na exclusão.** Falha do servidor aparece na página, em `role="alert"`, com o id do projeto e o motivo (por exemplo, o repositório que falhou no GitHub e o comando `gh auth refresh -h github.com -s delete_repo`). O spinner some e o projeto continua na lista.
+- **Erro ao listar repositórios.** Aparece dentro do diálogo, e a exclusão segue só com os arquivos locais.
 - **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
 - Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
 
