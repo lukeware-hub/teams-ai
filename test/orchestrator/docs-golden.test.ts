@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { DOCUMENT_CHARTER, DOCUMENT_PURPOSE } from '../../server/agents/document-charter.js';
-import { convergePack, devPack, reviewPack, securityPack, uiCheckPack, type PackBase } from '../../server/orchestrator/steps.js';
+import { convergePack, devPack, reviewPack, securityPack, sourceDocsRule, uiCheckPack, type PackBase } from '../../server/orchestrator/steps.js';
 import { makeFrozenSpec, makePlanTask, makeProject } from '../fixtures/contracts.js';
 
 const sha = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -29,5 +29,22 @@ describe('legacy packs and charters stay byte-identical (plan 119, I8 item 5)', 
     expect(sha(securityPack(withFiles, task, { diffStat: '', changedFiles: [], diff: '', code }).principles)).toBe('5ffad0425fcba418bdff5c82d1bcf39f1ea0843ee86bd7fc425ce1c11f40d318');
     expect(sha(uiCheckPack(withFiles, [task], { serviceUrl: 'http://x' }).principles)).toBe('5ffad0425fcba418bdff5c82d1bcf39f1ea0843ee86bd7fc425ce1c11f40d318');
     expect(sha(convergePack(withFiles, { plan: withFiles.planFile! }).principles)).toBe('5ffad0425fcba418bdff5c82d1bcf39f1ea0843ee86bd7fc425ce1c11f40d318');
+  });
+});
+
+describe('the docs-repo sentence reaches docs-repo packs only (plan 119, I8 item 5)', () => {
+  const snapshot = '/state/docs-at/draft-1';
+  const rules = (base: PackBase) => devPack(base, task, { code, handoffs: [], feedback: null }).principles.join('\n');
+
+  it('a documentation-repository pack names the snapshot and not the legacy document paths', () => {
+    const text = rules({ ...withFiles, docsRoot: snapshot });
+    expect(text).toContain(`${snapshot}/docs/project.md`);
+    expect(text).not.toContain(sourceDocsRule(spec.specId));
+  });
+
+  it('a legacy pack keeps the legacy rule and never names a snapshot', () => {
+    const text = rules(withFiles);
+    expect(text).toContain(sourceDocsRule(spec.specId));
+    expect(text).not.toContain('pinned snapshot');
   });
 });
