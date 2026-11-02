@@ -113,7 +113,7 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 }
 
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[]): BacklogCheck {
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[], docsRepo?: boolean): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -122,7 +122,7 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
-  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories });
+  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories, docsRepo });
   if (rules.length > 0) return { ok: false, issues: rules };
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));
