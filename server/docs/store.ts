@@ -524,8 +524,20 @@ async function finishClosing(ws: Pick<Workspace, 'root'>, store: Store, draftId:
   return { commit, snapshot };
 }
 
-/** Flushes the draft, adds and publishes the closing commit; a changed store or a push that never lands refuses the close. */
+const CONFLICT_MARKER_LINE = /^(<{7}|>{7})( |$)/m;
+
+/** True when the text holds a conflict marker line. */
+export const holdsConflictMarkers = (text: string): boolean => CONFLICT_MARKER_LINE.test(text);
+
+/** Refuses the closing while a document still holds a conflict marker, naming the file. */
+function assertNoMarkers(files: Record<string, string>): void {
+  const marked = FIVE_DOC_PATHS.filter((file) => holdsConflictMarkers(files[file] ?? ''));
+  if (marked.length > 0) throw new DocsStoreError(`${marked.join(', ')} still holds conflict markers; nothing launches`);
+}
+
+/** Flushes the draft, adds and publishes the closing commit; a changed store, a marker or a push that never lands refuses the close. */
 export async function closeRefinement(ws: Pick<Workspace, 'root'>, store: Store, p: Projection, closing: Closing): Promise<{ commit: string; snapshot: string }> {
+  assertNoMarkers(p.files);
   for (let attempt = 1; attempt <= CLOSE_TRIES; attempt++) {
     const flushed = await commitProjection(store, p);
     const refused = [...flushed.diverged, ...flushed.aliasTaken];
