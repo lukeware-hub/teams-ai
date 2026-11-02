@@ -299,6 +299,11 @@ export class SessionRegistry {
     }
   }
 
+  /** One documentation repository flush for each live session that has a boundary or a failure waiting: the timer calls it. */
+  async tickDocs(): Promise<void> {
+    await Promise.all([...this.sessions.values()].map((p) => p.then((s) => s.tickDocs()).catch((err) => console.error(`docs tick: ${err instanceof Error ? err.message : String(err)}`))));
+  }
+
   /** Spec (refinement) §3.6: freeze the spec, spawn `run --draft`, register the draft root as a project. */
   async start(projectId: string, specId: string, summaryHash?: string): Promise<{ runId: string; program?: Program }> {
     const session = await this.get(projectId, specId);

@@ -157,7 +157,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   });
   // R11.4: the program ledgers of started backlogs are reconciled here, so a restart of the container picks every one up again.
   // A rejected tick would be an unhandled rejection, which ends the process.
-  const tick = () => registry.tickPrograms().catch((err) => io.stderr(`programs tick: ${err instanceof Error ? err.message : String(err)}`));
+  const tick = () => Promise.all([registry.tickPrograms(), registry.tickDocs()]).catch((err) => io.stderr(`registry tick: ${err instanceof Error ? err.message : String(err)}`));
   const programTimer = setInterval(tick, PROGRAM_TICK_MS);
   programTimer.unref();
   setTimeout(tick, 5_000).unref();
