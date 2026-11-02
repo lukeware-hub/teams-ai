@@ -53,6 +53,18 @@ const started = (runId: string) => ({ type: 'RUN_STARTED', data: { runId, specId
 const state = (status: string) => ({ runId: 'x', at: '2026-09-24T10:01:00.000Z', status, tasks: [], tokens: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 1 } });
 
 describe('supervise', () => {
+  it('never resumes a deploy, a completion or a README: only an implementation run is the supervisor\'s to bring back', async () => {
+    const DEPLOY = 'hello-app--hello-001--deploy-run-1';
+    const COMPLETE = 'hello-app--hello-001--complete-run-1';
+    const README = 'hello-app--hello-001--readme-run-1';
+    // Each has a state.json and a dead pid, so each reads as interrupted: only the kind keeps the supervisor away.
+    await writeRun(runs, DEPLOY, [started(DEPLOY)], state('running'), 121);
+    await writeRun(runs, COMPLETE, [started(COMPLETE)], state('running'), 122);
+    await writeRun(runs, README, [started(README)], state('running'), 123);
+    expect(await superviseTick(deps(), new Map())).toEqual([]);
+    expect(spawned).toHaveLength(0);
+  });
+
   it('resumes only interrupted unfinished runs, never finished, live, auth-paused or stopped ones', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 111); // dead pid: interrupted
     await writeRun(runs, 'hello-001-r2', [started('hello-001-r2'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'), 112);
