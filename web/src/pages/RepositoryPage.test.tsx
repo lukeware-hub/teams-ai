@@ -71,7 +71,7 @@ describe('RepositoryPage', () => {
     renderAt();
     const tasks = within(await screen.findByTestId('card-tasks'));
     expect(tasks.getByText('3')).toBeTruthy();
-    expect(tasks.getByText('1 concluídas · 1 pendentes · 0 em execução')).toBeTruthy();
+    expect(tasks.getByText('1 concluída · 1 pendente · 0 em execução')).toBeTruthy();
     expect(within(screen.getByTestId('card-progress')).getByText('33%')).toBeTruthy();
     expect(within(screen.getByTestId('card-blockers')).getByText('1')).toBeTruthy();
   });
@@ -108,8 +108,7 @@ describe('RepositoryPage', () => {
     renderAt();
     fireEvent.click(await screen.findByTestId('start-system'));
     expect(deploy).toHaveBeenCalledWith('shop', 'cart');
-    const swagger = screen.getByTestId('shortcut-swagger') as HTMLButtonElement;
-    expect(swagger.disabled).toBe(true);
+    expect(screen.getByTestId('shortcut-swagger').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText('sistema desligado')).toBeTruthy();
   });
 
@@ -127,6 +126,15 @@ describe('RepositoryPage', () => {
     renderAt();
     expect(within(await screen.findByTestId('agent-dev')).getByText('2 criadas · 1 iniciadas · 1 concluídas')).toBeTruthy();
     expect(within(screen.getByTestId('agent-test')).getByText('4 passaram · 1 falharam')).toBeTruthy();
+  });
+
+  it('says it could not check the system when the probe fails, instead of checking forever', async () => {
+    vi.spyOn(runApi, 'serviceStatus').mockRejectedValue(new Error('500'));
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    renderAt();
+    expect(await screen.findByText('não foi possível verificar o sistema')).toBeTruthy();
+    expect(screen.queryByText('verificando se o sistema responde')).toBeNull();
   });
 
   it('says the repository is missing when the server does not give it', async () => {
