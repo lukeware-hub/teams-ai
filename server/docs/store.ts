@@ -6,7 +6,7 @@ import { execCommand, type Exec } from '../exec/command.js';
 import { createAnnotatedTag, git, headSha, isAncestor, pushMain, pushTags, remoteTagTarget, showFile, withRepoLock } from '../git/git.js';
 import { createPrivateRepo, repoInfo, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
+import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, parseRepoPath, startTagOf, type RepoTarget, type Style } from './layout.js';
 import {
   docsClosingRoot,
   docsMarkerPath,
@@ -150,6 +150,13 @@ async function textAtHead(store: Store, rel: string): Promise<string | null> {
 
 async function headText(c: Ctx, rel: string): Promise<string | null> {
   return c.born ? textAtHead(c.store, rel) : null;
+}
+
+/** The aliases that have a spec file at the store's HEAD: every spec folder the documentation repository holds. */
+export async function aliasesOnStore(store: Store): Promise<string[]> {
+  if (!(await hasHead(store))) return [];
+  const paths = (await git(store.dir, ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'docs'], store.exec)).split('\n');
+  return [...new Set(paths.map((p) => parseRepoPath(p)).filter((alias): alias is string => alias !== null))];
 }
 
 /** The text a file holds at the store's HEAD, or null when the store has no commit or the file. */

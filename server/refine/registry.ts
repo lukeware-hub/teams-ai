@@ -15,8 +15,8 @@ import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { CENTRAL_REPO } from '../docs/layout.js';
-import { docsRepoLayoutEnabled, isDocsRepo, readDocsMarker, readState } from '../docs/project-state.js';
-import { storeOf } from '../docs/store.js';
+import { docsRepoLayoutEnabled, isDocsRepo, listState, readDocsMarker, readState, readStateText, type DocsMarker } from '../docs/project-state.js';
+import { aliasesOnStore, storeOf } from '../docs/store.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
@@ -182,10 +182,31 @@ export class SessionRegistry {
     return this.session(draft, ws, 'new-project');
   }
 
+  /** The marker of a documentation repository whose first push landed; a legacy project, or a binding not finished, has none. */
+  private async boundMarker(ws: Workspace): Promise<DocsMarker | null> {
+    const marker = await readDocsMarker(ws);
+    return marker?.firstSha ? marker : null;
+  }
+
   /** Main as this project's drafts read it: the store of a bound documentation repository, else the project's clone. */
   private async mainOf(ws: Workspace): Promise<MainCopy> {
-    const marker = await readDocsMarker(ws);
-    return marker?.firstSha ? docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec)) : repoMain(ws.repo, this.deps.exec);
+    const marker = await this.boundMarker(ws);
+    return marker ? docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec)) : repoMain(ws.repo, this.deps.exec);
+  }
+
+  /** A follow-on draft of a bound documentation repository starts from the mirror, so the mirror must hold the project. */
+  private async assertMirrorProject(ws: Workspace): Promise<void> {
+    if (!(await this.boundMarker(ws))) return;
+    if ((await readStateText(ws, 'project.json')) === undefined) throw new ConflictError(`o projeto ${ws.projectId} ainda não tem project.json no espelho; inicie uma spec antes de criar outra`);
+  }
+
+  /** A new spec of a bound documentation repository takes an alias that neither the mirror nor the store holds. */
+  private async assertAliasFree(ws: Workspace, specId: string): Promise<void> {
+    const marker = await this.boundMarker(ws);
+    if (!marker) return;
+    const onMirror = (await listState(ws, `specs/${specId}`)).length > 0;
+    const onStore = (await aliasesOnStore(storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec))).includes(specId);
+    if (onMirror || onStore) throw new ConflictError(`o alias ${specId} já existe no repositório de documentos; escolha outro nome para a spec`);
   }
 
   private async specOnMain(ws: Workspace, specId: string): Promise<Spec | null> {
@@ -209,6 +230,8 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);
+    await this.assertMirrorProject(ws);
+    await this.assertAliasFree(ws, specId);
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description }, await this.mainOf(ws));
     return this.session(draft, ws, 'new-spec');
   }
@@ -217,6 +240,7 @@ export class SessionRegistry {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
     const ws = await this.ws(projectId);
+    await this.assertMirrorProject(ws);
     const spec = await this.specOnMain(ws, specId);
     if (spec?.status === 'done') throw new ConflictError(`spec ${specId} is concluded; create a new spec`);
     if (spec?.status !== 'awaiting-validation') throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation specs continue`);
