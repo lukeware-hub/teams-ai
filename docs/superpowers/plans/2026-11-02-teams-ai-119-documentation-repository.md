@@ -201,11 +201,13 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I7 - Closing, tags, Phase 0 narrowed (size L, weight 3)
 
-- [ ] `beginStart` holds `starting` until the start is marked or failed; discard refused while starting. The legacy single-spec leak is fixed in its own commit with its own test.
-- [ ] `syncWithMain` no longer clears `starting`.
-- [ ] Closing: flush, closing commit with trailers, push until ancestor of `origin/main`, detached snapshot; nothing launches on failure.
-- [ ] Tags after launch: annotated, `dev-start/<alias>` or `.N`, pushed atomically, retried by `tickDocs`; a tag failure never fails the start.
-- [ ] Microservices: `ws.repo` is the hub repository, which receives the delivery documents (C-2).
+- [x] `beginStart` holds `starting` until the start is marked or failed; discard refused while starting. The legacy single-spec leak is fixed in its own commit with its own test.
+- [x] `syncWithMain` no longer clears `starting`.
+- [x] Closing: flush, closing commit with trailers, push until ancestor of `origin/main`, detached snapshot; nothing launches on failure.
+- [x] Tags after launch: annotated, `dev-start/<alias>` or `.N`, pushed atomically, retried by `tickDocs`; a tag failure never fails the start.
+- [x] Microservices: `ws.repo` is the hub repository, which receives the delivery documents (C-2).
+
+Notes from the I7 review: the start flag is taken after the main sync, because the sync guard would refuse otherwise (a characterization test pins it); the run deps read the docs marker twice on load, and that stays open.
 
 ## I8 - Development side (size L, weight 3)
 
