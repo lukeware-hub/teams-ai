@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
-import { FIVE_DOCS } from '../../docs/layout.js';
+import { FIVE_DOCS, FIVE_DOC_PATHS, repoPath, type DocsRun } from '../../docs/layout.js';
+import type { Spec } from '../../contracts/spec.js';
 import { writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
@@ -31,6 +32,14 @@ async function missingDraftFile(docsDir: string, specId: string): Promise<string
   return null;
 }
 
+/** The first file of the closing snapshot a docs-repo start needs that is missing, by its repository path; null when all are there. */
+async function missingSnapshotFile(docs: DocsRun, spec: Pick<Spec, 'specId' | 'repository'>): Promise<string | null> {
+  const service = docs.style === 'microservices' ? spec.repository : undefined;
+  const files = [...FIVE_DOC_PATHS, repoPath(docs.style, 'plan', spec.specId, service), repoPath(docs.style, 'task', spec.specId, service)];
+  for (const file of files) if (!(await exists(path.join(docs.snapshot, file)))) return file;
+  return null;
+}
+
 /** The machine files of a docs-repo start: the project's JSON and the spec's own folder, the spec's spec.json last. */
 async function machineFilesOf(docsDir: string, specId: string): Promise<string[]> {
   const own = `specs/${specId}/spec.json`;
@@ -38,8 +47,23 @@ async function machineFilesOf(docsDir: string, specId: string): Promise<string[]
   return [...files.filter((rel) => rel !== own), ...files.filter((rel) => rel === own)];
 }
 
-/** Phase 0 of a docs-repo project: no repository and no network, only the draft is checked and its machine files reach the mirror. */
-async function runDocsRepoPhase0(deps: PhaseDeps, opts: { docsDir: string }): Promise<PhaseResult> {
+/** The project's repository, cloned, and on GitHub: the project itself, or the hub of a microservice project. It holds no document. */
+async function ensureProjectRepo(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined): Promise<PhaseResult> {
+  if (await ready(deps.ws.repo, deps.exec)) return { ok: true };
+  try {
+    await cloneOrCreate(deps, undefined, deps.ws.repo, owner);
+    await gitFetch(deps.ws.repo, deps.exec);
+    return { ok: true };
+  } catch (err) {
+    if ((err as { fatal?: boolean }).fatal) throw err; // CrashInjected (test hook) must still kill the process
+    const reason = (err as Error).message;
+    await deps.journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
+}
+
+/** Phase 0 of a docs-repo project: the draft and the closing snapshot are checked, the machine files reach the mirror, and the repository exists with no document. */
+async function runDocsRepoPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined; docs?: DocsRun }): Promise<PhaseResult> {
   const { journal, ws, spec } = deps;
   const missing = await missingDraftFile(opts.docsDir, spec.specId);
   if (missing) {
@@ -47,12 +71,18 @@ async function runDocsRepoPhase0(deps: PhaseDeps, opts: { docsDir: string }): Pr
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
     return { ok: false, reason };
   }
+  const pinned = opts.docs ? await missingSnapshotFile(opts.docs, spec) : null;
+  if (pinned) {
+    const reason = `the document ${pinned} is not in the closing snapshot`;
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
   for (const rel of await machineFilesOf(opts.docsDir, spec.specId)) await writeState(ws, rel, await fs.readFile(path.join(opts.docsDir, rel), 'utf8'));
-  return { ok: true };
+  return ensureProjectRepo(deps, opts.owner);
 }
 
 /** Spec (refinement) §4: put the draft's docs on main — by creating the repository or by a docs PR. */
-export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined }): Promise<PhaseResult> {
+export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined; docs?: DocsRun }): Promise<PhaseResult> {
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
   if (deps.docsRepo) return runDocsRepoPhase0(deps, opts);
@@ -185,8 +215,8 @@ const ready = async (repo: string, exec: Exec): Promise<boolean> =>
  * Clones the service's repository, or creates it on GitHub from an empty first commit on main when GitHub does not have it.
  * A repository GitHub has without main (made by hand, or a creation that crashed) gets the same first commit and its main pushed.
  */
-async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string, repo: string, owner: string | undefined): Promise<void> {
-  const name = repoName(deps.project.projectId, service);
+async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string | undefined, repo: string, owner: string | undefined): Promise<void> {
+  const name = service === undefined ? deps.project.projectId : repoName(deps.project.projectId, service);
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: deps.ws.root, timeoutMs: 60_000 });
   const login = owner ?? (await githubLogin(gh));
   const view = await gh(['repo', 'view', `${login}/${name}`, '--json', 'nameWithOwner,url']);
