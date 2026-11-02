@@ -10,6 +10,7 @@ import { reportPack } from '../steps.js';
 import { commitAndMergeDocs, currentDocs, freshDocsWorktree, pauseForFailure, specDir, PAUSED_AUTH, type PhaseDeps } from './shared.js';
 import { serviceLinks } from '../../deploy/service-links.js';
 import { priorRunEvents } from '../workspace.js';
+import { readState } from '../../docs/project-state.js';
 import { checkGaps, type GapsReport } from './gaps.js';
 
 /** One service of a services run, as Phase 5 verified it. */
@@ -102,6 +103,6 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
   await fs.writeFile(path.join(wt, 'docs', 'README.md'), `${readme.trimEnd()}\n`);
   await fs.writeFile(path.join(wt, 'docs', 'RUNBOOK.md'), `${runbook.trimEnd()}\n`);
   if (apiDocs.trim()) await fs.writeFile(path.join(wt, 'docs', 'API.md'), `${apiDocs.trimEnd()}\n`);
-  if (deps.result === 'awaiting-validation') { const file = path.join(dir, 'spec.json'); const specJson = JSON.parse(await fs.readFile(file, 'utf8')); await fs.writeFile(file, `${JSON.stringify({ ...specJson, status: 'awaiting-validation' }, null, 2)}\n`); }
+  if (deps.result === 'awaiting-validation') { const file = path.join(dir, 'spec.json'); const specJson = deps.docsRepo ? await readState(deps.ws, `specs/${deps.spec.specId}/spec.json`) : JSON.parse(await fs.readFile(file, 'utf8')); await fs.writeFile(file, `${JSON.stringify({ ...specJson, status: 'awaiting-validation' }, null, 2)}\n`); }
   const merged = await commitAndMergeDocs(deps, 6, branch, wt, `docs(${deps.spec.specId}): report`); await deps.journal.fact(OrchEvent.ReportReady, { report, merged: merged.ok }); return merged.ok ? { ok: true, report } : { ok: false, report, reason: merged.reason };
 }

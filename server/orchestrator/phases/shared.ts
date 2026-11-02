@@ -18,6 +18,7 @@ import { commitAll, createWorktree, fetch as gitFetch, git, removeWorktree, with
 import type { MergeQueue } from '../../git/merge-queue.js';
 import type { StepOutcome } from '../../runner/step.js';
 import type { DocsInput } from '../../validators/docs.js';
+import { readState } from '../../docs/project-state.js';
 import { Intent, OrchEvent, type Journal } from '../events.js';
 import { docsMergeSteps, type MergeStepsDeps } from '../merge-steps.js';
 import type { AgentStepRequest, PackBase } from '../steps.js';
@@ -43,6 +44,8 @@ export interface PhaseDeps {
   /** The folder holding every project's workspace; Phase 2 reads the other projects' deploy ports from it. */
   workspacesRoot?: string;
   ws: Workspace;
+  /** Set when the project's documents live in a documentation repository; its machine files are in the mirror of `ws`. */
+  docsRepo?: boolean;
   spec: Spec;
   project: Project;
   specHash: string;
@@ -106,8 +109,16 @@ export type PhaseResult = { ok: true } | { ok: false; reason: string };
 
 export const specDir = (specId: string) => path.posix.join('docs', 'specs', specId);
 
-/** What main already carries for this spec; lets a resumed run skip finished phases. */
-export async function readDocs(repo: string, specId: string, exec?: Exec): Promise<{ techSpecText: string | null; plan: AnyPlan | null; preplan: Preplan | null }> {
+/** The plan and pre-plan of a docs-repo project, read from its mirror; it has no technical text, the plan is the technical specification. */
+async function readMirrorDocs(mirror: Pick<Workspace, 'root'>, specId: string): Promise<{ techSpecText: null; plan: AnyPlan | null; preplan: Preplan | null }> {
+  const plan = await readState(mirror, `specs/${specId}/plan.json`);
+  const preplan = await readState(mirror, `specs/${specId}/preplan.json`);
+  return { techSpecText: null, plan: plan === undefined ? null : parseAnyPlan(plan), preplan: preplan === undefined ? null : Preplan.parse(preplan) };
+}
+
+/** What main already carries for this spec; lets a resumed run skip finished phases. A docs-repo project passes its workspace as `mirror`. */
+export async function readDocs(repo: string, specId: string, exec?: Exec, mirror?: Pick<Workspace, 'root'>): Promise<{ techSpecText: string | null; plan: AnyPlan | null; preplan: Preplan | null }> {
+  if (mirror) return readMirrorDocs(mirror, specId);
   const show = async (rel: string) => {
     try {
       // Queued behind whatever else holds the repo lock (afterMerge's checkout and reset, a fetch), never beside it.

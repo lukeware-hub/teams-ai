@@ -54,6 +54,7 @@ import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
+import { readState } from '../docs/project-state.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -360,7 +361,7 @@ export class Run {
 
   private async loadPlan(): Promise<AnyPlan | null> {
     const { readDocs } = await import('./phases/shared.js');
-    return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec)).plan;
+    return (await readDocs(this.deps.ws.repo, this.deps.spec.specId, this.deps.exec, this.deps.docsRepo ? this.deps.ws : undefined)).plan;
   }
 
   /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
@@ -672,7 +673,7 @@ export class Run {
   private phaseDeps(): PhaseDeps {
     const single = singlePlan(this.plan);
     return {
-      journal: this.journal, ws: this.deps.ws, artifactsDir: path.join(runDir(this.deps.ws, this.runId), 'artifacts'), workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
+      journal: this.journal, ws: this.deps.ws, docsRepo: this.deps.docsRepo, artifactsDir: path.join(runDir(this.deps.ws, this.runId), 'artifacts'), workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
       runAgent: this.runAgent,
       generatedSecretNames: this.deps.cfg.environment.generatedSecrets,
       environment: this.environment(),
@@ -875,7 +876,7 @@ export class Run {
     const branch = `docs/${this.deps.spec.specId}-done`;
     const wt = await (await import('./phases/shared.js')).docsWorktree(this.phaseDeps(), branch);
     const file = path.join(wt, 'docs', 'specs', this.deps.spec.specId, 'spec.json');
-    const current = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    const current = (this.deps.docsRepo ? await readState(this.deps.ws, `specs/${this.deps.spec.specId}/spec.json`) : JSON.parse(await fs.readFile(file, 'utf8'))) as Record<string, unknown>;
     await fs.writeFile(file, `${JSON.stringify({ ...current, status: 'done' }, null, 2)}\n`);
     const merged = await (await import('./phases/shared.js')).commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${this.deps.spec.specId}): done`);
     if (!merged.ok) return this.finish('phase-failed', merged.reason);
@@ -890,7 +891,7 @@ export class Run {
     const wt = await shared.freshDocsWorktree(this.phaseDeps(), branch, 6);
     const rel = (...p: string[]) => path.join(wt, ...p);
     this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
-    const plan = await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
+    const plan = this.deps.docsRepo ? ((await readState(this.deps.ws, `specs/${specId}/plan.json`)) as Plan | undefined) ?? null : await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
     const current = await shared.currentDocs(wt);
     let readme = '';
     let runbook = '';
@@ -922,9 +923,9 @@ export class Run {
     if (!this.deps.target) return this.finish('phase-failed', 'no deployment target');
     const specId = this.deps.spec.specId;
     await gitFetch(this.deps.ws.repo, this.deps.exec);
-    const text = await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).catch(() => null);
-    if (!text) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
-    this.plan = parseAnyPlan(JSON.parse(text));
+    const plan = this.deps.docsRepo ? await readState(this.deps.ws, `specs/${specId}/plan.json`) : await this.gitLocked(['show', `origin/main:docs/specs/${specId}/plan.json`]).then((text) => JSON.parse(text) as unknown, () => undefined);
+    if (plan === undefined) return this.finish('phase-failed', `main has no docs/specs/${specId}/plan.json`);
+    this.plan = parseAnyPlan(plan);
     // A fresh clone (an import) has no installed test dependencies, and smoke and e2e run from them.
     for (const view of servicePlans(this.plan)) {
       const install = await this.installInGate(view);

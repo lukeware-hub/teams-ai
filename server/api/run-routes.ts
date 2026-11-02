@@ -39,6 +39,7 @@ import { HttpError, type Route } from './server.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS } from '../core/ids.js';
+import { isDocsRepo, readState } from '../docs/project-state.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
 
@@ -785,11 +786,15 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           .then((p) => p.specs.find((s) => s.specId === specId) ?? null)
           .catch(() => null);
         const project = await projectDir(idx, projectId, specId).catch(() => null);
-        const plan = project
-          ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
-              .then((text) => AnyPlan.safeParse(JSON.parse(text)).data ?? null)
-              .catch(() => null)
-          : null;
+        const docsWs = workspacePaths(idx.cfg, projectId, deps.home);
+        const docsRepo = await isDocsRepo(docsWs);
+        const plan = docsRepo
+          ? AnyPlan.safeParse(await readState(docsWs, `specs/${specId}/plan.json`)).data ?? null
+          : project
+            ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'plan.json'), 'utf8')
+                .then((text) => AnyPlan.safeParse(JSON.parse(text)).data ?? null)
+                .catch(() => null)
+            : null;
         const repoUrl = await repoUrlOf(workspacePaths(idx.cfg, projectId, deps.home).repo);
         // docs/README.md as merged on main; the working tree is the fallback for a clone without origin/main.
         const readme = project
@@ -801,7 +806,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         // A run with no report of its own (the deploy run of an imported spec) shows the one merged on main.
         const own = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report;
         const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED')?.data;
-        const merged = own ?? (project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
+        const merged = own ?? (docsRepo ? ((await readState(docsWs, `specs/${specId}/report.json`)) ?? null) : project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
         // The merged report keeps the address of its own deploy; this run's deploy may have used another port.
         const report = own || !deployed ? merged : withDeployedAddress(merged, deployed);
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;

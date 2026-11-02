@@ -17,7 +17,7 @@ import { PAUSED_AUTH, commitAndMergeDocs, docsCommitKey, docsWorktree, pauseForF
 
 /** Spec (orchestrator) §4.3. */
 export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<PhaseResult & { plan?: AnyPlan }> {
-  const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec);
+  const existing = await readDocs(deps.ws.repo, deps.spec.specId, deps.exec, deps.docsRepo ? deps.ws : undefined);
   if (existing.plan !== null && !planIsStale(existing.plan, deps.specHash)) {
     await journalTasks(deps, existing.plan);
     return { ok: true, plan: existing.plan };

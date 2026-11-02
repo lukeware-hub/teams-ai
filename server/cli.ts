@@ -56,7 +56,7 @@ import { readRepairNotes } from './program/repair-notes.js';
 import { readOwnerDecisions } from './orchestrator/owner-decisions.js';
 import { ensureAgentPlugins } from './skills/plugins.js';
 import { clearPrivateSkills, ensurePinnedSkills } from './skills/store.js';
-import { readDocsMarker } from './docs/project-state.js';
+import { isDocsRepo, readState } from './docs/project-state.js';
 
 export interface CliIo {
   argv: string[];
@@ -259,6 +259,7 @@ export async function markRunningAgain(projectDir: string, specId: string, repo:
 /** A draft root whose spec main lacks (Phase 0 stopped before publishing it) publishes it first, also when started again. */
 export async function startsAsDraft(exec: Exec, projectDir: string, ws: { root: string; repo: string }, specId: string): Promise<boolean> {
   if (!path.resolve(projectDir).startsWith(path.resolve(ws.root, 'refine') + path.sep)) return false;
+  if (await isDocsRepo(ws)) return (await readState(ws, `specs/${specId}/spec.json`)) === undefined;
   const r = await exec({ bin: 'git', args: ['-C', ws.repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 }).catch(() => null);
   return r?.exitCode !== 0;
 }
@@ -267,15 +268,24 @@ async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
 
-async function preconditions(exec: Exec, repo: string, specId: string, draft: boolean, complete = false, readme = false, deploy = false): Promise<string[]> {
+/** The reasons a run cannot start, empty when none; a docs-repo project reads its machine files from the mirror. */
+export async function preconditions(exec: Exec, ws: { root: string; repo: string }, specId: string, draft: boolean, complete = false, readme = false, deploy = false): Promise<string[]> {
   const errors: string[] = [];
   const check = async (label: string, spec: Parameters<Exec>[0], test?: (stdout: string) => boolean) => {
     const r = await exec(spec).catch(() => null);
     if (!r || r.exitCode !== 0 || (test && !test(r.stdout))) errors.push(label);
   };
-  if (!draft) await check('repo/ is not a git clone with origin', { bin: 'git', args: ['-C', repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeoutMs: 60_000 });
-  if (!draft) await check('main lacks docs/project.json', { bin: 'git', args: ['-C', repo, 'cat-file', '-e', 'origin/main:docs/project.json'], timeoutMs: 10_000 });
-  if (!draft) await check(`main lacks docs/specs/${specId}/spec.json`, { bin: 'git', args: ['-C', repo, 'cat-file', '-e', `origin/main:docs/specs/${specId}/spec.json`], timeoutMs: 10_000 });
+  const docsRepo = await isDocsRepo(ws);
+  const onMain = async (label: string, rel: string) => {
+    if (docsRepo) {
+      if ((await readState(ws, rel)) === undefined) errors.push(label);
+      return;
+    }
+    await check(label, { bin: 'git', args: ['-C', ws.repo, 'cat-file', '-e', `origin/main:docs/${rel}`], timeoutMs: 10_000 });
+  };
+  if (!draft) await check('repo/ is not a git clone with origin', { bin: 'git', args: ['-C', ws.repo, 'ls-remote', '--exit-code', 'origin', 'refs/heads/main'], timeoutMs: 60_000 });
+  if (!draft) await onMain('main lacks docs/project.json', 'project.json');
+  if (!draft) await onMain(`main lacks docs/specs/${specId}/spec.json`, `specs/${specId}/spec.json`);
   if (deploy) await check('docker daemon is not reachable', { bin: 'docker', args: ['version'], timeoutMs: 30_000 });
   if (!complete && !deploy) {
     await check('claude is not logged in', { bin: 'claude', args: ['auth', 'status', '--json'], timeoutMs: 30_000 }, (out) => /"loggedIn":\s*true/.test(out));
@@ -310,7 +320,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
   if (!opts.dryRun) await prepareSkills(exec, io.env, (line) => io.stderr(line));
   const draft = opts.draft === true || (!opts.complete && !opts.readme && !opts.deploy && (await startsAsDraft(exec, projectDir, ws, specId)));
-  const errors = await preconditions(exec, ws.repo, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
+  const errors = await preconditions(exec, ws, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
@@ -335,7 +345,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets, cfg.environment.generatedSecrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   const planFile = await planFileFor(projectDir, specId);
   const taskFile = await taskFileFor(projectDir, specId);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: (await readDocsMarker(ws)) !== null };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: await isDocsRepo(ws) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

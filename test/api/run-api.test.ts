@@ -7,6 +7,7 @@ import { commitAll } from '../../server/git/git.js';
 import { claimLaunch } from '../../server/api/run-index.js';
 import { runRoutes } from '../../server/api/run-routes.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
+import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import { startApi } from '../../server/api/server.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import type { HttpGet } from '../../server/deploy/target.js';
@@ -874,6 +875,17 @@ describe('run detail, events and steps', () => {
     const d = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
     expect(d.plan.specId).toBe('hello-001');
     expect(d.plan.tasks.some((task: { id: string }) => task.id === 'T0-scaffold')).toBe(true);
+  });
+
+  it('reads the plan and the report of a docs-repo project from its mirror, not from the project folder', async () => {
+    const ws = workspacePaths((await readUserConfig(home)).cfg, 'hello-app', home);
+    await writeDocsMarker(ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'hello-app' }, firstSha: null });
+    await writeState(ws, 'specs/hello-001/plan.json', JSON.stringify(makePlan(makeFrozenSpec({ specId: 'hello-001' }))));
+    await writeState(ws, 'specs/hello-001/report.json', JSON.stringify({ specId: 'hello-001', summary: 'from the mirror' }));
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    const d = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(d.plan.specId).toBe('hello-001');
+    expect(d.report).toEqual({ specId: 'hello-001', summary: 'from the mirror' });
   });
 
   it('accepts an open section of the report as out of scope, and only an open one with a note', async () => {

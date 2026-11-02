@@ -44,6 +44,9 @@ export async function readDocsMarker(ws: Pick<Workspace, 'root'>): Promise<DocsM
   return DocsMarker.parse(JSON.parse(text));
 }
 
+/** Whether the project is bound to a documentation repository, so its machine files live in the mirror. */
+export const isDocsRepo = async (ws: Pick<Workspace, 'root'>): Promise<boolean> => (await readDocsMarker(ws)) !== null;
+
 export async function writeDocsMarker(ws: Pick<Workspace, 'root'>, marker: DocsMarker): Promise<void> {
   const file = docsMarkerPath(ws);
   await fs.mkdir(path.posix.dirname(file), { recursive: true });
@@ -75,6 +78,9 @@ function parseState(text: string | undefined): unknown {
 export async function readState(ws: Pick<Workspace, 'root'>, rel: string): Promise<unknown> {
   return parseState(await readText(statePath(ws, rel)));
 }
+
+/** The names of the entries of a folder of the mirror; none when the folder is missing. */
+export const listState = (ws: Pick<Workspace, 'root'>, rel: string): Promise<string[]> => fs.readdir(statePath(ws, rel)).catch(() => []);
 
 export async function writeState(ws: Pick<Workspace, 'root'>, rel: string, text: string): Promise<void> {
   const file = statePath(ws, rel);

@@ -14,6 +14,7 @@ import { fetch as gitFetch, git } from '../git/git.js';
 import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { isDocsRepo, readState } from '../docs/project-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
@@ -170,6 +171,10 @@ export class SessionRegistry {
   private async specOnMain(ws: Workspace, specId: string): Promise<Spec | null> {
     if (!(await exists(path.join(ws.repo, '.git')))) {
       throw new ConflictError(`project ${ws.projectId} has no workspace clone; run it once from the CLI or add it as a project`);
+    }
+    if (await isDocsRepo(ws)) {
+      const json = await readState(ws, `specs/${specId}/spec.json`);
+      return json === undefined ? null : Spec.parse(json);
     }
     await gitFetch(ws.repo, this.deps.exec);
     const text = await git(ws.repo, ['show', `origin/main:docs/specs/${specId}/spec.json`], this.deps.exec).catch(() => null);
