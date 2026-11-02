@@ -130,7 +130,7 @@ describe('DocsSync keeps a refused flush out of history', () => {
     await edit('stack.md', 'stack changed\n');
     s.boundary('backlog enabled');
     await s.tick();
-    expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md') });
+    expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md'), refused: true });
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
     expect(await git(storeDir(), ['status', '--porcelain'])).toBe('');
@@ -139,7 +139,7 @@ describe('DocsSync keeps a refused flush out of history', () => {
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.tick();
-    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
@@ -158,13 +158,13 @@ describe('DocsSync keeps a refused flush out of history', () => {
     const refusal = s.view.lastError;
     expect(refusal).toContain('docs/project.md');
     await s.tick();
-    expect(s.view).toEqual({ pending: 2, lastError: refusal });
+    expect(s.view).toEqual({ pending: 2, lastError: refusal, refused: true });
     await commitProjection(storeOf(ws, 'monolith', exec), {
       draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side undone',
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.flush();
-    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
 });
@@ -209,7 +209,7 @@ describe('DocsSync counts a change by the flush that projects it', () => {
     s = new DocsSync({ ws, draft, style: 'monolith', exec: racing, aliases: () => [] });
     s.boundary('backlog enabled');
     await s.tick();
-    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('arrived');
   });
 });
@@ -251,16 +251,16 @@ describe('DocsSync keeps a refusal at open when no change is pending', () => {
     await edit('project.md', 'mine\n');
     await edit('stack.md', 'stack changed\n');
     await s.flush();
-    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md') });
+    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md'), refused: true });
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
     await s.tick();
-    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md') });
+    expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md'), refused: true });
     await commitProjection(storeOf(ws, 'monolith', exec), {
       draftId: 'other-draft', stepKey: 'other', scope: 'refine', label: 'other side undone',
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.flush();
-    expect(s.view).toEqual({ pending: 0, lastError: null });
+    expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
 });

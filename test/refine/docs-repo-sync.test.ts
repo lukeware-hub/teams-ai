@@ -127,7 +127,7 @@ describe('a documentation repository session syncs its documents', () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
     const events = s.events.length;
     offline = true;
     await s.tickDocs();
@@ -136,7 +136,7 @@ describe('a documentation repository session syncs its documents', () => {
     expect(failed?.pending).toBe(1);
     offline = false;
     await s.tickDocs();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
     expect(s.events.length).toBe(events);
   });
 
@@ -147,7 +147,7 @@ describe('a documentation repository session syncs its documents', () => {
     await s.tickDocs();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
     await s.tickDocs();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
   });
 
   it('a session that is not a documentation repository has no docsSync', async () => {

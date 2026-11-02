@@ -10,6 +10,8 @@ import type { Draft } from './draft.js';
 export interface DocsSyncView {
   pending: number;
   lastError: string | null;
+  /** True when lastError is the store's refusal, which names its documents in plain words. */
+  refused: boolean;
 }
 
 export interface DocsSyncInput {
@@ -48,7 +50,7 @@ export class DocsSync {
   constructor(private readonly input: DocsSyncInput) {}
 
   get view(): DocsSyncView {
-    return { pending: this.pending, lastError: this.lastError };
+    return { pending: this.pending, lastError: this.lastError, refused: this.refused };
   }
 
   /** A document changed; it rides the next boundary. */
@@ -137,6 +139,7 @@ export class DocsSync {
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
     this.pending = 0;
+    this.refused = false;
     this.lastError = null;
   }
 
@@ -146,6 +149,7 @@ export class DocsSync {
       await pushLocalCommits(await openStore(this.input.ws, this.input.style, this.input.exec));
       if (this.pending === 0 && !this.refused) this.lastError = null;
     } catch (err) {
+      this.refused = false;
       this.lastError = messageOf(err);
     }
   }

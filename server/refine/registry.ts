@@ -72,13 +72,18 @@ const slug = (v: string, what: string) => {
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
 /** A spec of a documentation repository takes an alias, which also names its folder; the refusal is in plain words. */
-const aliasOrConflict = (specId: string): void => {
+const aliasOrConflict = (specId: string, fromProjectName = false): void => {
   try {
     assertAlias(specId);
   } catch {
-    throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul; o hífen não pode começar nem terminar o nome, nem aparecer duas vezes seguidas`);
+    const hint = fromProjectName ? '; informe outro nome para a primeira spec, porque o padrão sai do nome do projeto' : '';
+    throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul; o hífen não pode começar nem terminar o nome, nem aparecer duas vezes seguidas${hint}`);
   }
 };
+/** Refuses a read of main while the documentation repository is not published: the store has no origin main yet. */
+const UNPUBLISHED = 'o repositório de documentos deste projeto ainda não foi publicado; resolva o aviso de documentos antes de continuar';
+/** Refuses a spec of a documentation-repository project before its repository exists; the architecture step creates it. */
+const NOT_CREATED = 'o repositório de documentos ainda não foi criado; crie-o na etapa de arquitetura da primeira spec antes de criar outra';
 /** Opens the index for one query only, so no file handle stays open between turns. */
 const searchKnowledge = (file: string, query: string) => {
   const knowledge = KnowledgeIndex.open(file);
@@ -184,7 +189,7 @@ export class SessionRegistry {
     const ws = await this.ws(projectId);
     if (this.docsRepoLayout && projectId === CENTRAL_REPO) throw new RangeError(`${CENTRAL_REPO} é o nome do repositório central de documentos; escolha outro nome para o projeto.`);
     const specId = firstSpecId || `${projectId}-001`;
-    if (this.docsRepoLayout) aliasOrConflict(specId);
+    if (this.docsRepoLayout) aliasOrConflict(specId, !firstSpecId);
     const draft = draftPaths(ws, specId);
     if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo)) || (this.docsRepoLayout && (await isDocsRepo(ws)))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
@@ -199,10 +204,12 @@ export class SessionRegistry {
     return marker?.firstSha ? marker : null;
   }
 
-  /** Main as this project's drafts read it: the store of a bound documentation repository, else the project's clone. */
+  /** Main as this project's drafts read it: the store of a published documentation repository, else the project's clone. */
   private async mainOf(ws: Workspace): Promise<MainCopy> {
-    const marker = await this.boundMarker(ws);
-    return marker ? docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec)) : repoMain(ws.repo, this.deps.exec);
+    const marker = await readDocsMarker(ws);
+    if (!marker) return repoMain(ws.repo, this.deps.exec);
+    if (!marker.firstSha) throw new ConflictError(UNPUBLISHED);
+    return docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec));
   }
 
   /** A follow-on draft of a bound documentation repository starts from the mirror, so the mirror must hold the project. */
@@ -224,12 +231,12 @@ export class SessionRegistry {
   }
 
   private async specOnMain(ws: Workspace, specId: string): Promise<Spec | null> {
-    if (!(await exists(path.join(ws.repo, '.git')))) {
-      throw new ConflictError(`project ${ws.projectId} has no workspace clone; run it once from the CLI or add it as a project`);
-    }
     if (await isDocsRepo(ws)) {
       const json = await readState(ws, `specs/${specId}/spec.json`);
       return json === undefined ? null : Spec.parse(json);
+    }
+    if (!(await exists(path.join(ws.repo, '.git')))) {
+      throw new ConflictError(this.docsRepoLayout ? NOT_CREATED : `project ${ws.projectId} has no workspace clone; run it once from the CLI or add it as a project`);
     }
     await gitFetch(ws.repo, this.deps.exec);
     const text = await git(ws.repo, ['show', `origin/main:docs/specs/${specId}/spec.json`], this.deps.exec).catch(() => null);

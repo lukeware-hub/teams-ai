@@ -660,19 +660,19 @@ describe('the architecture step names what the documentation repository does', (
   });
 
   it('shows the sync line under the notice while the repository is not created yet', () => {
-    const docsSync = { pending: 2, lastError: null };
+    const docsSync = { pending: 2, lastError: null, refused: false };
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { ...docsRepo, docsSync })} busy={false} events={[]} {...on()} /></MemoryRouter>);
     expect(screen.getByTestId('docs-sync-notice').textContent).toBe('2 alterações esperam publicação no repositório de documentos.');
   });
 
   it('shows no sync line for a legacy session with a sync', () => {
-    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsSync: { pending: 2, lastError: null } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsSync: { pending: 2, lastError: null, refused: false } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
   });
 
   it('shows no sync line once the backlog of a documentation-repository session is enabled', () => {
     const backlog = { enabled: true, detail: false, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
-    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog }, { ...docsRepo, docsSync: { pending: 2, lastError: null } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog }, { ...docsRepo, docsSync: { pending: 2, lastError: null, refused: false } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
     expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
   });
 

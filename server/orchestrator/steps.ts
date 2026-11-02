@@ -109,7 +109,7 @@ function writesE2eSuite(task: PlanTask, suite: string): boolean {
   return task.affectedPaths.some((p) => p === suite || (dir !== './' && p.startsWith(dir)));
 }
 
-/** A service's repository holds no docs: the settings its rules call plan.*, the other services' addresses and, for front, the design doc come with the pack. */
+/** A service's repository holds that service's code; the legacy layout also copies the docs into it, so the pack carries the settings its rules name, the other services' addresses and the front design. */
 function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], role: Role): string {
   const { tasks: _tasks, ...settings } = ctx.plan;
   const others = Object.entries(ctx.addresses).map(([s, url]) => `${s} at ${url}`);
