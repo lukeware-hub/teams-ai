@@ -45,6 +45,10 @@ import { flowIsMermaid } from './sections.js';
 import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
 import { DocsStoreError } from '../docs/store.js';
 import { readDocsMarker } from '../docs/project-state.js';
+import type { Style } from '../docs/layout.js';
+import { boundaryLabel, isDocumentEdit } from './docs-boundary.js';
+import { DocsSync } from './docs-sync.js';
+import type { SpecAlias } from './docs-projection.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -234,6 +238,8 @@ export class RefineSession {
   private discarding = false;
   /** The Backlog step in flight: a second call awaits it, so the repository is bound and the backlog enabled once. */
   private binding: Promise<void> | null = null;
+  /** The documentation repository flush; set once the store is bound, and absent for every other session. */
+  private docs: DocsSync | null = null;
 
   private constructor(
     private readonly deps: SessionDeps,
@@ -259,7 +265,9 @@ export class RefineSession {
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
     if (!journal.state.derived) journal.state.derived = await readDerived(deps.draft);
-    return new RefineSession(deps, journal);
+    const session = new RefineSession(deps, journal);
+    await session.attachDocs(true);
+    return session;
   }
 
   static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean; docsRepo?: boolean } = {}): Promise<RefineSession> {
@@ -631,6 +639,36 @@ export class RefineSession {
       if (err instanceof DocsStoreError || err instanceof DocsBindRefused) throw new ConflictError(err.message);
       throw err;
     }
+    await this.attachDocs(false);
+  }
+
+  /** Syncs a documentation repository session once its store is bound: the journal's hook, and at open one flush. */
+  private async attachDocs(atOpen: boolean): Promise<void> {
+    const exec = this.deps.docsBind?.exec;
+    if (this.state.docsRepo !== true || !exec) return;
+    const marker = await readDocsMarker(this.deps.ws);
+    if (!marker?.firstSha) return;
+    this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style) });
+    this.journal.onFact = (e) => this.onFact(e);
+    if (atOpen) void this.docs.flush();
+  }
+
+  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts. */
+  private onFact(e: StoredEvent): void {
+    if (!this.docs || this.state.status === 'started' || this.discarding) return;
+    const label = boundaryLabel(e, this.state.backlog);
+    if (label !== null) this.docs.boundary(label);
+    else if (isDocumentEdit(e.type)) this.docs.edit();
+  }
+
+  /** The specs this draft derived: each alias folder, and for a microservice its repository. */
+  private docsAliases(style: Style): SpecAlias[] {
+    return Object.values(this.state.backlog?.specs ?? {}).flatMap((row) => (row.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
+  }
+
+  /** The registry tick: a waiting boundary or a failed flush is committed and pushed again. */
+  tickDocs(): Promise<void> {
+    return this.docs?.tick() ?? Promise.resolve();
   }
 
   /** The five documents as they are now, by file name. */
