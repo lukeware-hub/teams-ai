@@ -798,9 +798,11 @@ export class Run {
     }
     const phase3 = await this.loop({ final: false });
     if (phase3 !== 'complete') return phase3;
-    // Every task of a new repository depends on its scaffold, fix tasks included: verifying without it only spends tokens.
+    // A blocked task leaves the work unbuilt: the run ends here, before the review, verification and deploy.
     const scaffold = this.plan.tasks.find((t) => t.id === scaffoldId(t.service ?? null) && this.journal.state.tasks.get(t.id)?.state === 'blocked');
-    if (scaffold) return this.finish('blocked', `${scaffold.id} is blocked and every other task of its repository depends on it`);
+    if (scaffold || [...this.journal.state.tasks.values()].some((t) => t.state === 'blocked')) {
+      return this.finish('blocked', scaffold ? `${scaffold.id} is blocked and every other task of its repository depends on it` : undefined);
+    }
     const review = await this.convergePlans();
     if (review !== 'done') return review;
     // Unit harnesses without a deployment target exercise Phases 0–3 only; production deps always provide one.
@@ -824,7 +826,8 @@ export class Run {
       if (gaps.kind === 'paused') return 'paused:auth';
       if (gaps.kind === 'failed') return this.finish('phase-failed', gaps.reason);
       const back = await this.runFixTasks(gaps.tasks);
-      if (back !== 'merged' && back !== 'blocked') return back;
+      if (back === 'blocked') return this.finish('blocked');
+      if (back !== 'merged') return back;
     }
     return 'done';
   }
@@ -924,10 +927,9 @@ export class Run {
     if (!p4.ok && p4.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p4.ok && p4.fixTasks) {
       const back = await this.runFixTasks(p4.fixTasks);
-      if (back !== 'merged' && back !== 'blocked') return back;
-      // Fix tasks are best effort; the second verification round is the verdict. A fix task that blocked
-      // (e.g. the SM diagnosed a toolchain problem the Dev found nothing to change for) must not end the
-      // run before that round runs (1387253335-001-r13). Its blocked state is still reported by finish().
+      // A blocked fix task leaves the work unbuilt: no second verification round and no deploy for it.
+      if (back === 'blocked') return this.finish('blocked');
+      if (back !== 'merged') return back;
       p4 = await runPhase4(this.phaseDeps(), 2);
     }
     if (!p4.ok) { result = 'verification-failed'; reason = p4.reason; }
@@ -936,9 +938,10 @@ export class Run {
         const p5 = await this.phase5(attempt);
         if (p5.ok) break;
         if (!p5.fixTask) { result = 'deploy-failed'; reason = p5.reason; break; }
-        // Same rule as Phase 4: the fix task is best effort and the next deploy attempt is the verdict.
-        // A drain, a deadlock or a login pause already ended the run inside the loop, as in Phase 4.
-        const back = await this.runFixTasks([p5.fixTask]); if (back !== 'merged' && back !== 'blocked') return back;
+        // A drain, a deadlock or a login pause already ended the run inside the loop; a blocked fix task ends it blocked.
+        const back = await this.runFixTasks([p5.fixTask]);
+        if (back === 'blocked') return this.finish('blocked');
+        if (back !== 'merged') return back;
       }
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
@@ -985,8 +988,7 @@ export class Run {
       }
       const progress = runProgress(this.journal.state, this.maxParallel);
       if (progress !== 'running' && this.inflight.size === 0) {
-        // A non-final loop (fix tasks) reports completion and lets the caller judge blocked tasks: a blocked
-        // fix task must not end the run before the next verification round or deploy attempt.
+        // A non-final loop reports completion and the caller judges any blocked task.
         if (progress === 'complete' && !opts.final) return 'complete';
         return this.finish(progress === 'complete' ? 'complete' : progress);
       }
@@ -1054,7 +1056,7 @@ export class Run {
   private async finish(result: RunProgress | RunResult, reason?: string): Promise<RunResult> {
     const tasks = [...this.journal.state.tasks.values()];
     // "complete" is every task merged; a run that ended with blocked tasks reports `blocked` (spec §4.7).
-    const r: RunResult = result === 'complete' && tasks.some((t) => t.state === 'blocked') ? 'blocked' : (result as RunResult);
+    const r: RunResult = (result === 'complete' || result === 'awaiting-validation') && tasks.some((t) => t.state === 'blocked') ? 'blocked' : (result as RunResult);
     const blocked = tasks.filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: String([...this.journal.events].reverse().find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === t.def.id)?.data.reason ?? reason ?? 'blocked') }));
     await this.journal.fact(OrchEvent.RunFinished, { result: r, reason: reason ?? null, merged: tasks.filter((t) => t.state === 'merged').map((t) => t.def.id), blocked, tokens: this.accounting.total() });
     await this.writeState();

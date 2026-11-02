@@ -371,6 +371,21 @@ describe('Run', () => {
     await run.close();
   });
 
+  it('ends blocked after Phase 3 when any task blocks, before the plan review and the verification run', async () => {
+    const kinds: string[] = [];
+    const script: Script = async (req) => {
+      kinds.push(req.kind);
+      if (req.kind === 'dev' && req.taskId === 'T2') return { ok: true, value: { specHash: HASH, status: 'blocked', reason: 'the gate cannot run' }, summary: summary() };
+      if (req.kind === 'block-options') return { ok: false, failure: 'code', errors: ['block-options not scripted'], summary: summary({ isError: true }), sandboxDisabled: false };
+      return happy(req);
+    };
+    const run = await Run.create(await withAgents(deps(script, { target: { validate: async () => [] } as unknown as RunDeps['target'] })));
+    expect(await run.execute()).toBe('blocked');
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 4)).toBe(false);
+    expect(run.journal.events.at(-1)!.data).toMatchObject({ result: 'blocked', blocked: [{ taskId: 'T2', reason: 'the gate cannot run' }] });
+    await run.close();
+  });
+
   it('runs a replacement task from a successful replan to merged', async () => {
     let reviews = 0;
     const script: Script = async (req) => {
