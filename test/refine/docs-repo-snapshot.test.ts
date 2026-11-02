@@ -46,11 +46,11 @@ describe('the snapshot says whether the session is a documentation-repository se
     expect(snap.docsTarget).toBeUndefined();
   });
 
-  it('a legacy session has docsRepo false and no target', async () => {
+  it('a legacy session has no docsRepo key and no target', async () => {
     rig = await makeRig({ docsRepoLayout: false, owner: 'acme' });
     const s = await decided(rig, MONOLITH);
     const snap = await s.snapshot();
-    expect(snap.docsRepo).toBe(false);
+    expect(snap).not.toHaveProperty('docsRepo');
     expect(snap.docsTarget).toBeUndefined();
   });
 });

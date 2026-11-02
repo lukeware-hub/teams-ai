@@ -184,8 +184,8 @@ export interface Snapshot {
   busy: boolean;
   /** True when the architecture was decided on documents that have changed since. */
   architectureStale: boolean;
-  /** True when the session has the documentation-repository stamp. */
-  docsRepo: boolean;
+  /** True when the session has the documentation-repository stamp; absent for a legacy session. */
+  docsRepo?: true;
   /** The repository the backlog step creates, once the architecture is decided; absent for a legacy session. */
   docsTarget?: RepoTarget;
   /** The documentation repository sync, in memory only: absent for a session that is not one. */
@@ -398,7 +398,7 @@ export class RefineSession {
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), docsRepo: this.state.docsRepo === true, ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the configured one, and the name of the style. */
