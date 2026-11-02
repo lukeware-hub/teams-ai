@@ -241,6 +241,7 @@ export class ProgramService {
         await launch(specId, runId, 'complete');
         return { runId };
       },
+      specDone: async (specId) => (await listRuns(await this.index(), projectId)).some((r) => r.specId === specId && r.kind === 'complete' && r.status === 'done'),
       outcome: async (runId) => this.outcome(runId),
       repair: this.deps.decider && ((specId, failures) => this.repair(root, specId, failures)),
     };

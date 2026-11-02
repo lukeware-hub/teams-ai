@@ -5,10 +5,11 @@ const entry = (key: string, rank: number, dependsOn: string[] = []) => ({ specId
 const NOW = new Date('2026-10-07T12:00:00Z');
 
 /** Effects over an in-memory world: runs are created by startRun and answer whatever the test scripted. */
-function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}, repair?: ProgramEffects['repair']) {
+function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}, repair?: ProgramEffects['repair'], completed: string[] = []) {
   const calls: string[] = [];
   let n = 0;
   const active = new Map<string, string>();
+  const finished = new Set(completed);
   const fx: ProgramEffects = {
     now: () => NOW,
     findActiveRun: async (specId) => active.get(specId) ?? null,
@@ -23,13 +24,14 @@ function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}, repair?
       calls.push(`complete ${specId}`);
       return { runId: `${specId}-complete-r1` };
     },
+    specDone: async (specId) => finished.has(specId),
     outcome: async (runId) => {
       const o = outcomes[runId] ?? { kind: 'running' };
       return Array.isArray(o) ? (o.length > 1 ? o.shift()! : o[0]!) : o;
     },
     repair,
   };
-  return { fx, calls, active };
+  return { fx, calls, active, finished };
 }
 /** An entry with the SM's conflict map: the keys it must never run together with. */
 const mapped = (key: string, rank: number, dependsOn: string[] = [], conflicts: string[] = []) => ({ ...entry(key, rank, dependsOn), conflictsWith: conflicts.map((k) => `d-${k}`) });
@@ -60,28 +62,34 @@ describe('program controller', () => {
     expect(calls).toEqual(['start d-b']);
   });
 
-  it('completes a delivered item, then starts the next only after it is done', async () => {
-    const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'done' } });
+  // A delivered item is validated by the owner: the program completes nothing itself, and the next item waits.
+  it('waits for the owner to validate a delivered item, then starts the next', async () => {
+    const { fx, calls, finished } = world({ 'd-a-r1': { kind: 'delivered' } });
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
     p = await tick(p, fx, save); // start a
-    p = await tick(p, fx, save); // delivered: complete it
-    expect(status(p)).toEqual({ a: 'completing', b: 'pending' });
-    p = await tick(p, fx, save); // completion done
+    p = await tick(p, fx, save); // delivered: waits for the owner
+    expect(status(p)).toEqual({ a: 'delivered', b: 'pending' });
+    p = await tick(p, fx, save); // still waiting
+    expect(status(p)).toEqual({ a: 'delivered', b: 'pending' });
+    expect(calls).toEqual(['start d-a']);
+    finished.add('d-a'); // the owner completes the spec
+    p = await tick(p, fx, save);
     expect(status(p).a).toBe('done');
     p = await tick(p, fx, save); // b starts
-    expect(calls).toEqual(['start d-a', 'complete d-a', 'start d-b']);
+    expect(calls).toEqual(['start d-a', 'start d-b']);
     expect(p.items[1]!.status).toBe('running');
   });
 
-  it('sums the delivering run\'s and the completion run\'s cost onto the item (R11.6)', async () => {
-    const { fx } = world({ 'd-a-r1': { kind: 'delivered', costUsd: 1.5 }, 'd-a-complete-r1': { kind: 'done', costUsd: 0.25 } });
+  it('keeps the delivering run\'s cost on a delivered item (R11.6)', async () => {
+    const { fx, finished } = world({ 'd-a-r1': { kind: 'delivered', costUsd: 1.5 } });
     let p = newProgram('d', [entry('a', 1)], NOW);
     p = await tick(p, fx, save); // start a
     expect(p.items[0]!.costUsd).toBeNull();
-    p = await tick(p, fx, save); // delivered: adds 1.5, starts completion
+    p = await tick(p, fx, save); // delivered: adds 1.5
     expect(p.items[0]!.costUsd).toBe(1.5);
-    p = await tick(p, fx, save); // completion done: adds 0.25
-    expect(p.items[0]!.costUsd).toBe(1.75);
+    finished.add('d-a');
+    p = await tick(p, fx, save); // owner completed: cost unchanged
+    expect(p.items[0]!.costUsd).toBe(1.5);
   });
 
   it('records cost on a failed outcome too, so partial spend is not lost', async () => {
@@ -344,11 +352,7 @@ describe('program controller', () => {
     expect(q.items[0]!.status).toBe('failed');
   });
 
-  it('does not repair a failed completion, and a classification that throws counts as unclassified, so the item waits', async () => {
-    const { fx } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-a-complete-r1': { kind: 'failed', reason: 'merge' } }, async () => 'retry-now');
-    let p = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
-    for (let i = 0; i < 3; i++) p = await tick(p, fx, save);
-    expect(p.items[0]).toMatchObject({ status: 'failed', reason: 'completion failed: merge' });
+  it('a classification that throws counts as unclassified, so the item waits', async () => {
     const broken = world({ 'd-a-r1': { kind: 'failed', reason: 'x' } }, async () => { throw new Error('down'); });
     let q = await tick(newProgram('d', [entry('a', 1)], NOW), broken.fx, save);
     q = await tick(q, broken.fx, save);

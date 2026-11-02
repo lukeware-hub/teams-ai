@@ -9,7 +9,8 @@
  * A spec whose code is already on main when it fails for good (a deploy) ends `partial`, and its dependents still run.
  */
 
-export type ItemStatus = 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
+/** `delivered`: its run delivered it and the owner validates it; the program completes nothing on its own. */
+export type ItemStatus = 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
 
 export interface ProgramItem {
   specId: string;
@@ -74,6 +75,8 @@ export interface ProgramEffects {
   stopRun?(runId: string): Promise<void>;
   /** Marks the delivered spec ready to complete and launches the `spec complete` run. */
   completeSpec(specId: string): Promise<{ runId: string }>;
+  /** The owner completed the spec (its complete run is done). */
+  specDone(specId: string): Promise<boolean>;
   outcome(runId: string): Promise<RunOutcome>;
   /** What to do with this failure; on `retry-now` it also hands the failures to the next run. Absent: a failure is final. */
   repair?(specId: string, failures: readonly string[]): Promise<RepairVerdict>;
@@ -153,7 +156,7 @@ const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
 /** Its code is on main: a partial spec counts as delivered, so its dependents and the next free slot go ahead. */
 const isDelivered = (status: ItemStatus | undefined) => status === 'done' || status === 'partial';
 /** Not settled yet: it still runs or will run, so its dependents wait and the program goes on. */
-const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', ...IN_FLIGHT]);
+const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', 'delivered', ...IN_FLIGHT]);
 /** Two items may run together only when both carry a conflict map and neither names the other. */
 const compatible = (a: ProgramItem, b: ProgramItem) => !!a.conflictsWith && !!b.conflictsWith && !a.conflictsWith.includes(b.specId) && !b.conflictsWith.includes(a.specId);
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -249,14 +252,17 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
       else if (o.kind === 'stopped') stopped(item, o);
       else if (o.kind === 'interrupted') await resume(item, item.runId, 'the run', o.restart);
       else if (o.kind === 'delivered') {
+        // Delivered is not completed: the owner validates it, and the program moves on once the spec is done.
         addCost(item, o.costUsd);
-        try {
-          item.completeRunId = (await fx.completeSpec(item.specId)).runId;
-          item.status = 'completing';
-          dirty = true;
-        } catch (err) {
-          fail(item, `completion failed: ${message(err)}`);
-        }
+        item.status = 'delivered';
+        item.finishedAt = stamp();
+        dirty = true;
+      }
+    } else if (item.status === 'delivered') {
+      if (await fx.specDone(item.specId)) {
+        item.status = 'done';
+        item.finishedAt = stamp();
+        dirty = true;
       }
     } else if (item.status === 'completing') {
       if (item.completeRunId === null) {

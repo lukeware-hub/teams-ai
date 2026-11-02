@@ -94,7 +94,8 @@ export function appLinks(report: Report | null, status: ServiceStatus, hostname:
     const own = status.services?.find((x) => x.service === s.service) ?? status;
     if (!own.online) continue;
     const links = serviceLinks(s, hostname);
-    found.swagger ??= links.docsUrl;
+    // The documentation link needs its path to answer now, not only a path the old report declares.
+    if (own.docs) found.swagger ??= links.docsUrl;
     if (own.ui) found.web ??= links.appUrl;
   }
   return found;

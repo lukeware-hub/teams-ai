@@ -89,6 +89,11 @@ describe('ProgramPanel', () => {
     expect(onPrioritize).toHaveBeenCalledWith('d-a');
   });
 
+  it('shows a delivered spec as waiting for the owner to validate it', () => {
+    renderPanel(program([item('a', { status: 'delivered', runId: 'd-a-r1' })]));
+    expect(screen.getByText('aguarda sua validação')).toBeTruthy();
+  });
+
   it('shows a completing spec as being marked done', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();

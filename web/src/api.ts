@@ -453,7 +453,7 @@ export interface ProgramViewItem {
   key: string;
   rank: number;
   dependsOn: string[];
-  status: 'pending' | 'running' | 'completing' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
+  status: 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
   runId: string | null;
   completeRunId: string | null;
   startedAt: string | null;

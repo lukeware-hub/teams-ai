@@ -486,13 +486,14 @@ describe('project apps', () => {
     view({ web: 'http://h:20052', swagger: null }, project);
     expect(screen.queryByTestId('project-apps')).toBeNull();
   });
-  it('appLinks needs the service online; Web UI also needs a page on its root', () => {
+  it('appLinks needs the service online; Web UI also needs a page on its root; Swagger needs its path to answer now', () => {
     const service = { url: 'http://dind:20052', healthcheck: 'ok', smoke: [], port: 20052, kind: 'api' as const, docsPath: '/docs' };
     const report = { service } as unknown as Parameters<typeof appLinks>[0];
     const at = (s: object) => appLinks(report, { checkedAt: '', status: 200, online: false, ...s }, 'h');
-    expect(at({ online: true, ui: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
-    expect(at({ online: true, ui: false })).toEqual({ swagger: 'http://h:20052/docs', web: null });
-    expect(at({ online: false, ui: true })).toEqual({ swagger: null, web: null });
+    expect(at({ online: true, ui: true, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: 'http://h:20052' });
+    expect(at({ online: true, ui: false, docs: true })).toEqual({ swagger: 'http://h:20052/docs', web: null });
+    expect(at({ online: true, ui: true, docs: false })).toEqual({ swagger: null, web: 'http://h:20052' });
+    expect(at({ online: false, ui: true, docs: true })).toEqual({ swagger: null, web: null });
   });
 });
 
