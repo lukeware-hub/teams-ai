@@ -1,6 +1,7 @@
 import type { Divergence } from '@server/refine/checklist';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
+import type { DocsSyncView } from '@server/refine/docs-sync';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
   | { state: 'missing' }
@@ -574,7 +575,14 @@ export interface Snapshot {
   architectureStale?: boolean;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
   stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
+  /** True when the session has the documentation-repository stamp. */
+  docsRepo?: boolean;
+  /** The repository the backlog step creates, once the architecture is decided. */
+  docsTarget?: { owner: string; name: string };
+  /** The documentation repository sync: the changes waiting, and the last failure in plain words. */
+  docsSync?: DocsSyncView;
 }
+export type { DocsSyncView };
 export interface DraftRow {
   projectId: string;
   specId: string;

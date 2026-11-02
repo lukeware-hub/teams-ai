@@ -634,3 +634,76 @@ describe('RefinementView file previews', () => {
     expect(container.querySelectorAll('details pre').length).toBeGreaterThan(0);
   });
 });
+
+describe('the architecture step names what the documentation repository does', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=arquitetura'));
+  const decision = { style: 'monolith', rationale: 'Um serviço.', repositories: [{ name: 'hello-app', responsibility: 'Tudo', evidence: { doc: 'project.md', quote: 'tudo' } }], integrations: [] } as never;
+  const architectureStep = (over: Partial<Snapshot['state']>, extra: Partial<Snapshot> = {}): Snapshot => ({
+    ...base({ mode: 'new-project', repositories: true, architecture: { docsHash: 'h', decision }, ...over }),
+    ...extra,
+  });
+  const notice = 'Cria o repositório privado acme/hello-app e publica os documentos. Apagar o projeto aqui não apaga o repositório.';
+  const docsRepo: Partial<Snapshot> = { docsRepo: true, docsTarget: { owner: 'acme', name: 'hello-app' } };
+
+  it('shows the documents notice above the architecture heading for a documentation-repository session with no backlog', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, docsRepo)} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    const box = screen.getByTestId('architecture-docs-notice');
+    expect(box.textContent).toContain('Documentos');
+    expect(box.textContent).toContain(notice);
+    const heading = within(screen.getByTestId('architecture-step')).getByRole('heading', { level: 2, name: 'Arquitetura' });
+    expect(box.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no notice for a legacy session', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({})} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('architecture-docs-notice')).toBeNull();
+  });
+
+  it('shows the sync line under the notice while the repository is not created yet', () => {
+    const docsSync = { pending: 2, lastError: null };
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { ...docsRepo, docsSync })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('docs-sync-notice').textContent).toBe('2 alterações esperam publicação no repositório de documentos.');
+  });
+
+  it('shows no sync line for a legacy session with a sync', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsSync: { pending: 2, lastError: null } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
+  });
+
+  it('shows no sync line once the backlog of a documentation-repository session is enabled', () => {
+    const backlog = { enabled: true, detail: false, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog }, { ...docsRepo, docsSync: { pending: 2, lastError: null } })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('docs-sync-notice')).toBeNull();
+  });
+
+  it('shows no notice once the backlog of a documentation-repository session is enabled', () => {
+    const backlog = { enabled: true, detail: false, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog }, docsRepo)} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('architecture-docs-notice')).toBeNull();
+  });
+
+  it('the architecture button enables the backlog for a documentation-repository session', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, docsRepo)} busy={false} events={[]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(h.onEnableBacklog).toHaveBeenCalledOnce();
+  });
+
+  it('the architecture button stays disabled for a documentation-repository session with no target', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
+    const button = screen.getByTestId('architecture-continue') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe('Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.');
+    fireEvent.click(button);
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
+  it('the architecture button only moves to the backlog step for a legacy session', () => {
+    const h = on();
+    render(<MemoryRouter><RefinementView snap={architectureStep({})} busy={false} events={[]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+    expect(window.location.search).toContain('etapa=backlog');
+  });
+});
