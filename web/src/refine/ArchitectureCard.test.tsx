@@ -39,6 +39,22 @@ describe('ArchitectureCard', () => {
     expect(screen.getByTestId('architecture-decide').textContent).toBe('Redefinir');
   });
 
+  it('lists each rule the last decision broke, so the owner sees what is not closed', () => {
+    render(<ArchitectureCard architecture={null} error="A arquitetura não fechou com as regras." issues={['O repositório hello-api precisa terminar com um sufixo.', 'Dois serviços têm a mesma responsabilidade.']} stale={false} busy={false} onDecide={() => {}} />);
+    const list = within(screen.getByTestId('architecture-issues'));
+    expect(list.getByText('O repositório hello-api precisa terminar com um sufixo.')).toBeTruthy();
+    expect(list.getByText('Dois serviços têm a mesma responsabilidade.')).toBeTruthy();
+    expect(screen.getByTestId('architecture-decide').textContent).toBe('Decidir a arquitetura');
+  });
+
+  it('shows a running decision as the same process box the other stages use, under its title', () => {
+    const started = new Date(Date.now() - 4_000).toISOString();
+    render(<ArchitectureCard architecture={null} error={null} stale={false} busy startedAt={started} onDecide={() => undefined} />);
+    const box = screen.getByTestId('architecture-progress');
+    expect(box.textContent).toContain('Decidindo a arquitetura');
+    expect(box.querySelector('.button-spinner')).toBeTruthy();
+  });
+
   it('asks for a new decision when the documents changed since the last one', () => {
     render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} stale busy={false} onDecide={() => {}} />);
     expect(screen.getByTestId('architecture-stale').textContent).toBe('Os documentos mudaram: decida a arquitetura de novo.');

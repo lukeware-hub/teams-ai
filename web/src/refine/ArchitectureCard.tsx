@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
 import type { ArchitectureView } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
+import { ProcessBox } from './ProcessingBanner.js';
 
 const KIND: Record<string, string> = { api: 'API', jobs: 'Workers', web: 'Web', mobile: 'Mobile', workflow: 'Workflow' };
 
@@ -14,30 +14,10 @@ export function kindLabel(name: string, style: ArchitectureView['style']): strin
 
 /**
  * The architecture step: the style and its reason, each repository with its quote, and each integration. Before a decision it
- * offers the one primary action; a decision made on documents that changed since says so and asks for a new one.
+ * offers the one primary action; a decision made on documents that changed since says so and asks for a new one. A decision
+ * that broke a rule lists each rule still open, so the owner corrects the documents before deciding again.
  */
-/** The time a decision has run, as mm:ss. */
-const elapsedOf = (startedAt: string, now: number): string => {
-  const total = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-};
-
-/** The progress of a running decision: the time it has run, and what it reads. */
-function DecisionProgress({ startedAt }: { startedAt: string | null }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return (
-    <div className="grid gap-1 text-[0.8125rem] text-ink-soft" role="status" data-testid="architecture-progress">
-      <span>Decidindo a arquitetura…{startedAt ? ` Tempo: ${elapsedOf(startedAt, now)}` : ''}</span>
-      <span>Lendo os cinco documentos do grafo e decidindo o estilo e os repositórios. Ao terminar, a decisão aparece aqui.</span>
-    </div>
-  );
-}
-
-export function ArchitectureCard({ architecture, error, stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; stale: boolean; busy: boolean; startedAt?: string | null; onDecide: () => void }) {
+export function ArchitectureCard({ architecture, error, issues = [], stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; stale: boolean; busy: boolean; startedAt?: string | null; onDecide: () => void }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
@@ -47,8 +27,19 @@ export function ArchitectureCard({ architecture, error, stale, busy, startedAt, 
         {decision && <span className="count-pill" data-testid="architecture-style">{decision.style === 'monolith' ? 'Monólito' : 'Microsserviços'}</span>}
       </div>
       {!decision && !busy && <p className="hint" data-testid="architecture-empty">Nenhuma arquitetura decidida ainda: decida-a a partir dos cinco documentos.</p>}
-      {busy && <DecisionProgress startedAt={startedAt ?? null} />}
+      {busy && (
+        <ProcessBox title="Decidindo a arquitetura" since={startedAt ?? null} testId="architecture-progress">
+          <span className="text-[0.75rem] leading-[1.35]">Lendo os cinco documentos do grafo e decidindo o estilo e os repositórios. Ao terminar, a decisão aparece aqui.</span>
+        </ProcessBox>
+      )}
       {error && <p className="text-warn" role="alert">{error}</p>}
+      {error && issues.length > 0 && (
+        <div className="grid gap-1 text-[0.8125rem]" data-testid="architecture-issues">
+          <span className="font-semibold">O que ainda não fecha:</span>
+          <ul className="m-0 grid list-disc gap-1 pl-5 text-ink-soft">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+          <span className="text-ink-soft">Corrija o que falta nos documentos e decida a arquitetura de novo.</span>
+        </div>
+      )}
       {decision && stale && <p className="text-warn" data-testid="architecture-stale">Os documentos mudaram: decida a arquitetura de novo.</p>}
       {decision && (
         <>

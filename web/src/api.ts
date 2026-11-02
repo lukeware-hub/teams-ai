@@ -529,6 +529,8 @@ export interface RefineState {
   architecture?: { docsHash: string; decision: ArchitectureView } | null;
   /** The last architecture decision failed, with the reason in plain words. */
   architectureError?: string | null;
+  /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
+  architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
   reviewedStages?: string[];
   /** The documents in the Graphify graph after their last edit, in a repository session. */

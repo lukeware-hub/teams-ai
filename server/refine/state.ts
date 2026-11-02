@@ -200,6 +200,8 @@ export interface RefineState {
   authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
   architectureError?: string | null;
+  /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
+  architectureIssues?: string[];
   /** The owner's answer on confidentiality; undefined until it comes. */
   confidential?: boolean;
   /** The checks failing in the last rounds in a row, and how many rounds they have failed together. */
@@ -637,6 +639,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       const v = d as unknown as { docsHash: string; architecture: Architecture; questions: Question[] };
       s.architecture = { docsHash: String(v.docsHash), decision: v.architecture };
       s.architectureError = null;
+      s.architectureIssues = [];
       // A new decision replaces the questions the last one left open; the answered ones stay for the next decision.
       s.questions = [...s.questions.filter((q) => !(q.origin === 'architecture' && q.status === 'pending')), ...v.questions.map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
       s.status = computeStatus(s);
@@ -644,6 +647,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     }
     case RefineEvent.ArchitectureFailed:
       s.architectureError = String(d.reason);
+      s.architectureIssues = Array.isArray(d.issues) ? d.issues.map(String) : [];
       break;
     case RefineEvent.DocsScored: {
       // A score without a file list is a full one, as journals from before the per-document score wrote it.

@@ -28,7 +28,7 @@ import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
-import { architecturePack, checkDecision, docsHashOf, writeArchitectureFiles } from './architecture-step.js';
+import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
@@ -794,7 +794,7 @@ export class RefineSession {
       const questions: Question[] = out.questions.map((q, i) => ({ questionId: `${prefix}-${i}`, role: 'sm', text: q.text, context: q.context, blocking: q.blocking, relatedAcIds: [], cycle: this.state.cycle, options: q.options.length > 0 ? q.options : undefined, origin: 'architecture' }));
       await this.journal.fact(RefineEvent.ArchitectureDecided, { docsHash: docsHashOf(docs), architecture: arch, questions });
     } catch (err) {
-      await this.journal.fact(RefineEvent.ArchitectureFailed, { reason: err instanceof Error ? err.message : String(err) });
+      await this.journal.fact(RefineEvent.ArchitectureFailed, { reason: err instanceof Error ? err.message : String(err), issues: err instanceof RulesOpenError ? err.issues : [] });
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
@@ -818,7 +818,7 @@ export class RefineSession {
       issues = checkDecision(out.value, draft.projectId, docs);
       if (issues.length === 0) return out.value;
     }
-    throw new OwnerError('A arquitetura não fechou com as regras.', issues.join(' '));
+    throw new RulesOpenError(issues);
   }
 
   /** `bindRepo` is set only by the owner's Backlog step: no evaluation binds a documentation repository. */

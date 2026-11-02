@@ -1220,7 +1220,7 @@ Uma etapa do assistente entre `Revisão` e `Backlog`. A tela principal é um car
 | `Perguntas da arquitetura` | os cartões de pergunta já usados no refinamento; uma pergunta bloqueante segura o backlog. |
 | Ações | `Voltar` (secundária), `Redefinir` (secundária), `Quebrar o backlog por repositório` (primária). |
 
-Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (spinner e `Decidindo a arquitetura…`); decidida; falhou (motivo em palavras simples e `Decidir de novo`); desatualizada (os documentos mudaram depois da decisão, com o aviso `Os documentos mudaram: decida a arquitetura de novo.`); com perguntas abertas.
+Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (bloco de processo igual ao da preparação dos planos, com o título `Decidindo a arquitetura`, o `Tempo` e o que a decisão lê); decidida; falhou (motivo em palavras simples, a lista `O que ainda não fecha:` com cada regra que ficou aberta, e a ação `Decidir a arquitetura`); desatualizada (os documentos mudaram depois da decisão, com o aviso `Os documentos mudaram: decida a arquitetura de novo.`); com perguntas abertas.
 
 Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`, e um único repositório como `Monólito`.
 
