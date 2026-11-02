@@ -372,6 +372,26 @@ describe('the shape of an answer', () => {
   });
 });
 
+describe('the shape of an answer', () => {
+  it('asks once more when a question about what happened came back without its labels', async () => {
+    const replies = [
+      { ok: true, value: { specHash: 'x', answer: 'Resposta sem rótulos.', correction: null }, summary: {} },
+      { ok: true, value: { specHash: 'x', answer: '**O que está acontecendo**: pronto.', correction: null }, summary: {} },
+    ];
+    const runAgent = vi.fn(async (_req: Req) => replies.shift());
+    const { service } = make(runAgent);
+    const reply = await service.ask('hello-app', 'O que devo fazer agora?');
+    expect(runAgent).toHaveBeenCalledTimes(2);
+    expect(reply!.text).toContain('O que está acontecendo');
+  });
+  it('says where the records are kept when the answer says a fact is missing and names no record', async () => {
+    const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Não há previsão de prazo nos registros.', correction: null }));
+    const { service } = make(runAgent);
+    const reply = await service.ask('hello-app', 'Quanto tempo falta para terminar?');
+    expect(reply!.text).toContain('Onde procurar: o histórico de cada execução');
+  });
+});
+
 describe('clearing the conversation while an answer is coming', () => {
   it('stops the answer in progress, leaves no record of it, and clears the conversation', async () => {
     const runAgent = vi.fn((_req: Req, ctx: { signal: AbortSignal }) => new Promise((resolve) => {

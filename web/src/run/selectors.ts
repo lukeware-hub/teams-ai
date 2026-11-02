@@ -1,5 +1,6 @@
 import { reduceEvents, type TaskRuntime } from '@server/pipeline/run-state.js';
 import type { SecurityFinding, StoredEvent, Usage } from '../api.js';
+import { explainBlockReason, firstSentence } from '@server/orchestrator/stop-explain.js';
 import { describeAll, type ActivityItem, type ActivityTone } from '@server/orchestrator/event-text.js';
 export { describeAll, STEP_DOING, stepDoing } from '@server/orchestrator/event-text.js';
 export type { ActivityItem, ActivityTone } from '@server/orchestrator/event-text.js';
