@@ -17,7 +17,8 @@ import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
-import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths } from './orchestrator/workspace.js';
+import { refineRoot } from './refine/draft.js';
+import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths, type Workspace } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { licenseGuard } from './api/license-guard.js';
@@ -56,7 +57,8 @@ import { readRepairNotes } from './program/repair-notes.js';
 import { readOwnerDecisions } from './orchestrator/owner-decisions.js';
 import { ensureAgentPlugins } from './skills/plugins.js';
 import { clearPrivateSkills, ensurePinnedSkills } from './skills/store.js';
-import { isDocsRepo, readState } from './docs/project-state.js';
+import { docsSnapshotDir, isDocsRepo, readClosingRecord, readDocsMarker, readState } from './docs/project-state.js';
+import type { DocsRun } from './docs/layout.js';
 
 export interface CliIo {
   argv: string[];
@@ -265,6 +267,16 @@ export async function startsAsDraft(exec: Exec, projectDir: string, ws: { root: 
   return r?.exitCode !== 0;
 }
 
+/** The documents a documentation-repository run reads: the snapshot its draft closed with. A legacy project, or a draft without a closing, has none. */
+export async function docsRunOf(ws: Workspace, projectDir: string): Promise<DocsRun | undefined> {
+  const marker = await readDocsMarker(ws);
+  if (marker === null || path.dirname(path.resolve(projectDir)) !== path.resolve(refineRoot(ws))) return undefined;
+  const draftId = path.basename(projectDir);
+  if ((await readClosingRecord(ws, draftId)) === null) return undefined;
+  const snapshot = docsSnapshotDir(ws, draftId);
+  return (await fs.access(snapshot).then(() => true, () => false)) ? { style: marker.style, snapshot } : undefined;
+}
+
 async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
@@ -346,7 +358,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets, cfg.environment.generatedSecrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
   const planFile = await planFileFor(projectDir, specId);
   const taskFile = await taskFileFor(projectDir, specId);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: await isDocsRepo(ws) };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: await isDocsRepo(ws), docs: await docsRunOf(ws, projectDir) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;
