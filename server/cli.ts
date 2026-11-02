@@ -10,7 +10,7 @@ import { writeFileAtomic } from './core/atomic-write.js';
 import { redactSecrets } from './core/redact.js';
 import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
 import { execCommand, type Exec } from './exec/command.js';
-import { gitAuthEnv, withGhAuth, withGitAuth } from './git/auth.js';
+import { gitAuthEnv, withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
 import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
@@ -329,7 +329,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
   const gitAuth = gitAuthEnv(platformSecrets.GITHUB_TOKEN);
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: { ...(s.env ?? {}), ...gitAuth } } : s);
-  const ghExec: Exec = (s) => execCommand({ ...s, env: { ...(s.env ?? {}), ...gitAuth } });
+  const ghExec: Exec = (s) => execCommand({ ...s, env: withGitAuthEnv(s.env ?? {}, platformSecrets.GITHUB_TOKEN) });
   if (!opts.dryRun) await prepareSkills(exec, io.env, (line) => io.stderr(line));
   const draft = opts.draft === true || (!opts.complete && !opts.readme && !opts.deploy && (await startsAsDraft(exec, projectDir, ws, specId)));
   const errors = await preconditions(exec, ws, specId, draft, opts.complete === true, opts.readme === true, opts.deploy === true);
