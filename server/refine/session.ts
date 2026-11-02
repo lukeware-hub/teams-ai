@@ -677,10 +677,11 @@ export class RefineSession {
     const exec = this.deps.docsBind?.exec;
     if (this.docs || this.state.docsRepo !== true || !exec) return;
     const marker = await readDocsMarker(this.deps.ws);
-    if (!marker?.firstSha) return;
+    if (!marker) return;
     this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style) });
     this.journal.onFact = (e) => this.onFact(e);
     if (atOpen) void this.docs.flush();
+    else void this.docs.publish();
   }
 
   /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts or syncs. */

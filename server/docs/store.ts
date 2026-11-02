@@ -449,21 +449,26 @@ async function createOrRefuse(target: RepoTarget, exec: Exec): Promise<string> {
   }
 }
 
-async function attach(store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
-  const fullName = `${target.owner}/${target.name}`;
-  const info = await repoInfo(store.dir, fullName, exec);
+/** The repository's info when it exists; a repository that cannot take the documents is refused before any remote effect. */
+async function preflight(store: Store, target: RepoTarget): Promise<RepoInfo | null> {
+  const info = await repoInfo(store.dir, `${target.owner}/${target.name}`, store.exec);
   if (info) assertAdoptable(info);
-  const url = info ? info.url : await createOrRefuse(target, exec);
-  await setOrigin(store, `${url}.git`);
-  await git(store.dir, ['fetch', '-q', 'origin'], networkExec(exec));
-  await assertNoOtherHistory(store);
-  return info === null;
+  return info;
 }
 
-/** Attaches the store, and removes the marker when a refusal comes before any remote effect, so another target can be bound. */
-async function attachOrUnbind(ws: Pick<Workspace, 'root'>, store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
+/** Connects the store to its repository, creating it when missing; a failure throws, and the next call repeats the whole step. */
+async function connectRemote(store: Store, target: RepoTarget): Promise<void> {
+  const info = await preflight(store, target);
+  const url = info ? info.url : await createOrRefuse(target, store.exec);
+  await setOrigin(store, `${url}.git`);
+  await git(store.dir, ['fetch', '-q', 'origin'], networkExec(store.exec));
+  await assertNoOtherHistory(store);
+}
+
+/** Runs the preflight, and removes the marker when it refuses, so another target can be bound. */
+async function preflightOrUnbind(ws: Pick<Workspace, 'root'>, store: Store, target: RepoTarget): Promise<void> {
   try {
-    return await attach(store, target, exec);
+    await preflight(store, target);
   } catch (err) {
     if (err instanceof DocsStoreError) await removeDocsMarker(ws);
     throw err;
@@ -472,13 +477,13 @@ async function attachOrUnbind(ws: Pick<Workspace, 'root'>, store: Store, target:
 
 const sameBinding = (a: DocsMarker, b: DocsMarker): boolean => a.style === b.style && a.target.owner === b.target.owner && a.target.name === b.target.name;
 
-/** Binds a project to its documentation repository in order: marker, local history, remote; the push never forces. */
-export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: Exec = execCommand): Promise<{ sha: string; created: boolean }> {
+/** Binds a project to its documentation repository: the marker, the local history and the preflight now; the remote is published later. */
+export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: Exec = execCommand): Promise<void> {
   const marker: DocsMarker = { layout: 'docs-repo', style: input.style, target: input.target, firstSha: null };
   const earlier = await readDocsMarker(ws);
   if (earlier) {
     if (!sameBinding(earlier, marker)) throw new DocsStoreError('the project is already bound to another repository or style, and both are fixed');
-    if (earlier.firstSha) return { sha: earlier.firstSha, created: false };
+    if (earlier.firstSha) return;
   }
   await writeDocsMarker(ws, marker);
   const store = storeOf(ws, input.style, exec);
@@ -486,12 +491,16 @@ export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: 
   if (!(await withRepoLock(store.dir, () => hasHead(store)))) {
     await commitProjection(store, { draftId: input.draftId, stepKey: 'bind', scope: 'refine', label: 'initial documents', files: input.documents });
   }
-  const created = await attachOrUnbind(ws, store, input.target, exec);
-  const sha = await withRepoLock(store.dir, () => headSha(store.dir, exec));
-  const pushed = await pushMain(store.dir, sha, networkExec(exec));
-  if (!pushed.ok) throw new DocsStoreError((pushed.kind === 'non-fast-forward' ? failure('busy') : failure(pushed.kind)).message);
-  await writeDocsMarker(ws, { ...marker, firstSha: sha });
-  return { sha, created };
+  await preflightOrUnbind(ws, store, input.target);
+}
+
+/** Pushes the local commits; the first push connects the repository and records the first sha in the marker. */
+export async function pushDocuments(ws: Pick<Workspace, 'root'>, store: Store): Promise<PushOutcome> {
+  const marker = await readDocsMarker(ws);
+  if (marker?.firstSha === null) await connectRemote(store, marker.target);
+  const pushed = await pushWithRecovery(store);
+  if (pushed.ok && marker?.firstSha === null) await writeDocsMarker(ws, { ...marker, firstSha: pushed.sha });
+  return pushed;
 }
 
 export interface Closing {
@@ -531,7 +540,7 @@ export async function closeRefinement(ws: Pick<Workspace, 'root'>, store: Store,
     const refused = [...flushed.diverged, ...flushed.aliasTaken];
     if (refused.length > 0) throw new DocsStoreError(`the store changed under this draft (${refused.join(', ')}); nothing launches`);
     await commitClosing(store, p.draftId, closing.summary);
-    const pushed = await pushWithRecovery(store);
+    const pushed = await pushDocuments(ws, store);
     if (pushed.ok) return finishClosing(ws, store, p.draftId, pushed.sha, closing.aliases);
     if (pushed.kind !== 'busy') throw new DocsStoreError(pushed.message);
   }
