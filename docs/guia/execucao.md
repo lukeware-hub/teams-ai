@@ -1,10 +1,12 @@
 # Execução: acompanhar o desenvolvimento
 
-Perguntas que este texto responde: como acompanhar a execução, como parar, como retomar, o que significa pausada por cota, o que é aguardando login, o que é bloqueada, o que é reprocessar, onde vejo o custo, como iniciar a execução de uma spec.
+Perguntas que este texto responde: como acompanhar a execução, como parar, como retomar, o que significa pausada por cota, o que é aguardando login, o que é bloqueada, o que é reprocessar, onde vejo o custo, como iniciar a execução de uma spec, o que é a tag dev-start.
 
 ## Como a execução começa
 
 Depois de **Iniciar análise** no refinamento, o sistema abre a tela de **Execução**. Também é possível começar uma spec pronta pela página do projeto, com o botão **Iniciar execução** na linha da spec.
+
+Com o repositório de documentos ligado, o início também deixa a tag `dev-start/<nome da spec>` no repositório, marcando onde o desenvolvimento começa. Veja "refinamento", na seção Repositório de documentos.
 
 ## O que a tela mostra
 

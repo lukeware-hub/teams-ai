@@ -1,6 +1,6 @@
 # Refinamento: preparar a spec antes de executar
 
-Perguntas que este texto responde: o que é refinamento, como avaliar a spec, o que são as perguntas dos agentes, como responder, o que é a lista de verificação, o que é Avaliar e Reavaliar, quando posso iniciar a execução, o que é Iniciar análise, o que são segredos, o que é o Jev, o que são as etapas de um projeto novo e o que fazem Continuar, Voltar e Avaliar esta etapa.
+Perguntas que este texto responde: o que é refinamento, como avaliar a spec, o que são as perguntas dos agentes, como responder, o que é a lista de verificação, o que é Avaliar e Reavaliar, quando posso iniciar a execução, o que é Iniciar análise, o que são segredos, o que é o Jev, o que são as etapas de um projeto novo e o que fazem Continuar, Voltar e Avaliar esta etapa, e onde os documentos são salvos.
 
 O refinamento prepara a spec. Os agentes conferem se a descrição está completa e sem ambiguidade antes de gastar tempo desenvolvendo.
 
@@ -51,6 +51,19 @@ A linha **Alinhado com os outros documentos** diz se o documento da etapa bate c
 **Não se aplica** aparece só em design.md, para projeto sem tela: o documento passa a dizer isso, e o Jev conta a parte como presente. **Anexar arquivo** lê um arquivo de texto e troca o conteúdo do documento; se o documento já tem texto, a tela pede confirmação antes. Em briefing.md, a seção **## Decisões** é mantida ao salvar ou anexar, para que as respostas já dadas não se percam.
 
 Na primeira etapa (flow.md), o Jev não compara documentos, porque ainda não há documento anterior. Em um projeto confidencial, o Jev não lê nenhum documento.
+
+## Repositório de documentos
+
+Com o repositório de documentos ligado (variável `TEAMS_AI_DOCS_REPO_LAYOUT`, desligada por padrão), os documentos também são gravados em um repositório do GitHub. Cada passo do refinamento vira um commit nele: ao fim de cada etapa, ao montar o backlog e ao iniciar a análise. Alterações no editor não geram commit.
+
+- Projeto monólito: o repositório de documentos é o próprio repositório do projeto, com os documentos em `docs/`.
+- Projeto de microsserviços: o repositório de documentos é o `artefacty`, um repositório central. Os documentos de cada serviço ficam em `docs/<serviço>/specify/`.
+
+O repositório recebe só os cinco documentos e, para cada spec, os arquivos `spec.md`, `plan.md` e `task.md`. Os demais arquivos ficam no sistema.
+
+Ao clicar em **Quebrar o backlog**, com a arquitetura decidida, o sistema vincula o repositório. Ele precisa ser privado, não pode estar arquivado e sua conta do GitHub precisa poder escrever nele. Se algum desses pontos falhar, o sistema mostra qual.
+
+Ao clicar em **Iniciar análise**, o sistema faz um commit de fechamento com os documentos e cria a tag `dev-start/<nome da spec>` para cada spec que será executada. A tag marca o ponto em que o desenvolvimento começa.
 
 ## Repositórios
 

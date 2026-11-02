@@ -14,6 +14,8 @@ Um projeto é o serviço que os agentes vão construir. Ele tem um nome, uma des
 
 O projeto só entra na lista de Projetos quando a primeira execução começar. Enquanto isso ele aparece em **Novos projetos em refinamento**.
 
+Com o repositório de documentos ligado, nenhum repositório do GitHub é criado nem alterado até você clicar em **Quebrar o backlog**, depois da arquitetura. Veja "refinamento", na seção Repositório de documentos.
+
 ## Importar um projeto que já existe no Git
 
 1. Em **Projetos**, clique em **Importar do Git**.
