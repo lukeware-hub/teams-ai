@@ -40,6 +40,22 @@ describe('the start lock', () => {
     await s.close();
   });
 
+  it('a main sync during a start is refused and does not release the start', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    s.beginStart();
+    await expect(s.syncWithMain(async () => [])).rejects.toBeInstanceOf(BusyError);
+    expect(() => s.beginStart()).toThrow(BusyError);
+    await s.close();
+  });
+
+  it('a main sync during a start is refused and does not release the start', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    s.beginStart();
+    await expect(s.syncWithMain(async () => [])).rejects.toBeInstanceOf(BusyError);
+    expect(() => s.beginStart()).toThrow(BusyError);
+    await s.close();
+  });
+
   it('a start that failed before its run released the lock, so the draft can start again', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     s.beginStart();

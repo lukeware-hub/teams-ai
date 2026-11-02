@@ -236,6 +236,8 @@ export class RefineSession {
   /** Set synchronously by `freeze()`, before any await, so a second concurrent `start` never slips
    *  through the window between freezing the spec and the run being marked started. */
   private starting = false;
+  /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
+  private syncing = false;
   /** Set when the owner throws the draft away: no run starts on it after that. */
   private discarding = false;
   /** The Backlog step in flight: a second call awaits it, so the repository is bound and the backlog enabled once. */
@@ -312,7 +314,7 @@ export class RefineSession {
   }
 
   private guardStarting(): void {
-    if (this.starting) throw new BusyError('a start is already in progress');
+    if (this.starting || this.syncing) throw new BusyError('a start is already in progress');
   }
 
   private guard(): void {
@@ -1028,7 +1030,7 @@ export class RefineSession {
   /** Before a start: `sync` brings in what main changed since this draft began; a changed project doc needs a new evaluation. */
   async syncWithMain(sync: () => Promise<Array<{ file: string; hash: string }>>): Promise<void> {
     this.guard();
-    this.starting = true; // no evaluation reads the docs while main's changes come in
+    this.syncing = true;
     try {
       const changed = await sync();
       for (const c of changed) await this.journal.fact(RefineEvent.DocEdited, { ...c, source: 'main' });
@@ -1036,7 +1038,7 @@ export class RefineSession {
         throw new ConflictError(`A main mudou desde o início deste refinamento (${changed.map((c) => c.file).join(', ')}): os documentos foram atualizados com essas mudanças. Avalie de novo para iniciar.`);
       }
     } finally {
-      this.starting = false;
+      this.syncing = false;
     }
   }
 
