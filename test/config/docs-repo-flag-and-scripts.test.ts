@@ -12,13 +12,13 @@ describe('live-check:converge script', () => {
 });
 
 describe('docs repository layout flag', () => {
-  it('is listed in .env.example with the default off', async () => {
+  it('is listed in .env.example with the default on', async () => {
     const lines = (await fs.readFile(path.resolve('.env.example'), 'utf8')).split('\n');
-    expect(lines).toContain('TEAMS_AI_DOCS_REPO_LAYOUT=0');
+    expect(lines).toContain('TEAMS_AI_DOCS_REPO_LAYOUT=1');
   });
 
-  it('keeps the compose default at 0, so the flip stays with the owner', async () => {
+  it('sets the compose default to 1, and the code default stays off when the variable is unset', async () => {
     const compose = await fs.readFile(path.resolve('docker-compose.yml'), 'utf8');
-    expect(compose).toContain('TEAMS_AI_DOCS_REPO_LAYOUT: ${TEAMS_AI_DOCS_REPO_LAYOUT:-0}');
+    expect(compose).toContain('TEAMS_AI_DOCS_REPO_LAYOUT: ${TEAMS_AI_DOCS_REPO_LAYOUT:-1}');
   });
 });
