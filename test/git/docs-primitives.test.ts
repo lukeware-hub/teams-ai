@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { aheadBehind, createAnnotatedTag, git, isAncestor, pushMain, pushTags, remoteTagTarget } from '../../server/git/git.js';
+import { createAnnotatedTag, git, isAncestor, pushMain, pushTags, remoteTagTarget } from '../../server/git/git.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 
@@ -54,16 +54,6 @@ describe('isAncestor', () => {
     const next = await commit(remote.repo, 'docs: next');
     expect(await isAncestor(remote.repo, base, next)).toBe(true);
     expect(await isAncestor(remote.repo, next, base)).toBe(false);
-  });
-});
-
-describe('aheadBehind', () => {
-  it('counts the commits head has beyond base, and the reverse', async () => {
-    const base = await head(remote.repo);
-    await commit(remote.repo, 'docs: one');
-    const next = await commit(remote.repo, 'docs: two');
-    expect(await aheadBehind(remote.repo, base, next)).toEqual({ ahead: 2, behind: 0 });
-    expect(await aheadBehind(remote.repo, next, base)).toEqual({ ahead: 0, behind: 2 });
   });
 });
 

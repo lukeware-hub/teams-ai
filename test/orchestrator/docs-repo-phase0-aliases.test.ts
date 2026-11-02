@@ -1,0 +1,90 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig } from '../../server/config/config.js';
+import { execCommand } from '../../server/exec/command.js';
+import { OrchEvent } from '../../server/orchestrator/events.js';
+import { Run, type RunDeps } from '../../server/orchestrator/run.js';
+import { runStep } from '../../server/runner/step.js';
+import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
+import { FakeExec } from '../fixtures/fake-exec.js';
+import { makeRemote, type Remote } from '../fixtures/git-remote.js';
+
+const project = makeProject({ projectId: 'hello-app' });
+const spec = makeFrozenSpec({ specId: 'hello-001' });
+const FIVE = ['project.md', 'flow.md', 'briefing.md', 'design.md', 'stack.md'];
+const OTHER = 'docs/specify/other-002';
+let remote: Remote;
+let draftDocs: string;
+
+beforeEach(async () => {
+  remote = await makeRemote({ 'README.md': 'seed' });
+  draftDocs = path.join(remote.root, 'draft', 'docs');
+  const files: Record<string, string> = {
+    'project.json': JSON.stringify(project),
+    'specs/hello-001/spec.json': JSON.stringify(spec),
+    'specs/hello-001/implementation-plan.md': '# Plan',
+    'specs/hello-001/task.md': '# Tasks',
+    ...Object.fromEntries(FIVE.map((f) => [f, `# ${f}`])),
+  };
+  for (const [rel, text] of Object.entries(files)) {
+    await fs.mkdir(path.dirname(path.join(draftDocs, rel)), { recursive: true });
+    await fs.writeFile(path.join(draftDocs, rel), text);
+  }
+});
+afterEach(() => remote.cleanup());
+
+function deps(exec: FakeExec, snapshot: string): RunDeps {
+  const root = path.join(remote.root, 'ws').replace(/\\/g, '/');
+  return {
+    cfg: loadConfig({ paths: { workspaces: root, runs: `${root}/runs`, secrets: '/tmp/none' } }),
+    ws: { projectId: 'hello-app', root, repo: remote.repo, worktrees: `${root}/wt`, graph: `${root}/graph`, knowledgeDb: '', secrets: `${root}/secrets`, runs: `${root}/runs` },
+    project, spec, firstSpec: true, docsRepo: true,
+    exec: exec.exec, ghExec: exec.exec,
+    runStep,
+    binary: { bin: process.execPath, prefixArgs: [], env: {}, requireSandboxTools: false },
+    agents: undefined as never,
+    graphify: null, knowledge: null, secrets: {},
+    log: () => {},
+    claudeJsonPath: path.join(remote.root, '.claude.json'),
+    bootstrap: { docsDir: draftDocs, owner: 'o' },
+    docs: { style: 'monolith', snapshot },
+  };
+}
+
+/** A closing snapshot with the five documents and two specs, each with its plan and task list; `omit` leaves files out. */
+async function writeSnapshot(omit: string[] = []): Promise<string> {
+  const snapshot = path.join(remote.root, 'snapshot');
+  const files: Record<string, string> = {
+    ...Object.fromEntries(FIVE.map((f) => [`docs/${f}`, `# ${f}`])),
+    'docs/specify/hello-001/spec.md': '# Spec',
+    'docs/specify/hello-001/plan.md': '# Plan',
+    'docs/specify/hello-001/task.md': '# Tasks',
+    [`${OTHER}/spec.md`]: '# Spec',
+    [`${OTHER}/plan.md`]: '# Plan',
+    [`${OTHER}/task.md`]: '# Tasks',
+  };
+  for (const [rel, text] of Object.entries(files)) {
+    if (omit.includes(rel)) continue;
+    await fs.mkdir(path.dirname(path.join(snapshot, rel)), { recursive: true });
+    await fs.writeFile(path.join(snapshot, rel), text);
+  }
+  return snapshot;
+}
+
+describe('phase 0 of a docs-repo project checks every alias', () => {
+  it('fails with PHASE_FAILED that names the task list of a second alias the snapshot lacks', async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    const run = await Run.create(deps(exec, await writeSnapshot([`${OTHER}/task.md`])), 'hello-001-p0-alias-1');
+    expect(await run.executePhase0()).toEqual({ ok: false, reason: `the document ${OTHER}/task.md is not in the closing snapshot` });
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && String(e.data.reason).includes(`${OTHER}/task.md`))).toBe(true);
+    await run.close();
+  });
+
+  it('passes when every alias of the snapshot has its plan and task list', async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    const run = await Run.create(deps(exec, await writeSnapshot()), 'hello-001-p0-alias-2');
+    expect(await run.executePhase0()).toEqual({ ok: true });
+    await run.close();
+  });
+});

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Exec, CommandResult } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import type { RefineSession } from '../../server/refine/session.js';
@@ -14,6 +14,7 @@ let ghRoot = '';
 let offline = false;
 
 afterEach(async () => {
+  vi.useRealTimers();
   await rig?.close();
   rig = null;
   if (ghRoot) await fs.rm(ghRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -21,6 +22,9 @@ afterEach(async () => {
   gh = null;
   offline = false;
 });
+
+/** The 3 second push debounce passes, so the pending push of the sync goes out. */
+const debounced = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 3100));
 
 const answer = (stdout: string): CommandResult => ({ exitCode: 0, signal: null, stdout, stderr: '', timedOut: false, durationMs: 1, truncated: false });
 
@@ -61,8 +65,9 @@ describe('a documentation repository session syncs its documents', () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
-    expect(await commitCount()).toBe(1);
     await s.saveDoc('project.md', '# Projeto\n\nNova visão.\n');
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
@@ -71,9 +76,11 @@ describe('a documentation repository session syncs its documents', () => {
   it('attaching the documents again keeps the pending count and the last failure', async () => {
     const r = await openRig();
     const s = await decided(r);
+    offline = true;
     await s.enableBacklog();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
-    offline = true;
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     const before = (await s.snapshot()).docsSync;
     expect(before?.lastError).toMatch(/could not be reached/);
@@ -101,6 +108,8 @@ describe('a documentation repository session syncs its documents', () => {
     await fs.writeFile(path.join(r.draft.docs, 'project.md'), '# Projeto\n\nFechado.\n');
     const reopened = await r.registry.get(PROJECT, `${PROJECT}-001`);
     await reopened.tickDocs();
+    await debounced();
+    await reopened.tickDocs();
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): documents synced [skip ci]');
   });
@@ -116,6 +125,7 @@ describe('a documentation repository session syncs its documents', () => {
     await r.registry.get(PROJECT, `${PROJECT}-001`);
     await r.registry.tickDocs();
     expect(await commitCount()).toBe(1);
+    await debounced();
     offline = false;
     await r.registry.tickDocs();
     expect(await commitCount()).toBe(2);
@@ -131,9 +141,13 @@ describe('a documentation repository session syncs its documents', () => {
     const events = s.events.length;
     offline = true;
     await s.tickDocs();
+    await debounced();
+    await s.tickDocs();
     const failed = (await s.snapshot()).docsSync;
     expect(failed?.lastError).toMatch(/could not be reached/);
     expect(failed?.pending).toBe(1);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 60_000);
     offline = false;
     await s.tickDocs();
     expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
@@ -146,6 +160,8 @@ describe('a documentation repository session syncs its documents', () => {
     await s.enableBacklog();
     await s.tickDocs();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
   });

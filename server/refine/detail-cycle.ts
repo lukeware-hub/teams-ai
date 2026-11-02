@@ -101,7 +101,7 @@ export async function retireDropped(draft: Draft, specIds: readonly string[]): P
     const onMain = await readMainSpec(draft, specId);
     if (onMain?.status === 'planned' || onMain?.status === 'refining') {
       await restoreFromBase(draft, specId);
-      await fs.writeFile(path.posix.join(itemDir(draft, specId), 'spec.json'), json({ ...onMain, status: 'retired' }));
+      await writeFileAtomic(path.posix.join(itemDir(draft, specId), 'spec.json'), json({ ...onMain, status: 'retired' }));
     } else await fs.rm(itemDir(draft, specId), { recursive: true, force: true, maxRetries: 3 });
   }
 }
@@ -226,7 +226,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     await restoreFromBase(draft, onMain.specId);
     // R11.7.5: a retired spec whose item is back is planned again, and Phase 0 publishes that.
     const spec = onMain.status === 'retired' ? { ...onMain, status: 'planned' as const } : onMain;
-    if (spec !== onMain) await fs.writeFile(path.posix.join(itemDir(draft, spec.specId), 'spec.json'), json(spec));
+    if (spec !== onMain) await writeFileAtomic(path.posix.join(itemDir(draft, spec.specId), 'spec.json'), json(spec));
     const rev = computeSpecHash(spec);
     specs[i.key] = { inputHash: specHash.get(i.key)!, specId: spec.specId, rev, spec, issues: [], cycle };
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: spec.specId, inputHash: specHash.get(i.key), rev, spec, issues: [], highWater });
@@ -291,7 +291,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
       if (flags.length > 0) return { issues: flags, flagged: true };
     }
     preplans[item.key] = { inputHash: parsed.data.inputHash, specRev: parsed.data.specRev, preplan: parsed.data, issues: [], cycle };
-    await fs.writeFile(path.posix.join(itemDir(draft, spec.specId), 'preplan.json'), json(parsed.data));
+    await writeFileAtomic(path.posix.join(itemDir(draft, spec.specId), 'preplan.json'), json(parsed.data));
     await writeItemSpec(draft, spec, 'planned');
     await journal.fact(RefineEvent.PreplanDerived, { cycle, key: item.key, inputHash: parsed.data.inputHash, specRev: parsed.data.specRev, preplan: parsed.data, issues: [] });
     return { issues: [] };

@@ -3,10 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readClosingRecord } from '../../server/docs/project-state.js';
-import { bind, commitProjection, storeOf } from '../../server/docs/store.js';
+import { bind, commitProjection, pushDocuments, storeOf } from '../../server/docs/store.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
 import { boundaryLabel } from '../../server/refine/docs-boundary.js';
-import { DocsSync } from '../../server/refine/docs-sync.js';
+import { DocsSync, type PushTimer } from '../../server/refine/docs-sync.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import type { Exec, CommandResult } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
@@ -23,16 +23,37 @@ let draft: Draft;
 let gh: FakeGhRepos;
 let offline = false;
 
+/** A push timer that runs the debounced push only when the test fires it. */
+class ManualTimer implements PushTimer {
+  private run: (() => void) | null = null;
+  set(run: () => void): unknown {
+    this.run = run;
+    return 1;
+  }
+  clear(): void {
+    this.run = null;
+  }
+  fire(): void {
+    const run = this.run;
+    this.run = null;
+    run?.();
+  }
+}
+
+let timer = new ManualTimer();
+
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-sync-'));
   ws = { projectId: 'hello-app', root, repo: path.join(root, 'repo'), worktrees: '', graph: '', knowledgeDb: '', secrets: '', runs: '' };
   draft = draftPaths(ws, 'hello-app-001');
   gh = new FakeGhRepos(root);
   offline = false;
+  timer = new ManualTimer();
   await fs.mkdir(draft.docs, { recursive: true });
   for (const doc of DOCS) await fs.writeFile(path.join(draft.docs, doc), `# ${doc}\n`);
   const documents = Object.fromEntries(DOCS.map((doc) => [`docs/${doc}`, `# ${doc}\n`]));
   await bind(ws, { style: 'monolith', target, draftId: 'hello-app-001', documents }, gh.exec);
+  await pushDocuments(ws, storeOf(ws, 'monolith', gh.exec));
 });
 
 afterEach(async () => {
@@ -53,7 +74,13 @@ const exec: Exec = async (spec): Promise<CommandResult> => {
 
 /** A documents sync of the bound hello-app project, with no specs of its own yet. */
 function sync(): DocsSync {
-  return new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [] });
+  return new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => [], timer });
+}
+
+/** The debounce time passes, then the pending push finishes. */
+async function settle(s: DocsSync): Promise<void> {
+  timer.fire();
+  await s.publish();
 }
 
 /** Changes one document of the draft on disk, as an owner save does. */
@@ -65,6 +92,7 @@ describe('DocsSync commits at boundaries', () => {
     await edit('project.md', 'changed\n');
     s.boundary('backlog enabled');
     await s.tick();
+    await settle(s);
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('changed');
@@ -78,6 +106,7 @@ describe('DocsSync commits at boundaries', () => {
     expect(await commitCount()).toBe(1);
     s.boundary('spec hello-app-001-login');
     await s.tick();
+    await settle(s);
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): spec hello-app-001-login [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
@@ -107,6 +136,7 @@ describe('DocsSync flush leaves the draft and its base copy alone', () => {
     const docsBefore = await snapshot(draft.docs);
     const baseBefore = await snapshot(draft.base!);
     await s.flush();
+    await settle(s);
     expect(s.view.lastError).toBeNull();
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('changed');
     expect(await snapshot(draft.docs)).toEqual(docsBefore);
@@ -121,9 +151,10 @@ describe('DocsSync coalesces a burst', () => {
       await fs.mkdir(path.join(draft.docs, 'specs', alias), { recursive: true });
       await fs.writeFile(path.join(draft.docs, 'specs', alias, 'spec.json'), JSON.stringify(makeSpec({ specId: alias, repository: 'hello-app' })));
     }
-    const s = new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => aliases.map((alias) => ({ alias })) });
+    const s = new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => aliases.map((alias) => ({ alias })), timer });
     for (const alias of aliases) s.boundary(boundaryLabel({ type: RefineEvent.SpecDerived, data: { specId: alias } }, null)!);
     await s.tick();
+    await settle(s);
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe(`docs(refine): ${aliases.map((alias) => `spec ${alias}`).join(', ')} [skip ci]`);
     expect((await git(origin(), ['ls-tree', '-r', '--name-only', 'main', 'docs/specify'])).split('\n')).toHaveLength(6);
@@ -138,6 +169,7 @@ describe('DocsSync retries a failed flush', () => {
     offline = true;
     await s.tick();
     expect(await commitCount()).toBe(1);
+    await settle(s);
     offline = false;
     await s.tick();
     expect(await commitCount()).toBe(2);
@@ -161,6 +193,7 @@ describe('DocsSync keeps a refused flush out of history', () => {
     s.boundary('backlog enabled');
     await s.tick();
     expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md'), refused: true });
+    await settle(s);
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
     expect(await git(storeDir(), ['status', '--porcelain'])).toBe('');
@@ -169,6 +202,7 @@ describe('DocsSync keeps a refused flush out of history', () => {
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.tick();
+    await settle(s);
     expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
@@ -194,6 +228,7 @@ describe('DocsSync keeps a refused flush out of history', () => {
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.flush();
+    await settle(s);
     expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });
@@ -206,6 +241,7 @@ describe('DocsSync retries only a pending boundary', () => {
     s.edit();
     offline = true;
     await s.flush();
+    await settle(s);
     expect(s.view.lastError).not.toBeNull();
     expect(await commitCount()).toBe(1);
     offline = false;
@@ -218,6 +254,7 @@ describe('DocsSync retries only a pending boundary', () => {
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('# project.md');
     s.boundary('backlog enabled');
     await s.tick();
+    await settle(s);
     expect(await commitCount()).toBe(3);
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('changed');
@@ -236,9 +273,10 @@ describe('DocsSync counts a change by the flush that projects it', () => {
       }
       return exec(spec);
     };
-    s = new DocsSync({ ws, draft, style: 'monolith', exec: racing, aliases: () => [] });
+    s = new DocsSync({ ws, draft, style: 'monolith', exec: racing, aliases: () => [], timer });
     s.boundary('backlog enabled');
     await s.tick();
+    await settle(s);
     expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('arrived');
   });
@@ -281,6 +319,7 @@ describe('DocsSync keeps a refusal at open when no change is pending', () => {
     await edit('project.md', 'mine\n');
     await edit('stack.md', 'stack changed\n');
     await s.flush();
+    await settle(s);
     expect(s.view).toEqual({ pending: 0, lastError: expect.stringContaining('docs/project.md'), refused: true });
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
     await s.tick();
@@ -290,6 +329,7 @@ describe('DocsSync keeps a refusal at open when no change is pending', () => {
       files: { 'docs/project.md': '# project.md\n' },
     });
     await s.flush();
+    await settle(s);
     expect(s.view).toEqual({ pending: 0, lastError: null, refused: false });
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('mine');
   });

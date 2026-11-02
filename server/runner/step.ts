@@ -43,6 +43,8 @@ export interface StepRequest {
   sessionStore?: string;
   /** The owner lets this step decide: it gets the web tools and the permissions of `FULL_ACCESS_ALLOW`. */
   fullAccess?: boolean;
+  /** The step runs in a documentation-repository project, whose store-owned documents no step writes. */
+  docsRepo?: boolean;
   /** Extra allow rules for this step's role settings (from the plan's commands). */
   extraAllow?: readonly string[];
   /** The step may search the web: the WebSearch tool only, never a fetch. The chat asks for it about a project that allows it. */
@@ -105,8 +107,13 @@ export const CHAT_MAX_TURNS = 6;
 const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TOOLS };
 /** The turn cap a kind has below its role's. */
 const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS };
-/** The only folders of its working directory a kind's file tools may write: a plan step writes its plan file, never the inputs or a CLAUDE.md. */
-const KIND_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['docs/specs'] };
+/** The folders of its working directory a kind's file tools may write, in the legacy layout: a plan step writes its plan file, never the inputs or a CLAUDE.md. */
+const LEGACY_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['docs/specs'] };
+/** The five documents a documentation repository's store projection owns: no step agent writes them. */
+const STORE_OWNED_DOCS: readonly string[] = ['docs/project.md', 'docs/flow.md', 'docs/briefing.md', 'docs/design.md', 'docs/stack.md'];
+/** The write folders of each kind in a layout; the documentation repository drops the store-owned documents. */
+export const writeDirsFor = (docsRepo: boolean): Partial<Record<StepKind, readonly string[]>> =>
+  docsRepo ? Object.fromEntries(Object.entries(LEGACY_WRITE_DIRS).map(([kind, dirs]) => [kind, dirs?.filter((dir) => !STORE_OWNED_DOCS.includes(dir))])) : LEGACY_WRITE_DIRS;
 export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
   const turns = KIND_TURNS[kind];
   return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };
@@ -331,7 +338,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
   const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
-  const writeDirs = KIND_WRITE_DIRS[req.kind]?.map((dir) => path.join(req.cwd, dir));
+  const writeDirs = writeDirsFor(req.docsRepo === true)[req.kind]?.map((dir) => path.join(req.cwd, dir));
   // dontAsk denies a Read no rule allows, so a skill reads its own plugin files only through these rules.
   const pluginDirs = await stepPluginDirs(deps, req.role, home);
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...(req.webSearch === true && req.kind === 'chat' ? ['WebSearch'] : []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });

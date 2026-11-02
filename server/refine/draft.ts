@@ -200,11 +200,11 @@ ${briefTemplate()}`);
 
 export async function createNewProject(d: Draft, name: string, description = ''): Promise<void> {
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
-  await fs.writeFile(d.projectMd, projectTemplate(name));
-  await fs.writeFile(d.briefMd, briefWith(cleanDescription(description)));
-  await fs.writeFile(d.stackMd, stackTemplate());
-  await fs.writeFile(d.flowMd, flowTemplate());
-  await fs.writeFile(docPath(d, 'design.md'), designTemplate());
+  await writeFileAtomic(d.projectMd, projectTemplate(name));
+  await writeFileAtomic(d.briefMd, briefWith(cleanDescription(description)));
+  await writeFileAtomic(d.stackMd, stackTemplate());
+  await writeFileAtomic(d.flowMd, flowTemplate());
+  await writeFileAtomic(docPath(d, 'design.md'), designTemplate());
 }
 
 /** Every file on main under the given paths, as repository paths. */
@@ -237,7 +237,7 @@ async function copyFromMain(source: MainCopy, files: readonly string[], root: st
     const text = await source.text(rel);
     if (text === null) throw new Error(`main does not hold ${rel}`);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, text);
+    await writeFileAtomic(target, text);
   }
 }
 
@@ -246,19 +246,19 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
   const files = await source.files();
   await copyFromMain(source, files, d.root);
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
-  if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
-  if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
-  if (!files.includes('docs/design.md')) await fs.writeFile(docPath(d, 'design.md'), designTemplate());
+  if (!files.includes('docs/stack.md')) await writeFileAtomic(d.stackMd, stackTemplate());
+  if (!files.includes('docs/flow.md')) await writeFileAtomic(d.flowMd, flowTemplate());
+  if (!files.includes('docs/design.md')) await writeFileAtomic(docPath(d, 'design.md'), designTemplate());
   if (!files.includes('docs/project.md')) {
     const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
-    await fs.writeFile(d.projectMd, renderProjectMd(project));
+    await writeFileAtomic(d.projectMd, renderProjectMd(project));
   }
   // The docs as the session received them: the start publishes only what differs from this copy.
   await fs.cp(d.docs, d.base!, { recursive: true });
   // A backlog draft starts from the docs alone: its outline comes from the evaluation.
   if (mode.kind === 'backlog') return;
   if (mode.kind === 'new-spec') {
-    await fs.writeFile(d.briefMd, briefWith(cleanDescription(mode.description)));
+    await writeFileAtomic(d.briefMd, briefWith(cleanDescription(mode.description)));
     return;
   }
   const spec = Spec.parse(JSON.parse(await fs.readFile(d.specJson, 'utf8')));
@@ -267,8 +267,8 @@ export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: {
     const project = Project.parse(JSON.parse(await fs.readFile(d.projectJson, 'utf8')));
     routing = await mode.route(spec.acceptanceCriteria, mode.report, project.confidential);
   }
-  await fs.writeFile(d.briefMd, renderBriefMd(spec, mode.report, routing));
-  await fs.writeFile(d.specJson, JSON.stringify({ ...spec, status: 'refining', specHash: null }, null, 2));
+  await writeFileAtomic(d.briefMd, renderBriefMd(spec, mode.report, routing));
+  await writeFileAtomic(d.specJson, JSON.stringify({ ...spec, status: 'refining', specHash: null }, null, 2));
 }
 
 export async function readDoc(d: Draft, file: DocFile): Promise<string> {
@@ -352,7 +352,7 @@ export async function syncWithMain(d: Draft, repo: string, exec: Exec, source: M
     const next = draft === null || base === null || sameDoc(draft, base) ? main : await merge(rel, base, main, draft, exec);
     for (const [target, text] of [[file, next], [path.posix.join(d.base, rel), main]] as const) {
       await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, text);
+      await writeFileAtomic(target, text);
     }
     if (PROJECT_DOCS.has(rel) && !sameDoc(next, draft)) changed.push({ file: rel, hash: sha256(next) });
   }
@@ -381,7 +381,7 @@ export async function readDerived(d: Draft): Promise<{ project: Project; spec: S
 
 export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }): Promise<void> {
   await writeProject(d, v.project);
-  await fs.writeFile(d.specJson, withNewline(JSON.stringify(v.spec, null, 2)));
+  await writeFileAtomic(d.specJson, withNewline(JSON.stringify(v.spec, null, 2)));
 }
 
 /** Backlog mode derives the project but no spec yet: project.json alone. */
@@ -389,13 +389,13 @@ export async function writeDerived(d: Draft, v: { project: Project; spec: Spec }
 export async function writeProject(d: Draft, project: Project): Promise<void> {
   const base = await readBase(d, 'project.json');
   const same = base !== null && isDeepStrictEqual(Project.parse(JSON.parse(base)), project);
-  await fs.writeFile(d.projectJson, same ? base : withNewline(JSON.stringify(project, null, 2)));
+  await writeFileAtomic(d.projectJson, same ? base : withNewline(JSON.stringify(project, null, 2)));
 }
 
 /** `docs/specs.json`: the generated index of the backlog's specs (structure only; each spec keeps its own spec.json). */
-export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'specs.json'), withNewline(JSON.stringify(index, null, 2)));
+export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => writeFileAtomic(path.posix.join(d.docs, 'specs.json'), withNewline(JSON.stringify(index, null, 2)));
 
-export const writeBacklogMd = (d: Draft, text: string): Promise<void> => fs.writeFile(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
+export const writeBacklogMd = (d: Draft, text: string): Promise<void> => writeFileAtomic(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
 
 export async function draftHash(d: Draft): Promise<string> {
   const [project, briefing, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'briefing.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);

@@ -362,7 +362,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await failAgent('O backlog', out);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state));
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }

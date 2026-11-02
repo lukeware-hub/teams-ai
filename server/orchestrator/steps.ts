@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { charterRulesFor } from '../agents/document-charter.js';
 import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js';
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
@@ -150,6 +151,7 @@ const sourceRules = (base: PackBase): string[] => [
   planRule(shown(base, base.planFile)),
   ...(base.taskFile ? [taskListRule(shown(base, base.taskFile))] : []),
   base.docsRoot === undefined ? sourceDocsRule(base.spec.specId) : docsRepoRule(base.docsRoot),
+  ...charterRulesFor(base.docsRoot !== undefined),
 ];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
@@ -580,8 +582,9 @@ ${opts.security || '- none'}`,
 
 /** The doc sections a spec cites, each judged against the code on main. */
 export function gapsPack(base: PackBase, opts: { sections: ReadonlyArray<{ doc: string; heading: string }> }): ContextPackInput {
+  const docsDir = base.docsRoot === undefined ? 'docs/' : `${base.docsRoot}/docs/`;
   return { ...common(base, 'gaps', 'test'), criteria: base.spec.acceptanceCriteria, feedback: [
-    'Judge each doc section below against the code on main. Read the section in docs/ (the file before the arrow, the heading after it) and the code it asks for, with Read, Grep and Glob. This step only reads: never edit or write a file.',
+    'Judge each doc section below against the code on main. Read the section in ' + docsDir + ' (the file before the arrow, the heading after it) and the code it asks for, with Read, Grep and Glob. This step only reads: never edit or write a file.',
     'Return one item per section. `status`: delivered when the code does all the section asks, partial when it does some of it, missing when it does none. `evidence`: the files and lines that prove what is built, for example `server/api/routes.ts:42`. `missing`: what the section asks that the code lacks, empty when delivered. `acIds`: the acceptance criteria that cover the section, only ids from the criteria list.',
     'Write `missing` in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow. Keep file paths and identifiers between backticks, untranslated.',
     `Sections:\n${opts.sections.map((s) => `- ${s.doc} › ${s.heading}`).join('\n')}`,
@@ -704,6 +707,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         phase: req.phase,
         taskId: req.taskId,
         attempt: req.attempt,
+        docsRepo: deps.docsRoot !== undefined,
         extraAllow: [...(req.extraAllow ?? []), ...snapshotGrant(deps.docsRoot)],
         webSearch: req.webSearch,
         protectedDirs: req.protectedDirs,

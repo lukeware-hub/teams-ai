@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
-import { FIVE_DOCS, FIVE_DOC_PATHS, repoPath, type DocsRun } from '../../docs/layout.js';
+import { CENTRAL_REPO, FIVE_DOCS, FIVE_DOC_PATHS, SPEC_FILES, parseRepoPath, repoPath, type DocsRun, type Style } from '../../docs/layout.js';
 import type { Spec } from '../../contracts/spec.js';
 import { docsSnapshotDir, writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
@@ -37,7 +37,20 @@ async function missingSnapshotFile(docs: DocsRun, spec: Pick<Spec, 'specId' | 'r
   const service = docs.style === 'microservices' ? spec.repository : undefined;
   const files = [...FIVE_DOC_PATHS, repoPath(docs.style, 'plan', spec.specId, service), repoPath(docs.style, 'task', spec.specId, service)];
   for (const file of files) if (!(await exists(path.join(docs.snapshot, file)))) return file;
+  for (const folder of await specFoldersOf(docs.snapshot)) {
+    for (const kind of ['plan', 'task'] as const) {
+      const file = `${folder}/${SPEC_FILES[kind]}`;
+      if (!(await exists(path.join(docs.snapshot, file)))) return file;
+    }
+  }
   return null;
+}
+
+/** The folder of every spec the closing snapshot holds, by its repository path. */
+async function specFoldersOf(snapshot: string): Promise<string[]> {
+  return (await listFiles(snapshot))
+    .filter((rel) => path.posix.basename(rel) === SPEC_FILES.spec && parseRepoPath(rel) !== null)
+    .map((rel) => path.posix.dirname(rel));
 }
 
 /** The machine files of a docs-repo start: the project's JSON and the spec's own folder, the spec's spec.json last. */
@@ -47,11 +60,20 @@ async function machineFilesOf(docsDir: string, specId: string): Promise<string[]
   return [...files.filter((rel) => rel !== own), ...files.filter((rel) => rel === own)];
 }
 
-/** The project's repository, cloned, and on GitHub: the project itself, or the hub of a microservice project. It holds no document. */
-async function ensureProjectRepo(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined): Promise<PhaseResult> {
-  if (await ready(deps.ws.repo, deps.exec)) return { ok: true };
+/** A cloned central repository must hold docs/project.md on main, or the phase fails. */
+async function centralHoldsProjectMd(deps: PhaseDeps): Promise<PhaseResult> {
+  if (await git(deps.ws.repo, ['cat-file', '-e', 'refs/remotes/origin/main:docs/project.md'], deps.exec).then(() => true, () => false)) return { ok: true };
+  const reason = `the repository ${CENTRAL_REPO} has no docs/project.md on main`;
+  await deps.journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+  return { ok: false, reason };
+}
+
+/** The project's repository, cloned, and on GitHub: the project itself, or the central repository of a microservice project. It holds no document of the run. */
+async function ensureProjectRepo(deps: PhaseDeps & { ghExec: Exec }, owner: string | undefined, style: Style): Promise<PhaseResult> {
+  const hub = style === 'microservices' ? CENTRAL_REPO : deps.project.projectId;
+  if (await ready(deps.ws.repo, deps.exec)) return style === 'microservices' ? centralHoldsProjectMd(deps) : { ok: true };
   try {
-    await cloneOrCreate(deps, undefined, deps.ws.repo, owner);
+    await cloneOrCreate(deps, undefined, deps.ws.repo, owner, hub);
     await gitFetch(deps.ws.repo, deps.exec);
     return { ok: true };
   } catch (err) {
@@ -84,7 +106,7 @@ async function runDocsRepoPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { doc
     return { ok: false, reason };
   }
   for (const rel of await machineFilesOf(opts.docsDir, spec.specId)) await writeState(ws, rel, await fs.readFile(path.join(opts.docsDir, rel), 'utf8'));
-  return ensureProjectRepo(deps, opts.owner);
+  return ensureProjectRepo(deps, opts.owner, opts.docs.style);
 }
 
 /** Spec (refinement) §4: put the draft's docs on main — by creating the repository or by a docs PR. */
@@ -221,8 +243,8 @@ const ready = async (repo: string, exec: Exec): Promise<boolean> =>
  * Clones the service's repository, or creates it on GitHub from an empty first commit on main when GitHub does not have it.
  * A repository GitHub has without main (made by hand, or a creation that crashed) gets the same first commit and its main pushed.
  */
-async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string | undefined, repo: string, owner: string | undefined): Promise<void> {
-  const name = service === undefined ? deps.project.projectId : repoName(deps.project.projectId, service);
+async function cloneOrCreate(deps: PhaseDeps & { ghExec: Exec }, service: string | undefined, repo: string, owner: string | undefined, hub?: string): Promise<void> {
+  const name = hub ?? (service === undefined ? deps.project.projectId : repoName(deps.project.projectId, service));
   const gh = (args: string[]) => deps.ghExec({ bin: 'gh', args, cwd: deps.ws.root, timeoutMs: 60_000 });
   const login = owner ?? (await githubLogin(gh));
   const view = await gh(['repo', 'view', `${login}/${name}`, '--json', 'nameWithOwner,url']);
