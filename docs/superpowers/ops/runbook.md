@@ -72,6 +72,7 @@ Replace `<volume>` with the real volume name from `docker volume ls`, with the s
 
 ## Documentation repository
 This section applies to projects created while `TEAMS_AI_DOCS_REPO_LAYOUT=1` is set (see "Documentation layout" in the README).
+The flag is off by default, and the live check of plan 119 is still pending.
 Each step commits to a local clone, `/home/node/.teams-ai/workspaces/<projectId>/docs-store` in the container, and then pushes to GitHub.
 
 ### A commit is refused
