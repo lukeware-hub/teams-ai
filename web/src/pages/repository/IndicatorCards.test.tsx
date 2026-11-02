@@ -24,6 +24,13 @@ describe('IndicatorCards', () => {
     expect(within(screen.getByTestId('card-cost')).getByText('1 run deste repositório')).toBeTruthy();
   });
 
+  it('draws the progress of the repository as a bar, and writes the counts of specs in the singular for one', () => {
+    render(<IndicatorCards dashboard={dashboard(0.5)} />);
+    const bar = within(screen.getByTestId('card-progress')).getByRole('progressbar');
+    expect(bar.getAttribute('aria-valuenow')).toBe('50');
+    expect(within(screen.getByTestId('card-delivered')).getByText('1 spec entregue · 0 specs aguardam validação')).toBeTruthy();
+  });
+
   it('lays the cards out in two columns on a phone, four from 768 px and seven from 1280 px, and gives the cost the whole phone row', () => {
     render(<IndicatorCards dashboard={dashboard(0.5)} />);
     const grid = screen.getByTestId('repo-cards');

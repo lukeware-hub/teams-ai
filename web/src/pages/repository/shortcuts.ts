@@ -11,15 +11,15 @@ export interface Shortcut {
 }
 
 /** The buttons a repository of this kind shows: Swagger for an API or workers, the application for a web repository, both for a monolith. */
-export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): Shortcut[] {
+export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string, probeFailed = false): Shortcut[] {
   const wanted: Shortcut['kind'][] = kind === 'api' || kind === 'jobs' ? ['swagger'] : kind === 'web' ? ['app'] : kind === 'monolith' ? ['swagger', 'app'] : [];
-  return wanted.map((k) => shortcutOf(k, repo, deploy, probe, hostname));
+  return wanted.map((k) => shortcutOf(k, repo, deploy, probe, hostname, probeFailed));
 }
 
 /** One button: its address when the live answer gives one, else the reason it has none. */
-function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): Shortcut {
+function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string, probeFailed: boolean): Shortcut {
   if (!deploy) return { kind, href: null, reason: 'sem dados: nenhum deploy verificado ainda' };
-  if (!probe) return { kind, href: null, reason: 'verificando se o sistema responde' };
+  if (!probe) return { kind, href: null, reason: probeFailed ? 'não foi possível verificar o sistema' : 'verificando se o sistema responde' };
   if (!probe.online) return { kind, href: null, reason: 'sistema desligado' };
   const address = addressOf(repo, deploy);
   const answer = answerOf(repo, deploy, probe);

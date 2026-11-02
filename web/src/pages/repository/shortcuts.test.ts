@@ -66,6 +66,12 @@ describe('the address a browser opens', () => {
   });
 });
 
+describe('a probe that failed', () => {
+  it('says it could not check the system, not that it is still checking', () => {
+    expect(shortcutsOf('api', 'shop-api', deploy(), null, HOST, true)).toEqual([{ kind: 'swagger', href: null, reason: 'não foi possível verificar o sistema' }]);
+  });
+});
+
 describe('a system that is down', () => {
   it('reads as offline only when there is a deploy and the probe says it does not answer', () => {
     expect(isOffline(deploy(), probe({ online: false }))).toBe(true);

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { runApi, type LastDeploy, type RepoDetailView, type ServiceStatus } from '../../api.js';
+import { usePolling } from '../../usePolling.js';
 import { action, panel } from '../project-shared.js';
 import { KIND_LABEL } from './labels.js';
+import { StatePill } from './StatePill.js';
 import { isOffline, shortcutsOf } from './shortcuts.js';
 
 const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
@@ -14,31 +16,59 @@ const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
   empty: 'Sem specs',
 };
 
+const STATUS_TONE: Record<RepoDetailView['status'], string> = {
+  blocked: 'warn',
+  running: '',
+  waiting: 'neutral',
+  refining: '',
+  done: 'good',
+  empty: '',
+};
+
 const SHORTCUT_LABEL = { swagger: 'Abrir Swagger', app: 'Abrir aplicação' } as const;
+const PROBE_MS = 5000;
 
 /** The repository's name, kind and state, with the links to its running service and the start action when it is down. */
 export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailView; projectId: string; deploy: LastDeploy | null }) {
   const navigate = useNavigate();
   const [probe, setProbe] = useState<ServiceStatus | null>(null);
+  const [probeFailed, setProbeFailed] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [startFailed, setStartFailed] = useState(false);
   const runId = deploy?.runId ?? null;
 
+  // The system can stop after the page opened, so the probe runs again on the page's interval.
+  const checkProbe = useCallback(
+    () =>
+      runId
+        ? runApi.serviceStatus(runId).then(
+            (p) => {
+              setProbe(p);
+              setProbeFailed(false);
+            },
+            () => setProbeFailed(true),
+          )
+        : Promise.resolve(),
+    [runId],
+  );
   useEffect(() => {
-    let alive = true;
     setProbe(null);
-    if (runId) runApi.serviceStatus(runId).then((p) => alive && setProbe(p), () => undefined);
-    return () => {
-      alive = false;
-    };
-  }, [runId]);
+    setProbeFailed(false);
+    void checkProbe();
+  }, [checkProbe]);
+  usePolling(checkProbe, PROBE_MS);
 
-  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname);
+  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed);
   const start = () => {
     if (!deploy) return;
     setStarting(true);
+    setStartFailed(false);
     runApi.deployAgain(projectId, deploy.specId).then(
       (r) => navigate(`/runs/${encodeURIComponent(r.runId)}`),
-      () => setStarting(false),
+      () => {
+        setStarting(false);
+        setStartFailed(true);
+      },
     );
   };
 
@@ -47,7 +77,9 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
         <span className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
-        <span className="count-pill" data-testid="repo-status">{STATUS_LABEL[detail.status]}</span>
+        <span data-testid="repo-status">
+          <StatePill label={STATUS_LABEL[detail.status]} tone={STATUS_TONE[detail.status]} />
+        </span>
       </div>
       <p className="hint">{detail.responsibility}</p>
       <div className="flex flex-wrap items-start gap-3" data-testid="repo-shortcuts">
@@ -56,9 +88,11 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
             {s.href ? (
               <a href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
                 {SHORTCUT_LABEL[s.kind]}
+                <span className="sr-only"> (abre em nova aba)</span>
               </a>
             ) : (
-              <button type="button" className={action.secondary} disabled aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
+              // aria-disabled keeps the button in the tab order, so the reason it gives can be read where it is.
+              <button type="button" className={`${action.secondary} cursor-not-allowed opacity-60`} aria-disabled="true" aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
                 {SHORTCUT_LABEL[s.kind]}
               </button>
             )}
@@ -73,6 +107,11 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
           <button type="button" className={action.primary} onClick={start} disabled={starting} data-testid="start-system">
             Iniciar
           </button>
+        )}
+        {startFailed && (
+          <span role="alert" className="text-[0.75rem] tone-bad rounded px-1">
+            Não foi possível iniciar o sistema. Tente de novo.
+          </span>
         )}
       </div>
     </section>
