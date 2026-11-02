@@ -5,6 +5,7 @@ import { specShare, type Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
 import { checkScope } from './diff-guard.js';
 import { validateE2e, validateE2eExemptions } from './e2e.js';
+import { docsPageErrors } from './docs-page.js';
 import { validateSecurityGates } from './security-tooling.js';
 
 /** Blocking gates every POC plan must define (spec §4.3); `typecheck` only when the stack has one. */
@@ -76,7 +77,7 @@ export function validatePlan(plan: Plan, spec: Spec, requested: PlanCheckOptions
   const opts = plan.deploy.kind === 'mobile' ? { ...requested, requireDelivery: false, requireE2e: false } : requested;
   // `service` belongs to a services plan; a run of this project would never find the repository it names.
   const named = plan.tasks.filter((t) => t.service !== undefined).map((t) => `task ${t.id} names service ${t.service}, but this project keeps its code in the project repository; remove service`);
-  return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts)];
+  return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts), ...docsPageErrors(plan.deploy, plan.tasks, spec)];
 }
 
 /** A services plan: plan-wide checks once, then each service's own checks, prefixed with its name. */
@@ -112,6 +113,7 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
     const share = specShare(spec, view.tasks);
     const own = { ...opts, firstSpec: opts.newServices.has(name), repoFiles: opts.repoFiles?.[name] };
     errors.push(...repositoryErrors(view, share, own, scaffoldId(name)).map((e) => `service ${name}: ${e}`));
+    errors.push(...docsPageErrors(view.deploy, view.tasks, share).map((e) => `service ${name}: ${e}`));
   }
   return errors;
 }
