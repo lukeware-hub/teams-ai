@@ -62,6 +62,8 @@ export class NotFoundError extends Error {}
 /** Single-writer journal of one refinement session, reduced into RefineState as it is appended. */
 export class RefineJournal {
   readonly state: RefineState = emptyRefineState();
+  /** Called after each live fact is applied; a replay never calls it, and a failure here never fails the fact. */
+  onFact?: (e: StoredEvent) => void;
   private readonly log: StoredEvent[] = [];
   private stepSeq = 0;
 
@@ -90,7 +92,16 @@ export class RefineJournal {
   async fact(type: string, data: Record<string, unknown> = {}): Promise<StoredEvent> {
     const stored = await this.store.append({ type, kind: 'fact', data });
     this.push(stored);
+    this.notify(stored);
     return stored;
+  }
+
+  private notify(stored: StoredEvent): void {
+    try {
+      this.onFact?.(stored);
+    } catch {
+      // The fact is already journaled; the hook's failure stays with the hook.
+    }
   }
 
   allocStepSeq(): number {
