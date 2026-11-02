@@ -17,6 +17,11 @@ export async function mergeDoc(rel: string, base: string, main: string, draft: s
   return mergeText(base, main, draft, exec);
 }
 
+/** A text doc merged without union: an overlapping edit keeps conflict markers in the text. JSON merges as mergeDoc does. */
+export async function mergeDocStrict(rel: string, base: string, main: string, draft: string, exec: Exec = execCommand): Promise<string> {
+  return rel.endsWith('.json') ? mergeDoc(rel, base, main, draft, exec) : mergeText(base, main, draft, exec, false);
+}
+
 /** Trailing whitespace is not a change: older base copies lost the final newline main keeps. */
 export const sameDoc = (a: string | null, b: string | null): boolean => a?.trimEnd() === b?.trimEnd();
 
@@ -47,14 +52,16 @@ function mergeJson(base: unknown, main: unknown, draft: unknown): unknown {
   return draft;
 }
 
-/** `git merge-file --union`: overlapping edits keep both sides instead of conflict markers. */
-async function mergeText(base: string, main: string, draft: string, exec: Exec): Promise<string> {
+/** `git merge-file --union` keeps both sides of an overlap; without it git leaves markers and exits with the conflict count. */
+async function mergeText(base: string, main: string, draft: string, exec: Exec, union = true): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-merge-'));
   try {
     const [b, m, d] = ['base', 'main', 'draft'].map((n) => path.join(dir, n));
     await Promise.all([fs.writeFile(b!, base), fs.writeFile(m!, main), fs.writeFile(d!, draft)]);
-    const r = await exec({ bin: 'git', args: ['merge-file', '-p', '--union', m!, b!, d!], cwd: dir, timeoutMs: 30_000 });
-    if (r.exitCode !== 0) throw new GitError(`git merge-file failed (${r.exitCode}): ${r.stderr.trim()}`);
+    const labels = union ? ['--union'] : ['-L', 'main', '-L', 'base', '-L', 'rascunho'];
+    const r = await exec({ bin: 'git', args: ['merge-file', '-p', ...labels, m!, b!, d!], cwd: dir, timeoutMs: 30_000 });
+    const conflicted = !union && r.exitCode !== null && r.exitCode > 0 && r.exitCode < 128;
+    if (r.exitCode !== 0 && !conflicted) throw new GitError(`git merge-file failed (${r.exitCode}): ${r.stderr.trim()}`);
     return r.stdout;
   } finally {
     await fs.rm(dir, { recursive: true, force: true });

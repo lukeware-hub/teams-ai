@@ -26,7 +26,7 @@ import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
-import { designTemplate, flowTemplate, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
@@ -1047,8 +1047,13 @@ export class RefineSession {
     this.guard();
     this.syncing = true;
     try {
-      const changed = await sync();
+      // A sync that kept conflict markers still journals what it brought in, and then refuses the start.
+      const { changed, refusal } = await sync().then(
+        (changed) => ({ changed, refusal: null }),
+        (err: unknown) => (err instanceof MainConflict ? { changed: err.changed, refusal: new ConflictError(err.message) } : Promise.reject(err)),
+      );
       for (const c of changed) await this.journal.fact(RefineEvent.DocEdited, { ...c, source: 'main' });
+      if (refusal) throw refusal;
       if (changed.length > 0 && this.state.stale) {
         throw new ConflictError(`A main mudou desde o início deste refinamento (${changed.map((c) => c.file).join(', ')}): os documentos foram atualizados com essas mudanças. Avalie de novo para iniciar.`);
       }
