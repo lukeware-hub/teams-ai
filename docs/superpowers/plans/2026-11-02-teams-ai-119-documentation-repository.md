@@ -184,12 +184,12 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I5 - Bind at step 7 (size M, weight 2)
 
-- [ ] Flag `TEAMS_AI_DOCS_REPO_LAYOUT` and the `docsRepo` stamp for new projects only; default off.
-- [ ] `ghExec` in `RegistryDeps`, built through `withGhAuth`.
-- [ ] Read-only preflight and bind only from the explicit `enableBacklog`; `evaluateChain` cannot bind.
-- [ ] Spy test: steps 1 to 6 make no git and no gh call.
-- [ ] `decideArchitecture` cannot change the style after publication; it journals `ArchitectureFailed`.
-- [ ] `newProject` refuses projectId `artefacty` and an existing marker.
+- [x] Flag `TEAMS_AI_DOCS_REPO_LAYOUT` and the `docsRepo` stamp for new projects only; default off.
+- [x] `ghExec` in `RegistryDeps`, built through `withGhAuth`.
+- [x] Read-only preflight and bind only from the explicit `enableBacklog`; `evaluateChain` cannot bind.
+- [x] Spy test: steps 1 to 6 make no git and no gh call.
+- [x] `decideArchitecture` cannot change the style after publication; it journals `ArchitectureFailed`.
+- [x] `newProject` refuses projectId `artefacty` and an existing marker (with the flag off the marker is not read; the project folder, draft and workspace checks still refuse).
 
 ## I6 - Commits at each boundary (size M, weight 2)
 
