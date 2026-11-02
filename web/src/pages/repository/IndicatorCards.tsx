@@ -10,7 +10,7 @@ export function IndicatorCards({ dashboard }: { dashboard: RepoDashboard }) {
     { id: 'runs', label: 'Runs', value: String(c.runs), detail: `${c.runsActive} em andamento` },
     { id: 'failures', label: 'Falhas', value: String(c.failures), detail: 'runs e tarefas com falha' },
     { id: 'blockers', label: 'Bloqueios', value: String(c.blockers), detail: 'tarefas, runs pausadas, perguntas e segredos' },
-    { id: 'delivered', label: 'Entregas', value: String(c.delivered), detail: `${plural(c.specsDelivered, 'spec entregue', 'specs entregues')} · ${plural(c.specsAwaiting, 'spec aguarda', 'specs aguardam')} validação` },
+    { id: 'delivered', label: 'Entregas', value: String(c.specsDelivered), detail: `${plural(c.delivered, 'tarefa entregue', 'tarefas entregues')} · ${plural(c.specsAwaiting, 'spec aguarda', 'specs aguardam')} validação` },
     { id: 'progress', label: 'Progresso geral', value: c.progress === null ? 'sem dados' : `${c.progress}%`, detail: `${c.delivered} de ${c.tasks} tarefas` },
     { id: 'cost', label: 'Custo', value: money(c.cost), detail: `${plural(c.runs, 'run', 'runs')} deste repositório` },
   ];
