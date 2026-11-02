@@ -169,3 +169,12 @@ describe('the start tags after the launch', () => {
   });
 });
 
+describe('the main changes a sync brings in', () => {
+  it('a main document change that arrives during the sync does not count as a pending edit', async () => {
+    const s = await bound();
+    const before = (await s.snapshot()).docsSync!.pending;
+    await s.syncWithMain(async () => [{ file: 'project.md', hash: 'a'.repeat(40) }]);
+    expect((await s.snapshot()).docsSync!.pending).toBe(before);
+  });
+});
+

@@ -664,9 +664,9 @@ export class RefineSession {
     if (atOpen) void this.docs.flush();
   }
 
-  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts. */
+  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts or syncs. */
   private onFact(e: StoredEvent): void {
-    if (!this.docs || this.state.status === 'started' || this.discarding || this.starting) return;
+    if (!this.docs || this.state.status === 'started' || this.discarding || this.starting || this.syncing) return;
     const label = boundaryLabel(e, this.state.backlog);
     if (label !== null) this.docs.boundary(label);
     else if (isDocumentEdit(e.type)) this.docs.edit();
