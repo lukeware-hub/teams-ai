@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { retireAliases, type Store } from '../../server/docs/store.js';
-import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { cloneStore, publish } from '../fixtures/docs-store-clone.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';

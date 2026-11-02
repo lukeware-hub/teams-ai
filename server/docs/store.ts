@@ -147,12 +147,12 @@ async function hasHead(store: Store): Promise<boolean> {
   return hasRef(store, 'HEAD');
 }
 
-/** The text a file holds at HEAD, or null when HEAD does not have it. */
 async function textAtHead(store: Store, rel: string): Promise<string | null> {
   const listed = await git(store.dir, ['ls-tree', 'HEAD', '--', rel], store.exec);
   return listed === '' ? null : showFile(store.dir, 'HEAD', rel, store.exec);
 }
 
+/** The text a file holds at HEAD, or null when HEAD does not have it. */
 async function headText(c: Ctx, rel: string): Promise<string | null> {
   return c.born ? textAtHead(c.store, rel) : null;
 }

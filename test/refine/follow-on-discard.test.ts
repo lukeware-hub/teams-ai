@@ -4,11 +4,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
-import { makeSpec } from '../fixtures/contracts.js';
+import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { cloneStore, publish } from '../fixtures/docs-store-clone.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 import { makeRig, PROJECT, type Rig } from '../fixtures/docs-repo-rig.js';
-import { makeProject } from '../fixtures/contracts.js';
 
 const SPEC = 'hello-app-001';
 let rig: Rig;
