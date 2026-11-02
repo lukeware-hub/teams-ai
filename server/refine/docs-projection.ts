@@ -1,10 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Spec } from '../contracts/spec.js';
-import { assertAlias, repoPath, type Style } from '../docs/layout.js';
+import { assertAlias, FIVE_DOCS, repoPath, type Style } from '../docs/layout.js';
 import { renderRepoSpec } from '../docs/repo-spec.js';
 import { DOC_STAGES } from './doc-stages.js';
-import { FIVE_DOCS } from '../docs/layout.js';
 import { readBase, readDoc, type Draft } from './draft.js';
 import { planFileOf, taskFileOf } from './plan-file.js';
 
