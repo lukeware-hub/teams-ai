@@ -35,7 +35,7 @@ import { chatRoutes } from './api/chat-routes.js';
 import { ChatService } from './chat/service.js';
 import { isConfidential } from './chat/confidential.js';
 import { ChatStore } from './chat/store.js';
-import { readProject, runsDir, type IndexDeps } from './api/run-index.js';
+import { readProject, runsDir, writePid, type IndexDeps } from './api/run-index.js';
 import { supervise } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
@@ -427,6 +427,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       // A resumed run is a fresh process that continues it, as Retomar does.
       if (next === 'return') await run.retryBlocked({ auto: true });
       runId = run.runId;
+      // A run this process carries on (a return or a successor) is alive exactly as long as this process: its pid is this one.
+      if (turn > 1 && deps) await writePid(deps.ws.runs, run.runId, process.pid);
       io.stderr(next === 'successor' ? `run ${run.runId} started by the agents, as the next run of the spec` : next === 'return' ? `run ${run.runId} sent back to the agents` : `run ${run.runId} started`);
       const off = (hooks.signals ?? realSignals)(() => {
         io.stderr('stop requested: draining');
