@@ -584,7 +584,7 @@ describe('RunView phase blocks', () => {
   it('puts the blocked tasks under their phase, split into own causes and tasks waiting on them', () => {
     render(running());
     const row = screen.getByTestId('phase');
-    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
+    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada · 1 tarefa espera por ela');
     expect(within(row).queryByTestId('phase-problems-count')).toBeNull();
   });
 
@@ -592,12 +592,17 @@ describe('RunView phase blocks', () => {
     render(running({ events: [...blocking, ev(8, 'REBASE_REPLAYED', { taskId: 'T1', previous: 'abc', files: ['src/a.ts'] })] }));
     const row = screen.getByTestId('phase');
     expect(within(row).getByTestId('phase-problems-count').textContent).toBe('1 problema registrado');
-    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
+    expect(within(row).getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada · 1 tarefa espera por ela');
   });
 
-  it('says 1 bloqueio when a single task is blocked', () => {
+  it('says 1 tarefa bloqueada when a single task is blocked', () => {
     render(running({ events: blocking.filter((e) => e.data.taskId !== 'T7') }));
-    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio');
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada');
+  });
+
+  it('says 2 tarefas esperam por elas when two tasks wait on the blocked ones', () => {
+    render(running({ events: [...blocking, planned(8, 'T8'), ev(9, 'TASK_STATE_CHANGED', { taskId: 'T8', to: 'blocked' }), ev(10, 'TASK_BLOCKED', { taskId: 'T8', reason: 'a dependency is blocked' })] }));
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada · 2 tarefas esperam por elas');
   });
 
   it('leaves the line out when no task is blocked', () => {
@@ -609,13 +614,13 @@ describe('RunView phase blocks', () => {
     render(view({ events: [planned(1, 'T6'), ev(2, 'PHASE_STARTED', { phase: 3 }), ev(3, 'PHASE_STARTED', { phase: 4 }), ev(4, 'TASK_STATE_CHANGED', { taskId: 'T6', to: 'blocked' }), ev(5, 'TASK_BLOCKED', { taskId: 'T6', reason })], ended: false, detail: { ...detail, status: 'running' } }));
     const [phase3, phase4] = screen.getAllByTestId('phase');
     expect(phase3!.querySelector('[data-testid="phase-blocks-count"]')).toBeNull();
-    expect(within(phase4!).getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio');
+    expect(within(phase4!).getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada');
   });
 
   it('keeps the count once the run has stopped, from the blocked list it finished with', () => {
     const finished = ev(8, 'RUN_FINISHED', { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T6', reason }, { taskId: 'T7', reason: 'a dependency is blocked' }], tokens: {} });
     render(running({ events: [...blocking, finished], ended: true, detail: { ...detail, status: 'blocked' } }));
-    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 bloqueio · 1 esperando');
+    expect(screen.getByTestId('phase-blocks-count').textContent).toBe('1 tarefa bloqueada · 1 tarefa espera por ela');
   });
 
   it('has no dialog for the phase blocks: the card lists the tasks that wait on them', () => {

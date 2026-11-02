@@ -1,10 +1,11 @@
 import type { ConvergeOutput } from '../../agents/outputs.js';
 import type { PlanTask } from '../../contracts/plan.js';
-import { git } from '../../git/git.js';
+import { git, removeWorktree } from '../../git/git.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import { OrchEvent } from '../events.js';
 import { devChangedFiles } from '../sandbox-placeholders.js';
 import { convergePack } from '../steps.js';
+import { worktreeDir } from '../workspace.js';
 import { docsWorktree, PAUSED_AUTH, pauseForFailure, type PhaseDeps } from './shared.js';
 import { smFixTasks } from './verify.js';
 
@@ -24,6 +25,13 @@ export async function discardEdits(worktree: string, paths: readonly string[], e
   await git(worktree, ['reset', '--hard', '-q'], exec);
 }
 
+/** A fresh checkout of main for one review round: a worktree an earlier run left behind keeps the files it had then. */
+export async function reviewWorktree(deps: PhaseDeps, round: 1 | 2): Promise<string> {
+  const branch = `review-${deps.spec.specId}-${round}`;
+  await removeWorktree(deps.ws.repo, worktreeDir(deps.ws, branch), deps.exec);
+  return docsWorktree(deps, branch);
+}
+
 /** One read-only review of the merged code against the implementation plan. Its verdict is journaled; nothing is committed. */
 export async function runPlanReview(deps: PhaseDeps, round: 1 | 2): Promise<ReviewRound> {
   const planFile = deps.packBase().planFile;
@@ -31,7 +39,7 @@ export async function runPlanReview(deps: PhaseDeps, round: 1 | 2): Promise<Revi
   // A verdict already journaled is read, so a resumed run never asks the same review again.
   const prior = deps.journal.events.filter((e) => e.type === OrchEvent.SpecKitConverged && e.data.round === round).at(-1);
   if (prior) return prior.data.status === 'converged' ? { kind: 'done' } : { kind: 'gaps', gaps: (prior.data.gaps as string[] | undefined) ?? [] };
-  const worktree = await docsWorktree(deps, `review-${deps.spec.specId}-${round}`);
+  const worktree = await reviewWorktree(deps, round);
   let answer: ConvergeOutput | null = null;
   let error = 'review step failed';
   for (let attempt = 1; attempt <= 2; attempt++) {

@@ -81,7 +81,7 @@ const TIP = {
   output: 'Texto gerado pelos modelos: código, planos, revisões e respostas.',
   byRole: 'Consumo de cada papel do time de agentes. Decisões automáticas são escolhas rápidas do orquestrador, como qual modelo usar em cada tarefa.',
   byPhase: 'Onde o consumo aconteceu: nas tarefas, nas etapas de especificação, plano e relatório, ou nas decisões automáticas.',
-  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa. Clique numa fase para ver o que foi feito e os problemas que aconteceram. Os bloqueios de cada fase aparecem contados aqui e listados em Tarefas bloqueadas.',
+  phases: 'As etapas da run, em ordem: especificação técnica, plano, implementação das tarefas, verificação, deploy e relatório. Uma fase repetida mostra a última tentativa. Clique numa fase para ver o que foi feito e os problemas que aconteceram. As tarefas bloqueadas de cada fase aparecem contadas aqui e listadas em Tarefas bloqueadas.',
   now: 'Os agentes trabalhando neste momento e há quanto tempo. O custo de uma etapa só entra no consumo quando ela termina.',
   owner: 'Sistema: falha do orquestrador, de um agente ou do ambiente. Plano: o plan.json precisa mudar. Você: depende de uma ação sua, como ajustar a spec ou as permissões no GitHub.',
   blocked: 'Tarefas que pararam por um motivo próprio. As que só esperam por uma delas aparecem no fim da lista.',
@@ -138,7 +138,7 @@ const PHASE_HELP: Record<string, string> = {
   'em execução': 'A fase está rodando agora.',
   interrompida: 'O processo parou no meio desta fase. Use Retomar.',
   pausada: 'A execução está pausada por limite de uso ou por login. A fase continua quando isso se resolver.',
-  'com bloqueios': 'A fase terminou, mas algumas tarefas ficaram bloqueadas.',
+  'com bloqueios': 'A fase terminou, mas algumas tarefas ficaram bloqueadas. O motivo de cada uma está em Tarefas bloqueadas.',
 };
 const PATHS_SHOWN = 3;
 const FACET_ICON = 'inline-grid h-6 cursor-help place-items-center text-ink-faint';
@@ -1025,7 +1025,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         const blockers = phaseBlocks(p.phase);
                         const ownCount = rootBlockers(blockers).length;
                         const waitingCount = cascadeBlockers(blockers).length;
-                        const blockText = [ownCount ? (ownCount === 1 ? '1 bloqueio' : `${ownCount} bloqueios`) : null, waitingCount ? `${waitingCount} esperando` : null].filter(Boolean).join(' · ');
+                        const blockText = [ownCount ? (ownCount === 1 ? '1 tarefa bloqueada' : `${ownCount} tarefas bloqueadas`) : null, waitingCount ? (waitingCount === 1 ? '1 tarefa espera por ela' : `${waitingCount} tarefas esperam por elas`) : null].filter(Boolean).join(' · ');
                         return (
                           <li key={p.phase} data-testid="phase" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[0.35rem] py-[0.6rem] first:pt-0 last:pb-0">
                             {/* The phase name opens its detail: a text button, underlined on hover. */}
