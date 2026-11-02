@@ -11,6 +11,10 @@ const S = `/refine/${projectId}/${projectId}-001`;
 const STAGES = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const { readFileSync, existsSync } = await import('node:fs');
+const { execFileSync } = await import('node:child_process');
+const { homedir } = await import('node:os');
+const { join } = await import('node:path');
+const { disallowedFiles } = await import('./allowlist.mjs');
 
 const api = async (method, path, body) => {
   const r = await fetch(`${BASE}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -20,6 +24,35 @@ const api = async (method, path, body) => {
   return { status: r.status, json, text };
 };
 const snap = async () => (await api('GET', S)).json;
+
+const CONTAINER = process.env.TEAMS_AI_CONTAINER;
+const STORE = CONTAINER ? `/home/node/.teams-ai/workspaces/${projectId}/docs-store` : join(homedir(), '.teams-ai', 'workspaces', projectId, 'docs-store');
+/** Runs git in the documentation store, inside the container when TEAMS_AI_CONTAINER is set. */
+const storeGit = (...args) => {
+  const options = { encoding: 'utf8', env: { ...process.env, MSYS_NO_PATHCONV: '1' } };
+  if (CONTAINER) return execFileSync('docker', ['exec', CONTAINER, 'git', '-C', STORE, ...args], options);
+  return execFileSync('git', ['-C', STORE, ...args], options);
+};
+/** Prints the number of documentation commits in the store after a step. */
+function report(label) {
+  let commits;
+  try { commits = storeGit('rev-list', '--count', 'HEAD').trim(); } catch (err) { commits = `unreadable (${String(err.message).split('\n')[0]})`; }
+  console.log(`commits ${label}: ${commits}`);
+}
+/** Prints the start tags of the store. */
+function printTags() {
+  const tags = storeGit('tag', '--list', 'dev-start/*').trim().split('\n').filter(Boolean);
+  console.log('start tags:', tags.length > 0 ? tags.join(', ') : 'none');
+}
+/** Fails the report when origin main holds a file under docs/ outside the eight kinds. */
+function checkAllowlist() {
+  storeGit('fetch', '--quiet', 'origin', 'main');
+  const files = storeGit('ls-tree', '-r', '--name-only', 'origin/main', '--', 'docs/').trim().split('\n').filter(Boolean);
+  const extra = disallowedFiles(files);
+  console.log(`allowlist: ${files.length} files under docs/ on origin main, ${extra.length} outside the eight kinds`);
+  for (const file of extra) console.log(` - ${file}`);
+  if (extra.length > 0) process.exitCode = 1;
+}
 
 /** Waits until the page's snapshot is not busy, or the limit runs out. */
 async function settle(label, limitMin = 45) {
@@ -65,6 +98,7 @@ for (const file of stagesToRun) {
   for (const patch of pending) console.log('accept patch', patch.patchId, (await api('POST', `${S}/patches/${patch.patchId}/accept`)).status);
   console.log('continue stage', file, (await api('POST', `${S}/stage/continue`, { doc: file })).status);
   await settle(`graph ${file}`, 20);
+  report(`stage ${file}`);
   const s = await snap();
   if (!(s?.state?.graphed ?? []).includes(file)) {
     console.log(`STOP: ${file} is not in the graph`, s?.state?.graphError ?? '');
@@ -76,6 +110,7 @@ console.log('architecture', (await api('POST', `${S}/architecture`)).status);
 await settle('architecture');
 const arch = (await snap())?.state?.architecture;
 console.log('architecture decided:', arch ? arch.decision.style : 'NO', arch ? arch.decision.repositories.map((r) => r.name).join(', ') : '');
+report('architecture');
 await ownerQuestions('architecture');
 
 console.log('backlog', (await api('POST', `${S}/backlog`)).status);
@@ -83,6 +118,7 @@ for (let round = 1; round <= 3; round++) {
   console.log('evaluate backlog round', round, (await api('POST', `${S}/evaluate`)).status);
   await settle(`backlog round ${round}`);
   await ownerQuestions(`backlog round ${round}`);
+  report(`backlog round ${round}`);
   if ((await snap())?.state?.backlog?.detail) break;
 }
 
@@ -90,6 +126,7 @@ console.log('plans', (await api('POST', `${S}/plans`)).status);
 await settle('plans and tasks');
 const after = await snap();
 console.log('speckit status:', after?.state?.speckit?.status ?? 'none');
+report('plans');
 await ownerQuestions('plans');
 
 // Closing rounds: a document that left the graph is added again, a stale architecture is decided again,
@@ -121,6 +158,7 @@ for (let round = 1; round <= 3; round++) {
   await ownerQuestions('close evaluation');
   const pendingNow = ((await snap())?.state?.patches ?? []).filter((p) => p.status === 'pending');
   for (const patch of pendingNow) console.log('accept patch', patch.patchId, (await api('POST', `${S}/patches/${patch.patchId}/accept`)).status);
+  report(`close round ${round}`);
 }
 const closing = (await snap())?.closing;
 console.log('closing ok:', closing?.ok, closing?.checks?.filter((c) => !c.ok).map((c) => c.detail).join('; ') || 'all checks green');
@@ -129,3 +167,5 @@ if (!closing?.ok) { console.log('STOP: closing checks are not green'); process.e
 if (process.env.NO_START === '1') { console.log('closing green; start skipped (NO_START=1)'); process.exit(0); }
 const started = await api('POST', `${S}/start`, { summaryHash: closing.summaryHash });
 console.log('start with the summary hash', started.status, started.text.slice(0, 160));
+printTags();
+checkAllowlist();
