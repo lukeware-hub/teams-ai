@@ -321,6 +321,7 @@ export function RefinementView(p: ViewProps) {
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
+  const [architectureNote, setArchitectureNote] = useState<string | null>(null);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
@@ -1207,14 +1208,16 @@ export function RefinementView(p: ViewProps) {
       </div>
     </div>
   ) : startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
-  // The architecture step: the decision of the five documents, and Continuar once it is current.
-  const architectureDecided = st.architecture != null && snap.architectureStale !== true;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
   const docsTargetMissing = docsRepoNoBacklog && !snap.docsTarget;
-  const architectureTitle = !architectureDecided ? 'Decida a arquitetura antes de quebrar o backlog.' : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.' : undefined;
+  // The architecture step only names the style: its button is always enabled and checks the decision on the click.
+  const architectureBlock = (): string | null => (st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
+    : snap.architectureStale === true ? 'Os documentos mudaram: decida a arquitetura de novo.'
+    : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.'
+    : null);
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
       {docsNoticeTarget && (
@@ -1230,7 +1233,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} stale={snap.architectureStale === true} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => void p.onDecideArchitecture?.()} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={evaluating || (st.evaluation != null && st.evaluation.endedAt === null)} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (
@@ -1260,9 +1263,18 @@ export function RefinementView(p: ViewProps) {
       )}
     </>
   ) : step === 'architecture' ? (
-    <ActionButton data-testid="architecture-continue" className="primary" disabled={locked || !architectureDecided || docsTargetMissing} title={architectureTitle} onClick={() => (docsRepoNoBacklog ? p.onEnableBacklog?.() : goTo('backlog'))} icon={<Icon name="arrow-right" size={16} />}>
-      Quebrar o backlog por repositório
-    </ActionButton>
+    <>
+      {architectureNote && <p role="alert" data-testid="architecture-note" className="m-0 basis-full text-[0.8125rem] text-warn">{architectureNote}</p>}
+      <ActionButton data-testid="architecture-continue" className="primary" disabled={locked} onClick={() => {
+        const block = architectureBlock();
+        setArchitectureNote(block);
+        if (block) return;
+        if (docsRepoNoBacklog) p.onEnableBacklog?.();
+        else goTo('backlog');
+      }} icon={<Icon name="arrow-right" size={16} />}>
+        Quebrar o backlog por repositório
+      </ActionButton>
+    </>
   ) : (
     <>
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {

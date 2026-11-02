@@ -14,10 +14,10 @@ export function kindLabel(name: string, style: ArchitectureView['style']): strin
 
 /**
  * The architecture step: the style and its reason, each repository with its quote, and each integration. Before a decision it
- * offers the one primary action; a decision made on documents that changed since says so and asks for a new one. A decision
- * that broke a rule lists each rule still open, so the owner corrects the documents before deciding again.
+ * offers the one primary action. A decision that broke a rule lists each rule still open, so the owner corrects the documents
+ * before deciding again.
  */
-export function ArchitectureCard({ architecture, error, issues = [], stale, busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; stale: boolean; busy: boolean; startedAt?: string | null; onDecide: () => void }) {
+export function ArchitectureCard({ architecture, error, issues = [], busy, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; busy: boolean; startedAt?: string | null; onDecide: () => void }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
@@ -40,7 +40,6 @@ export function ArchitectureCard({ architecture, error, issues = [], stale, busy
           <span className="text-ink-soft">Corrija o que falta nos documentos e decida a arquitetura de novo.</span>
         </div>
       )}
-      {decision && stale && <p className="text-warn" data-testid="architecture-stale">Os documentos mudaram: decida a arquitetura de novo.</p>}
       {decision && (
         <>
           <p className="m-0 text-[0.875rem]">{decision.rationale}</p>

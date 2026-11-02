@@ -16,14 +16,14 @@ const decision: ArchitectureView = {
 describe('ArchitectureCard', () => {
   it('shows the progress of a running decision, with the time it has run', () => {
     const started = new Date(Date.now() - 65_000).toISOString();
-    render(<ArchitectureCard architecture={null} error={null} stale={false} busy startedAt={started} onDecide={() => undefined} />);
+    render(<ArchitectureCard architecture={null} error={null} busy startedAt={started} onDecide={() => undefined} />);
     expect(screen.getByTestId('architecture-progress').textContent).toContain('Tempo: 01:0');
     expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('offers the one primary action while no architecture is decided', () => {
     const onDecide = vi.fn();
-    render(<ArchitectureCard architecture={null} error={null} stale={false} busy={false} onDecide={onDecide} />);
+    render(<ArchitectureCard architecture={null} error={null} busy={false} onDecide={onDecide} />);
     expect(screen.getByTestId('architecture-empty')).toBeTruthy();
     const button = screen.getByTestId('architecture-decide');
     expect(button.className).toContain('primary');
@@ -32,7 +32,7 @@ describe('ArchitectureCard', () => {
   });
 
   it('shows the style, each repository with its kind and quote, and each integration', () => {
-    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} stale={false} busy={false} onDecide={() => {}} />);
+    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} onDecide={() => {}} />);
     expect(screen.getByTestId('architecture-style').textContent).toBe('Microsserviços');
     expect(within(screen.getByTestId('architecture-repo-shop-web')).getByText('Web')).toBeTruthy();
     expect(screen.getByText('shop-web → shop-api · GET /cart')).toBeTruthy();
@@ -40,7 +40,7 @@ describe('ArchitectureCard', () => {
   });
 
   it('lists each rule the last decision broke, so the owner sees what is not closed', () => {
-    render(<ArchitectureCard architecture={null} error="A arquitetura não fechou com as regras." issues={['O repositório hello-api precisa terminar com um sufixo.', 'Dois serviços têm a mesma responsabilidade.']} stale={false} busy={false} onDecide={() => {}} />);
+    render(<ArchitectureCard architecture={null} error="A arquitetura não fechou com as regras." issues={['O repositório hello-api precisa terminar com um sufixo.', 'Dois serviços têm a mesma responsabilidade.']} busy={false} onDecide={() => {}} />);
     const list = within(screen.getByTestId('architecture-issues'));
     expect(list.getByText('O repositório hello-api precisa terminar com um sufixo.')).toBeTruthy();
     expect(list.getByText('Dois serviços têm a mesma responsabilidade.')).toBeTruthy();
@@ -49,15 +49,17 @@ describe('ArchitectureCard', () => {
 
   it('shows a running decision as the same process box the other stages use, under its title', () => {
     const started = new Date(Date.now() - 4_000).toISOString();
-    render(<ArchitectureCard architecture={null} error={null} stale={false} busy startedAt={started} onDecide={() => undefined} />);
+    render(<ArchitectureCard architecture={null} error={null} busy startedAt={started} onDecide={() => undefined} />);
     const box = screen.getByTestId('architecture-progress');
     expect(box.textContent).toContain('Decidindo a arquitetura');
     expect(box.querySelector('.button-spinner')).toBeTruthy();
   });
 
-  it('asks for a new decision when the documents changed since the last one', () => {
-    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} stale busy={false} onDecide={() => {}} />);
-    expect(screen.getByTestId('architecture-stale').textContent).toBe('Os documentos mudaram: decida a arquitetura de novo.');
+  it('shows the decision without a lock, even when the documents changed since it', () => {
+    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} onDecide={() => {}} />);
+    expect(screen.getByTestId('architecture-style').textContent).toBe('Microsserviços');
+    expect(screen.queryByTestId('architecture-stale')).toBeNull();
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('names the kind of a monolith repository and of a service without suffix', () => {
