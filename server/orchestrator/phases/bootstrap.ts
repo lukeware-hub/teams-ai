@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
+import { FIVE_DOCS } from '../../docs/layout.js';
+import { writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -22,10 +24,38 @@ async function githubLogin(gh: (args: string[]) => Promise<CommandResult>): Prom
   return (JSON.parse(r.stdout) as { login: string }).login;
 }
 
+/** The first draft file a docs-repo start needs that is missing, named by its draft path; null when all are there. */
+async function missingDraftFile(docsDir: string, specId: string): Promise<string | null> {
+  const draftFiles = [...FIVE_DOCS, path.posix.relative('docs', planFileOf(specId)), path.posix.relative('docs', taskFileOf(specId))];
+  for (const file of draftFiles) if (!(await exists(path.join(docsDir, file)))) return `docs/${file}`;
+  return null;
+}
+
+/** The machine files of a docs-repo start: the project's JSON and the spec's own folder, the spec's spec.json last. */
+async function machineFilesOf(docsDir: string, specId: string): Promise<string[]> {
+  const own = `specs/${specId}/spec.json`;
+  const files = (await listFiles(docsDir)).filter((rel) => rel.endsWith('.json') && (!rel.includes('/') || rel.startsWith(`specs/${specId}/`)));
+  return [...files.filter((rel) => rel !== own), ...files.filter((rel) => rel === own)];
+}
+
+/** Phase 0 of a docs-repo project: no repository and no network, only the draft is checked and its machine files reach the mirror. */
+async function runDocsRepoPhase0(deps: PhaseDeps, opts: { docsDir: string }): Promise<PhaseResult> {
+  const { journal, ws, spec } = deps;
+  const missing = await missingDraftFile(opts.docsDir, spec.specId);
+  if (missing) {
+    const reason = `the document ${missing} is not in the draft docs`;
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
+  for (const rel of await machineFilesOf(opts.docsDir, spec.specId)) await writeState(ws, rel, await fs.readFile(path.join(opts.docsDir, rel), 'utf8'));
+  return { ok: true };
+}
+
 /** Spec (refinement) §4: put the draft's docs on main — by creating the repository or by a docs PR. */
 export async function runPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { docsDir: string; owner: string | undefined }): Promise<PhaseResult> {
   const { journal, ws, spec, project } = deps;
   if (!journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 0)) await journal.fact(OrchEvent.PhaseStarted, { phase: 0 });
+  if (deps.docsRepo) return runDocsRepoPhase0(deps, opts);
   // A spec whose refinement prepared its implementation plan never reaches main without the plan's file.
   const planFile = deps.packBase().planFile;
   if (planFile && !(await exists(path.join(opts.docsDir, path.posix.relative('docs', planFile))))) {
@@ -133,7 +163,7 @@ export async function ensureServiceRepos(deps: PhaseDeps & { ghExec: Exec }, own
         await gitFetch(repo, deps.exec);
       }
       // Every preparation reaches the repository, not only the first one: a re-preparation changes the files it publishes.
-      if (docsDir !== undefined) {
+      if (docsDir !== undefined && !deps.docsRepo) {
         const published = await publishServiceDocs(deps, service, docsDir);
         if (!published.ok) return { ok: false, reason: `service ${service}: ${published.reason}` };
       }
