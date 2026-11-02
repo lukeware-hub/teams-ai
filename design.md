@@ -1247,15 +1247,22 @@ No lugar do painel `Serviços` da página do projeto, depois de `Execuções`, u
 
 ### 27.3 Painel do repositório
 
-Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `repoId`.
+Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `repoId`. Uma página só, rolável, com a atividade real dos agentes no repositório. Atualiza sozinha a cada 5 segundos, enquanto a aba está visível.
 
 - Migalha `Projetos › <projeto> › <repositório>`.
-- Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e o botão do GitHub.
-- Faixa de quatro cartões: specs, planos, tarefas, `concluídas n de m`, bloqueios.
+- Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e os atalhos.
+- Atalhos conforme o tipo: API abre o Swagger; Workers abre o Swagger quando ele responde; Web abre a aplicação; Monólito abre os dois quando respondem. Os endereços vêm do último deploy verificado e só aparecem quando a sonda responde. Sem deploy, mostra `sem dados`. Com o sistema desligado, mostra `Sistema desligado` e o botão `Iniciar`.
+- Seis cartões: `Tarefas` (total, com concluídas, pendentes e em execução); `Runs` (total, com em andamento); `Falhas` (runs e tarefas com falha); `Bloqueios` (tarefas, perguntas, segredos e paradas do programa); `Entregas` (tarefas entregues, com specs entregues e aguardando validação); `Progresso geral` (tarefas entregues sobre o total, com barra determinada).
+- `Entregas por spec`: as specs agrupadas por estado, nesta ordem: `Aguarda validação`, `Falhou`, `Bloqueado`, `Em desenvolvimento`, `Pendente`, `Não iniciado`, `Entregue`. Grupo vazio não aparece. Cada linha mostra a spec, a prioridade, o chip de estado e `n de m tarefas`. Uma linha expande as suas tarefas, com estado, tentativas, motivo, pull request e `Abrir run`, que leva a `/runs/:runId?task=<id>`.
+- Classificação da tarefa: `Falhou` é a tarefa parada pela própria causa, sem decisão pendente. `Bloqueada` é a tarefa que espera uma dependência ou uma decisão do dono. Uma run pausada aparece em `Bloqueios`, não como tarefa bloqueada.
+- `Atividade por agente`: uma linha por papel que atuou, com o nome que a run já usa para ele. Cada linha mostra etapas com sucesso e falha, tarefas criadas, iniciadas e concluídas, arquivos alterados, testes que passaram e falharam, custo e última atividade. Papel sem atividade não aparece.
+- `Runs`: tabela no padrão de §11.16, com run, tipo, estado, início, tarefas mescladas e custo. Uma linha abre `/runs/:runId`.
+- `Falhas e bloqueios`: só aparece com item. Cada item traz o motivo e, quando há uma run ou tarefa, o link `Abrir run`, que leva à decisão pendente.
 - `Integrações`, com as linhas da arquitetura que tocam o repositório.
-- `Especificações`, no padrão da tabela de execuções: ordenação, filtro, faceta de estado e paginação. Colunas: spec, prioridade, estado, plano, tarefas `n de m`, depende de. Uma linha abre as suas tarefas, com estado, tentativas e critérios com resultado.
-- `Aguardando dependências` e `Falhas de execução` só aparecem quando têm itens.
-- `Histórico` (últimos 50 eventos) num recolhível.
+- `Linha do tempo`: os eventos de todas as runs da spec, em frase, com agente, hora, resultado (ponto `good` ou `bad`) e link para a run. Mostra até 200 eventos. Recolhível, aberta por padrão.
+- A tabela de `Especificações` sai desta página; o board de entregas ocupa o lugar dela.
+- Em telas estreitas, os cartões ficam em duas colunas e as tabelas viram cartões (§11.16).
+- Premissas: `Entregas` e `Progresso` contam tarefas. Run parada pelo dono não é falha. O cartão de tarefas do repositório na página do projeto usa a mesma contagem.
 
 Dado que a fonte não existe mostra `sem dados`, nunca um número.
 

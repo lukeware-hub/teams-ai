@@ -1,4 +1,6 @@
 import type { Divergence } from '@server/refine/checklist';
+import type { RepoDashboard } from '@server/api/repository-dashboard.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
@@ -280,6 +282,7 @@ export interface RepoDetailView extends RepoCardView {
 export const runApi = {
   repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
+  repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   deleteProject: (projectId: string, deleteGithub: boolean) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub }) }).then((r) => json<{ deleted: true }>(r)),

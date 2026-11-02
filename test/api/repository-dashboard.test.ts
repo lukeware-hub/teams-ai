@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest';
+import { buildDashboard, CAPS, type DashboardInput, type DashboardRun, type DashboardSpecInput } from '../../server/api/repository-dashboard.js';
+import { DEPENDENCY_BLOCKED } from '../../server/pipeline/task-state.js';
+import type { StoredEvent } from '../../server/store/event-store.js';
+
+let seq = 0;
+const AT = '2026-11-01T10:00:00.000Z';
+const ev = (runId: string, type: string, data: Record<string, unknown> = {}, at = AT): StoredEvent => ({ seq: ++seq, at, runId, specHash: 'h', type, kind: 'fact', data });
+const task = (id: string, extra: Record<string, unknown> = {}) => ({ id, title: `Tarefa ${id}`, description: 'faz a parte', criteriaRefs: [], dependsOn: [], affectedPaths: ['src/app.ts'], owner: 'dev', origin: 'plan', ...extra });
+const planned = (runId: string, id: string, extra: Record<string, unknown> = {}) => ev(runId, 'TASK_PLANNED', { task: task(id, extra) });
+const to = (runId: string, taskId: string, state: string) => ev(runId, 'TASK_STATE_CHANGED', { taskId, to: state });
+const run = (runId: string, specId: string, n: number, status: string, events: StoredEvent[], extra: Partial<DashboardRun> = {}): DashboardRun => ({ runId, specId, kind: 'run', n, status, at: events.at(-1)?.at ?? null, cost: 0, stopped: false, events, ...extra });
+const spec = (specId: string, extra: Partial<DashboardSpecInput> = {}): DashboardSpecInput => ({ specId, title: null, priority: null, status: 'running', tasks: 0, plan: false, blocked: false, activeRunId: null, ...extra });
+const input = (extra: Partial<DashboardInput> = {}): DashboardInput => ({ specs: [], runs: [], questions: [], missingSecrets: [], programStops: [], ...extra });
+const states = (d: ReturnType<typeof buildDashboard>) => Object.fromEntries(d.tasks.list.map((t) => [t.taskId, t.state]));
+
+describe('task states across runs', () => {
+  it('counts a task delivered in an earlier run once, even when a successor run delivers it again', () => {
+    const first = run('cart-run-1', 'cart', 1, 'complete', [planned('cart-run-1', 'T1-route'), to('cart-run-1', 'T1-route', 'merged')]);
+    const second = run('cart-run-2', 'cart', 2, 'complete', [planned('cart-run-2', 'T1-route'), to('cart-run-2', 'T1-route', 'merged')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] }));
+    expect(d.counts).toMatchObject({ tasks: 1, delivered: 1, progress: 100 });
+    expect(d.tasks.list).toHaveLength(1);
+  });
+
+  it('lets a merge in one run beat a block of the same task in a later run', () => {
+    const first = run('cart-run-1', 'cart', 1, 'complete', [planned('cart-run-1', 'T1-route'), to('cart-run-1', 'T1-route', 'merged')]);
+    const second = run('cart-run-2', 'cart', 2, 'blocked', [planned('cart-run-2', 'T1-route'), ev('cart-run-2', 'TASK_BLOCKED', { taskId: 'T1-route', reason: 'o banco recusou a conexão' }), to('cart-run-2', 'T1-route', 'blocked')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] }));
+    expect(states(d)).toEqual({ 'T1-route': 'delivered' });
+  });
+
+  it('splits a dependency or an owner decision from a block on the task itself', () => {
+    const events = [
+      planned('r1', 'T1-a'),
+      planned('r1', 'T2-b'),
+      planned('r1', 'T3-c'),
+      to('r1', 'T1-a', 'blocked'),
+      ev('r1', 'TASK_BLOCKED', { taskId: 'T1-a', reason: DEPENDENCY_BLOCKED }),
+      to('r1', 'T2-b', 'blocked'),
+      ev('r1', 'TASK_BLOCKED', { taskId: 'T2-b', reason: 'a verificação pediu uma decisão' }),
+      ev('r1', 'DECISION_REQUESTED', { taskId: 'T2-b', question: 'Qual caminho?', options: [] }),
+      to('r1', 'T3-c', 'blocked'),
+      ev('r1', 'TASK_BLOCKED', { taskId: 'T3-c', reason: 'o banco recusou a conexão' }),
+    ];
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 3 })], runs: [run('r1', 'cart', 1, 'blocked', events)] }));
+    expect(states(d)).toEqual({ 'T1-a': 'blocked', 'T2-b': 'blocked', 'T3-c': 'failed' });
+    expect(d.failures.list.map((f) => f.taskId)).toEqual(['T3-c']);
+    expect(d.blockers.list.filter((b) => b.kind === 'task').map((b) => b.taskId)).toEqual(['T1-a', 'T2-b']);
+  });
+
+  it('counts a task on a live run as running and on a finished run as pending', () => {
+    const live = run('r1', 'cart', 1, 'running', [planned('r1', 'T1-a'), to('r1', 'T1-a', 'ready'), to('r1', 'T1-a', 'implementing')]);
+    const done = run('r2', 'pay', 1, 'paused:quota', [planned('r2', 'T1-b'), to('r2', 'T1-b', 'ready'), to('r2', 'T1-b', 'implementing')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 }), spec('pay', { tasks: 1 })], runs: [live, done] }));
+    expect(d.counts).toMatchObject({ running: 1, pending: 1 });
+    expect(d.blockers.list.map((b) => b.text)).toEqual(['Run r2 pausada: limite de uso dos modelos']);
+  });
+
+  it('counts a superseded task nowhere and its replacements instead', () => {
+    const events = [planned('r1', 'T1-route'), ev('r1', 'TASK_REPLANNED', { taskId: 'T1-route', replacements: [task('T1-a'), task('T1-b')] })];
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] }));
+    expect(d.counts.tasks).toBe(2);
+    expect(d.tasks.list.map((t) => t.taskId)).toEqual(['T1-a', 'T1-b']);
+  });
+
+  it('counts the tasks a spec has not planned yet as not started', () => {
+    const d = buildDashboard(input({ specs: [spec('cart', { status: 'planned', tasks: 4, plan: true })] }));
+    expect(d.counts).toMatchObject({ tasks: 4, pending: 4, delivered: 0 });
+    expect(d.specs[0]?.state).toBe('pending');
+  });
+
+  it('counts a spec delivered before journals existed as delivered', () => {
+    const d = buildDashboard(input({ specs: [spec('old', { status: 'done', tasks: 3 })] }));
+    expect(d.counts).toMatchObject({ tasks: 3, delivered: 3, progress: 100, specsDelivered: 1 });
+  });
+
+  it('lists a journal that does not replay as a failure instead of counting its tasks as not started', () => {
+    const broken = run('r1', 'cart', 1, 'running', [to('r1', 'T1-a', 'implementing')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [broken] }));
+    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: journal não pôde ser lido' }]);
+    expect(d.counts.pending).toBe(1);
+  });
+
+  it('reads zeros and no progress for a repository with no specs', () => {
+    const d = buildDashboard(input({ specs: [spec('x', { status: 'refining' })] }));
+    expect(d.counts).toMatchObject({ tasks: 0, runs: 0, progress: null });
+    expect(d.specs[0]?.state).toBe('not-started');
+  });
+});
+
+describe('activity from the journals', () => {
+  it('sums each agent\'s steps, reads its files, tests and retries', () => {
+    const events = [
+      planned('r1', 'T1-route'),
+      ev('r1', 'STEP_STARTED', { stepId: 's1', role: 'dev', kind: 'implement', taskId: 'T1-route' }),
+      ev('r1', 'STEP_FINISHED', { stepId: 's1', ok: true, usage: { inputTokens: 10, outputTokens: 5 }, costUsd: 0.5, durationMs: 1000, kind: 'implement' }),
+      ev('r1', 'STEP_STARTED', { stepId: 's2', role: 'test', kind: 'verify', taskId: 'T1-route' }),
+      ev('r1', 'STEP_FINISHED', { stepId: 's2', ok: false, failure: 'x', usage: { inputTokens: 1, outputTokens: 1 }, costUsd: 0, durationMs: 200, kind: 'verify' }),
+      ev('r1', 'DEV_COMMITTED', { taskId: 'T1-route', changedFiles: ['src/a.ts', 'src/a.ts', 'src/b.ts'] }),
+      ev('r1', 'GATE_FAILED', { taskId: 'T1-route', gate: 'unit', junit: [{ name: 'soma', status: 'passed' }, { name: 'subtrai', status: 'failed' }] }),
+      ev('r1', 'ATTEMPT_CONSUMED', { taskId: 'T1-route' }),
+      ev('r1', 'INFRA_RETRY', { taskId: 'T1-route', gate: 'unit' }),
+    ];
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] }));
+    const dev = d.agents.find((a) => a.role === 'dev');
+    const test = d.agents.find((a) => a.role === 'test');
+    expect(dev).toMatchObject({ steps: 1, ok: 1, failed: 0, tokens: 15, costUsd: 0.5, durationMs: 1000, files: 2, created: 1, tests: null });
+    expect(test).toMatchObject({ steps: 1, failed: 1, tests: { passed: 1, failed: 1 }, created: null });
+    expect(d.files.total).toBe(2);
+    expect(d.tests).toMatchObject({ passed: 1, failed: 1 });
+    expect(d.tests.failures.list).toEqual([{ taskId: 'T1-route', gate: 'unit', name: 'subtrai' }]);
+    expect(d.retries).toMatchObject({ attempts: 1, infra: 1 });
+  });
+
+  it('gives the last deploy of the newest run that verified one', () => {
+    const first = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', docsPath: '/docs' })]);
+    const second = run('r2', 'cart', 2, 'done', [ev('r2', 'DEPLOY_VERIFIED', { url: 'http://localhost:3002', docsPath: '/docs' })]);
+    const d = buildDashboard(input({ specs: [spec('cart')], runs: [second, first] }));
+    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', docsPath: '/docs', services: null });
+  });
+
+  it('lists a failed run among the failures and keeps the timeline newest first, capped', () => {
+    const events = Array.from({ length: CAPS.timeline + 5 }, (_, i) => ev('r1', 'RUN_RESUMED', {}, `2026-11-01T10:${String(i % 60).padStart(2, '0')}:00.000Z`));
+    const d = buildDashboard(input({ specs: [spec('cart')], runs: [run('r1', 'cart', 1, 'phase-failed', events)] }));
+    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: falhou em uma fase' }]);
+    expect(d.timeline.total).toBe(CAPS.timeline + 5);
+    expect(d.timeline.list).toHaveLength(CAPS.timeline);
+    expect(d.timeline.list[0]?.at >= d.timeline.list[1]!.at).toBe(true);
+  });
+});

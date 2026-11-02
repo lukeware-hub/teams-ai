@@ -16,4 +16,11 @@ describe('repository read routes', () => {
     const json = vi.fn();
     await expect(handler('/repositories/:repo')({ params: { projectId: 'shop', repo: 'Bad_Name' }, json } as never)).rejects.toMatchObject({ status: 400 });
   });
+
+  it('answers the dashboard of a repository with the same checks: 404 for an unknown project, 400 for a bad name', async () => {
+    const json = vi.fn();
+    await expect(handler('/dashboard')({ params: { projectId: 'shop', repo: 'shop' }, json } as never)).rejects.toMatchObject({ status: 404 });
+    await expect(handler('/dashboard')({ params: { projectId: 'shop', repo: 'Bad_Name' }, json } as never)).rejects.toMatchObject({ status: 400 });
+    expect(json).not.toHaveBeenCalled();
+  });
 });

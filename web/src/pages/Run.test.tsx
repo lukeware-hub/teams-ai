@@ -561,6 +561,25 @@ describe('RunView', () => {
   });
 });
 
+describe('RunView opened from the repository dashboard', () => {
+  const at = (url: string) => (
+    <MemoryRouter initialEntries={[url]}>
+      <RunView detail={detail} events={events} ended={false} error={null} loadStep={vi.fn(async () => ({ prompt: '# p', output: { ok: true } }))} />
+    </MemoryRouter>
+  );
+
+  it('opens the task named by the link', async () => {
+    render(at('/runs/hello-001-r1?task=T1'));
+    expect(await screen.findByRole('dialog', { name: 'T1' })).toBeTruthy();
+  });
+
+  it('opens nothing for a task the journal does not have', async () => {
+    render(at('/runs/hello-001-r1?task=T404'));
+    await act(async () => undefined);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
 describe('RunView phase activity', () => {
   it('clicking a finished phase shows what was done and its agent steps', () => {
     render(view());
