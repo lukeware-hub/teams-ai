@@ -23,3 +23,9 @@ describe('viewerLogin', () => {
     expect(await viewerLogin(process.cwd(), async () => answer('{}'))).toBeNull();
   });
 });
+
+describe('viewerLogin with an answer that is not JSON', () => {
+  it('is null, so the Backlog step refuses in plain words', async () => {
+    expect(await viewerLogin(process.cwd(), async () => answer('not json'))).toBeNull();
+  });
+});

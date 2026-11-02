@@ -221,6 +221,8 @@ export class RefineSession {
   private starting = false;
   /** Set when the owner throws the draft away: no run starts on it after that. */
   private discarding = false;
+  /** The Backlog step in flight: a second call awaits it, so the repository is bound and the backlog enabled once. */
+  private binding: Promise<void> | null = null;
 
   private constructor(
     private readonly deps: SessionDeps,
@@ -593,7 +595,14 @@ export class RefineSession {
 
   /** Backlog mode: the next evaluations break the docs into a prioritized backlog instead of deriving one spec, and the
    *  briefing becomes the target project's docs/briefing.md. */
-  async enableBacklog(): Promise<void> {
+  enableBacklog(): Promise<void> {
+    this.binding ??= this.enableBacklogOnce().finally(() => {
+      this.binding = null;
+    });
+    return this.binding;
+  }
+
+  private async enableBacklogOnce(): Promise<void> {
     this.guard();
     await this.enableBacklogStep(true);
   }
@@ -650,7 +659,8 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       const out = await this.decideOnDocs(docs, ctl.signal);
-      const lock = styleRefusal(await readDocsMarker(this.deps.ws), out.style);
+      const bound = this.state.docsRepo === true ? await readDocsMarker(this.deps.ws) : null;
+      const lock = styleRefusal(bound, out.style);
       if (lock) throw new Error(lock);
       const arch: Architecture = { style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations };
       await writeArchitectureFiles(this.deps.draft.root, arch);

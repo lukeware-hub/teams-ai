@@ -22,7 +22,7 @@ export interface DocsBindInput {
 
 const full = (target: RepoTarget): string => `${target.owner}/${target.name}`;
 
-/** Why the repository cannot take the documents, in plain words; null when it can. A non-empty repository is ours only when this project bound it. */
+/** Why the repository cannot take the documents, in plain words, or null when it can; a non-empty repository is ours only if this project bound it. */
 export function refusalOf(info: RepoInfo | null, target: RepoTarget, bound: DocsMarker | null): string | null {
   if (info === null) return null;
   const name = full(target);

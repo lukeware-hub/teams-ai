@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readDocsMarker } from '../../server/docs/project-state.js';
+import { docsMarkerPath, readDocsMarker } from '../../server/docs/project-state.js';
 import { execCommand, type CommandResult, type Exec } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { writeDoc, type DocFile } from '../../server/refine/draft.js';
@@ -185,5 +185,36 @@ describe('the documentation repository is bound only by the Backlog step', () =>
     expect(s.state.backlog?.enabled).toBe(true);
     expect(ghCalls).toEqual([]);
     expect(await readDocsMarker(r.ws)).toBeNull();
+  });
+});
+
+describe('one bind at a time, and a legacy session reads no marker', () => {
+  it('two overlapping Backlog calls make one repository, and both resolve', async () => {
+    const r = await openRig();
+    const s = await decided(r);
+    await Promise.all([s.enableBacklog(), s.enableBacklog()]);
+    expect(gh.creates).toEqual(['acme/hello-app']);
+    expect(s.state.backlog?.enabled).toBe(true);
+  });
+
+  it('a legacy new project does not read a corrupt marker', async () => {
+    const r = await openRig({ docsRepoLayout: false });
+    await fs.mkdir(path.dirname(docsMarkerPath(r.ws)), { recursive: true });
+    await fs.writeFile(docsMarkerPath(r.ws), '{ not json');
+    const s = await r.registry.newProject('hello-app', 'Hello');
+    expect(s.state.docsRepo).toBeUndefined();
+    await s.close();
+  });
+
+  it('a legacy architecture decision does not read a corrupt marker', async () => {
+    const r = await openRig({ docsRepoLayout: false });
+    const s = await r.registry.newProject('hello-app', 'Hello');
+    await completeStages(r, s);
+    await fs.mkdir(path.dirname(docsMarkerPath(r.ws)), { recursive: true });
+    await fs.writeFile(docsMarkerPath(r.ws), '{ not json');
+    r.script['architecture/sm'] = [MONOLITH];
+    await s.decideArchitecture();
+    await s.settled();
+    expect(s.state.architecture).toBeDefined();
   });
 });

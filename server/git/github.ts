@@ -34,8 +34,12 @@ export const NOT_FOUND = /Could not resolve to a Repository|HTTP 404/i;
 export async function viewerLogin(cwd: string, exec: Exec): Promise<string | null> {
   const r = await gh(cwd, ['api', 'user'], exec);
   if (r.exitCode !== 0) return null;
-  const login = (JSON.parse(r.stdout) as { login?: unknown }).login;
-  return typeof login === 'string' && login !== '' ? login : null;
+  try {
+    const login = (JSON.parse(r.stdout) as { login?: unknown } | null)?.login;
+    return typeof login === 'string' && login !== '' ? login : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
