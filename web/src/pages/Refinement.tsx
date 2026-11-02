@@ -36,7 +36,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { percentOf } from '@server/refine/readiness';
 
@@ -319,10 +319,12 @@ export function RefinementView(p: ViewProps) {
   const [askRe, setAskRe] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
-  // A project already running, or an old `vista=backlog` address, opens on stage 7.
+  // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
   const [step, setStep] = useState<WizardStep>(() => {
     const query = new URLSearchParams(window.location.search);
-    return snap.state.status === 'started' || query.get('vista') === 'backlog' ? 'backlog' : initialStep(snap.state, query.get('etapa'));
+    if (query.get('vista') === 'backlog') return 'backlog';
+    if (snap.state.status === 'started') return parseStep(query.get('etapa')) ?? 'backlog';
+    return initialStep(snap.state, query.get('etapa'));
   });
   const stepMoved = useRef(false);
   const stepHeading = useRef<HTMLHeadingElement>(null);

@@ -43,6 +43,18 @@ describe('one stage per screen', () => {
     expect(editor('stack.md').value).toBe('# Stack');
   });
 
+  it('opens the step named in the address after the development started, read-only', () => {
+    open('?etapa=stack.md');
+    show(base({ status: 'started' }));
+    expect(editor('stack.md').value).toBe('# Stack');
+    expect(editor('stack.md').readOnly).toBe(true);
+  });
+
+  it('opens the backlog after the development started when the address names no step', () => {
+    show(base({ status: 'started' }));
+    expect(screen.getByText('Preparar o desenvolvimento')).toBeTruthy();
+  });
+
   it('opens the first document of a project that records no stages', () => {
     show(base({ stages: undefined }));
     expect(editor('flow.md').value).toBe('# Flow');
