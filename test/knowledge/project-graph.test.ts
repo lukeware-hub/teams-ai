@@ -6,10 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
+import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
 import { buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
+import { makeRemote } from '../fixtures/git-remote.js';
 
 const project = {
   projectId: 'kayron-hub',
@@ -129,6 +131,22 @@ describe('projectMainDocs', () => {
     const { ws } = await workspaceWithMain({ 'docs/design.md': 'Tokens de cor' });
     const docs = await projectMainDocs({ ws, project: project as Project, newestSpec: undefined });
     expect(docs.find((doc) => doc.file === 'design.md')?.text).toBe('Tokens de cor');
+  });
+
+  it('shows a document pushed to the documentation store after the clone, for a docs-repo project', async () => {
+    const remote = await makeRemote({ 'docs/project.md': 'primeira versão\n' });
+    try {
+      const { ws } = await workspaceWithMain({ 'README.md': '# readme\n' });
+      await writeDocsMarker(ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'kayron-hub' }, firstSha: null });
+      execFileSync('git', ['clone', '-q', remote.origin, docsStoreDir(ws)]);
+      await fs.writeFile(path.join(remote.repo, 'docs', 'project.md'), 'segunda versão\n');
+      execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-q', '-am', 'docs: segunda versão'], { cwd: remote.repo });
+      execFileSync('git', ['push', '-q', 'origin', 'HEAD:main'], { cwd: remote.repo });
+      const docs = await projectMainDocs({ ws, project: project as Project, newestSpec: undefined });
+      expect(docs.find((doc) => doc.file === 'project.md')?.text).toBe('segunda versão\n');
+    } finally {
+      await remote.cleanup();
+    }
   });
 
   it('has no documents when the repository is not there, instead of failing the chat', async () => {
