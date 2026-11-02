@@ -64,4 +64,13 @@ describe('the start lock', () => {
     s.failStart();
     await s.close();
   });
+
+  it('a second start during the main sync of a start gets BusyError', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    await s.syncWithMain(async () => {
+      expect(() => s.beginStart()).toThrow(BusyError);
+      return [];
+    });
+    await s.close();
+  });
 });
