@@ -637,7 +637,7 @@ export class Run {
     const decider = this.decider();
     const ws = this.wsOf(view);
     return {
-      journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view),
+      journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view), docs: this.deps.docs,
       exec: this.deps.exec,
       runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => runAgentStep(req, this.agentDeps(view)),
       gates: this.gatesFor(view),

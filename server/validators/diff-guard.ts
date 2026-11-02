@@ -1,5 +1,6 @@
 import picomatch from 'picomatch';
 import { hasGlobChars, normalizePath } from '../core/paths.js';
+import { isFrozenDoc } from '../docs/layout.js';
 
 export interface ScopeInput {
   changedFiles: readonly string[];
@@ -8,6 +9,8 @@ export interface ScopeInput {
   scopeJustification?: string;
   /** Only for T0-scaffold on the first spec, which creates the frozen files. */
   allowFrozen?: boolean;
+  /** A monolith's build task: the documents of the documentation repository are frozen, except README, RUNBOOK and API. */
+  frozenDocs?: boolean;
 }
 
 export interface ScopeResult {
@@ -36,7 +39,8 @@ function matcher(globs: readonly string[]): (file: string) => boolean {
 }
 
 export function checkScope(input: ScopeInput): ScopeResult {
-  const isFrozen = input.allowFrozen ? () => false : matcher(input.frozenPaths);
+  const frozenByGlob = input.allowFrozen ? () => false : matcher(input.frozenPaths);
+  const isFrozen = (file: string) => frozenByGlob(file) || (input.frozenDocs === true && isFrozenDoc(file));
   const inScope = matcher(input.affectedPaths);
   const files = [...new Set(input.changedFiles.map(normalizePath))].filter((f) => f !== '');
 

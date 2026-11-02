@@ -54,18 +54,22 @@ afterEach(async () => {
   await remote.cleanup();
 });
 
-/** A Dev that changes one file and lists the files it read; `scope` is its scope justification. */
-function dev(filesRead: (cwd: string) => string[], scopeJustification?: string) {
+/** A Dev that changes `src/a.ts` and the `extra` files, and lists the files it read; `scope` is its scope justification. */
+function dev(filesRead: (cwd: string) => string[], scopeJustification?: string, extra: string[] = []) {
   return async (req: AgentStepRequest<any>): Promise<StepOutcome<any>> => {
     if (req.kind === 'security') return ok({ specHash: HASH, decision: 'approve', findings: [] });
     if (req.kind === 'ui-check' || req.kind === 'review') return approve();
-    await fs.mkdir(path.join(req.cwd, 'src'), { recursive: true });
-    await fs.writeFile(path.join(req.cwd, 'src', 'a.ts'), `// ${Date.now()}\n`);
-    return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: ['src/a.ts'], commitMessage: 'feat: T1', deviations: [], filesRead: filesRead(req.cwd), scopeJustification });
+    const changed = ['src/a.ts', ...extra];
+    for (const file of changed) {
+      await fs.mkdir(path.dirname(path.join(req.cwd, file)), { recursive: true });
+      await fs.writeFile(path.join(req.cwd, file), `// ${Date.now()}
+`);
+    }
+    return ok({ specHash: HASH, status: 'done', summary: 'did T1', changedFiles: changed, commitMessage: 'feat: T1', deviations: [], filesRead: filesRead(req.cwd), scopeJustification });
   };
 }
 
-function deps(over: Partial<TaskRunnerDeps> = {}): TaskRunnerDeps {
+function deps(over: Partial<TaskRunnerDeps> = {}, agent = dev(() => [])): TaskRunnerDeps {
   const ws = { projectId: 'shop', root: remote.root, repo: remote.repo, worktrees: path.join(remote.root, 'wt'), graph: path.join(remote.root, 'graph'), knowledgeDb: '', secrets: path.join(remote.root, 'secrets'), runs: remote.root };
   const steps: MergeSteps = {
     alreadyMerged: async () => null, rebase: async () => ({ ok: true, baseSha: 'base' }), gates: async () => ({ ok: true }), push: async () => {},
@@ -73,7 +77,7 @@ function deps(over: Partial<TaskRunnerDeps> = {}): TaskRunnerDeps {
   };
   return {
     journal, ws, spec, project, plan, specHash: HASH, firstSpec: false, skillsRoot: path.join(remote.root, 'skills'), exec: execCommand,
-    runAgent: (async (req: AgentStepRequest<any>) => dev(() => [])(req)) as TaskRunnerDeps['runAgent'],
+    runAgent: (async (req: AgentStepRequest<any>) => agent(req)) as TaskRunnerDeps['runAgent'],
     gates: async () => ({ results: [gate('unit-test')], blockingFailure: null }),
     installDeps: async () => null,
     mergeQueue: new MergeQueue(),
@@ -116,5 +120,31 @@ describe('TaskRunner: documents read from the snapshot (plan 119, I8 item 1)', (
     expect(devCalls).toBe(0);
     expect(state().state).toBe('blocked');
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('docs/stack.md');
+  });
+});
+
+describe('TaskRunner: frozen documents (plan 119, I8 item 3)', () => {
+  const readAll = () => [PLAN, ...DOCS].map((file) => path.join(snapshot, file));
+  const docs = { style: 'monolith' as const, snapshot };
+  const run = async (over: Partial<TaskRunnerDeps>, agent: ReturnType<typeof dev>) => {
+    await new TaskRunner('T1', deps({ ...over }, agent)).advance();
+    return journal.lastFeedback('T1');
+  };
+
+  it('fails a monolith build task that changes docs/stack.md, as frozen', async () => {
+    const feedback = await run({ docs }, dev(readAll, 'the docs', ['docs/stack.md']));
+    expect(feedback).toContain('frozen files modified: docs/stack.md');
+  });
+
+  it('lets a monolith build task change docs/README.md', async () => {
+    const feedback = await run({ docs }, dev(readAll, 'the docs', ['docs/README.md']));
+    expect(feedback).toBeNull();
+    expect(state().state).toBe('validating');
+  });
+
+  it('leaves a microservice task alone', async () => {
+    const feedback = await run({ docs: { style: 'microservices', snapshot } }, dev(readAll, 'the docs', ['docs/stack.md']));
+    expect(feedback).toBeNull();
+    expect(state().state).toBe('validating');
   });
 });

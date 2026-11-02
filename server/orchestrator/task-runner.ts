@@ -36,6 +36,7 @@ import { normalizePath } from '../core/paths.js';
 import { checkScope } from '../validators/diff-guard.js';
 import { devopsOwnerErrors } from '../validators/plan.js';
 import type { RefContext } from '../validators/references.js';
+import type { DocsRun } from '../docs/layout.js';
 import { Intent, OrchEvent, type Journal } from './events.js';
 import { applyGateFixes, effectivePlan, gateFixErrors, gateFixes, gateImageErrors, gateImageFixes, type GateFix } from './gate-fix.js';
 import { withMainSnapshot } from './phases/shared.js';
@@ -93,6 +94,8 @@ export interface TaskRunnerDeps {
    * was needed (spec declares a DATABASE_URL secret); null when none was provisioned. Sent as extraEnv to
    * Dev and Test so their own sandboxed processes can reach it without ever getting Docker access themselves. */
   testDatabaseUrl?: string | null;
+  /** A documentation-repository project's layout and snapshot; absent for the legacy layout. */
+  docs?: DocsRun;
   /** Ids of the plan tasks an earlier run of this spec delivered: an empty diff on one of them means its work is on main. */
   deliveredBefore: ReadonlySet<string>;
   /** The gate corrections earlier runs of this spec version accepted; they apply here but count toward no limit of this run. Absent means none. */
@@ -397,7 +400,7 @@ export class TaskRunner {
       return this.specGap(task.def, `Your last attempt changed nothing, so the same commit fails the same gates again. Last feedback:\n${last}\nName the defect: when a gate command is wrong, answer with gateFix; otherwise change the code.`);
     }
     this.unchangedRounds = 0;
-    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths });
+    const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths, frozenDocs: this.deps.docs?.style === 'monolith' });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;
     // baseSha lets reconcile tell "committed, then crashed" from "crashed before committing" (spec §6).
