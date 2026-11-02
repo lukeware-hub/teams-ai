@@ -21,7 +21,7 @@ const detail = (over: Partial<RepoDetailView> = {}): RepoDetailView => ({
 });
 
 const dashboard = (over: Partial<RepoDashboard> = {}): RepoDashboard => ({
-  counts: { tasks: 3, delivered: 1, pending: 1, running: 0, blocked: 1, failed: 0, runs: 1, runsActive: 0, failures: 0, blockers: 1, specsDelivered: 1, specsAwaiting: 0, progress: 33 },
+  counts: { tasks: 3, delivered: 1, pending: 1, running: 0, blocked: 1, failed: 0, runs: 1, runsActive: 0, failures: 0, blockers: 1, specsDelivered: 1, specsAwaiting: 0, progress: 33, cost: 0.5 },
   specs: [
     { specId: 'cart', title: 'Carrinho', priority: 'P1', status: 'done', state: 'delivered', total: 1, delivered: 1, running: 0, pending: 0, blocked: 0, failed: 0 },
     { specId: 'pay', title: 'Pagamento', priority: 'P2', status: 'running', state: 'blocked', total: 2, delivered: 0, running: 0, pending: 1, blocked: 1, failed: 0 },
@@ -65,7 +65,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('RepositoryPage', () => {
-  it('shows the six indicator cards with the counts of the journals', async () => {
+  it('shows the indicator cards, the cost among them, with the counts of the journals', async () => {
     vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
     vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
     renderAt();
@@ -95,8 +95,8 @@ describe('RepositoryPage', () => {
     vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
     vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
     renderAt();
-    const link = await screen.findByTestId('shortcut-swagger');
-    expect(link.getAttribute('href')).toBe('http://localhost:3001/docs');
+    await waitFor(() => expect(screen.getByTestId('shortcut-swagger').tagName).toBe('A'));
+    expect(screen.getByTestId('shortcut-swagger').getAttribute('href')).toBe('http://localhost:3001/docs');
     expect(screen.queryByTestId('start-system')).toBeNull();
   });
 
@@ -108,7 +108,9 @@ describe('RepositoryPage', () => {
     renderAt();
     fireEvent.click(await screen.findByTestId('start-system'));
     expect(deploy).toHaveBeenCalledWith('shop', 'cart');
-    expect(screen.queryByTestId('shortcut-swagger')).toBeNull();
+    const swagger = screen.getByTestId('shortcut-swagger') as HTMLButtonElement;
+    expect(swagger.disabled).toBe(true);
+    expect(screen.getByText('sistema desligado')).toBeTruthy();
   });
 
   it('says "sem dados" for the indicators when the dashboard cannot be read, and keeps the repository', async () => {

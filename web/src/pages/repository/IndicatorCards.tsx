@@ -1,6 +1,8 @@
 import type { RepoDashboard } from '../../api.js';
+import { money } from '../project-shared.js';
 
-/** The six indicator cards of a repository, each a number the journals give; a card reads its own detail line. */
+/** The seven indicator cards of a repository, each a number the journals give; a card reads its own detail line.
+ * Two columns on a phone (cost takes the whole row), four from 768 px, seven from 1280 px. */
 export function IndicatorCards({ dashboard }: { dashboard: RepoDashboard }) {
   const c = dashboard.counts;
   const cards = [
@@ -10,13 +12,14 @@ export function IndicatorCards({ dashboard }: { dashboard: RepoDashboard }) {
     { id: 'blockers', label: 'Bloqueios', value: String(c.blockers), detail: 'tarefas, runs pausadas, perguntas e segredos' },
     { id: 'delivered', label: 'Entregas', value: String(c.delivered), detail: `${c.specsDelivered} specs entregues · ${c.specsAwaiting} aguardam validação` },
     { id: 'progress', label: 'Progresso geral', value: c.progress === null ? 'sem dados' : `${c.progress}%`, detail: `${c.delivered} de ${c.tasks} tarefas` },
+    { id: 'cost', label: 'Custo', value: money(c.cost), detail: `${c.runs} ${c.runs === 1 ? 'run' : 'runs'} deste repositório` },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" data-testid="repo-cards">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7" data-testid="repo-cards">
       {cards.map((card) => (
-        <div key={card.id} className="card grid content-start gap-1 p-3" data-testid={`card-${card.id}`}>
+        <div key={card.id} className={`card grid content-start gap-1 p-3${card.id === 'cost' ? ' col-span-2 md:col-span-1' : ''}`} data-testid={`card-${card.id}`}>
           <span className="hint">{card.label}</span>
-          <strong className="text-[1.125rem]">{card.value}</strong>
+          <strong className="text-[1.125rem] tabular-nums">{card.value}</strong>
           <span className="hint text-[0.75rem]">{card.detail}</span>
         </div>
       ))}

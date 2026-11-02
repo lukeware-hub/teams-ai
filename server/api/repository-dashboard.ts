@@ -3,7 +3,9 @@ import { describeAll, stepDoing, type ActivityTone } from '../orchestrator/event
 import { explainBlockReason, firstSentence } from '../orchestrator/stop-explain.js';
 import { reduceEvents, type TaskRuntime } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
-import type { StoredEvent } from '../store/event-store.js';
+import { parseRunId } from '../core/ids.js';
+import { loadEvents, type StoredEvent } from '../store/event-store.js';
+import path from 'node:path';
 
 /** A list shown up to its cap; `total` counts every item. */
 export interface Capped<T> {
@@ -158,6 +160,8 @@ export interface RepoDashboard {
     specsDelivered: number;
     specsAwaiting: number;
     progress: number | null;
+    /** US$ spent by the repository's runs: the sum of the runs' cost, as the runs table shows it. */
+    cost: number;
   };
   specs: DashboardSpec[];
   tasks: Capped<DashboardTask>;
@@ -277,6 +281,23 @@ function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Ma
   };
   view.state = specStateOf(spec, runs, view);
   return { view, rows };
+}
+
+/** The runs of a project in the dashboard's shape, each with its journal read once; a journal that cannot be read gives no events. */
+export async function loadRepoRuns(runsDir: string, rows: ReadonlyArray<{ runId: string; specId: string; n: number; status: string; at: string | null; cost: number; stopped?: boolean }>): Promise<DashboardRun[]> {
+  return Promise.all(
+    rows.map(async (r) => ({
+      runId: r.runId,
+      specId: r.specId,
+      kind: parseRunId(r.runId)?.kind ?? 'run',
+      n: r.n,
+      status: r.status,
+      at: r.at,
+      cost: r.cost,
+      stopped: r.stopped === true,
+      events: await loadEvents(path.join(runsDir, r.runId, 'events.ndjson')).catch(() => [] as StoredEvent[]),
+    })),
+  );
 }
 
 /** Each spec's counts and task rows from its runs; the runs whose journal does not replay are in `unreadable`. */
@@ -461,6 +482,7 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
       specsDelivered: specs.filter((s) => s.state === 'delivered').length,
       specsAwaiting: specs.filter((s) => s.state === 'awaiting').length,
       progress: total > 0 ? Math.round((delivered / total) * 100) : null,
+      cost: input.runs.reduce((sum, r) => sum + r.cost, 0),
     },
     specs,
     tasks: cap(tasks, CAPS.tasks),

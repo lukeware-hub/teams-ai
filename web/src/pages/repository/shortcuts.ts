@@ -1,32 +1,36 @@
 import type { LastDeploy, ServiceStatus } from '../../api.js';
+import { serviceLinks } from '@server/deploy/service-links.js';
 import { addressOf, answerOf } from './labels.js';
 
 export interface Shortcut {
   kind: 'swagger' | 'app';
-  href: string;
+  /** Where the button opens; null while it cannot open. */
+  href: string | null;
+  /** Why the button cannot open, in words; null when it opens. */
+  reason: string | null;
 }
 
-/** A path on the service's address, or null when either part is missing or the address is not a URL. */
-function joinAddress(url: string | null, path: string | null): string | null {
-  if (!url || !path) return null;
-  try {
-    return new URL(path, url).href;
-  } catch {
-    return null;
-  }
+/** The buttons a repository of this kind shows: Swagger for an API or workers, the application for a web repository, both for a monolith. */
+export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): Shortcut[] {
+  const wanted: Shortcut['kind'][] = kind === 'api' || kind === 'jobs' ? ['swagger'] : kind === 'web' ? ['app'] : kind === 'monolith' ? ['swagger', 'app'] : [];
+  return wanted.map((k) => shortcutOf(k, repo, deploy, probe, hostname));
 }
 
-/** The shortcuts the repository's kind offers, each only while the live probe answers for it. */
-export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null): Shortcut[] {
-  if (!deploy || !probe?.online) return [];
+/** One button: its address when the live answer gives one, else the reason it has none. */
+function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): Shortcut {
+  if (!deploy) return { kind, href: null, reason: 'sem dados: nenhum deploy verificado ainda' };
+  if (!probe) return { kind, href: null, reason: 'verificando se o sistema responde' };
+  if (!probe.online) return { kind, href: null, reason: 'sistema desligado' };
   const address = addressOf(repo, deploy);
   const answer = answerOf(repo, deploy, probe);
-  const swagger = answer.docs ? joinAddress(address.url, address.docsPath) : null;
-  const app = answer.ui && address.url ? address.url : null;
-  const out: Shortcut[] = [];
-  if (swagger && (kind === 'api' || kind === 'jobs' || kind === 'monolith')) out.push({ kind: 'swagger', href: swagger });
-  if (app && (kind === 'web' || kind === 'monolith')) out.push({ kind: 'app', href: app });
-  return out;
+  const links = address.url ? serviceLinks({ url: address.url, docsPath: address.docsPath ?? undefined, kind: 'api' }, hostname) : { appUrl: null, docsUrl: null };
+  if (kind === 'swagger') {
+    if (!address.docsPath) return { kind, href: null, reason: 'o plano não declara a documentação da API' };
+    if (!answer.docs) return { kind, href: null, reason: 'a documentação não responde' };
+    return links.docsUrl ? { kind, href: links.docsUrl, reason: null } : { kind, href: null, reason: 'a porta do serviço não está publicada' };
+  }
+  if (!answer.ui) return { kind, href: null, reason: 'a aplicação não responde na raiz' };
+  return links.appUrl ? { kind, href: links.appUrl, reason: null } : { kind, href: null, reason: 'a porta do serviço não está publicada' };
 }
 
 /** True when the deploy exists and the probe says the system is not answering. */
