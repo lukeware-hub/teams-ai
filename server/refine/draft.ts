@@ -211,10 +211,7 @@ export async function createNewProject(d: Draft, name: string, description = '')
 const mainFiles = async (repo: string, exec: Exec, paths: readonly string[]): Promise<string[]> =>
   (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', ...paths], exec)).split('\n').filter((f) => f !== '');
 
-/**
- * Main as a draft reads it: the project's clone for a legacy project, the documentation store for a documentation repository.
- * Both answer with repository paths, so the draft code reads either one the same way.
- */
+/** Main as a draft reads it, by repository path: the project's clone (legacy) or the documentation store. */
 export interface MainCopy {
   refresh(): Promise<void>;
   /** The repository paths under docs/ that main holds. */
