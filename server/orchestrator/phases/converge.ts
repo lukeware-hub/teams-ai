@@ -11,10 +11,17 @@ import { smFixTasks } from './verify.js';
 /** `done`: the code meets the plan; `gaps`: the review found what to build; `paused`: a login or quota stop; `failed`: the round stops the run. */
 export type ReviewRound = { kind: 'done' } | { kind: 'gaps'; gaps: string[] } | { kind: 'paused' } | { kind: 'failed'; reason: string };
 
-/** Paths the review changed: a review changes none, and ignored output or a tool cache is not its work. */
+/** Paths the review changed. Ignored output and the tool cache are not its work. */
 export async function changedPaths(worktree: string, exec: PhaseDeps['exec']): Promise<string[]> {
   const names = (await git(worktree, ['ls-files', '--modified', '--others', '--exclude-standard'], exec)).split('\n').filter((l) => l !== '');
   return devChangedFiles(names);
+}
+
+/** The review only reads: its edits live in its own worktree, never on main, so they are dropped and its verdict stands. */
+export async function discardEdits(worktree: string, paths: readonly string[], exec: PhaseDeps['exec']): Promise<void> {
+  if (paths.length === 0) return; // an empty pathspec would clean every untracked file, the cache included
+  await git(worktree, ['clean', '-f', '-q', '--', ...paths], exec);
+  await git(worktree, ['reset', '--hard', '-q'], exec);
 }
 
 /** One read-only review of the merged code against the implementation plan. Its verdict is journaled; nothing is committed. */
@@ -38,9 +45,9 @@ export async function runPlanReview(deps: PhaseDeps, round: 1 | 2): Promise<Revi
   }
   if (!answer) return { kind: 'failed', reason: `review rejected twice: ${error}` };
   const changed = await changedPaths(worktree, deps.exec);
-  if (changed.length > 0) return { kind: 'failed', reason: `the review changed files: ${changed.join(', ')}` };
+  await discardEdits(worktree, changed, deps.exec);
   const gaps = answer.status === 'gaps' ? answer.gaps : [];
-  await deps.journal.fact(OrchEvent.SpecKitConverged, { round, status: answer.status, gaps });
+  await deps.journal.fact(OrchEvent.SpecKitConverged, { round, status: answer.status, gaps, discarded: changed });
   return gaps.length === 0 ? { kind: 'done' } : { kind: 'gaps', gaps };
 }
 

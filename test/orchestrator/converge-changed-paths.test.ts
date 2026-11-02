@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
-import { changedPaths } from '../../server/orchestrator/phases/converge.js';
+import { changedPaths, discardEdits } from '../../server/orchestrator/phases/converge.js';
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -43,5 +43,24 @@ describe('changedPaths', () => {
     await write(dir, 'app.ts', 'export const a = 2;\n');
     await write(dir, 'src/new.ts');
     expect((await changedPaths(dir, execCommand)).sort()).toEqual(['app.ts', 'src/new.ts']);
+  });
+
+  it('drops the review edits, keeps the tool cache and leaves the worktree clean', async () => {
+    const dir = await worktree();
+    await write(dir, 'app.ts', 'export const a = 2;\n');
+    await write(dir, 'src/new.ts');
+    await write(dir, '.tools/npm-cache/cache.json');
+    await discardEdits(dir, await changedPaths(dir, execCommand), execCommand);
+    expect(await fs.readFile(path.join(dir, 'app.ts'), 'utf8')).toBe('export const a = 1;\n');
+    await expect(fs.access(path.join(dir, 'src/new.ts'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(dir, '.tools/npm-cache/cache.json'), 'utf8')).toBe('x\n');
+    expect(await changedPaths(dir, execCommand)).toEqual([]);
+  });
+
+  it('does nothing when the review changed no file, so an empty list never cleans the worktree', async () => {
+    const dir = await worktree();
+    await write(dir, '.tools/npm-cache/cache.json');
+    await discardEdits(dir, [], execCommand);
+    expect(await fs.readFile(path.join(dir, '.tools/npm-cache/cache.json'), 'utf8')).toBe('x\n');
   });
 });
