@@ -144,7 +144,7 @@ Goal: one pure module owns every document path; legacy output does not change.
 - [x] Characterization tests: `planFileOf` and `taskFileOf` return the legacy strings; the docs-repo tables are tested.
 - [x] Layout seam guard: no code outside `layout.ts` builds a `docs/specify` path.
 - [x] `planFileOf` and `taskFileOf` delegate to the legacy layout, output unchanged.
-- [ ] Gate green, and no existing test edited.
+- [x] Gate green, and no existing test edited.
 
 ## I2a - Git and GitHub primitives, probe (size M, weight 2)
 
@@ -171,13 +171,13 @@ Goal: one pure module owns every document path; legacy output does not change.
 - [ ] Projector-only renderer of `spec.md` for the store; `renderSpecMd`, `renderSpecsMd`, `renderBriefMd` and `planBasis` stay byte-identical (golden tests).
 - [ ] Docs-repo variants of the plan and task text: relative links, "never create other doc files"; legacy text byte-identical.
 - [ ] Alias rules in `validateBacklog` (stamped sessions only) and in the registry slug.
-- [ ] `KIND_WRITE_DIRS` per layout.
+- [ ] `KIND_WRITE_DIRS` unchanged: the draft tree does not move (decision D1), so no write rule changes.
 
 ## I4 - Mirror and run side (size L, weight 3)
 
 - [ ] `readState`, `writeState`, `updateState` over `writeFileAtomic`; mirror at `<ws.root>/state/docs/`.
 - [ ] For docs-repo projects, every read of machine JSON from `origin/main` moves to the mirror: preconditions, startsAsDraft, specOnMain, startedOnMain, readDocs, run.ts, deploy.ts, report.ts, the service rules, run-routes plan and report reads.
-- [ ] Phase 0 for docs-repo: strict check of the snapshot, mirror writes, no document copies, `publishServiceDocs` not called.
+- [ ] Phase 0 for docs-repo: strict check of the draft docs folder (the snapshot check arrives with I7), mirror writes, no document copies, `publishServiceDocs` not called.
 - [ ] Phase 1 skipped for docs-repo; technical text empty; stack line in the plan pack; ADRs empty.
 - [ ] Phase 2, Phase 6 and completion write to the mirror; no docs pull request for `plan.json` and `report.json`.
 - [ ] Legacy projects keep their path; the existing phase tests are unedited and green.
