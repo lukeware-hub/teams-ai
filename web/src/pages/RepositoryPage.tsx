@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { runApi, type RepoDashboard, type RepoDetailView } from '../api.js';
+import { ApiError, runApi, type RepoDashboard, type RepoDetailView } from '../api.js';
 import { usePolling } from '../usePolling.js';
-import { panel, sectionHeading, sectionTitle } from './project-shared.js';
+import { action, panel, sectionHeading, sectionTitle } from './project-shared.js';
 import { AgentActivity } from './repository/AgentActivity.js';
 import { DeliveryBoard } from './repository/DeliveryBoard.js';
 import { FailuresBlockers } from './repository/FailuresBlockers.js';
@@ -17,18 +17,24 @@ const POLL_MS = 5000;
 export function RepositoryPage() {
   const { projectId = '', repoId = '' } = useParams<{ projectId: string; repoId: string }>();
   const [detail, setDetail] = useState<RepoDetailView | null | undefined>(undefined);
+  // Why there is no detail: the server does not know the repository, or the request failed.
+  const [failure, setFailure] = useState<'missing' | 'failed' | null>(null);
   const [dashboard, setDashboard] = useState<RepoDashboard | null | undefined>(undefined);
 
-  useEffect(() => {
-    let alive = true;
-    runApi.repository(projectId, repoId).then(
-      (d) => alive && setDetail(d),
-      () => alive && setDetail(null),
+  const loadDetail = useCallback(() => {
+    setDetail(undefined);
+    setFailure(null);
+    return runApi.repository(projectId, repoId).then(
+      (d) => setDetail(d),
+      (err: unknown) => {
+        setDetail(null);
+        setFailure(err instanceof ApiError && err.status === 404 ? 'missing' : 'failed');
+      },
     );
-    return () => {
-      alive = false;
-    };
   }, [projectId, repoId]);
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
 
   // A failed refresh keeps the last dashboard on screen; only a first failure reads as no data.
   const loadDashboard = useCallback(
@@ -41,6 +47,17 @@ export function RepositoryPage() {
   usePolling(loadDashboard, POLL_MS);
 
   if (detail === undefined) return <p className="hint" role="status">Carregando o repositório…</p>;
+  if (detail === null && failure === 'failed') {
+    return (
+      <section className={panel} data-testid="repo-error">
+        <h1 className="m-0 text-[1.25rem] font-semibold">Não foi possível carregar o repositório.</h1>
+        <p className="hint">Verifique a conexão com o servidor e tente de novo.</p>
+        <button type="button" className={action.secondary} onClick={() => void loadDetail()}>
+          Tentar de novo
+        </button>
+      </section>
+    );
+  }
   if (detail === null) {
     return (
       <section className={panel} data-testid="repo-missing">
