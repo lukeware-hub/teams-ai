@@ -57,13 +57,19 @@ export function repoPath(style: Style, kind: Kind, alias: string, service?: stri
   return `${serviceFolder(style, service)}/specify/${assertAlias(alias)}/${SPEC_FILES[kind]}`;
 }
 
+/** Whether a folder is the alias folder of one spec: docs/specify/<alias>, or docs/<service>/specify/<alias> for microservices. */
+export function isAliasFolder(style: Style, folder: string): boolean {
+  const parts = folder.split('/');
+  if (style === 'monolith') return parts.length === 3 && parts[0] === 'docs' && parts[1] === 'specify' && isAlias(parts[2]);
+  return parts.length === 4 && parts[0] === 'docs' && ID_PATTERNS.SERVICE.test(parts[1]) && parts[2] === 'specify' && isAlias(parts[3]);
+}
+
 /** Whether a path of the repository is one of the eight kinds: the five documents, or a spec file of its style. */
 export function isAllowedPath(style: Style, rel: string): boolean {
   const parts = rel.split('/');
   if (parts.length === 2 && parts[0] === 'docs') return (FIVE_DOCS as readonly string[]).includes(parts[1]);
   if (!(Object.values(SPEC_FILES) as string[]).includes(parts.at(-1) ?? '')) return false;
-  if (style === 'monolith') return parts.length === 4 && parts[0] === 'docs' && parts[1] === 'specify' && isAlias(parts[2]);
-  return parts.length === 5 && parts[0] === 'docs' && ID_PATTERNS.SERVICE.test(parts[1]) && parts[2] === 'specify' && isAlias(parts[3]);
+  return isAliasFolder(style, parts.slice(0, -1).join('/'));
 }
 
 /** The repository that holds the documents: the project's own for a monolith, the central one for microservices. */

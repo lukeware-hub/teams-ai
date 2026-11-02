@@ -2,7 +2,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOCS_REPO_LAYOUT_ENV, docsMarkerPath, docsRepoLayoutEnabled, readDocsMarker, writeDocsMarker, type DocsMarker } from '../../server/docs/project-state.js';
+import {
+  DOCS_REPO_LAYOUT_ENV,
+  docsClosingPath,
+  docsMarkerPath,
+  docsRepoLayoutEnabled,
+  docsSnapshotDir,
+  readDocsMarker,
+  writeDocsMarker,
+  type DocsMarker,
+} from '../../server/docs/project-state.js';
 
 let root: string;
 const at = () => ({ root });
@@ -31,6 +40,20 @@ describe('docsRepoLayoutEnabled', () => {
     expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: '1' })).toBe(true);
     expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: 'junk' })).toBe(false);
     expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: 'true' })).toBe(false);
+  });
+});
+
+describe('draft folders', () => {
+  it('names the snapshot and the closing record of a slug draft', () => {
+    expect(() => docsSnapshotDir(at(), 'hello-app-001')).not.toThrow();
+    expect(docsClosingPath(at(), 'hello-app-001')).toMatch(/hello-app-001\.json$/);
+  });
+
+  it('refuses a draft id that is not a slug, so it cannot leave its folder', () => {
+    for (const id of ['..', '../escape', 'a/b', 'Hello', '']) {
+      expect(() => docsSnapshotDir(at(), id)).toThrow(RangeError);
+      expect(() => docsClosingPath(at(), id)).toThrow(RangeError);
+    }
   });
 });
 

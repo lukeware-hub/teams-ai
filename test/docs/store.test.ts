@@ -101,6 +101,12 @@ describe('openStore', () => {
     expect(await git(store.dir, ['status', '--porcelain'])).toBe('M docs/project.md');
   });
 
+  it('lists the temporary files once in the local exclude file, however often it opens', async () => {
+    await openStore(ws, 'monolith', execCommand);
+    const lines = (await fs.readFile(path.join(store.dir, '.git', 'info', 'exclude'), 'utf8')).split('\n');
+    expect(lines.filter((line) => line === '*.tmp')).toHaveLength(1);
+  });
+
   it('aborts a rebase a crash left in progress', async () => {
     await commitProjection(store, flush({ 'docs/project.md': 'local\n' }));
     await pushOther('remote\n');
@@ -155,6 +161,16 @@ describe('commitProjection', () => {
     await expect(commitProjection(store, flush({ 'docs/project.md': 'v2\n' }))).rejects.toThrow(/not a document path or a link/);
     expect(await head()).toBe(before);
     expect(await git(store.dir, ['diff', '--cached', '--name-only'])).toBe('');
+  });
+
+  it('leaves the working tree as HEAD has it after a refused flush', async () => {
+    const before = await head();
+    const sha = await git(store.dir, ['hash-object', '-w', 'docs/project.md']);
+    await git(store.dir, ['update-index', '--add', '--cacheinfo', `120000,${sha},docs/specify/alpha/spec.md`]);
+    await expect(commitProjection(store, flush({ 'docs/project.md': 'v2\n', 'docs/flow.md': 'flow\n' }))).rejects.toThrow(/not a document path or a link/);
+    expect(await head()).toBe(before);
+    expect(await git(store.dir, ['status', '--porcelain'])).toBe('');
+    expect(await exists('docs/flow.md')).toBe(false);
   });
 });
 
@@ -245,5 +261,15 @@ describe('ownership', () => {
     expect(await exists('docs/specify/alpha/spec.md')).toBe(true);
     await commitProjection(store, flush({}, { retire: ['docs/specify/alpha'] }));
     expect(await exists('docs/specify/alpha/spec.md')).toBe(false);
+  });
+
+  it('refuses the whole flush when a retire folder is not an alias folder, and removes nothing', async () => {
+    await commitProjection(store, flush(spec('alpha', 'one\n')));
+    const before = await head();
+    await expect(commitProjection(store, flush({}, { retire: ['docs'] }))).rejects.toThrow(/not an alias folder, so nothing is removed: docs$/);
+    await expect(commitProjection(store, flush({}, { retire: ['docs/specify'] }))).rejects.toThrow(/not an alias folder, so nothing is removed: docs\/specify$/);
+    expect(await head()).toBe(before);
+    expect(await exists('docs/specify/alpha/spec.md')).toBe(true);
+    expect(await exists('docs/project.md')).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planFileOf, taskFileOf } from '../../server/refine/plan-file.js';
-import { CENTRAL_REPO, docsTarget, githubOwnerOf, isAllowedPath, isAlias, legacyPath, repoPath, startTagOf } from '../../server/docs/layout.js';
+import { CENTRAL_REPO, docsTarget, githubOwnerOf, isAliasFolder, isAllowedPath, isAlias, legacyPath, repoPath, startTagOf } from '../../server/docs/layout.js';
 
 describe('legacy layout keeps its output', () => {
   it('names the plan of a spec implementation-plan.md under its folder', () => {
@@ -34,6 +34,21 @@ describe('documentation repository paths', () => {
 
   it('refuses an alias that cannot be a folder name', () => {
     expect(() => repoPath('monolith', 'spec', 'con')).toThrow(RangeError);
+  });
+});
+
+describe('alias folders', () => {
+  it('is the folder of one spec under specify, in each style', () => {
+    expect(isAliasFolder('monolith', 'docs/specify/user-login')).toBe(true);
+    expect(isAliasFolder('microservices', 'docs/user-api/specify/user-login')).toBe(true);
+  });
+
+  it('is never the docs folder, the specify folder or a service folder', () => {
+    for (const folder of ['docs', 'docs/specify', 'docs/specs/user-login', 'docs/specify/con']) {
+      expect(isAliasFolder('monolith', folder), folder).toBe(false);
+    }
+    expect(isAliasFolder('microservices', 'docs/user-api')).toBe(false);
+    expect(isAliasFolder('microservices', 'docs/specify/user-login')).toBe(false);
   });
 });
 

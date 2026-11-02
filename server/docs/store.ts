@@ -6,7 +6,7 @@ import { execCommand, type Exec } from '../exec/command.js';
 import { createAnnotatedTag, git, headSha, isAncestor, pushMain, pushTags, remoteTagTarget, showFile, withRepoLock } from '../git/git.js';
 import { createPrivateRepo, repoInfo, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { FIVE_DOC_PATHS, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
+import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
 import {
   docsClosingPath,
   docsClosingRoot,
@@ -16,6 +16,7 @@ import {
   docsSnapshotRoot,
   docsStoreDir,
   readDocsMarker,
+  removeDocsMarker,
   writeDocsMarker,
   type DocsMarker,
 } from './project-state.js';
@@ -91,7 +92,7 @@ async function excludeTmpFiles(gitDir: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const text = await fs.readFile(file, 'utf8').catch(() => '');
   if (text.split('\n').includes('*.tmp')) return;
-  await fs.writeFile(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}*.tmp\n`);
+  await writeFileAtomic(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}*.tmp\n`);
 }
 
 /** Brings an existing store back to a clean state under its repository lock. */
@@ -240,7 +241,19 @@ async function removeFolders(store: Store, folders: readonly string[]): Promise<
   if (folders.length > 0) await git(store.dir, ['rm', '-r', '-q', '--', ...folders], store.exec);
 }
 
-/** Refuses a staged path outside the allowlist or a link, and clears the index so nothing reaches a commit. Returns the count staged. */
+/** Refuses the whole flush when a folder to retire is not an alias folder, before anything is written. */
+function assertAliasFolders(style: Style, folders: readonly string[]): void {
+  const refused = folders.filter((folder) => !isAliasFolder(style, folder));
+  if (refused.length > 0) throw new DocsStoreError(`not an alias folder, so nothing is removed: ${refused.join(', ')}`);
+}
+
+/** Puts the index and the working tree back to HEAD, or empties them when the store has no commit yet. */
+async function restoreHead(store: Store): Promise<void> {
+  if (await hasHead(store)) await git(store.dir, ['reset', '-q', '--hard', 'HEAD'], store.exec);
+  else await git(store.dir, ['rm', '-r', '-q', '-f', '--ignore-unmatch', '--', '.'], store.exec);
+}
+
+/** Refuses a staged path outside the allowlist or a link, and restores HEAD so nothing reaches a commit; returns the count staged. */
 async function verifyStaged(store: Store): Promise<number> {
   const raw = await git(store.dir, ['diff', '--cached', '--raw'], store.exec);
   const staged = raw.split('\n').filter((line) => line !== '').map((line) => {
@@ -249,7 +262,7 @@ async function verifyStaged(store: Store): Promise<number> {
   });
   const bad = staged.filter((e) => !isAllowedPath(store.style, e.path) || e.mode === '120000');
   if (bad.length > 0) {
-    await git(store.dir, ['reset', '-q'], store.exec);
+    await restoreHead(store);
     throw new DocsStoreError(`refused to commit ${bad.map((e) => e.path).join(', ')}: not a document path or a link`);
   }
   return staged.length;
@@ -267,6 +280,7 @@ async function commitStaged(store: Store, p: Projection, stagedCount: number): P
 export async function commitProjection(store: Store, p: Projection): Promise<FlushResult> {
   const files = projectFiles(store.style, p.files);
   assertNoSecrets(files, p.known ?? []);
+  assertAliasFolders(store.style, p.retire ?? []);
   return withRepoLock(store.dir, async () => {
     const c: Ctx = { store, draftId: p.draftId, born: await hasHead(store) };
     const d = await decide(c, p, files);
@@ -375,7 +389,7 @@ async function assertNoOtherHistory(store: Store): Promise<void> {
   if (!contained) throw new DocsStoreError('the repository already has other history, so it is not adopted');
 }
 
-/** Connects the store to its repository: created when missing, adopted when empty or ours, refused otherwise. Returns whether it was created. */
+/** Connects the store to its repository, creating it when missing and adopting it when empty or ours; returns whether it was created. */
 async function attach(store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
   const fullName = `${target.owner}/${target.name}`;
   const info = await repoInfo(store.dir, fullName, exec);
@@ -387,12 +401,19 @@ async function attach(store: Store, target: RepoTarget, exec: Exec): Promise<boo
   return info === null;
 }
 
+/** Attaches the store, and removes the marker when a refusal comes before any remote effect, so another target can be bound. */
+async function attachOrUnbind(ws: Pick<Workspace, 'root'>, store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
+  try {
+    return await attach(store, target, exec);
+  } catch (err) {
+    if (err instanceof DocsStoreError) await removeDocsMarker(ws);
+    throw err;
+  }
+}
+
 const sameBinding = (a: DocsMarker, b: DocsMarker): boolean => a.style === b.style && a.target.owner === b.target.owner && a.target.name === b.target.name;
 
-/**
- * Binds a project to its documentation repository: the marker first, then the local history, then the remote.
- * The push never forces, and the style and the repository are fixed by the marker.
- */
+/** Binds a project to its documentation repository in order: marker, local history, remote; the push never forces. */
 export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: Exec = execCommand): Promise<{ sha: string; created: boolean }> {
   const marker: DocsMarker = { layout: 'docs-repo', style: input.style, target: input.target, firstSha: null };
   const earlier = await readDocsMarker(ws);
@@ -406,7 +427,7 @@ export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: 
   if (!(await withRepoLock(store.dir, () => hasHead(store)))) {
     await commitProjection(store, { draftId: input.draftId, stepKey: 'bind', scope: 'refine', label: 'initial documents', files: input.documents });
   }
-  const created = await attach(store, input.target, exec);
+  const created = await attachOrUnbind(ws, store, input.target, exec);
   const sha = await withRepoLock(store.dir, () => headSha(store.dir, exec));
   const pushed = await pushMain(store.dir, sha, networkExec(exec));
   if (!pushed.ok) throw new DocsStoreError((pushed.kind === 'non-fast-forward' ? failure('busy') : failure(pushed.kind)).message);
@@ -446,10 +467,7 @@ async function finishClosing(ws: Pick<Workspace, 'root'>, store: Store, draftId:
   return { commit, snapshot };
 }
 
-/**
- * Flushes the draft, adds the closing commit and publishes it until it is on origin main.
- * A store that changed under the draft, or a push that never lands, refuses the close: nothing launches.
- */
+/** Flushes the draft, adds and publishes the closing commit; a changed store or a push that never lands refuses the close. */
 export async function closeRefinement(ws: Pick<Workspace, 'root'>, store: Store, p: Projection, closing: Closing): Promise<{ commit: string; snapshot: string }> {
   for (let attempt = 1; attempt <= CLOSE_TRIES; attempt++) {
     const flushed = await commitProjection(store, p);
@@ -481,7 +499,7 @@ async function freeTagName(store: Store, base: string, sha: string): Promise<str
   throw new DocsStoreError(`no free tag name for ${base}`);
 }
 
-/** Creates the start tags of the aliases at the closing commit and publishes them in one atomic push. Never moves a tag. */
+/** Creates the start tags at the closing commit and publishes them in one atomic push, never moving a tag. */
 export async function createStartTags(store: Store, aliases: readonly string[], closingSha: string): Promise<{ tags: string[]; pushed: boolean }> {
   const tags: string[] = [];
   for (const alias of aliases) {
@@ -499,7 +517,7 @@ export async function createStartTags(store: Store, aliases: readonly string[], 
   return { tags, pushed: pushed.ok };
 }
 
-/** Removes everything the documents left on disk for a project. Nothing is refused, so a broken store can always be deleted. */
+/** Removes everything the documents left on disk for a project, and refuses nothing so a broken store can be deleted. */
 export async function releaseDocs(ws: Pick<Workspace, 'root'>): Promise<void> {
   const targets = [docsStoreDir(ws), docsSnapshotRoot(ws), docsMirrorDir(ws), docsMarkerPath(ws), docsClosingRoot(ws)];
   for (const target of targets) await fs.rm(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

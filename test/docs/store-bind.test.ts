@@ -87,12 +87,21 @@ describe('bind', () => {
     const before = await originMain(origin);
     await expect(bind(ws, input, gh.exec)).rejects.toThrow(/other history/);
     expect(await originMain(origin)).toBe(before);
-    expect((await readDocsMarker(ws))?.firstSha).toBeNull();
+    expect(await readDocsMarker(ws)).toBeNull();
   });
 
   it('refuses a repository that is not private', async () => {
     gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
     await expect(bind(ws, input, gh.exec)).rejects.toThrow(/must be private/);
+  });
+
+  it('leaves no marker after a refused attach, so a later bind can pick another target', async () => {
+    gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
+    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/must be private/);
+    expect(await readDocsMarker(ws)).toBeNull();
+    const r = await bind(ws, { ...input, target: { owner: 'acme', name: 'other' } }, gh.exec);
+    expect(r.created).toBe(true);
+    expect((await readDocsMarker(ws))?.target).toEqual({ owner: 'acme', name: 'other' });
   });
 
   it('refuses a later bind with another style or target, and keeps the first one', async () => {

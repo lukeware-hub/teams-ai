@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import { ID_PATTERNS } from '../core/ids.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 
 /** The environment switch of the documentation repository layout: on only when it is set to 1. */
@@ -21,14 +22,22 @@ export const docsMarkerPath = (ws: Pick<Workspace, 'root'>): string => path.posi
 /** The folder that holds every draft's detached copy of the documents. */
 export const docsSnapshotRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'docs-at');
 
+/** A draft id names a folder, so it must be a slug. */
+function draftFolderName(draftId: string): string {
+  if (!ID_PATTERNS.SLUG.test(draftId)) throw new RangeError(`draft id must be a lowercase slug, got "${draftId}"`);
+  return draftId;
+}
+
 /** The detached copy of the documents a draft closed with, which the agents read. */
-export const docsSnapshotDir = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(docsSnapshotRoot(ws), draftId);
+export const docsSnapshotDir = (ws: Pick<Workspace, 'root'>, draftId: string): string =>
+  path.posix.join(docsSnapshotRoot(ws), draftFolderName(draftId));
 
 /** The folder that holds every draft's closing record. */
 export const docsClosingRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'state', 'closing');
 
 /** The record of a draft's closing commit and the tags still to create. */
-export const docsClosingPath = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(docsClosingRoot(ws), `${draftId}.json`);
+export const docsClosingPath = (ws: Pick<Workspace, 'root'>, draftId: string): string =>
+  path.posix.join(docsClosingRoot(ws), `${draftFolderName(draftId)}.json`);
 
 export const DocsMarker = z.object({
   layout: z.literal('docs-repo'),
@@ -54,4 +63,8 @@ export async function writeDocsMarker(ws: Pick<Workspace, 'root'>, marker: DocsM
   const file = docsMarkerPath(ws);
   await fs.mkdir(path.posix.dirname(file), { recursive: true });
   await writeFileAtomic(file, `${JSON.stringify(DocsMarker.parse(marker), null, 2)}\n`);
+}
+
+export async function removeDocsMarker(ws: Pick<Workspace, 'root'>): Promise<void> {
+  await fs.rm(docsMarkerPath(ws), { force: true });
 }
