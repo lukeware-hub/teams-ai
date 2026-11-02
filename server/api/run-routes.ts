@@ -42,7 +42,7 @@ import { deleteRepo } from '../git/github.js';
 import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
-import { isDocsRepo, readState } from '../docs/project-state.js';
+import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, loadRepoRuns, specViews } from './repository-dashboard.js';
 import type { Report } from '../orchestrator/phases/report.js';
@@ -528,8 +528,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           // A directory that does not exist is left to the project.json read below.
           if (real !== null && !real.startsWith(realRoot + path.sep)) throw new HttpError(400, 'o diretório deve estar dentro de paths.workspaces');
         }
-        const read = await readProject(dir).catch((err: Error) => {
-          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}: ${err.message.includes('ENOENT') ? `docs/project.json não foi encontrado${typeof source.url === 'string' ? '; se este repositório é um serviço de um sistema, importe o repositório de documentação do projeto, que clona os serviços sozinho' : ''}` : 'docs/project.json inválido'}`);
+        const read = await readProject(dir).catch(async (err: Error) => {
+          // A repository of documents only (docs/project.md, no docs/project.json) cannot be imported by link yet.
+          if (typeof source.url === 'string' && err.message.includes('ENOENT') && await fs.access(path.join(dir, 'docs', 'project.md')).then(() => true, () => false)) {
+            throw new HttpError(400, 'este repositório guarda só a documentação; importar por link ainda não é suportado nesta versão');
+          }
+          throw new HttpError(400, `${typeof source.url === 'string' ? 'repositório inválido' : 'not a project directory'}:${err.message.includes('ENOENT') ? `docs/project.json não foi encontrado${typeof source.url === 'string' ? '; se este repositório é um serviço de um sistema, importe o repositório de documentação do projeto, que clona os serviços sozinho' : ''}` : 'docs/project.json inválido'}`);
         });
         let servicesNotCloned: string[] = [];
         if (typeof source.url === 'string') {
@@ -911,8 +915,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const repoUrl = await repoUrlOf(repoDir);
         // docs/README.md as merged on main of the project's repository, where the report commits it; the project folder
         // (a refinement folder, not a clone) is the fallback.
+        // A documentation repository keeps its documents in the store, not in the mirror, which holds only the machine files.
         const readme = project
-          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: repoDir, timeoutMs: 5_000 })
+          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: docsRepo ? docsStoreDir(docsWs) : repoDir, timeoutMs: 5_000 })
               .then((r) => (r.exitCode === 0 ? r.stdout : null))
               .catch(() => null)
               .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))

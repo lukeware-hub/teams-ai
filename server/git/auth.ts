@@ -5,13 +5,14 @@ import type { Exec } from '../exec/command.js';
  * HTTPS alike; the interactive `gh auth login` may belong to a different account. The helper reads the token from the
  * environment, so it never appears on a command line or in a remote URL. */
 export function gitAuthEnv(token: string | undefined): Record<string, string> {
-  if (!token) return {};
-  return {
-    GH_TOKEN: token,
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'credential.helper',
-    GIT_CONFIG_VALUE_0: '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f',
-  };
+  return withGitAuthEnv({}, token);
+}
+
+const CREDENTIAL_HELPER: readonly [string, string] = ['credential.helper', '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'];
+
+/** Adds the token and its credential helper to `env`, after the git config entries already there; `env` as is without a token. */
+export function withGitAuthEnv(env: Record<string, string>, token: string | undefined): Record<string, string> {
+  return token ? withGitConfig({ ...env, GH_TOKEN: token }, [CREDENTIAL_HELPER]) : env;
 }
 
 /** The token saved in the secrets directory, read on every call; absent when none is saved. */

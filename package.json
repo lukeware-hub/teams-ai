@@ -16,7 +16,8 @@
     "web:install": "cd web && npm install --no-audit --no-fund",
     "web:dev": "cd web && npm run dev",
     "web:build": "cd web && npm run build",
-    "test:web": "cd web && npm test"
+    "test:web": "cd web && npm test",
+    "live-check:converge": "node scripts/live-check/converge.mjs"
   },
   "dependencies": {
     "diff": "8.0.2",
