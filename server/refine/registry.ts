@@ -76,7 +76,7 @@ const aliasOrConflict = (specId: string): void => {
   try {
     assertAlias(specId);
   } catch {
-    throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul`);
+    throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul; o hífen não pode começar nem terminar o nome, nem aparecer duas vezes seguidas`);
   }
 };
 /** Opens the index for one query only, so no file handle stays open between turns. */
@@ -238,10 +238,11 @@ export class SessionRegistry {
 
   async newSpec(projectId: string, specId: string, description?: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
+    const ws = await this.ws(projectId);
+    // The alias check runs before the slug check, so a documentation repository refuses an id in plain words.
+    if (await isDocsRepo(ws)) aliasOrConflict(specId);
     slug(specId, 'specId');
     cleanDescription(description);
-    const ws = await this.ws(projectId);
-    if (await isDocsRepo(ws)) aliasOrConflict(specId);
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);

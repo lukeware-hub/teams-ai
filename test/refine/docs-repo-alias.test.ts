@@ -10,6 +10,7 @@ const BOUND = '0123456789abcdef0123456789abcdef01234567';
 const PROJECT_JSON = `${JSON.stringify(makeProject(), null, 2)}\n`;
 const LONG = 'a'.repeat(41);
 const REFUSED = /o alias .* não é válido/;
+const HYPHEN_HINT = /o hífen não pode começar nem terminar o nome, nem aparecer duas vezes seguidas/;
 
 let rig: Rig;
 
@@ -32,6 +33,13 @@ describe('the alias of a spec of a documentation repository', () => {
     const refusal = rig.registry.newSpec(PROJECT, specId);
     await expect(refusal).rejects.toBeInstanceOf(ConflictError);
     await expect(refusal).rejects.toThrow(REFUSED);
+    expect(await drafts()).toEqual([]);
+  });
+
+  it.each(['a--b', 'ab-'])('refuses a new spec whose id %s has a misplaced hyphen, and says where a hyphen may stand', async (specId) => {
+    const refusal = rig.registry.newSpec(PROJECT, specId);
+    await expect(refusal).rejects.toBeInstanceOf(ConflictError);
+    await expect(refusal).rejects.toThrow(HYPHEN_HINT);
     expect(await drafts()).toEqual([]);
   });
 
