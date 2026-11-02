@@ -128,14 +128,14 @@ Status: built 2026-10-31 (plan 117), pending the owner's check on a real run.
 
 ## 17. Repositories: the refinement organizes the specs by repository
 
-Status: built 2026-10-31 (plan a9d6), committed on `feat/refinement-reform` (PR #35), behind the repository flow. The flow is off for new projects until the rollout; a project with an architecture takes it in its follow-on drafts.
+Status: built 2026-10-31 (plan a9d6), committed on `feat/refinement-reform` (PR #35), behind the repository flow. The flow is on for new projects (`REPOSITORY_FLOW` in `server/refine/session.ts`); a project with an architecture takes it in its follow-on drafts.
 
 - The five documents are refined one at a time, in order, and each is added to the Graphify graph before the next starts.
 - The architecture step decides whether the system is one application (a monolith, one repository named after the project) or microservices (one repository per service, named with the suffix of its type). Every repository cites a quote from the documents, and the decision is checked by rules before the owner sees it.
 - The backlog, the specs, the plans and a task list (`task.md`) belong to a repository. A plan and its task list reach only the repository their spec changes.
 - Before the start, the owner reads a summary with seven checks, each repository's counts and the assumptions taken. The start carries the hash of that summary.
 - The project page shows a card per repository, and each card opens its dashboard: its specs, its tasks, its integrations, its blockers and its history.
-- Not done: the live check on two throwaway projects, the deploy by clean export, the Chrome check on the deployed app, the rollout of the flow for new projects, and the reconstruction of the guide graph. The architecture is a card in the backlog step, not its own stepper node. The dashboard does not yet list the program's item reasons or the pending questions and secrets as blockers.
+- Not done: the live check on two throwaway projects, the deploy by clean export, the Chrome check on the deployed app, the documents layout of plan 119 (only the eight kinds in the documentation repository), and the reconstruction of the guide graph. The architecture is a card in the backlog step, not its own stepper node. The dashboard does not yet list the program's item reasons or the pending questions and secrets as blockers.
 
 ## 18. The chat reads the five main documents of the project
 
@@ -156,3 +156,11 @@ Status: done 2026-11-02 (commits `c01367a1`, `8119af25`, `41e9e464`).
 - The deploy checks the declared documentation path after the e2e suite; when it does not answer, a Dev fix task builds the page. Not done: the same check for a services run (several repositories).
 - The plan review reads a fresh checkout of main each round. A worktree left by an earlier run used to keep its old files, so a re-run reported missing code that main already had.
 - Open: a run whose blocked tasks only verify work already on main (no criteria, no diff) blocks again on every send-back. The run-7 case needs an owner decision: drop those fix tasks, reprocess the spec, or accept verify-only tasks as merged.
+
+## 20. Documentation repository: the eight kinds, committed as the refinement goes
+
+Status: in progress (plan 119), branch `feat/docs-repo-119`, draft pull request. Nothing reaches a project yet: the flag `TEAMS_AI_DOCS_REPO_LAYOUT` is off.
+
+- Planned: only the five documents and each spec's `spec.md`, `plan.md` and `task.md` are committed to the documentation repository. Every machine file (JSON, preplan, reports, technical spec) stays on the platform.
+- Planned: a commit at each refinement boundary, a closing commit, and an annotated `dev-start/<alias>` tag per authorized spec, which marks where development starts.
+- Planned: a monolith keeps the documents in the project repository; microservices keep them in `artefacty`, and the delivery documents (README, RUNBOOK, API) stay in the project hub.
