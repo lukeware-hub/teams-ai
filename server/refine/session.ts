@@ -244,13 +244,14 @@ export class RefineSession {
     return new RefineSession(deps, journal);
   }
 
-  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean } = {}): Promise<RefineSession> {
+  static async create(deps: SessionDeps, mode: 'new-project' | 'new-spec' | 'continue' | 'backlog', options: { repositories?: boolean; docsRepo?: boolean } = {}): Promise<RefineSession> {
     const s = await RefineSession.open(deps);
     // A continued spec keeps the backlog key that names its plan file, which its next derivation no longer carries.
     const featureKey = mode === 'continue' ? s.state.derived?.spec.derivedFrom?.backlogKey : undefined;
     // Only a new project takes the repository flow; the stamp is written once, here, and the event without it is the same as before.
-    const repositories = options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW);
-    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}) });
+    // A documentation repository decides its architecture, so it is a repository session too.
+    const repositories = options.docsRepo === true || (options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW));
+    await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}), ...(options.docsRepo === true ? { docsRepo: true } : {}) });
     if (repositories) await s.adoptArchitecture();
     return s;
   }
