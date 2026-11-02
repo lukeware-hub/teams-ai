@@ -46,12 +46,12 @@ function canonical(p: string): string {
   return process.platform === 'win32' ? s.toLowerCase() : s;
 }
 
-async function run(cwd: string, args: readonly string[], exec: Exec) {
-  return exec({ bin: 'git', args: [...SAFE_CONFIG, ...args], cwd, env: GIT_IDENTITY, timeoutMs: TIMEOUT });
+async function run(cwd: string, args: readonly string[], exec: Exec, timeoutMs = TIMEOUT) {
+  return exec({ bin: 'git', args: [...SAFE_CONFIG, ...args], cwd, env: GIT_IDENTITY, timeoutMs });
 }
 
-export async function git(cwd: string, args: readonly string[], exec: Exec = execCommand): Promise<string> {
-  const r = await run(cwd, args, exec);
+export async function git(cwd: string, args: readonly string[], exec: Exec = execCommand, opts: { timeoutMs?: number } = {}): Promise<string> {
+  const r = await run(cwd, args, exec, opts.timeoutMs);
   if (r.exitCode !== 0) throw new GitError(`git ${args.join(' ')} failed (${r.exitCode}): ${r.stderr.trim() || r.stdout.trim()}`);
   return r.stdout.trim();
 }
@@ -282,4 +282,55 @@ export async function remoteMainSha(repo: string, exec: Exec = execCommand, bran
   const sha = out.split(/\s+/)[0];
   if (!sha) throw new GitError(`origin has no branch ${branch}`);
   return sha;
+}
+
+export type PushFailureKind = 'non-fast-forward' | 'protected' | 'auth' | 'offline' | 'other';
+export type PushResult = { ok: true } | { ok: false; kind: PushFailureKind; message: string };
+
+const PUSH_FAILURES: ReadonlyArray<[PushFailureKind, RegExp]> = [
+  ['non-fast-forward', /non-fast-forward|fetch first/],
+  ['protected', /GH006|GH013|protected branch|rule violations/],
+  ['auth', /Authentication failed|could not read Username|Invalid username or password|HTTP 401|HTTP 403/],
+  ['offline', /Could not resolve host|unable to access|Failed to connect|Connection timed out/],
+];
+
+/** Pushes refs without force; a rejection keeps git's own text, classified for the caller. */
+async function pushRefs(dir: string, flags: readonly string[], refspecs: readonly string[], exec: Exec): Promise<PushResult> {
+  const r = await run(dir, ['push', ...flags, 'origin', ...refspecs], exec);
+  if (r.exitCode === 0) return { ok: true };
+  const kind = PUSH_FAILURES.find(([, re]) => re.test(r.stderr))?.[0] ?? 'other';
+  return { ok: false, kind, message: r.stderr };
+}
+
+/** Fast-forwards origin main to `sha`. Never forces: a diverged main comes back as non-fast-forward. */
+export const pushMain = (dir: string, sha: string, exec: Exec = execCommand): Promise<PushResult> => pushRefs(dir, [], [`${sha}:refs/heads/main`], exec);
+
+/** Pushes the named tags as one atomic push, each to the same name. Never forces. */
+export const pushTags = (dir: string, names: readonly string[], exec: Exec = execCommand): Promise<PushResult> =>
+  pushRefs(dir, ['--atomic'], names.map((n) => `refs/tags/${n}:refs/tags/${n}`), exec);
+
+/** True when `ancestor` is reachable from `descendant`; any other exit code is an error. */
+export async function isAncestor(dir: string, ancestor: string, descendant: string, exec: Exec = execCommand): Promise<boolean> {
+  const r = await run(dir, ['merge-base', '--is-ancestor', ancestor, descendant], exec);
+  if (r.exitCode === 0) return true;
+  if (r.exitCode === 1) return false;
+  throw new GitError(`git merge-base --is-ancestor failed (${r.exitCode}): ${r.stderr.trim()}`);
+}
+
+/** How many commits `head` has beyond `base` (ahead) and how many `base` has beyond `head` (behind). */
+export async function aheadBehind(dir: string, base: string, head: string, exec: Exec = execCommand): Promise<{ ahead: number; behind: number }> {
+  const [behind, ahead] = (await git(dir, ['rev-list', '--left-right', '--count', `${base}...${head}`], exec)).split(/\s+/).map(Number);
+  return { ahead: ahead!, behind: behind! };
+}
+
+/** An annotated tag at `sha`; an existing tag of that name fails, never moves. */
+export async function createAnnotatedTag(dir: string, name: string, sha: string, message: string, exec: Exec = execCommand): Promise<void> {
+  await git(dir, ['tag', '--no-sign', '-a', name, sha, '-m', message], exec);
+}
+
+/** The commit a tag names on origin: the peeled one for an annotated tag, null when origin has no such tag. */
+export async function remoteTagTarget(dir: string, name: string, exec: Exec = execCommand): Promise<string | null> {
+  const out = await git(dir, ['ls-remote', '--tags', 'origin', `refs/tags/${name}`, `refs/tags/${name}^{}`], exec);
+  const shaByRef = new Map(out.split('\n').filter((l) => l !== '').map((l) => l.split('\t') as [string, string]).map(([sha, ref]) => [ref, sha] as const));
+  return shaByRef.get(`refs/tags/${name}^{}`) ?? shaByRef.get(`refs/tags/${name}`) ?? null;
 }
