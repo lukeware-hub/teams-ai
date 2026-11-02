@@ -55,6 +55,29 @@ function forms(value: string): string[] {
   return [value, ...(encoded !== value ? [encoded] : []), ...(value.length >= 6 ? base64Forms(value) : [])];
 }
 
+/** High-confidence credential shapes; a finding names the shape and never returns the matched text. */
+const CREDENTIAL_SHAPES: ReadonlyArray<{ kind: string; pattern: RegExp }> = [
+  { kind: 'GitHub token', pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}/ },
+  { kind: 'GitHub fine-grained token', pattern: /\bgithub_pat_[A-Za-z0-9_]{22,}/ },
+  { kind: 'Anthropic key', pattern: /\bsk-ant-[A-Za-z0-9_-]{20,}/ },
+  { kind: 'OpenRouter key', pattern: /\bsk-or-v1-[A-Za-z0-9]{32,}/ },
+  { kind: 'AWS access key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
+  { kind: 'Slack token', pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/ },
+  { kind: 'PEM private key', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
+  { kind: 'JWT', pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/ },
+];
+
+/** Known values shorter than this are too likely to be ordinary words to match in text. */
+const MIN_FINDABLE_VALUE = 12;
+
+/** The kind of credential the text holds, or null. Known values match plain and URL-encoded. */
+export function findCredential(text: string, knownValues: readonly string[] = []): { kind: string } | null {
+  const shape = CREDENTIAL_SHAPES.find(({ pattern }) => pattern.test(text));
+  if (shape) return { kind: shape.kind };
+  const known = knownValues.some((v) => v.length >= MIN_FINDABLE_VALUE && (text.includes(v) || text.includes(encodeURIComponent(v))));
+  return known ? { kind: 'known value' } : null;
+}
+
 export function redactSecrets(text: string, knownValues: readonly string[] = []): string {
   let out = text;
   // Longest first so a secret that contains another is masked whole.

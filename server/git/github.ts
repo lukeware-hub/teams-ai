@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Exec } from '../exec/command.js';
 
 export class GitHubError extends Error {}
@@ -98,6 +99,41 @@ export async function findMergedPr(input: { cwd: string; head: string; base: str
 export async function prState(input: { cwd: string; number: number }, exec: Exec): Promise<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; headSha: string }> {
   const json = await ghJson<{ state: 'OPEN' | 'MERGED' | 'CLOSED'; headRefOid: string }>(input.cwd, ['pr', 'view', String(input.number), '--json', 'state,headRefOid'], exec);
   return { state: json.state, headSha: json.headRefOid };
+}
+
+const REPO_FIELDS = 'nameWithOwner,url,isPrivate,isArchived,isEmpty,viewerPermission,defaultBranchRef';
+const RepoInfo = z.object({
+  nameWithOwner: z.string(),
+  url: z.string(),
+  isPrivate: z.boolean(),
+  isArchived: z.boolean(),
+  isEmpty: z.boolean(),
+  viewerPermission: z.string(),
+  defaultBranchRef: z.object({ name: z.string() }).nullable(),
+});
+export type RepoInfo = z.infer<typeof RepoInfo>;
+
+/** The repository's facts from `gh repo view`; null when GitHub does not know the repository. */
+export async function repoInfo(cwd: string, fullName: string, exec: Exec): Promise<RepoInfo | null> {
+  const r = await gh(cwd, ['repo', 'view', fullName, '--json', REPO_FIELDS], exec);
+  if (r.exitCode !== 0) {
+    if (NOT_FOUND.test(r.stderr)) return null;
+    throw new GitHubError(`gh repo view failed: ${r.stderr.trim()}`);
+  }
+  const parsed = RepoInfo.safeParse(JSON.parse(r.stdout));
+  if (!parsed.success) throw new GitHubError(`gh repo view returned an unexpected shape for ${fullName}`);
+  return parsed.data;
+}
+
+/** A new empty private repository. Never pushes: the history is added by the caller. Returns its url. */
+export async function createPrivateRepo(input: { owner: string; name: string }, exec: Exec): Promise<string> {
+  const fullName = `${input.owner}/${input.name}`;
+  const cwd = process.cwd();
+  const create = await gh(cwd, ['repo', 'create', fullName, '--private'], exec);
+  if (create.exitCode !== 0) throw new GitHubError(`gh repo create failed: ${create.stderr.trim()}`);
+  const info = await repoInfo(cwd, fullName, exec);
+  if (!info) throw new GitHubError(`gh repo create ${fullName} left no repository to read`);
+  return info.url;
 }
 
 /** Squash-merge guarded by the head commit the gates ran on; never forces (spec §6 step 5, §7.4). */
