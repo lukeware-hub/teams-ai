@@ -52,4 +52,15 @@ describe('discarding a draft of a bound documentation repository', () => {
     await rig.registry.deleteDraft(PROJECT, alias);
     expect(await git(remote.origin, ['ls-tree', '-r', '--name-only', 'main'])).not.toContain(`docs/specify/${alias}/spec.md`);
   });
+
+  it('leaves the draft folder on disk and the session open when the removal is refused', async () => {
+    const alias = 'hello-app-002';
+    await rig.registry.newSpec(PROJECT, alias, 'Listar usuários');
+    const store = await flushAlias(alias);
+    const session = await rig.registry.get(PROJECT, alias);
+    await git(store.dir, ['remote', 'set-url', 'origin', path.join(remote.root, 'missing.git')]);
+    await expect(rig.registry.deleteDraft(PROJECT, alias)).rejects.toThrow();
+    await expect(fs.access(draftPaths(rig.ws, alias).root)).resolves.toBeUndefined();
+    expect(() => session.ensureCanEvaluate()).not.toThrow();
+  });
 });

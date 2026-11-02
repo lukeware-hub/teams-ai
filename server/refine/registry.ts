@@ -404,9 +404,9 @@ export class SessionRegistry {
 
   /** Ends a draft; only a deleted draft takes its alias folders out of the documentation store, a restarted one keeps them. */
   private async discardDraft(projectId: string, specId: string, session: RefineSession, retire = false): Promise<void> {
+    if (retire) await session.retireDocs();
     session.beginDiscard();
     await session.abort();
-    if (retire) await session.retireDocs();
     const draft = draftPaths(await this.ws(projectId), specId);
     await session.close();
     this.sessions.delete(`${projectId}/${specId}`);
