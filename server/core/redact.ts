@@ -74,7 +74,7 @@ const MIN_FINDABLE_VALUE = 12;
 export function findCredential(text: string, knownValues: readonly string[] = []): { kind: string } | null {
   const shape = CREDENTIAL_SHAPES.find(({ pattern }) => pattern.test(text));
   if (shape) return { kind: shape.kind };
-  const known = knownValues.some((v) => v.length >= MIN_FINDABLE_VALUE && (text.includes(v) || text.includes(encodeURIComponent(v))));
+  const known = knownValues.some((v) => v.length >= MIN_FINDABLE_VALUE && forms(v).some((f) => text.includes(f)));
   return known ? { kind: 'known value' } : null;
 }
 

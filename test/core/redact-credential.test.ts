@@ -33,6 +33,11 @@ describe('findCredential known values', () => {
     expect(findCredential(`x ${encodeURIComponent(value)} y`, [value])).toEqual({ kind: 'known value' });
   });
 
+  it('finds a known value written in base64, as redactSecrets does', () => {
+    const value = 'abc def/ghi1';
+    expect(findCredential(`x ${Buffer.from(value).toString('base64')} y`, [value])).toEqual({ kind: 'known value' });
+  });
+
   it('ignores a known value of 11 characters', () => {
     expect(findCredential('x abcdefghijk y', ['abcdefghijk'])).toBeNull();
   });

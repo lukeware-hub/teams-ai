@@ -30,7 +30,9 @@ export function withGitAuth(exec: Exec, secretsDir: string): Exec {
 
 /** Appends `entries` as git config variables after the ones already in `env`; never overwrites an entry. */
 export function withGitConfig(env: Record<string, string>, entries: ReadonlyArray<readonly [string, string]>): Record<string, string> {
-  const start = Number(env.GIT_CONFIG_COUNT ?? '0');
+  const raw = env.GIT_CONFIG_COUNT ?? '0';
+  if (!/^\d+$/.test(raw)) throw new RangeError(`GIT_CONFIG_COUNT must be a whole number, got "${raw}"`);
+  const start = Number(raw);
   const added: Record<string, string> = {};
   entries.forEach(([key, value], i) => {
     added[`GIT_CONFIG_KEY_${start + i}`] = key;

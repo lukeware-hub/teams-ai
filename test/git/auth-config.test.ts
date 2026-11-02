@@ -28,6 +28,10 @@ describe('withGitConfig', () => {
     expect(withGitConfig({}, [['a.b', '1']])).toEqual({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'a.b', GIT_CONFIG_VALUE_0: '1' });
   });
 
+  it('refuses a count that is not a whole number instead of overwriting entries', () => {
+    expect(() => withGitConfig({ GIT_CONFIG_COUNT: 'NaN' }, [['a.b', '1']])).toThrow(RangeError);
+  });
+
   it('keeps the hardening entries and the credential helper together', () => {
     // The same two hardening entries as SAFE_GIT_ENV in github.ts, appended after the credential helper of gitAuthEnv.
     const safe: Array<[string, string]> = [
