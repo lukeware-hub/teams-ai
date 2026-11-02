@@ -70,6 +70,36 @@ Replace `<volume>` with the real volume name from `docker volume ls`, with the s
 - Restore into an empty volume: `docker run --rm -v <volume>:/data -v "$PWD":/backup:ro alpine tar xzf /backup/<volume>.tar.gz -C /data`
 - `dind-data` follows the same recipe, but it only holds images that the platform pulls or builds again.
 
+## Documentation repository
+This section applies to projects created while `TEAMS_AI_DOCS_REPO_LAYOUT=1` is set (see "Documentation layout" in the README).
+Each step commits to a local clone, `/home/node/.teams-ai/workspaces/<projectId>/docs-store` in the container, and then pushes to GitHub.
+
+### A commit is refused
+- A document that holds a credential refuses the whole commit. The error names the document, never the value; remove the value and continue the step.
+- A document above 1 MiB, or a file that is not one of the eight kinds, refuses the commit the same way.
+
+### A push fails
+| Message | Meaning | What to do |
+| --- | --- | --- |
+| Another change reached main first. | Another change landed on the documentation repository. | Nothing: the platform drops its local commits, projects the documents again and retries. |
+| The main branch refuses direct pushes. | Main is protected, and the login cannot push to it. | Let the GitHub user of the login push to `main` in the documentation repository, or remove the protection rule. The platform retries on its next tick. |
+| GitHub refused the token. | The login is missing or has no `repo` scope. | See the token scope below, then run `task login:gh` or fix `GITHUB_TOKEN` and run `task restart`. |
+| GitHub could not be reached. | The network is down. | Nothing: the commits stay in the local clone and are pushed when GitHub answers. |
+| The documents could not be published. | Any other failure. | Read the log with `task logs`. |
+
+The start tags follow the same rule: a tag that fails to push never fails the start, and the next tick retries it.
+
+### Token scope
+The `gh` login needs the `repo` scope. It creates and reads private repositories and pushes to them.
+Check it with `docker compose exec teams-ai gh auth status`: the token scopes line must list `repo`. If it does not, run `task login:gh` again.
+
+### Recovery steps
+1. Read the error in the log: `task logs`.
+2. Fix its cause from the table above.
+3. Check the local clone: `docker compose exec teams-ai git -C /home/node/.teams-ai/workspaces/<projectId>/docs-store status`.
+4. A rebase or a merge left unfinished, or an old lock file, is cleaned when the store opens. Run `task restart` to open it again.
+5. Check the start tags: `git -C <docs-store> tag --list "dev-start/*"`.
+
 ## Incident basics
 1. `task ps`, then `task logs`; add `task logs:dind` when a gate or a deploy fails.
 2. The orchestrator restarts in a loop: check the disk space of Docker (`docker system df`) and read the last log lines.

@@ -365,6 +365,22 @@ Run statuses you will see: `running`, `paused:quota`, `paused:auth`, `draining`,
 Every generated project must deliver the full contract: code, documentation, unit and e2e tests, security scans,
 GitHub Actions, image build, and a local Docker infrastructure that starts.
 
+## Documentation layout
+
+With the flag `TEAMS_AI_DOCS_REPO_LAYOUT=1` (off by default), new projects keep their documents in a documentation repository.
+Each refinement step commits its documents there.
+
+- Monolith: the project repository holds the documents in `docs/`.
+- Microservices: the central repository `artefacty` holds the documents of every service in `docs/`.
+
+The documentation repository holds only these files:
+
+- `docs/project.md`, `docs/flow.md`, `docs/briefing.md`, `docs/design.md` and `docs/stack.md`.
+- For each spec, `spec.md`, `plan.md` and `task.md` in its own folder: `docs/specify/<alias>/`, or `docs/<service>/specify/<alias>/` for microservices.
+
+Starting development adds a closing commit and a tag `dev-start/<alias>` for each spec. The tag marks where development starts.
+Projects that existed before the flag was turned on are not changed.
+
 ## Configuration
 
 The run configuration is in `~/.teams-ai/config.json` (in the container: volume `teams-ai-data`). If the file does not exist,
@@ -392,6 +408,7 @@ Environment variables (`.env`, read by `docker-compose.yml`):
 | `TEAMS_AI_UI_BIND` | Host interface for port 8787. Default `127.0.0.1`. Use `0.0.0.0` only on a trusted network. |
 | `TEAMS_AI_ALLOWED_HOSTS` | Extra `Host` header values the API accepts. |
 | `TEAMS_AI_REFINE_MAX_ROUNDS` | Refinement rounds after which Reavaliar stops and asks for a decision. A new project counts its rounds again at each document stage. Default `50`. |
+| `TEAMS_AI_DOCS_REPO_LAYOUT` | Set to `1` so new projects keep their documents in a documentation repository. Default off. See "Documentation layout". |
 | `TEAMS_AI_IMAGE` | Image to run instead of the default registry image. |
 | `LICENSE_SERVICE_URL` | Address of the license service. In Compose the default is `http://license:8080`. |
 

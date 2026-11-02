@@ -159,8 +159,8 @@ Status: done 2026-11-02 (commits `c01367a1`, `8119af25`, `41e9e464`).
 
 ## 20. Documentation repository: the eight kinds, committed as the refinement goes
 
-Status: in progress (plan 119), branch `feat/docs-repo-119`, draft pull request. Nothing reaches a project yet: the flag `TEAMS_AI_DOCS_REPO_LAYOUT` is off.
+Status: built behind the flag `TEAMS_AI_DOCS_REPO_LAYOUT` (off by default); live check and deploy pending. Plan 119, branch `feat/docs-repo-119`, draft pull request.
 
-- Planned: only the five documents and each spec's `spec.md`, `plan.md` and `task.md` are committed to the documentation repository. Every machine file (JSON, preplan, reports, technical spec) stays on the platform.
-- Planned: a commit at each refinement boundary, a closing commit, and an annotated `dev-start/<alias>` tag per authorized spec, which marks where development starts.
-- Planned: a monolith keeps the documents in the project repository; microservices keep them in `artefacty`, and the delivery documents (README, RUNBOOK, API) stay in the project hub.
+- Built: only the five documents and each spec's `spec.md`, `plan.md` and `task.md` are committed to the documentation repository. Every machine file (JSON, preplan, reports, technical spec) stays on the platform.
+- Built: a commit at each refinement boundary, a closing commit, and an annotated `dev-start/<alias>` tag per authorized spec, which marks where development starts.
+- Built: a monolith keeps the documents in the project repository; microservices keep them in `artefacty`, and the delivery documents (README, RUNBOOK, API) stay in the project hub.
