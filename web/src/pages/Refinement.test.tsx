@@ -689,6 +689,11 @@ describe('the architecture step names what the documentation repository does', (
     expect(h.onEnableBacklog).toHaveBeenCalledOnce();
   });
 
+  it('disables Redefinir once the development has started', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({ status: 'started' } as never)} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('the architecture button is always enabled, and names the missing owner on the click for a documentation-repository session with no target', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);

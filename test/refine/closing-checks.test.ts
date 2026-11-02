@@ -57,9 +57,16 @@ function greenState(): RefineState {
 const failing = (state: RefineState, architectureCurrent = true) => closingChecks(state, architectureCurrent).filter((c) => !c.ok).map((c) => c.id);
 
 describe('closing checks of a repository session', () => {
-  it('names the failing checklist items when the document checklist is red, so a contradiction reads as such', () => {
-    const state = { ...greenState(), checklist: [{ id: 'po.no-contradictions', role: 'po', passed: false, detail: '1 divergência' }] } as never;
-    expect(closingChecks(state, true).find((c) => c.id === 'questions')?.detail).toBe('o checklist do documento não está verde: po.no-contradictions');
+  it('says in plain words which item fails and which documents to review for it', () => {
+    const divergence = { fact: 'porta', a: { file: 'docs/project.md', heading: null, quote: 'x' }, b: { file: 'stack.md', heading: null, quote: 'y' }, fix: 'z' };
+    const state = {
+      ...greenState(),
+      checklist: [
+        { id: 'po.no-contradictions', role: 'po', passed: false, detail: '1 divergência', divergences: [divergence] },
+        { id: 'po.scope-explicit', role: 'po', passed: false, detail: 'falta escopo' },
+      ],
+    } as never;
+    expect(closingChecks(state, true).find((c) => c.id === 'questions')?.detail).toBe('revise antes de iniciar, nos arquivos indicados: Documentos sem contradições (project.md, stack.md); Escopo explícito (flow.md, briefing.md)');
   });
 
   it('passes all seven when the documents, the architecture, the specs, the plans and the tasks are in place', () => {

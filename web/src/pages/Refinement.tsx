@@ -14,7 +14,7 @@ import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
-import type { Divergence, DivergenceSide } from '@server/refine/checklist';
+import { CHECK_NAMES, reviewFiles, type Divergence, type DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
@@ -95,16 +95,7 @@ const roleInfo: Record<'po' | 'sm', string> = {
   po: 'Pergunta do PO (Product Owner), o agente que revisa objetivos, critérios de aceite e o fluxo de negócio.',
   sm: 'Pergunta do SM (Scrum Master), o agente que revisa stack, tarefas, validação e viabilidade técnica.',
 };
-const checkLabel: Record<string, string> = {
-  'po.objectives-verifiable': 'Objetivos verificáveis',
-  'po.personas': 'Público e personas definidos',
-  'po.scope-explicit': 'Escopo explícito',
-  'po.no-contradictions': 'Documentos sem contradições',
-  'sm.constraints-clear': 'Restrições técnicas claras',
-  'sm.tasks-feasible': 'Tarefas viáveis',
-  'sm.no-open-questions': 'Sem perguntas obrigatórias em aberto',
-  'sm.flow-is-mermaid': 'flow.md é um diagrama mermaid',
-};
+const checkLabel: Record<string, string> = Object.fromEntries(Object.entries(CHECK_NAMES).map(([id, name]) => [id, name.label]));
 /** The server writes these details itself; details written by the agents pass through unchanged. */
 const checkDetail = (detail: string) => {
   if (detail === 'not reported') return 'O agente não avaliou este item.';
@@ -1207,6 +1198,10 @@ export function RefinementView(p: ViewProps) {
       <li key={`${check.id}-${item.id}`}>
         <b>{checkLabel[item.id] ?? item.id}</b>: {checkDetail(item.detail)}
         {item.divergences?.length ? <Divergences items={item.divergences} /> : null}
+        <span className="mt-1 flex flex-wrap items-center gap-2">
+          Revise em:
+          {reviewFiles(item).map((file) => <button key={file} type="button" className="link-button" onClick={() => goTo(file as DocFile)}>{file}</button>)}
+        </span>
       </li>
     ))
     : [<li key={check.id}>{check.detail}</li>]));
@@ -1252,7 +1247,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (

@@ -62,6 +62,11 @@ describe('ArchitectureCard', () => {
     expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('locks the redefinition once the development has started', () => {
+    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} locked onDecide={() => {}} />);
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('names the kind of a monolith repository and of a service without suffix', () => {
     expect(kindLabel('acme', 'monolith')).toBe('Monólito');
     expect(kindLabel('acme', 'microservices')).toBe('sem tipo');

@@ -164,6 +164,16 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(window.location.search).toContain('etapa=revisao');
   });
 
+  it('points each failing item to the documents to review, with one shortcut for each file', () => {
+    const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'revise antes de iniciar' }] };
+    const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'falta escopo' } : c));
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, handlersWithSpeckit());
+    const alert = screen.getByTestId('closing-alert');
+    expect(alert.textContent).toContain('Revise em:');
+    fireEvent.click(within(alert).getByRole('button', { name: 'briefing.md' }));
+    expect(window.location.search).toContain('etapa=briefing.md');
+  });
+
   it('shows the questions the plan asked, for the owner to answer, and keeps the start locked while one blocks', () => {
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Qual banco de dados?' };
     renderView(wizard({ status: 'answering', speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
