@@ -36,6 +36,16 @@ describe('pushMain', () => {
     expect(r).toMatchObject({ ok: false, kind: 'non-fast-forward' });
     expect(await git(remote.origin, ['rev-parse', 'main'])).toBe(before);
   });
+
+  it('classifies a GH013 rule rejection as protected and does not retry', async () => {
+    const fake = new FakeExec().on(
+      (s) => s.args.includes('push'),
+      () => ({ exitCode: 1, stderr: 'remote: error: GH013: Repository rule violations found for refs/heads/main.\n' }),
+    );
+    const r = await pushMain(remote.repo, 'abc123', fake.exec);
+    expect(r).toMatchObject({ ok: false, kind: 'protected' });
+    expect(fake.calls.filter((c) => c.args.includes('push'))).toHaveLength(1);
+  });
 });
 
 describe('isAncestor', () => {
