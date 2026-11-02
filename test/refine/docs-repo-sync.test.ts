@@ -22,6 +22,9 @@ afterEach(async () => {
   offline = false;
 });
 
+/** The 3 second push debounce passes, so the pending push of the sync goes out. */
+const debounced = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 3100));
+
 const answer = (stdout: string): CommandResult => ({ exitCode: 0, signal: null, stdout, stderr: '', timedOut: false, durationMs: 1, truncated: false });
 
 /** The fake GitHub with a signed-in account; a push finds no network while `offline` is set. */
@@ -61,8 +64,9 @@ describe('a documentation repository session syncs its documents', () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
-    expect(await commitCount()).toBe(1);
     await s.saveDoc('project.md', '# Projeto\n\nNova visão.\n');
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
@@ -71,9 +75,11 @@ describe('a documentation repository session syncs its documents', () => {
   it('attaching the documents again keeps the pending count and the last failure', async () => {
     const r = await openRig();
     const s = await decided(r);
+    offline = true;
     await s.enableBacklog();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
-    offline = true;
+    await s.tickDocs();
+    await debounced();
     await s.tickDocs();
     const before = (await s.snapshot()).docsSync;
     expect(before?.lastError).toMatch(/could not be reached/);
@@ -101,6 +107,8 @@ describe('a documentation repository session syncs its documents', () => {
     await fs.writeFile(path.join(r.draft.docs, 'project.md'), '# Projeto\n\nFechado.\n');
     const reopened = await r.registry.get(PROJECT, `${PROJECT}-001`);
     await reopened.tickDocs();
+    await debounced();
+    await reopened.tickDocs();
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): documents synced [skip ci]');
   });
@@ -116,6 +124,7 @@ describe('a documentation repository session syncs its documents', () => {
     await r.registry.get(PROJECT, `${PROJECT}-001`);
     await r.registry.tickDocs();
     expect(await commitCount()).toBe(1);
+    await debounced();
     offline = false;
     await r.registry.tickDocs();
     expect(await commitCount()).toBe(2);
@@ -131,9 +140,11 @@ describe('a documentation repository session syncs its documents', () => {
     const events = s.events.length;
     offline = true;
     await s.tickDocs();
+    await debounced();
+    await s.tickDocs();
     const failed = (await s.snapshot()).docsSync;
     expect(failed?.lastError).toMatch(/could not be reached/);
-    expect(failed?.pending).toBe(1);
+    expect(failed?.pending).toBe(0);
     offline = false;
     await s.tickDocs();
     expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });

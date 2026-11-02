@@ -95,6 +95,7 @@ describe('the documentation repository is bound only by the Backlog step', () =>
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
+    await s.tickDocs();
     expect(s.state.backlog?.enabled).toBe(true);
     expect(gh.creates).toEqual(['acme/hello-app']);
     expect(ghCalls[0]).toEqual(['api', 'user']);
@@ -108,6 +109,7 @@ describe('the documentation repository is bound only by the Backlog step', () =>
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
+    await s.tickDocs();
     const before = ghCalls.length;
     await s.enableBacklog();
     expect(ghCalls).toHaveLength(before);
@@ -193,6 +195,7 @@ describe('one bind at a time, and a legacy session reads no marker', () => {
     const r = await openRig();
     const s = await decided(r);
     await Promise.all([s.enableBacklog(), s.enableBacklog()]);
+    await s.tickDocs();
     expect(gh.creates).toEqual(['acme/hello-app']);
     expect(s.state.backlog?.enabled).toBe(true);
   });
