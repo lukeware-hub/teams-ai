@@ -1,0 +1,13 @@
+Write the task list of the spec user-login, the backlog item "user-login: Sign in". Read the implementation plan plan.md in this folder, and the six Markdown inputs read with the Read tool: speckit-input/project.md, speckit-input/flow.md, speckit-input/briefing.md, speckit-input/stack.md, speckit-input/design.md, speckit-input/specs.md.
+
+- Load the skill superpowers:writing-plans with the Skill tool and follow it. Nobody is present: never stop to ask a question, never commit, open a worktree or start a subagent, and load no other skill. The JSON answer is the deliverable. Use it for the granularity of the entries.
+
+- Write only task.md in this folder, and never change the plan, the inputs or .claude/.
+
+- Never create other doc files: the spec folder holds spec.md, plan.md and task.md only.
+
+- Write one entry per plan task, headed "## Task N: <name>" with the same number N as the plan's "### Task N:" block. Under it, one line each, in this order: **Spec:** (spec.md), **Plan:** (plan.md), **Repository:**, **Objective:**, **Criteria:** (the ids the plan task delivers, the same ids and no others), **Success scenario:** (a test that the feature works), **Error scenario:** (a test that a wrong input or a failing dependency is refused), **Done when:** (what the owner can observe). Keep the labels in English and the content in Brazilian Portuguese.
+
+- Every criterion id of the spec must appear in at least one entry. Never invent a criterion, and never invent a business rule: a fact comes from the six files, and the entry cites the file for it.
+
+- Each entry says which of the spec's business rules it keeps, under **Business rules preserved:**, and lists its dependencies under **Dependencies:** as task numbers.

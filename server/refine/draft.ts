@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
+import { writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS, stepId } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git, showFile } from '../git/git.js';
@@ -170,7 +171,7 @@ export async function moveBriefingToProject(d: Draft): Promise<void> {
     const demoted = demoteHeadings(brief.trim());
     if (briefing === null) await fs.rename(source, briefingPath(d));
     else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(demoted)) {
-      await fs.writeFile(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${demoted}`));
+      await writeFileAtomic(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${demoted}`));
     }
   }
   // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.
@@ -260,9 +261,9 @@ export async function readDoc(d: Draft, file: DocFile): Promise<string> {
 /** Docs end with a newline: they are copied verbatim into the project repo, where a format gate will check them. */
 const withNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`);
 export async function writeDoc(d: Draft, file: DocFile, text: string): Promise<void> {
-  if (file !== 'briefing.md') return fs.writeFile(docPath(d, file), withNewline(text));
+  if (file !== 'briefing.md') return writeFileAtomic(docPath(d, file), withNewline(text));
   const target = await briefPath(d);
-  await fs.writeFile(target, withNewline(text));
+  await writeFileAtomic(target, withNewline(text));
   // The first save of a spec moves its briefing from the legacy brief.md to briefing.md.
   if (target === d.briefMd) await fs.rm(legacyBriefPath(d), { force: true });
 }
