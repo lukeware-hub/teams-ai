@@ -12,12 +12,14 @@ import { completeStages, makeRig, MONOLITH, PROJECT, type Rig } from '../fixture
 import { FakeGhRepos } from '../fixtures/fake-gh-repos.js';
 
 let rig: Rig | null = null;
+let gh: FakeGhRepos | null = null;
 let ghRoot = '';
 let offline = false;
 
 afterEach(async () => {
   await rig?.close();
   rig = null;
+  gh = null;
   if (ghRoot) await fs.rm(ghRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   ghRoot = '';
   offline = false;
@@ -39,7 +41,7 @@ function exec(fake: FakeGhRepos): Exec {
 /** A new project with its architecture decided and its Backlog step done, so the store is bound and the session attached. */
 async function bound(): Promise<RefineSession> {
   ghRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'docs-closing-gh-'));
-  const gh = new FakeGhRepos(ghRoot);
+  gh = new FakeGhRepos(ghRoot);
   rig = await makeRig({ docsRepoLayout: true, owner: 'acme', ghExec: exec(gh) });
   const s = await rig.registry.newProject(PROJECT, 'Hello');
   await completeStages(rig, s);
@@ -69,6 +71,8 @@ async function recordSpec(alias: string): Promise<RefineSession> {
 }
 
 const exists = (file: string): Promise<boolean> => fs.stat(file).then(() => true, () => false);
+const origin = (): string => gh!.repos.get('acme/hello-app')!.origin;
+const closingRecord = async () => JSON.parse(await fs.readFile(docsClosingPath(rig!.ws, rig!.draft.specId), 'utf8'));
 
 describe('closing a documentation repository session before its launch', () => {
   it('launches nothing when the push fails: no closing record and no snapshot', async () => {
@@ -105,3 +109,23 @@ describe('closing a documentation repository session before its launch', () => {
     expect(await exists(docsClosingPath(rig.ws, rig.draft.specId))).toBe(false);
   });
 });
+
+describe('the start tags after the launch', () => {
+  it('a tag failure keeps the pending tag in the record, and the next tick publishes it once', async () => {
+    await bound();
+    await writeAlias('hello-001');
+    const s = await recordSpec('hello-001');
+    await s.closeDocs(['hello-001']);
+    expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('');
+    offline = true;
+    await expect(s.publishStartTags()).resolves.toBeUndefined();
+    expect((await closingRecord()).pendingTags).toEqual(['dev-start/hello-001']);
+    offline = false;
+    await s.tickDocs();
+    expect((await closingRecord()).pendingTags).toEqual([]);
+    await s.tickDocs();
+    expect(await git(origin(), ['tag', '--list', 'dev-start/*'])).toBe('dev-start/hello-001');
+    expect(await git(origin(), ['rev-parse', 'dev-start/hello-001^{commit}'])).toBe((await closingRecord()).commit);
+  });
+});
+

@@ -686,9 +686,15 @@ export class RefineSession {
     });
   }
 
-  /** The registry tick: a waiting boundary or a failed flush is committed and pushed again. */
-  tickDocs(): Promise<void> {
-    return this.docs?.tick() ?? Promise.resolve();
+  /** The registry tick: a waiting boundary or a failed flush is committed and pushed again, and the start tags are retried. */
+  async tickDocs(): Promise<void> {
+    await this.docs?.tick();
+    await this.publishStartTags();
+  }
+
+  /** After the launch: the start tags of the closing. Never fails the start; a tag left pending is retried by the tick. */
+  publishStartTags(): Promise<void> {
+    return this.docs?.publishTags() ?? Promise.resolve();
   }
 
   /** The five documents as they are now, by file name. */

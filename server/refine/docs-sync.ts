@@ -1,5 +1,6 @@
 import type { Style } from '../docs/layout.js';
-import { closeRefinement, commitProjection, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
+import { readClosingRecord, writeClosingRecord } from '../docs/project-state.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -76,6 +77,20 @@ export class DocsSync {
     const done = this.chain.then(() => this.closeNow(aliases));
     this.chain = done.catch(() => undefined);
     return done;
+  }
+
+  /** The start tags of the closing, published once; a failure keeps them pending for the next tick and never fails the start. */
+  async publishTags(): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    try {
+      const record = await readClosingRecord(ws, draft.specId);
+      if (record === null || record.pendingTags.length === 0) return;
+      const { pushed } = await createStartTags(await openStore(ws, style, exec), record.aliases, record.commit);
+      if (!pushed) throw new DocsStoreError('the start tags could not be published');
+      await writeClosingRecord(ws, draft.specId, { ...record, pendingTags: [] });
+    } catch (err) {
+      console.error(`start tags of ${draft.specId}: ${messageOf(err)}`);
+    }
   }
 
   /** The registry tick: a pending boundary is flushed again, and a failure without one only pushes the local commits. */

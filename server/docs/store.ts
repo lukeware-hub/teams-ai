@@ -8,7 +8,6 @@ import { createPrivateRepo, repoInfo, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
 import {
-  docsClosingPath,
   docsClosingRoot,
   docsMarkerPath,
   docsMirrorDir,
@@ -18,6 +17,7 @@ import {
   draftFolderName,
   readDocsMarker,
   removeDocsMarker,
+  writeClosingRecord,
   writeDocsMarker,
   type DocsMarker,
 } from './project-state.js';
@@ -471,9 +471,7 @@ async function finishClosing(ws: Pick<Workspace, 'root'>, store: Store, draftId:
     await git(store.dir, ['worktree', 'prune'], store.exec);
     await git(store.dir, ['worktree', 'add', '--detach', snapshot, commit], store.exec);
   });
-  await fs.mkdir(docsClosingRoot(ws), { recursive: true });
-  const record = { commit, aliases: [...aliases], pendingTags: aliases.map(startTagOf) };
-  await writeFileAtomic(docsClosingPath(ws, draftId), `${JSON.stringify(record, null, 2)}\n`);
+  await writeClosingRecord(ws, draftId, { commit, aliases: [...aliases], pendingTags: aliases.map(startTagOf) });
   return { commit, snapshot };
 }
 

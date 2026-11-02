@@ -240,6 +240,7 @@ export class SessionRegistry {
         throw new HttpError(500, `o programa não iniciou nenhuma run: ${program.items.find((i) => i.reason)?.reason ?? 'sem motivo registrado'}`);
       }
       await session.markStarted(runId);
+      await session.publishStartTags();
       return { runId, program };
     } catch (err) {
       session.failStart();
@@ -318,6 +319,7 @@ export class SessionRegistry {
     try {
       const runId = await this.launchSpec(draft, specId, session);
       await session.markStarted(runId);
+      await session.publishStartTags();
       return { runId };
     } catch (err) {
       session.failStart();
