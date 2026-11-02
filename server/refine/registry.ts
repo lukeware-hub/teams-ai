@@ -14,6 +14,7 @@ import { fetch as gitFetch, git } from '../git/git.js';
 import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { CENTRAL_REPO } from '../docs/layout.js';
 import { docsRepoLayoutEnabled, isDocsRepo, readState } from '../docs/project-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
@@ -170,8 +171,9 @@ export class SessionRegistry {
     cleanDescription(description);
     if (name.trim() === '') throw new RangeError('name must not be empty');
     const ws = await this.ws(projectId);
+    if (this.docsRepoLayout && projectId === CENTRAL_REPO) throw new RangeError(`${CENTRAL_REPO} é o nome do repositório central de documentos; escolha outro nome para o projeto.`);
     const draft = draftPaths(ws, firstSpecId || `${projectId}-001`);
-    if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo))) {
+    if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo)) || (await isDocsRepo(ws))) {
       throw new ConflictError(`project ${projectId} already exists; register it instead`);
     }
     await createNewProject(draft, name, description);
