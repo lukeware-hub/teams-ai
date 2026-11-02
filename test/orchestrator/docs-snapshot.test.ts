@@ -98,3 +98,22 @@ async function stepDeps(seen: string[][]): Promise<AgentStepDeps & { journal: Jo
     specHash: HASH,
   } as AgentStepDeps & { journal: Journal };
 }
+
+describe('a required document missing from the snapshot (plan 119, I8 item 2)', () => {
+  it('fails naming the missing document', async () => {
+    await fs.rm(path.join(snapshot, 'docs/stack.md'));
+    await expect(sourceFiles(snapshot, PLAN, 'orders-001', TASK, true)).rejects.toThrow('docs/stack.md');
+  });
+
+  it('fails naming the missing plan of the spec', async () => {
+    await fs.rm(path.join(snapshot, PLAN));
+    await expect(sourceFiles(snapshot, PLAN, 'orders-001', TASK, true)).rejects.toThrow(PLAN);
+  });
+
+  it('keeps the legacy silent skip of a missing plan', async () => {
+    const legacy = path.join(dir, 'legacy');
+    await fs.mkdir(path.join(legacy, 'docs'), { recursive: true });
+    await fs.writeFile(path.join(legacy, 'docs', 'project.md'), 'p');
+    expect(await sourceFiles(legacy, 'docs/specs/orders-001/implementation-plan.md', 'orders-001')).toEqual(['docs/project.md']);
+  });
+});

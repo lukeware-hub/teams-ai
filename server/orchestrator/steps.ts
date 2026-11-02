@@ -25,6 +25,7 @@ import { REQUIRED_BLOCKING_GATES } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
 import { skillsForRole } from '../skills/catalog.js';
 import { absoluteRule } from '../runner/role-settings.js';
+import { FIVE_DOCS } from '../docs/layout.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -157,9 +158,24 @@ export const FILES_READ_RULE = 'On a done result, list in filesRead, as reposito
 /** A departure from the task or from its implementation plan is listed, so a contradiction never passes silently. */
 export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task or from its implementation plan; leave it empty when you followed both.';
 
-/** The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there. */
-export async function sourceFiles(dir: string, planFile: string | undefined, specId: string, taskFile?: string): Promise<string[]> {
-  const has = (file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
+const fileExists = (dir: string, file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
+
+/** The snapshot's files a documentation-repository builder reads: each must be there, or the step fails naming it. */
+async function requiredSourceFiles(root: string, planFile: string | undefined, taskFile: string | undefined): Promise<string[]> {
+  const files = [...(planFile ? [planFile] : []), ...(taskFile ? [taskFile] : []), ...FIVE_DOCS.map((doc) => `docs/${doc}`)];
+  const held = await Promise.all(files.map((file) => fileExists(root, file)));
+  const missing = files.filter((_, i) => !held[i]);
+  if (missing.length > 0) throw new Error(`the documentation snapshot has no ${missing.join(', ')}`);
+  return files;
+}
+
+/**
+ * The files the source rules tell a builder to read that the worktree at `dir` holds; each rule applies only when its first file is there.
+ * A documentation repository (`required`) reads them all from its snapshot and fails when one is missing.
+ */
+export async function sourceFiles(dir: string, planFile: string | undefined, specId: string, taskFile?: string, required = false): Promise<string[]> {
+  if (required) return requiredSourceFiles(dir, planFile, taskFile);
+  const has = (file: string) => fileExists(dir, file);
   const ownBriefing = `docs/specs/${specId}/briefing.md`;
   const rules = [
     planFile ? [planFile] : [],

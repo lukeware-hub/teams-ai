@@ -107,4 +107,14 @@ describe('TaskRunner: documents read from the snapshot (plan 119, I8 item 1)', (
     expect(state()).toMatchObject({ state: 'implementing', attempts: 0 });
     expect(journal.lastFeedback('T1')).toContain('docs/project.md');
   });
+
+  it('starts no Dev step while a snapshot document is missing, and names the file', async () => {
+    await fs.rm(path.join(snapshot, 'docs/stack.md'));
+    let devCalls = 0;
+    const r = new TaskRunner('T1', deps({ runAgent: (async (req: AgentStepRequest<any>) => { devCalls += 1; return dev(() => [])(req); }) as TaskRunnerDeps['runAgent'] }));
+    await r.advance();
+    expect(devCalls).toBe(0);
+    expect(state().state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('docs/stack.md');
+  });
 });
