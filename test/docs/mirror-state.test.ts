@@ -36,7 +36,8 @@ describe('mirror state', () => {
     expect(await fs.readFile(path.join(docsMirrorDir(at()), 'specs', 'alpha', 'spec.json'), 'utf8')).toBe('{"alias":"alpha"}');
   });
 
-  it('updates a file from its parsed content, and creates it when absent', async () => {
+  it('updates a file from its parsed content', async () => {
+    await writeState(at(), 'report.json', '{}');
     await updateState(at(), 'report.json', (current) => JSON.stringify({ ...(current as object), first: 1 }));
     await updateState(at(), 'report.json', (current) => JSON.stringify({ ...(current as object), second: 2 }));
     expect(await readState(at(), 'report.json')).toEqual({ first: 1, second: 2 });
@@ -48,9 +49,13 @@ describe('mirror state', () => {
     expect(await readState(at(), 'report.json')).toEqual({ kept: true });
   });
 
-  it('gives the update an absent value for an unparsable file', async () => {
+  it('refuses an unparsable file instead of rewriting it from nothing', async () => {
     await writeState(at(), 'report.json', '{broken');
-    await updateState(at(), 'report.json', (current) => JSON.stringify({ seen: current === undefined }));
-    expect(await readState(at(), 'report.json')).toEqual({ seen: true });
+    await expect(updateState(at(), 'report.json', () => '{}')).rejects.toThrow();
+    expect(await fs.readFile(path.join(docsMirrorDir(at()), 'report.json'), 'utf8')).toBe('{broken');
+  });
+
+  it('refuses a file the mirror does not have, so a status is never silently skipped', async () => {
+    await expect(updateState(at(), 'specs/alpha/spec.json', () => '{}')).rejects.toThrow('the mirror has no specs/alpha/spec.json');
   });
 });

@@ -72,7 +72,7 @@ async function writeSpecFiles(deps: Phase6Deps, wt: string, report: Report): Pro
   const reportText = `${JSON.stringify(report, null, 2)}\n`;
   if (deps.docsRepo) {
     await writeState(deps.ws, `specs/${id}/report.json`, reportText);
-    if (deps.result === 'awaiting-validation') await updateState(deps.ws, `specs/${id}/spec.json`, (current) => (current === undefined ? undefined : `${JSON.stringify({ ...(current as object), status: 'awaiting-validation' }, null, 2)}\n`));
+    if (deps.result === 'awaiting-validation') await updateState(deps.ws, `specs/${id}/spec.json`, (current) => `${JSON.stringify({ ...(current as object), status: 'awaiting-validation' }, null, 2)}\n`);
     return;
   }
   const dir = path.join(wt, specDir(id));

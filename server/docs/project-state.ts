@@ -88,9 +88,12 @@ export async function writeState(ws: Pick<Workspace, 'root'>, rel: string, text:
   await writeFileAtomic(file, text);
 }
 
-/** Rewrites a machine file of the mirror from its parsed content; returning undefined leaves it alone. */
+/** Rewrites a machine file of the mirror from its parsed content; returning undefined leaves it alone. A missing or unparsable file is an error. */
 export async function updateState(ws: Pick<Workspace, 'root'>, rel: string, update: (current: unknown) => string | undefined): Promise<void> {
   const file = statePath(ws, rel);
   await fs.mkdir(path.posix.dirname(file), { recursive: true });
-  await updateFileAtomic(file, (text) => update(parseState(text)));
+  await updateFileAtomic(file, (text) => {
+    if (text === undefined) throw new Error(`the mirror has no ${rel}`);
+    return update(JSON.parse(text));
+  });
 }

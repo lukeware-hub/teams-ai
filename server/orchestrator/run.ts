@@ -878,7 +878,7 @@ export class Run {
   async completeSpec(): Promise<ExecuteResult> {
     if (this.deps.spec.status !== 'awaiting-validation') return this.finish('phase-failed', `spec ${this.deps.spec.specId} is ${this.deps.spec.status}; only awaiting-validation specs complete`);
     if (this.deps.docsRepo) {
-      await updateState(this.deps.ws, `specs/${this.deps.spec.specId}/spec.json`, (current) => (current === undefined ? undefined : `${JSON.stringify({ ...(current as object), status: 'done' }, null, 2)}\n`));
+      await updateState(this.deps.ws, `specs/${this.deps.spec.specId}/spec.json`, (current) => `${JSON.stringify({ ...(current as object), status: 'done' }, null, 2)}\n`);
       return this.finish('done');
     }
     const branch = `docs/${this.deps.spec.specId}-done`;
