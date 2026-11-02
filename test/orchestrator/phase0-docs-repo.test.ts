@@ -183,8 +183,8 @@ describe('phase 0 of a docs-repo project', () => {
     const hub = `${base.ws.root}/hello-app/repo`;
     const run = await Run.create({ ...base, ws: { ...base.ws, repo: hub } }, 'hello-001-p0-8');
     expect(await run.executePhase0()).toEqual({ ok: true });
-    expect(created).toEqual(['o/hello-app']);
-    expect(await git(hub, ['log', '--format=%s', 'origin/main'])).toBe('chore: create hello-app');
+    expect(created).toEqual(['o/artefacty']);
+    expect(await git(hub, ['log', '--format=%s', 'origin/main'])).toBe('chore: create artefacty');
     expect(await git(hub, ['ls-tree', '--name-only', 'origin/main'])).toBe('');
     await run.close();
   });
