@@ -63,4 +63,13 @@ describe('discarding a draft of a bound documentation repository', () => {
     await expect(fs.access(draftPaths(rig.ws, alias).root)).resolves.toBeUndefined();
     expect(() => session.ensureCanEvaluate()).not.toThrow();
   });
+
+  it('refuses an alias that origin holds but the local store does not, before the draft folder is written', async () => {
+    const alias = 'hello-app-003';
+    const elsewhere = { root: path.join(rig.home, 'elsewhere') };
+    await fs.mkdir(elsewhere.root, { recursive: true });
+    await publish(await cloneStore(elsewhere, remote), { draftId: alias, stepKey: 'docs', scope: 'refine', label: 'alias', files: { [`docs/specify/${alias}/spec.md`]: '# Spec\n' } });
+    await expect(rig.registry.newSpec(PROJECT, alias)).rejects.toThrow('já existe');
+    await expect(fs.access(draftPaths(rig.ws, alias).root)).rejects.toThrow();
+  });
 });

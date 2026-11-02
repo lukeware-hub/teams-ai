@@ -138,8 +138,13 @@ interface Ctx {
   born: boolean;
 }
 
+/** Whether a ref names a commit in the store. */
+async function hasRef(store: Store, ref: string): Promise<boolean> {
+  return git(store.dir, ['rev-parse', '--verify', '--quiet', ref], store.exec).then(() => true, () => false);
+}
+
 async function hasHead(store: Store): Promise<boolean> {
-  return git(store.dir, ['rev-parse', '--verify', '--quiet', 'HEAD'], store.exec).then(() => true, () => false);
+  return hasRef(store, 'HEAD');
 }
 
 /** The text a file holds at HEAD, or null when HEAD does not have it. */
@@ -152,22 +157,22 @@ async function headText(c: Ctx, rel: string): Promise<string | null> {
   return c.born ? textAtHead(c.store, rel) : null;
 }
 
-/** The spec files at the store's HEAD, by repository path. */
-async function specFilesAtHead(store: Store): Promise<string[]> {
-  if (!(await hasHead(store))) return [];
-  const paths = (await git(store.dir, ['ls-tree', '-r', '--name-only', 'HEAD', '--', 'docs'], store.exec)).split('\n');
+/** The spec files at a ref of the store, by repository path; none when the ref does not exist. */
+async function specFilesAt(store: Store, ref: string): Promise<string[]> {
+  if (!(await hasRef(store, ref))) return [];
+  const paths = (await git(store.dir, ['ls-tree', '-r', '--name-only', ref, '--', 'docs'], store.exec)).split('\n');
   return paths.filter((p) => parseRepoPath(p) !== null);
 }
 
-/** The aliases that have a spec file at the store's HEAD: every spec folder the documentation repository holds. */
-export async function aliasesOnStore(store: Store): Promise<string[]> {
-  return [...new Set((await specFilesAtHead(store)).map((p) => parseRepoPath(p)!))];
+/** The aliases that have a spec file at a ref of the store, HEAD by default: every spec folder the documentation repository holds. */
+export async function aliasesOnStore(store: Store, ref = 'HEAD'): Promise<string[]> {
+  return [...new Set((await specFilesAt(store, ref)).map((p) => parseRepoPath(p)!))];
 }
 
 /** The alias folders whose last commit this draft made, except the aliases in `keep`: the only folders it may remove. */
 async function ownedAliasFolders(store: Store, draftId: string, keep: readonly string[]): Promise<string[]> {
   const c: Ctx = { store, draftId, born: true };
-  const folders = [...new Set((await specFilesAtHead(store)).map((p) => path.posix.dirname(p)))];
+  const folders = [...new Set((await specFilesAt(store, 'HEAD')).map((p) => path.posix.dirname(p)))];
   const owned: string[] = [];
   for (const folder of folders) if (!keep.includes(path.posix.basename(folder)) && (await aliasWritable(c, folder))) owned.push(folder);
   return owned;

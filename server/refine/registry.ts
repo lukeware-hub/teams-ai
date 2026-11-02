@@ -201,12 +201,15 @@ export class SessionRegistry {
     if ((await readStateText(ws, 'project.json')) === undefined) throw new ConflictError(`o projeto ${ws.projectId} ainda não tem project.json no espelho; inicie uma spec antes de criar outra`);
   }
 
-  /** A new spec of a bound documentation repository takes an alias that neither the mirror nor the store holds. */
+  /** A new spec of a bound documentation repository takes an alias that neither the mirror nor the store holds, local or on origin. */
   private async assertAliasFree(ws: Workspace, specId: string): Promise<void> {
     const marker = await this.boundMarker(ws);
     if (!marker) return;
+    const store = storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec);
+    // A failed fetch keeps the local check, so an offline owner is refused only for an alias the local store holds.
+    await gitFetch(store.dir, store.exec, { timeoutMs: 30_000 }).catch(() => undefined);
     const onMirror = (await listState(ws, `specs/${specId}`)).length > 0;
-    const onStore = (await aliasesOnStore(storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec))).includes(specId);
+    const onStore = [...(await aliasesOnStore(store)), ...(await aliasesOnStore(store, 'origin/main'))].includes(specId);
     if (onMirror || onStore) throw new ConflictError(`o alias ${specId} já existe no repositório de documentos; escolha outro nome para a spec`);
   }
 
