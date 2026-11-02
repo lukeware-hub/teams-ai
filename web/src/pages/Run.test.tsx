@@ -390,6 +390,12 @@ describe('RunView', () => {
       expect(screen.getByRole('dialog', { name: 'Detalhe técnico' }).querySelector('pre')!.textContent).toBe(reportReason);
     });
 
+    it('an owner who lets the agents decide still gets Reprocessar for a run that ended blocked, after its automatic returns', () => {
+      const finished = { seq: 9997, at: '2026-09-24T12:00:00.000Z', runId: 'hello-001-r1', specHash: 'h', type: 'RUN_FINISHED', kind: 'fact' as const, data: { result: 'blocked', reason: null, merged: [], blocked: [{ taskId: 'T1', reason: 'x' }], tokens: {} } };
+      render(failedView({ events: [finished], detail: { ...detail, status: 'blocked', agentsDecide: true }, reprocessAction: { onReprocess: vi.fn(), busy: false, error: null } }));
+      expect(screen.getByTestId('reprocess').textContent).toBe('Reprocessar');
+    });
+
     it('an owner who lets the agents decide gets no Reprocessar, and the banner asks for none', () => {
       render(failedView({ detail: { ...detail, status: 'phase-failed', agentsDecide: true }, reprocessAction: { onReprocess: vi.fn(), busy: false, error: null } }));
       expect(screen.queryByTestId('reprocess')).toBeNull();

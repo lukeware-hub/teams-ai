@@ -35,7 +35,7 @@ Status: done (2026-10-29). Plan 115 covers the per-project switch, the owner's q
 - Done: the model of each role is set in Settings per project, default manual Haiku 5.5 at low effort; the `model` lines in the agent frontmatter stay, because the agent loader requires them; the runner ignores them.
 - Done: a yellow notice on the project screen when a run blocks or waits for the owner (commit `479bda3d`).
 - Done: a Jev outage no longer stops the refinement cycle (commit `ad5817ac`).
-- Done 2026-10-29 (plan 115): the per-project switch "Autorizo os agentes a tomar decisões?" (No by default). Yes: the SM decides a blocked Dev, and the steps that do not judge get the shell and the web. No: a block asks the owner one question with its choices on the run screen, and the answer starts the next run as a binding assumption. With Yes, the run screen offers no reprocess.
+- Done 2026-10-29 (plan 115): the per-project switch "Autorizo os agentes a tomar decisões?" (No by default). Yes: the SM decides a blocked Dev, and the steps that do not judge get the shell and the web. No: a block asks the owner one question with its choices on the run screen, and the answer starts the next run as a binding assumption. With Yes, the run screen offers no reprocess, except for a run that ended blocked (2026-11-02): by then the agents have returned it on their own.
 
 Cost: alert only, the run never stops (decided by the owner).
 
