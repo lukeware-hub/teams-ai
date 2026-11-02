@@ -4,10 +4,13 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bind } from '../../server/docs/store.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
+import { boundaryLabel } from '../../server/refine/docs-boundary.js';
 import { DocsSync } from '../../server/refine/docs-sync.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import type { Exec, CommandResult } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
+import { makeSpec } from '../fixtures/contracts.js';
 import { FakeGhRepos } from '../fixtures/fake-gh-repos.js';
 
 const target = { owner: 'acme', name: 'hello-app' };
@@ -77,6 +80,22 @@ describe('DocsSync commits at boundaries', () => {
     expect(await commitCount()).toBe(2);
     expect(await subject()).toBe('docs(refine): spec hello-app-001-login [skip ci]');
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack changed');
+  });
+});
+
+describe('DocsSync coalesces a burst', () => {
+  it('six spec facts delivered in one tick give one commit, with the six specs', async () => {
+    const aliases = ['hello-app-login', 'hello-app-cart', 'hello-app-search', 'hello-app-profile', 'hello-app-orders', 'hello-app-help'];
+    for (const alias of aliases) {
+      await fs.mkdir(path.join(draft.docs, 'specs', alias), { recursive: true });
+      await fs.writeFile(path.join(draft.docs, 'specs', alias, 'spec.json'), JSON.stringify(makeSpec({ specId: alias, repository: 'hello-app' })));
+    }
+    const s = new DocsSync({ ws, draft, style: 'monolith', exec, aliases: () => aliases.map((alias) => ({ alias })) });
+    for (const alias of aliases) s.boundary(boundaryLabel({ type: RefineEvent.SpecDerived, data: { specId: alias } }, null)!);
+    await s.tick();
+    expect(await commitCount()).toBe(2);
+    expect(await subject()).toBe(`docs(refine): ${aliases.map((alias) => `spec ${alias}`).join(', ')} [skip ci]`);
+    expect((await git(origin(), ['ls-tree', '-r', '--name-only', 'main', 'docs/specify'])).split('\n')).toHaveLength(6);
   });
 });
 
