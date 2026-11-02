@@ -230,15 +230,15 @@ Notes from the I9 review: a continuation discard keeps every folder that main al
 
 ## I10 - Web: documents notice and backlog button (size S, weight 1, owner-gated)
 
-- [ ] Owner-gated: text of the design section written in `design.md` first.
-- [ ] Owner-gated: wireframe approved before code.
-- [ ] `DocsSyncNotice` component, its tests, and the `Snapshot.docsSync` type.
-- [ ] Architecture card button calls `enableBacklog`, with the disclosure line approved by the owner.
+- [x] Owner-gated: text of the design section written in `design.md` first.
+- [x] Owner-gated: wireframe approved before code.
+- [x] `DocsSyncNotice` component, its tests, and the `Snapshot.docsSync` type.
+- [x] Architecture card button calls `enableBacklog`, with the disclosure line approved by the owner.
 - [ ] Chrome check at 1440 and 390 pixels, dark and light, next to the reference screen; detector run once.
 
 ## I11 - Live check, guide, runbook, deploy, flag (size M, weight 2, owner-gated)
 
-- [ ] `scripts/live-check/repo.mjs` prints the documentation commits per step, the tags and the allowlist check.
+- [x] `scripts/live-check/repo.mjs` prints the documentation commits per step, the tags and the allowlist check.
 - [ ] README, runbook and FEATURES are final.
 - [ ] Owner-gated: the guide graph is rebuilt with `task guia:grafo`, and `test/chat/guide.test.ts` is green.
 - [ ] Owner-gated: live check on two throwaway projects passes (quota, real repositories), and both are deleted afterwards.
