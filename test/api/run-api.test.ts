@@ -841,6 +841,12 @@ describe('run detail, events and steps', () => {
     expect((await fetch(`${base()}/api/runs/nope`)).status).toBe(404);
   });
 
+  it('detail carries the README merged on main of the project repository, where the report commits it', async () => {
+    await workspaceClone({ 'docs/README.md': '# Saudação\n' });
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('awaiting-validation'));
+    expect((await (await fetch(`${base()}/api/runs/hello-001-r1`)).json()).readme).toBe('# Saudação\n');
+  });
+
   it('detail reports interrupted when the process of an unfinished run died, with or without a state snapshot', async () => {
     // A completion run writes no state.json until it finishes, so the dead pid alone must say that it was interrupted.
     await writeRun(runs, 'hello-001-complete-r1', [started('hello-001-complete-r1')], null, 111); // pid 111 is not alive

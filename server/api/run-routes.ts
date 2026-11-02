@@ -790,10 +790,12 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .then((text) => AnyPlan.safeParse(JSON.parse(text)).data ?? null)
               .catch(() => null)
           : null;
-        const repoUrl = await repoUrlOf(workspacePaths(idx.cfg, projectId, deps.home).repo);
-        // docs/README.md as merged on main; the working tree is the fallback for a clone without origin/main.
+        const repoDir = workspacePaths(idx.cfg, projectId, deps.home).repo;
+        const repoUrl = await repoUrlOf(repoDir);
+        // docs/README.md as merged on main of the project's repository, where the report commits it; the project folder
+        // (a refinement folder, not a clone) is the fallback.
         const readme = project
-          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: project, timeoutMs: 5_000 })
+          ? await execCommand({ bin: 'git', args: ['show', 'origin/main:docs/README.md'], cwd: repoDir, timeoutMs: 5_000 })
               .then((r) => (r.exitCode === 0 ? r.stdout : null))
               .catch(() => null)
               .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))

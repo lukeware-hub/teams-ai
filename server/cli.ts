@@ -418,6 +418,8 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
     // new run of the spec, and 'stop' ends here. A blocked run the owner let the agents decide goes back to them first.
     let next: 'stop' | 'return' | 'successor' = 'stop';
     for (let turn = 1; ; turn++) {
+      // The run before closed the knowledge index with its run: a later turn of this process opens it again.
+      if (turn > 1 && deps) deps.knowledge = await openProjectKnowledge(deps.ws.knowledgeDb, projectDir);
       const run = manual
         ? await Run.create(deps, explicitId ?? await nextRunId(deps.ws, deps.spec.specId, completing ? 'complete' : readming ? 'readme' : 'deploy'))
         : await factory(deps, runId, turn === 1 ? explicitId : undefined);
