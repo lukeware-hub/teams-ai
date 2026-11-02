@@ -128,7 +128,8 @@ export class SessionRegistry {
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
       // A new project follows the rollout flags; a follow-on draft is stamped only when main holds its architecture.
       const stamp = create === 'new-project' ? (this.deps.repositoryFlow ?? REPOSITORY_FLOW) : architecture;
-      const docsRepo = create === 'new-project' && this.docsRepoLayout;
+      // A follow-on draft of a bound documentation repository writes to its store, as the first draft does.
+      const docsRepo = create === 'new-project' ? this.docsRepoLayout : create !== undefined && (await this.boundMarker(ws)) !== null;
       return create ? RefineSession.create(deps, create, { repositories: stamp === true, docsRepo }) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);

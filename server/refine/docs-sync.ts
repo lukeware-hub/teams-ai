@@ -3,7 +3,7 @@ import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../d
 import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
+import { draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
 /** What the session shows of the sync: the changes waiting for a commit, and the last failure, in plain words. */
@@ -131,7 +131,7 @@ export class DocsSync {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const files = await projectDraftFiles(draft, style, this.input.aliases());
-    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files };
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft) };
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
     this.pending = 0;
@@ -155,7 +155,7 @@ export class DocsSync {
       const seen = { pending: this.pending, labels: this.labels.length };
       const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
-      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files });
+      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft) });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
       await pushLocalCommits(store);
       if (refused.length > 0) {

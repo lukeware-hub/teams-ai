@@ -4,7 +4,8 @@ import { Spec } from '../contracts/spec.js';
 import { assertAlias, repoPath, type Style } from '../docs/layout.js';
 import { renderRepoSpec } from '../docs/repo-spec.js';
 import { DOC_STAGES } from './doc-stages.js';
-import { readDoc, type Draft } from './draft.js';
+import { FIVE_DOCS } from '../docs/layout.js';
+import { readBase, readDoc, type Draft } from './draft.js';
 import { planFileOf, taskFileOf } from './plan-file.js';
 
 /** A spec of the draft whose folder is projected: its alias, and its repository for a microservice. */
@@ -26,6 +27,16 @@ async function aliasFiles(draft: Draft, style: Style, { alias, service }: SpecAl
   const task = await readOptional(path.posix.join(draft.root, taskFileOf(name)));
   if (task !== null) found[repoPath(style, 'task', name, service)] = task;
   return found;
+}
+
+/** The copy of each document the draft started from: the store writes a document only over the copy it started from. */
+export async function draftBases(draft: Draft): Promise<Record<string, string>> {
+  const bases: Record<string, string> = {};
+  for (const doc of FIVE_DOCS) {
+    const text = await readBase(draft, doc);
+    if (text !== null) bases[`docs/${doc}`] = text;
+  }
+  return bases;
 }
 
 /** The repository files of a draft: its five documents, then the spec, plan and task of each alias it owns. */

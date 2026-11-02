@@ -282,6 +282,7 @@ export class RefineSession {
     const repositories = options.docsRepo === true || (options.repositories ?? (mode === 'new-project' && REPOSITORY_FLOW));
     await s.journal.fact(RefineEvent.Created, { projectId: deps.draft.projectId, specId: deps.draft.specId, mode, stages: mode === 'new-project', ...(featureKey ? { featureKey } : {}), ...(repositories ? { repositories: true } : {}), ...(options.docsRepo === true ? { docsRepo: true } : {}) });
     if (repositories) await s.adoptArchitecture();
+    if (options.docsRepo === true) await s.attachDocs(false);
     return s;
   }
 
