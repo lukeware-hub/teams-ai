@@ -87,6 +87,37 @@ describe('task states across runs', () => {
     expect(d.counts).toMatchObject({ tasks: 0, runs: 0, progress: null });
     expect(d.specs[0]?.state).toBe('not-started');
   });
+
+  it('drops a failed task of an older run that the newest run does not carry, and keeps the merged ones', () => {
+    const old = run('cart-run-1', 'cart', 1, 'phase-failed', [
+      planned('cart-run-1', 'T1-route'),
+      planned('cart-run-1', 'T2-pay'),
+      to('cart-run-1', 'T1-route', 'merged'),
+      to('cart-run-1', 'T2-pay', 'blocked'),
+      ev('cart-run-1', 'TASK_BLOCKED', { taskId: 'T2-pay', reason: 'o banco recusou a conexão' }),
+    ]);
+    const next = run('cart-run-2', 'cart', 2, 'done', [planned('cart-run-2', 'T1-route'), planned('cart-run-2', 'T3-ui'), to('cart-run-2', 'T3-ui', 'merged')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 2 })], runs: [old, next] }));
+    expect(states(d)).toEqual({ 'T1-route': 'delivered', 'T3-ui': 'delivered' });
+    expect(d.counts).toMatchObject({ tasks: 2, delivered: 2, failed: 0 });
+    expect(d.failures.list).toEqual([]);
+  });
+});
+
+describe('failed runs once the spec moves on', () => {
+  it('lists a failed run as history when a newer run of the spec finished', () => {
+    const failed = run('cart-run-1', 'cart', 1, 'phase-failed', []);
+    const done = run('cart-run-2', 'cart', 2, 'done', []);
+    const d = buildDashboard(input({ specs: [spec('cart')], runs: [failed, done] }));
+    expect(d.failures.list).toEqual([]);
+  });
+
+  it('keeps a failed run a failure while no newer run finished', () => {
+    const done = run('cart-run-1', 'cart', 1, 'done', []);
+    const failed = run('cart-run-2', 'cart', 2, 'phase-failed', []);
+    const d = buildDashboard(input({ specs: [spec('cart')], runs: [done, failed] }));
+    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'cart-run-2', taskId: null, text: 'Run cart-run-2: falhou em uma fase' }]);
+  });
 });
 
 describe('activity from the journals', () => {
@@ -117,7 +148,13 @@ describe('activity from the journals', () => {
     const first = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', docsPath: '/docs' })]);
     const second = run('r2', 'cart', 2, 'done', [ev('r2', 'DEPLOY_VERIFIED', { url: 'http://localhost:3002', docsPath: '/docs' })]);
     const d = buildDashboard(input({ specs: [spec('cart')], runs: [second, first] }));
-    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', docsPath: '/docs', services: null });
+    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', kind: null, docsPath: '/docs', services: null });
+  });
+
+  it('gives the kind the plan declared for the last deploy', () => {
+    const api = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', kind: 'api' })]);
+    const d = buildDashboard(input({ specs: [spec('cart')], runs: [api] }));
+    expect(d.lastDeploy).toMatchObject({ kind: 'api', docsPath: null });
   });
 
   it('lists a failed run among the failures and keeps the timeline newest first, capped', () => {

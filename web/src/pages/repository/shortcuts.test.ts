@@ -3,7 +3,7 @@ import type { LastDeploy, ServiceStatus } from '../../api.js';
 import { isOffline, shortcutsOf } from './shortcuts.js';
 
 const HOST = 'localhost';
-const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', docsPath: '/docs', services: null, ...over });
+const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', kind: null, docsPath: '/docs', services: null, ...over });
 const probe = (over: Partial<ServiceStatus> = {}): ServiceStatus => ({ online: true, status: 200, ui: true, docs: true, checkedAt: '2026-11-01T10:00:00.000Z', ...over });
 
 describe('the buttons of a repository, by its kind', () => {
@@ -26,14 +26,22 @@ describe('the buttons of a repository, by its kind', () => {
   });
 });
 
-describe('a button that cannot open', () => {
-  it('stays with the reason, and no address, when the plan declares no documentation', () => {
+describe('a button with nothing to open', () => {
+  it('hides the Swagger button when the plan declares no documentation, and keeps the application reason', () => {
     const monolith = shortcutsOf('monolith', 'live-skill', deploy({ docsPath: null }), probe({ ui: false, docs: false }), HOST);
-    expect(monolith).toEqual([
-      { kind: 'swagger', href: null, reason: 'o plano não declara a documentação da API' },
-      { kind: 'app', href: null, reason: 'a aplicação não responde na raiz' },
-    ]);
+    expect(monolith).toEqual([{ kind: 'app', href: null, reason: 'a aplicação não responde na raiz' }]);
   });
+
+  it('hides both buttons of an API that declares no documentation, since it has no page at its root', () => {
+    expect(shortcutsOf('monolith', 'live-skill', deploy({ kind: 'api', docsPath: null }), probe({ ui: false, docs: false }), HOST)).toEqual([]);
+  });
+
+  it('hides the application button of an API even when it declares its documentation', () => {
+    expect(shortcutsOf('monolith', 'shop', deploy({ kind: 'api' }), probe({ ui: false }), HOST).map((s) => s.kind)).toEqual(['swagger']);
+  });
+});
+
+describe('a button that cannot open yet', () => {
 
   it('says the documentation does not answer when the declared path fails', () => {
     expect(shortcutsOf('api', 'shop-api', deploy(), probe({ docs: false }), HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'a documentação não responde' }]);

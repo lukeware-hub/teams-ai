@@ -44,7 +44,7 @@ const dashboard = (over: Partial<RepoDashboard> = {}): RepoDashboard => ({
   tests: { passed: 4, failed: 1, failures: { total: 0, list: [] } },
   retries: { attempts: 1, infra: 0, flaky: 0, replanned: 0, fixes: 0, reopened: 0 },
   timeline: { total: 1, list: [{ at: '2026-11-01T10:00:00.000Z', runId: 'shop-api-cart-1', specId: 'cart', text: 'Tarefa T1-cart mesclada na main (pull request #12)', tone: 'good', role: 'dev', taskId: 'T1-cart' }] },
-  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', docsPath: '/docs', services: null },
+  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', kind: 'api', docsPath: '/docs', services: null },
   ...over,
 });
 

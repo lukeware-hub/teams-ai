@@ -141,6 +141,8 @@ export interface LastDeploy {
   runId: string;
   specId: string;
   url: string | null;
+  /** What the plan declared the service is: api, front or mobile; null for a deploy from before the plan declared it. */
+  kind: string | null;
   docsPath: string | null;
   services: Array<{ service: string; url: string | null; docsPath: string | null }> | null;
 }
@@ -226,6 +228,8 @@ function specStateOf(spec: DashboardSpecInput, runs: DashboardRun[], dash: Dashb
 function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>) {
   const best = new Map<string, DashboardTask>();
   const plannedPlan = new Set<string>();
+  // The newest run with a task list: a task it does not carry is history, unless it merged.
+  const current = runs.filter((r) => r.kind === 'run' && tasksByRun.get(r.runId)).at(-1);
   for (const run of runs) {
     const tasks = tasksByRun.get(run.runId);
     if (!tasks) continue;
@@ -243,6 +247,7 @@ function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: M
         best.delete(id);
         continue;
       }
+      if (state !== 'delivered' && run !== current) continue;
       best.set(id, {
         specId: spec.specId,
         runId: run.runId,
@@ -320,13 +325,15 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
 
   const failures: DashboardItem[] = [];
   const blockers: DashboardItem[] = [];
+  // A run that a newer run of its spec finished is history: the spec moved on.
+  const movedOn = (run: DashboardRun) => run.kind === 'run' && input.runs.some((o) => o.specId === run.specId && o.kind === 'run' && o.status === 'done' && o.n > run.n);
   for (const t of tasks) {
     if (t.state === 'failed') failures.push({ kind: 'task', specId: t.specId, runId: t.runId, taskId: t.taskId, text: `Tarefa ${t.taskId}: ${t.reason ?? 'motivo não registrado'}` });
     if (t.state === 'blocked') blockers.push({ kind: 'task', specId: t.specId, runId: t.runId, taskId: t.taskId, text: `Tarefa ${t.taskId}: ${t.reason ?? 'motivo não registrado'}` });
   }
   for (const run of input.runs) {
     if (unreadable.has(run.runId)) failures.push({ kind: 'run', specId: run.specId, runId: run.runId, taskId: null, text: `Run ${run.runId}: journal não pôde ser lido` });
-    if (FAILED_RUN.has(run.status) || (run.status === 'interrupted' && !run.stopped)) {
+    if ((FAILED_RUN.has(run.status) || (run.status === 'interrupted' && !run.stopped)) && !movedOn(run)) {
       failures.push({ kind: 'run', specId: run.specId, runId: run.runId, taskId: null, text: `Run ${run.runId}: ${RUN_FAILURE_LABEL[run.status] ?? run.status}` });
     }
     if (run.status === 'paused:quota' || run.status === 'paused:auth') {
@@ -366,7 +373,7 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
       if (e.type === 'RUN_REOPENED') retries.reopened += 1;
       if (e.type === 'DEPLOY_VERIFIED') {
         const services = Array.isArray(d.services) ? (d.services as Array<Record<string, unknown>>).map((s) => ({ service: String(s.service), url: str(s.url), docsPath: str(s.docsPath) })) : null;
-        lastDeploy = { runId: run.runId, specId: run.specId, url: str(d.url), docsPath: str(d.docsPath), services };
+        lastDeploy = { runId: run.runId, specId: run.specId, url: str(d.url), kind: str(d.kind), docsPath: str(d.docsPath), services };
       }
       if (e.type === 'STEP_STARTED') started.set(String(d.stepId), { role: String(d.role), kind: String(d.kind), taskId: str(d.taskId) });
       if (e.type === 'STEP_FINISHED') {
