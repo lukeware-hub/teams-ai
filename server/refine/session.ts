@@ -666,7 +666,7 @@ export class RefineSession {
 
   /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts. */
   private onFact(e: StoredEvent): void {
-    if (!this.docs || this.state.status === 'started' || this.discarding) return;
+    if (!this.docs || this.state.status === 'started' || this.discarding || this.starting) return;
     const label = boundaryLabel(e, this.state.backlog);
     if (label !== null) this.docs.boundary(label);
     else if (isDocumentEdit(e.type)) this.docs.edit();
@@ -675,6 +675,15 @@ export class RefineSession {
   /** The specs this draft derived: each alias folder, and for a microservice its repository. */
   private docsAliases(style: Style): SpecAlias[] {
     return Object.values(this.state.backlog?.specs ?? {}).flatMap((row) => (row.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
+  }
+
+  /** Closes the documentation repository before the launch; a refusal is a conflict, and nothing launches. A legacy session has nothing to close. */
+  async closeDocs(aliases: readonly string[]): Promise<void> {
+    if (this.state.docsRepo !== true) return;
+    if (!this.docs) throw new ConflictError('O repositório de documentos não está ligado a este refinamento.');
+    await this.docs.close(aliases).catch((err: unknown) => {
+      throw new ConflictError(err instanceof Error ? err.message : String(err));
+    });
   }
 
   /** The registry tick: a waiting boundary or a failed flush is committed and pushed again. */
@@ -1124,7 +1133,9 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    return programEntries(this.deps.draft.specId, backlog, onMain);
+    const entries = programEntries(this.deps.draft.specId, backlog, onMain);
+    await this.closeDocs(entries.map((e) => e.specId));
+    return entries;
   }
 
   /** R11.4: freezes one planned item spec at its turn (specVersion+1, running, specHash) in the draft, where its run reads it. Idempotent. */

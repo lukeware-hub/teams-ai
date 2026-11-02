@@ -328,6 +328,7 @@ export class SessionRegistry {
   /** Freezes the spec and spawns its draft run; a run that never writes its journal is abandoned and reported as a 500. */
   private async launchSpec(draft: Draft, specId: string, session: RefineSession): Promise<string> {
     await session.freeze();
+    await session.closeDocs([specId]);
     const runs = await this.deps.runsDir();
     const runId = await nextRunId({ runs, projectId: draft.projectId }, specId);
     await fs.mkdir(path.posix.join(runs, runId), { recursive: true });

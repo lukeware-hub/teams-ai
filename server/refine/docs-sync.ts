@@ -1,5 +1,5 @@
 import type { Style } from '../docs/layout.js';
-import { commitProjection, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
+import { closeRefinement, commitProjection, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
@@ -71,6 +71,13 @@ export class DocsSync {
     return this.chain;
   }
 
+  /** The closing of the refinement: the flush, the closing commit, its push and the snapshot. It throws, and launches nothing, when one fails. */
+  close(aliases: readonly string[]): Promise<void> {
+    const done = this.chain.then(() => this.closeNow(aliases));
+    this.chain = done.catch(() => undefined);
+    return done;
+  }
+
   /** The registry tick: a pending boundary is flushed again, and a failure without one only pushes the local commits. */
   tick(): Promise<void> {
     if (this.labels.length > 0) return this.flush();
@@ -80,6 +87,17 @@ export class DocsSync {
   private enqueue(task: () => Promise<void>): Promise<void> {
     this.chain = this.chain.then(task);
     return this.chain;
+  }
+
+  private async closeNow(aliases: readonly string[]): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    const store = await openStore(ws, style, exec);
+    const files = await projectDraftFiles(draft, style, this.input.aliases());
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files };
+    await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
+    this.labels = [];
+    this.pending = 0;
+    this.lastError = null;
   }
 
   /** Pushes the commits already local, and projects no document: an edit alone waits for a boundary. */
