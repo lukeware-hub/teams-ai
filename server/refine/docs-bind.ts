@@ -1,6 +1,6 @@
 import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
 import { readDocsMarker, type DocsMarker } from '../docs/project-state.js';
-import { bind, WRITE_PERMISSIONS } from '../docs/store.js';
+import { adoptionProblem, bind } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import { repoInfo, viewerLogin, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
@@ -26,9 +26,8 @@ const full = (target: RepoTarget): string => `${target.owner}/${target.name}`;
 export function refusalOf(info: RepoInfo | null, target: RepoTarget, bound: DocsMarker | null): string | null {
   if (info === null) return null;
   const name = full(target);
-  if (!info.isPrivate) return `O repositório ${name} é público; o repositório de documentos precisa ser privado.`;
-  if (info.isArchived) return `O repositório ${name} está arquivado.`;
-  if (!WRITE_PERMISSIONS.includes(info.viewerPermission)) return `Sua conta não tem permissão de escrita em ${name}.`;
+  const problem = adoptionProblem(info);
+  if (problem !== null) return problem;
   const ours = bound?.target.owner === target.owner && bound.target.name === target.name;
   if (!info.isEmpty && !ours) return `O repositório ${name} já tem histórico e não é deste projeto; escolha um repositório vazio.`;
   return null;

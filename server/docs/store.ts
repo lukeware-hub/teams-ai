@@ -361,10 +361,17 @@ export interface BindInput {
 export const WRITE_PERMISSIONS = ['ADMIN', 'MAINTAIN', 'WRITE'];
 
 /** A repository that already exists must be private, not archived, and writable by the token's user. */
+/** Why the repository cannot hold the documents, in plain words, or null when it can. */
+export function adoptionProblem(info: RepoInfo): string | null {
+  if (!info.isPrivate) return `O repositório ${info.nameWithOwner} é público; o repositório de documentos precisa ser privado.`;
+  if (info.isArchived) return `O repositório ${info.nameWithOwner} está arquivado.`;
+  if (!WRITE_PERMISSIONS.includes(info.viewerPermission)) return `Sua conta não tem permissão de escrita em ${info.nameWithOwner}.`;
+  return null;
+}
+
 function assertAdoptable(info: RepoInfo): void {
-  if (!info.isPrivate) throw new DocsStoreError(`${info.nameWithOwner} must be private`);
-  if (info.isArchived) throw new DocsStoreError(`${info.nameWithOwner} is archived`);
-  if (!WRITE_PERMISSIONS.includes(info.viewerPermission)) throw new DocsStoreError(`no write permission on ${info.nameWithOwner}`);
+  const problem = adoptionProblem(info);
+  if (problem !== null) throw new DocsStoreError(problem);
 }
 
 /** Creates the local clone on its main branch, unless it exists already. */

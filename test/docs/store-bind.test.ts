@@ -92,12 +92,12 @@ describe('bind', () => {
 
   it('refuses a repository that is not private', async () => {
     gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
-    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/must be private/);
+    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/é público/);
   });
 
   it('leaves no marker after a refused attach, so a later bind can pick another target', async () => {
     gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
-    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/must be private/);
+    await expect(bind(ws, input, gh.exec)).rejects.toThrow(/é público/);
     expect(await readDocsMarker(ws)).toBeNull();
     const r = await bind(ws, { ...input, target: { owner: 'acme', name: 'other' } }, gh.exec);
     expect(r.created).toBe(true);
