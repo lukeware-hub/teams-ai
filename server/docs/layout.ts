@@ -8,6 +8,11 @@ export const SPEC_FILES = { spec: 'spec.md', plan: 'plan.md', task: 'task.md' } 
 
 export type Kind = keyof typeof SPEC_FILES;
 export type Style = 'monolith' | 'microservices';
+/** A documentation-repository run: the layout's style, and the pinned snapshot its agents read the documents from. */
+export interface DocsRun {
+  style: Style;
+  snapshot: string;
+}
 export interface RepoTarget {
   owner: string;
   name: string;

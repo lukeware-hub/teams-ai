@@ -24,6 +24,7 @@ import type { RefContext } from '../validators/references.js';
 import { REQUIRED_BLOCKING_GATES } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
 import { skillsForRole } from '../skills/catalog.js';
+import { absoluteRule } from '../runner/role-settings.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -41,6 +42,8 @@ export interface PackBase {
   planFile?: string;
   /** The spec's task list in the repository, when its refinement wrote one. */
   taskFile?: string;
+  /** The pinned snapshot folder a documentation-repository project reads its documents from; absent for the legacy layout. */
+  docsRoot?: string;
 }
 
 /** What a step in a service's repository needs from the project and cannot read there (R12.6). */
@@ -123,6 +126,16 @@ function serviceRule(ctx: ServiceContext, platform: readonly PlatformService[], 
 export const planRule = (planFile?: string): string =>
   planFile ? `This spec's implementation plan is ${planFile}: read it, then follow its tasks, their files and their test steps. The plan derives from the five main documents: when it disagrees with one of them, the document wins and the departure goes in deviations.` :'This spec has no implementation plan in the repository, so there is no plan to follow for this task.';
 
+/** The read-only grant of a documentation snapshot: its folder and everything below it, and no write. */
+export const snapshotGrant = (root: string | undefined): string[] => (root === undefined ? [] : [`Read(${absoluteRule(root)})`, `Read(${absoluteRule(root)}/**)`]);
+
+/** A path of the pack as the agent sees it: under the snapshot for a documentation repository. */
+const shown = (base: PackBase, file: string | undefined): string | undefined => (file === undefined || base.docsRoot === undefined ? file : `${base.docsRoot}/${file}`);
+
+/** The five documents of a documentation repository, read from its pinned snapshot; the legacy rule names the worktree instead. */
+export const docsRepoRule = (root: string): string =>
+  `The project's documents are in the pinned snapshot ${root}: read ${root}/docs/project.md, ${root}/docs/stack.md, ${root}/docs/flow.md, ${root}/docs/design.md and ${root}/docs/briefing.md before you change any file: they are the owner's only source of truth, and a document wins over the code, the plan and the tech spec when they disagree. The plan derives from these documents and never overrides them. The snapshot is read only: never write to it.`;
+
 /** The project's five documents in the repository's docs folder, and where the ADRs and tech spec the budget drops live; a service repository holds none of them, so the rule does not apply there. */
 export const sourceDocsRule = (specId: string): string =>
   `When the repository has docs/project.md, read docs/project.md, docs/stack.md, docs/flow.md, docs/design.md and the briefing when present (docs/specs/${specId}/briefing.md, or docs/briefing.md when the spec has none) before you change any file: they are the owner's only source of truth, and a document wins over the code, the plan and the tech spec when they disagree. The plan, the tech spec and the ADRs derive from these documents and never override them. When this pack's note says adrs or tech-spec were dropped for budget, read the ADRs in docs/adr/ or the technical spec docs/specs/${specId}/tech-spec.md in their place.`;
@@ -132,7 +145,11 @@ export const sourceDocsRule = (specId: string): string =>
 export const taskListRule = (taskFile?: string): string =>
   taskFile ? `This spec's task list is ${taskFile}: before you change a file of a task, read that task's entry, its criteria and its scenarios, and make the tests prove them.` : '';
 
-const sourceRules = (base: PackBase): string[] => [planRule(base.planFile), ...(base.taskFile ? [taskListRule(base.taskFile)] : []), sourceDocsRule(base.spec.specId)];
+const sourceRules = (base: PackBase): string[] => [
+  planRule(shown(base, base.planFile)),
+  ...(base.taskFile ? [taskListRule(shown(base, base.taskFile))] : []),
+  base.docsRoot === undefined ? sourceDocsRule(base.spec.specId) : docsRepoRule(base.docsRoot),
+];
 
 /** A builder lists what it read, so the orchestrator can check it against the files the source rules name. */
 export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
@@ -174,7 +191,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(opts.plan.file, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -606,6 +623,8 @@ export interface AgentStepDeps {
   /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
   agentSetting?: (role: Role) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
+  /** The pinned snapshot a documentation-repository project reads; every step gets a read-only grant of it. */
+  docsRoot?: string;
   /** Whether the owner lets the agents decide; a step that does not judge then gets full access (shell and web). */
   agentsDecide?: () => Promise<boolean>;
   specHash: string;
@@ -672,7 +691,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         phase: req.phase,
         taskId: req.taskId,
         attempt: req.attempt,
-        extraAllow: req.extraAllow,
+        extraAllow: [...(req.extraAllow ?? []), ...snapshotGrant(deps.docsRoot)],
         webSearch: req.webSearch,
         protectedDirs: req.protectedDirs,
         denyRead: req.denyRead,

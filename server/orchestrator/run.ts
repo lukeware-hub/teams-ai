@@ -54,6 +54,7 @@ import { gateReachableUrl, runSmoke } from '../exec/smoke.js';
 import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
+import type { DocsRun } from '../docs/layout.js';
 import { readState, updateState } from '../docs/project-state.js';
 
 export interface RunDeps {
@@ -106,6 +107,8 @@ export interface RunDeps {
   gateExecutor?: GateExecutor;
   /** Set when the project's documents live in a documentation repository; its machine files are read from the mirror. */
   docsRepo?: boolean;
+  /** A documentation-repository project's layout and the pinned snapshot its agents read the documents from. */
+  docs?: DocsRun;
 }
 
 export type ExecuteResult = RunResult | 'paused:auth';
@@ -420,6 +423,7 @@ export class Run {
       stepModel: (kind) => stepModelFor(cfg.routing, kind),
       agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
+      docsRoot: this.deps.docs?.snapshot,
       agentsDecide: () => this.autonomous(),
       specHash: this.deps.spec.specHash!,
     };
@@ -567,6 +571,7 @@ export class Run {
     budgetTokens: 12_000,
     planFile: this.deps.planFile,
     taskFile: this.deps.taskFile,
+    docsRoot: this.deps.docs?.snapshot,
   });
 
   private codeFor(view: ServiceView) {
