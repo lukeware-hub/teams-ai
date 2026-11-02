@@ -1202,18 +1202,14 @@ export class RefineSession {
     const inputHash = await planInputHash(this.deps.draft, this.state);
     if (!backlog.detail) throw new ConflictError('Detalhe as specs do backlog antes de iniciar: o início a partir do backlog usa as specs planejadas.');
     this.refuseWithoutSpeckit(inputHash);
-    let closing: { ok: boolean } | undefined;
     if (this.state.repositories === true) {
-      // The owner starts on the summary he read: every check green, and the same summary the page showed (its hash).
+      // The owner starts on the summary he read, the same one the page showed (its hash); its unmet checks only advise.
       if (summaryHash === undefined) throw new ConflictError('Abra o resumo do refinamento e confirme antes de iniciar.');
       const summary = await this.closingSummary();
-      const failing = summary.checks.find((c) => !c.ok);
-      if (failing) throw new ConflictError(`O resumo ainda tem uma checagem aberta: ${failing.detail}.`);
       if (summary.summaryHash !== summaryHash) throw new ConflictError('O resumo mudou desde que você o abriu: revise-o antes de iniciar.');
-      closing = { ok: summary.ok };
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
-    if (!canStart({ ...this.state, closing })) throw new ConflictError(`session cannot start now (${this.state.status})`);
+    if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);
     await this.closeDocs(entries.map((e) => e.specId));
     return entries;

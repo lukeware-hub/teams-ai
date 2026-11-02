@@ -150,16 +150,16 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('lists the unmet checks in plain words, with a button that opens the review step', () => {
+  it('keeps the start open while a closing check fails, and lists each unmet item with its detail and what to fix', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
     const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
     renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, handlersWithSpeckit());
-    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    const reason = screen.getByTestId('start-reason');
-    expect(reason.textContent).toContain('Ainda não dá para iniciar');
-    expect(reason.textContent).toContain('Escopo explícito');
-    expect(reason.textContent).not.toContain('po.scope-explicit');
-    expect(screen.queryByText(/Pode iniciar/)).toBeNull();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
+    const alert = screen.getByTestId('closing-alert');
+    expect(alert.textContent).toContain('Itens reprovados no resumo. Eles não travam o início');
+    expect(alert.textContent).toContain('Escopo explícito');
+    expect(alert.textContent).toContain('o plano traz tarefa fora dos documentos');
+    expect(alert.textContent).not.toContain('po.scope-explicit');
     fireEvent.click(screen.getByTestId('start-reason-action'));
     expect(window.location.search).toContain('etapa=revisao');
   });

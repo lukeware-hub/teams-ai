@@ -3,7 +3,6 @@ import type { ClosingSummary } from '../api.js';
 
 /** The summary a repository session shows before the owner authorizes the development. */
 export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summary: ClosingSummary; busy: boolean; onCancel: () => void; onAuthorize: (summaryHash: string) => void }) {
-  const failing = summary.checks.find((check) => !check.ok);
   return (
     <Dialog title="Resumo do refinamento" onClose={onCancel}>
       <div className="grid gap-4" data-testid="closing-summary">
@@ -44,10 +43,10 @@ export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summar
           </ul>
         </details>
         <p className="m-0 text-[0.8125rem] text-ink-soft">Até duas specs rodam ao mesmo tempo. Reparos e novas tentativas são automáticos; o custo aparece como alerta, sem parar o desenvolvimento.</p>
-        {failing && <p role="alert" className="m-0 text-[0.8125rem] text-warn">{failing.detail}</p>}
+        {!summary.ok && <p role="status" className="m-0 text-[0.8125rem] text-ink-soft">Itens reprovados não travam o início: cada um está na lista acima, com o que falta corrigir.</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" data-testid="closing-cancel" onClick={onCancel}>Cancelar</button>
-          <button type="button" data-testid="closing-authorize" className="primary" disabled={!summary.ok || busy} onClick={() => onAuthorize(summary.summaryHash)}>
+          <button type="button" data-testid="closing-authorize" className="primary" disabled={busy} onClick={() => onAuthorize(summary.summaryHash)}>
             Autorizo iniciar o desenvolvimento
           </button>
         </div>

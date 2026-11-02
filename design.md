@@ -1227,7 +1227,7 @@ Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`,
 
 ### 26.8 Backlog por repositório
 
-Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo. A etapa só gera specs, planos e tarefas: não valida os arquivos e não mostra aviso de documento mudado no topo. O motivo que impede iniciar aparece logo abaixo de `Cobertura`: em texto simples, ou, com itens faltando, a lista deles e o botão `Ver o que falta`. O rodapé fica só com os botões. Quando `Preparar de novo` reaproveita todos os planos, porque nada mudou, a etapa diz `Os planos já estavam atuais; nada foi refeito.` logo abaixo do estado dos planos.
+Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo. A etapa só gera specs, planos e tarefas: não valida os arquivos e não mostra aviso de documento mudado no topo. O motivo que impede iniciar aparece logo abaixo de `Cobertura`. Os itens reprovados do resumo aparecem como alerta nesse mesmo lugar, cada um com o seu detalhe e as divergências entre documentos, e não travam o início. O rodapé fica só com os botões. Quando `Preparar de novo` reaproveita todos os planos, porque nada mudou, a etapa diz `Os planos já estavam atuais; nada foi refeito.` logo abaixo do estado dos planos.
 
 ### 26.9 Diálogo de resumo do refinamento
 
@@ -1238,7 +1238,7 @@ Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repo
 - uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
 - `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
 
-Uma verificação que falha desliga a primária e diz por quê: ao lado do botão, um bloco lista em palavras simples cada item que falta, com a orientação de corrigir os documentos e avaliar de novo, e o botão `Ver o que falta`, que leva à etapa Resumo (§26.11). Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+Uma verificação que falha só alerta: a primária continua habilitada. O diálogo lista cada verificação com o seu detalhe, e a etapa Backlog mostra um bloco de alerta com cada item reprovado, o seu motivo, as divergências entre documentos e o botão `Ver o que falta`, que leva à etapa Resumo (§26.11). O servidor recusa só um resumo diferente do que a página mostra (409), nunca por causa de uma verificação reprovada. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
 
 ### 27.2 Projeto: repositórios
 

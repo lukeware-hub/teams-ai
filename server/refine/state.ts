@@ -306,8 +306,6 @@ export interface StartInput {
   speckit?: { status: string; stale: boolean; inputHash?: string } | null;
   questions?: ReadonlyArray<{ status: string; blocking: boolean; origin?: string }>;
   repositories?: boolean;
-  /** The closing checks of a repository session, once the snapshot computed them; absent for other sessions. */
-  closing?: { ok: boolean } | null;
 }
 
 /** One closing check: its id, whether it passes, and what the owner reads about it in plain words. */
@@ -362,8 +360,6 @@ const preplanMissing = (b: NonNullable<StartInput['backlog']>): boolean => (b.it
 /** The start is open unless the agents evaluate, a run started or the plan preparation is not current: checks, other questions and the Jev only advise. */
 export function canStart(s: StartInput): boolean {
   if (s.status === 'evaluating' || s.status === 'started' || speckitPending(s)) return false;
-  // A repository session starts only after the owner's summary has every check green.
-  if (s.repositories === true && s.closing?.ok !== true) return false;
   if (s.backlog?.enabled) return s.backlog.detail === true && (s.backlog.items?.length ?? 0) > 0 && !preplanMissing(s.backlog);
   return s.mode !== 'new-project' && Boolean(s.derived);
 }

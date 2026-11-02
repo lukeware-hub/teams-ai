@@ -24,10 +24,15 @@ describe('closing dialog', () => {
     expect(onAuthorize).toHaveBeenCalledWith('sha256:abc');
   });
 
-  it('holds the authorization off and says which check fails', () => {
-    render(<ClosingDialog summary={summary(false)} busy={false} onCancel={() => {}} onAuthorize={() => {}} />);
-    expect(screen.getByTestId('closing-authorize').hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('alert').textContent).toBe('sem plano: cart');
+  it('keeps the authorization open when a check fails, and lists the failing check with its detail', () => {
+    const onAuthorize = vi.fn();
+    render(<ClosingDialog summary={summary(false)} busy={false} onCancel={() => {}} onAuthorize={onAuthorize} />);
+    const button = screen.getByTestId('closing-authorize');
+    expect(button.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('close-plans').textContent).toContain('sem plano: cart');
+    expect(screen.getByRole('status').textContent).toContain('Itens reprovados não travam o início');
+    fireEvent.click(button);
+    expect(onAuthorize).toHaveBeenCalledWith('sha256:abc');
   });
 
   it('counts the assumptions taken and lists each repository with its counts', () => {

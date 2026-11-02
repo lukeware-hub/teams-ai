@@ -22,7 +22,7 @@ import { ClosingDialog } from '../refine/ClosingDialog.js';
 import { ArchitectureCard } from '../refine/ArchitectureCard.js';
 import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
-import { canStartRun, ProgramStatus, startInputOf, useProgram } from '../refine/ProgramPanel.js';
+import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -392,7 +392,7 @@ export function RefinementView(p: ViewProps) {
     setAnswer('');
     setDocsAnswered(false);
   }, [current?.questionId, speckitAsked[0]?.questionId, step]);
-  const canStart = canStartRun(startInputOf(snap), busy);
+  const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
   const backlogOn = st.backlog?.enabled === true;
@@ -1195,26 +1195,36 @@ export function RefinementView(p: ViewProps) {
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
     </ActionButton>
   );
-  // A failing closing check keeps the start locked: the owner reads each unmet item and opens the review step that explains it.
-  const closingFailing = snap.closing?.checks.find((check) => !check.ok);
-  const unmetChecks = st.checklist.filter((c) => !c.passed).map((c) => checkLabel[c.id] ?? c.id);
-  const unmet = unmetChecks.length > 0 || closingFailing === undefined ? unmetChecks : [closingFailing.detail];
-  const closingGate = !canStart && speckitReady && !speckitRunning && !speckitAsked.some((q) => q.blocking) && st.backlog?.detail === true && closingFailing !== undefined;
   // What the start waits for, in plain words, while it cannot start: the one primary action is the next step.
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
-  // What the start waits for sits under the coverage: the closing gate with its unmet checks, else the plain reason.
-  const startLine = closingGate ? (
-    <div role="status" data-testid="start-reason" className="grid gap-2 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
-      <p className="m-0 font-semibold">Ainda não dá para iniciar. Falta:</p>
-      <ul className="m-0 grid list-disc gap-1 pl-5">{unmet.map((item) => <li key={item}>{item}</li>)}</ul>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-ink-soft">No Resumo, cada item mostra o motivo. Corrija o documento na sua etapa e avalie de novo.</span>
-        <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
-      </div>
-    </div>
-  ) : startReason ? <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p> : null;
+  // The closing checks only alert: the start stays open, and each unmet check says what to fix, with its divergences.
+  const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
+  const failingChecklist = st.checklist.filter((c) => !c.passed);
+  const closingRows = closingFailing.flatMap((check) => (check.id === 'questions' && failingChecklist.length > 0
+    ? failingChecklist.map((item) => (
+      <li key={`${check.id}-${item.id}`}>
+        <b>{checkLabel[item.id] ?? item.id}</b>: {checkDetail(item.detail)}
+        {item.divergences?.length ? <Divergences items={item.divergences} /> : null}
+      </li>
+    ))
+    : [<li key={check.id}>{check.detail}</li>]));
+  // The plain reason and the closing alert sit under the coverage; the footer keeps only the buttons.
+  const startLine = (
+    <>
+      {startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>}
+      {closingFailing.length > 0 && st.backlog?.detail === true && (
+        <div role="status" data-testid="closing-alert" className="grid gap-3 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
+          <p className="m-0 font-semibold">Itens reprovados no resumo. Eles não travam o início: corrija o que for preciso e veja o motivo de cada um.</p>
+          <ul className="m-0 grid list-disc gap-2 pl-5">{closingRows}</ul>
+          <div className="flex flex-wrap justify-end">
+            <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
+          </div>
+        </div>
+      )}
+    </>
+  );
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   // Without the owner the repository has no name yet, so the backlog cannot be created.
@@ -1452,7 +1462,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
-        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(startInputOf(snap), false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
+        <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
