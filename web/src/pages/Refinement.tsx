@@ -436,7 +436,7 @@ export function RefinementView(p: ViewProps) {
   const specsMd = useMemo(() => (backlogOn && (st.backlog?.items.length ?? 0) > 0 ? renderSpecsMd(snap.specId, st.backlog as never) : ''), [backlogOn, snap.specId, st.backlog]);
   // One plan step per item, so the plans box lists the ones still to come.
   const speckitPlan = useMemo(() => speckitList.map((item) => ({ command: 'plan', itemKey: item.key })), [speckitList]);
-  const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} />;
+  const speckitStatus = <PlansStatus speckit={speckit} titles={itemTitles} plan={speckitPlan} waiting={speckitAsked.some((q) => q.blocking)} startable={canStart} />;
   // A backlog prepares once it is detailed, a single spec once it is derived.
   const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
   const prepareButton = (
@@ -1176,10 +1176,12 @@ export function RefinementView(p: ViewProps) {
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
     </ActionButton>
   );
+  // A failing closing check keeps the start locked, and the owner reads why here.
+  const closingFailing = snap.closing?.checks.find((check) => !check.ok);
   // What the start waits for, in plain words, while it cannot start: the one primary action is the next step.
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
-    : speckitReason;
+    : speckitReason ?? (closingFailing && `Não dá para iniciar: ${closingFailing.detail}.`);
   const startNote = startReason ? <span className="self-center text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</span> : null;
   // The architecture step: the decision of the five documents, and Continuar once it is current.
   const architectureDecided = st.architecture != null && snap.architectureStale !== true;

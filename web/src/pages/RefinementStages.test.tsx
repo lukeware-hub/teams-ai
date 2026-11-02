@@ -138,6 +138,14 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
+  it('names the closing check that keeps the start locked, and does not say it can start', () => {
+    const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never }), closing } as never, handlersWithSpeckit());
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('start-reason').textContent).toContain('po.scope-explicit');
+    expect(screen.queryByText(/Pode iniciar/)).toBeNull();
+  });
+
   it('shows the questions the plan asked, for the owner to answer, and keeps the start locked while one blocks', () => {
     const asked = { ...question(true), questionId: 'speckit-abc', origin: 'speckit', itemKey: 'base', text: 'Qual banco de dados?' };
     renderView(wizard({ status: 'answering', speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());

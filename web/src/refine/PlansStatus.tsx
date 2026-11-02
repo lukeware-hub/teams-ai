@@ -50,7 +50,7 @@ const rowIcon = {
 const line = 'm-0 flex items-start gap-2 text-[0.9375rem] leading-[1.5]';
 
 
-type Props = { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean };
+type Props = { speckit: Speckit; titles: Map<string, string>; plan?: readonly Command[]; waiting?: boolean; startable?: boolean };
 
 /** Where the plan preparation stands, with the feature folders it made so far. `plan` is every step in order. */
 export function PlansStatus(props: Props) {
@@ -62,7 +62,7 @@ export function PlansStatus(props: Props) {
 }
 
 /** Where the plan preparation stands: not started, running, done, out of date or failed. */
-function Status({ speckit, titles, plan = [], waiting = false }: Props) {
+function Status({ speckit, titles, plan = [], waiting = false, startable = false }: Props) {
   if (!speckit) return <p className={`${line} text-ink-soft`} data-testid="speckit-idle">Os planos ainda não foram preparados. Um agente escreve o plano de implementação de cada item do backlog.</p>;
   if (speckit.status === 'failed') {
     return (
@@ -112,5 +112,5 @@ function Status({ speckit, titles, plan = [], waiting = false }: Props) {
   }
   if (speckit.stale) return <p className={`${line} text-warn`} data-testid="speckit-stale"><Icon name="alert" size={20} /><span>Os documentos ou o backlog mudaram depois da preparação. Prepare de novo antes de iniciar.</span></p>;
   if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span>Responda à pergunta dos planos abaixo para poder iniciar o desenvolvimento.</span></p>;
-  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.</span></p>;
+  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>{startable ? 'Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.' : 'Tudo preparado: um plano de implementação por item.'}</span></p>;
 }
