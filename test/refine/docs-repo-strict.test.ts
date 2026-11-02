@@ -8,7 +8,6 @@ import { makeRig, PROJECT, type Rig } from '../fixtures/docs-repo-rig.js';
 
 const BOUND = '0123456789abcdef0123456789abcdef01234567';
 const PROJECT_JSON = `${JSON.stringify(makeProject(), null, 2)}\n`;
-const UNPUBLISHED = /o repositório de documentos deste projeto ainda não foi publicado/;
 const TAKEN = /already exists on main/;
 const ANOTHER_NAME = /informe outro nome para a primeira spec/;
 const NOT_CREATED = /o repositório de documentos ainda não foi criado/;
@@ -19,16 +18,7 @@ afterEach(async () => {
   await rig?.close();
 });
 
-describe('a documentation repository whose first push has not landed', () => {
-  it('refuses a new spec in plain words, without reading a clone', async () => {
-    rig = await makeRig({ docsRepoLayout: true });
-    await writeDocsMarker(rig.ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: PROJECT }, firstSha: null });
-    await writeState(rig.ws, 'project.json', PROJECT_JSON);
-    const refusal = rig.registry.newSpec(PROJECT, 'alpha-001');
-    await expect(refusal).rejects.toBeInstanceOf(ConflictError);
-    await expect(refusal).rejects.toThrow(UNPUBLISHED);
-  });
-
+describe('a spec the mirror already holds', () => {
   it('refuses a spec the mirror already holds as taken, without asking for a workspace clone', async () => {
     rig = await makeRig({ docsRepoLayout: true });
     await writeDocsMarker(rig.ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: PROJECT }, firstSha: BOUND });

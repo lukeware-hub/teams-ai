@@ -43,6 +43,7 @@ import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDeta
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { isDocsRepo, readState } from '../docs/project-state.js';
+import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, loadRepoRuns, specViews } from './repository-dashboard.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
@@ -602,6 +603,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (wantsGithub) await deleteGithubRepos(await githubReposOf(repoDirsOf(ws, services)), deps.exec ?? execCommand);
           // Last, so no refinement reopens between its close and the removal of its files.
           await deps.closeDrafts?.(projectId);
+          // Before the workspace goes, because the marker that says it is a documentation repository lives there.
+          if (await isDocsRepo(ws)) await releaseDocs(ws);
           await removeTree(ws.root);
           for (const dir of dirs) await removeTree(dir);
           const gates = expandHome(idx.cfg.paths.gateCache, deps.home);

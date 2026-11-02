@@ -90,6 +90,18 @@ describe('bind', () => {
     expect(await readDocsMarker(ws)).toBeNull();
   });
 
+  it('refuses when the repository create answers HTTP 422, and enables nothing: no repository, no marker', async () => {
+    const refuse: Exec = async (spec) => {
+      if (spec.bin === 'gh' && spec.args[0] === 'repo' && spec.args[1] === 'create') {
+        return { exitCode: 1, signal: null, stdout: '', stderr: 'HTTP 422: Repository creation failed.', timedOut: false, durationMs: 1, truncated: false };
+      }
+      return gh.exec(spec);
+    };
+    await expect(bind(ws, input, refuse)).rejects.toThrow(/não foi possível criar o repositório privado/);
+    expect(gh.creates).toEqual([]);
+    expect(await readDocsMarker(ws)).toBeNull();
+  });
+
   it('refuses a repository that is not private', async () => {
     gh.register('acme/kayron-hub', await existing(false), { isPrivate: false });
     await expect(bind(ws, input, gh.exec)).rejects.toThrow(/é público/);

@@ -84,6 +84,36 @@ describe('DocsSync commits at boundaries', () => {
   });
 });
 
+/** Every file under a folder, by its relative path, with its exact text. */
+async function snapshot(dir: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const walk = async (rel: string): Promise<void> => {
+    for (const entry of await fs.readdir(path.join(dir, rel), { withFileTypes: true })) {
+      const next = path.posix.join(rel, entry.name);
+      if (entry.isDirectory()) await walk(next);
+      else out[next] = await fs.readFile(path.join(dir, next), 'utf8');
+    }
+  };
+  await walk('');
+  return out;
+}
+
+describe('DocsSync flush leaves the draft and its base copy alone', () => {
+  it('a flush with a changed document writes no draft file and does not move the base copy', async () => {
+    await fs.cp(draft.docs, draft.base!, { recursive: true });
+    const s = sync();
+    await edit('project.md', 'changed\n');
+    s.edit();
+    const docsBefore = await snapshot(draft.docs);
+    const baseBefore = await snapshot(draft.base!);
+    await s.flush();
+    expect(s.view.lastError).toBeNull();
+    expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('changed');
+    expect(await snapshot(draft.docs)).toEqual(docsBefore);
+    expect(await snapshot(draft.base!)).toEqual(baseBefore);
+  });
+});
+
 describe('DocsSync coalesces a burst', () => {
   it('six spec facts delivered in one tick give one commit, with the six specs', async () => {
     const aliases = ['hello-app-login', 'hello-app-cart', 'hello-app-search', 'hello-app-profile', 'hello-app-orders', 'hello-app-help'];

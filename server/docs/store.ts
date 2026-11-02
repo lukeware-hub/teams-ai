@@ -440,11 +440,20 @@ async function assertNoOtherHistory(store: Store): Promise<void> {
 }
 
 /** Connects the store to its repository, creating it when missing and adopting it when empty or ours; returns whether it was created. */
+/** Creates the private repository; a refusal is said in plain words, and it comes before any remote effect. */
+async function createOrRefuse(target: RepoTarget, exec: Exec): Promise<string> {
+  try {
+    return await createPrivateRepo(target, exec);
+  } catch {
+    throw new DocsStoreError(`não foi possível criar o repositório privado ${target.owner}/${target.name}; nada foi criado nem publicado`);
+  }
+}
+
 async function attach(store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
   const fullName = `${target.owner}/${target.name}`;
   const info = await repoInfo(store.dir, fullName, exec);
   if (info) assertAdoptable(info);
-  const url = info ? info.url : await createPrivateRepo(target, exec);
+  const url = info ? info.url : await createOrRefuse(target, exec);
   await setOrigin(store, `${url}.git`);
   await git(store.dir, ['fetch', '-q', 'origin'], networkExec(exec));
   await assertNoOtherHistory(store);

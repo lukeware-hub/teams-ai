@@ -16,7 +16,7 @@ import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { assertAlias, CENTRAL_REPO } from '../docs/layout.js';
 import { docsRepoLayoutEnabled, isDocsRepo, listState, readDocsMarker, readState, readStateText, type DocsMarker } from '../docs/project-state.js';
-import { aliasesOnStore, storeOf } from '../docs/store.js';
+import { aliasesOnStore, releaseDocs, storeOf } from '../docs/store.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
@@ -80,8 +80,6 @@ const aliasOrConflict = (specId: string, fromProjectName = false): void => {
     throw new ConflictError(`o alias ${specId} não é válido: use até 40 caracteres, só letras minúsculas, números e hífens, sem nomes reservados do Windows como con ou nul; o hífen não pode começar nem terminar o nome, nem aparecer duas vezes seguidas${hint}`);
   }
 };
-/** Refuses a read of main while the documentation repository is not published: the store has no origin main yet. */
-const UNPUBLISHED = 'o repositório de documentos deste projeto ainda não foi publicado; resolva o aviso de documentos antes de continuar';
 /** Refuses a spec of a documentation-repository project before its repository exists; the architecture step creates it. */
 const NOT_CREATED = 'o repositório de documentos ainda não foi criado; crie-o na etapa de arquitetura da primeira spec antes de criar outra';
 /** Opens the index for one query only, so no file handle stays open between turns. */
@@ -204,12 +202,10 @@ export class SessionRegistry {
     return marker?.firstSha ? marker : null;
   }
 
-  /** Main as this project's drafts read it: the store of a published documentation repository, else the project's clone. */
+  /** Main as this project's drafts read it: the store of a bound documentation repository, else the project's clone. */
   private async mainOf(ws: Workspace): Promise<MainCopy> {
-    const marker = await readDocsMarker(ws);
-    if (!marker) return repoMain(ws.repo, this.deps.exec);
-    if (!marker.firstSha) throw new ConflictError(UNPUBLISHED);
-    return docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec));
+    const marker = await this.boundMarker(ws);
+    return marker ? docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec)) : repoMain(ws.repo, this.deps.exec);
   }
 
   /** A follow-on draft of a bound documentation repository starts from the mirror, so the mirror must hold the project. */
@@ -436,15 +432,18 @@ export class SessionRegistry {
     await this.discardDraft(projectId, specId, session, true);
   }
 
-  /** Ends a draft; only a deleted draft takes its alias folders out of the documentation store, a restarted one keeps them. */
+  /** Ends a draft; a deleted draft takes its alias folders out of the documentation store, and the last one takes the store too. A restarted draft keeps everything. */
   private async discardDraft(projectId: string, specId: string, session: RefineSession, retire = false): Promise<void> {
+    const notStarted = session.state.status !== 'started';
     if (retire) await session.retireDocs();
     session.beginDiscard();
     await session.abort();
-    const draft = draftPaths(await this.ws(projectId), specId);
+    const ws = await this.ws(projectId);
+    const draft = draftPaths(ws, specId);
     await session.close();
     this.sessions.delete(`${projectId}/${specId}`);
     await fs.rm(draft.root, { recursive: true, force: true });
+    if (retire && notStarted && (await this.list()).every((row) => row.projectId !== projectId) && (await isDocsRepo(ws))) await releaseDocs(ws);
   }
 
   /** Throws the draft away even after it started a run, then reopens the spec's refinement from main. An interrupted run does not block: it is dead. */
