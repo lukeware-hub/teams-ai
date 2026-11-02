@@ -154,4 +154,32 @@ describe('RepositoryPage', () => {
     expect(await screen.findByTestId('repo-page')).toBeTruthy();
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  it('lists each spec in the collapsed specs table with its state and its tasks done', async () => {
+    const rows: RepoDetailView['rows'] = [
+      { specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', title: 'Carrinho', priority: 'P1', dependsOn: [], plan: true, tasks: 3, blocked: false },
+      { specId: 'pay', status: 'running', activeRunId: 'run-1', repository: 'shop-api', title: 'Pagamento', priority: 'P2', dependsOn: ['cart'], plan: false, tasks: 2, blocked: true },
+    ];
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail({ rows }));
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    renderAt();
+    const specs = await screen.findByTestId('repo-specs');
+    expect((specs as HTMLDetailsElement).open).toBe(false);
+    fireEvent.click(within(specs).getByText('Especificações'));
+    expect((specs as HTMLDetailsElement).open).toBe(true);
+    const cart = within(screen.getByTestId('repo-spec-cart'));
+    expect(cart.getByText('3 de 3')).toBeTruthy();
+    const pay = within(screen.getByTestId('repo-spec-pay'));
+    expect(pay.getByText('Bloqueada')).toBeTruthy();
+    expect(pay.getByText('0 de 2')).toBeTruthy();
+    expect(pay.getByText('cart')).toBeTruthy();
+  });
+
+  it('says "sem dados" for the timeline when the repository has no event', async () => {
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard({ timeline: { total: 0, list: [] } }));
+    renderAt();
+    await screen.findByTestId('repo-timeline');
+    expect(screen.getByText('sem dados: nenhum evento registrado.')).toBeTruthy();
+  });
 });

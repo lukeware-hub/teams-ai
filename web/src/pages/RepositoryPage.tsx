@@ -99,6 +99,41 @@ export function RepositoryPage() {
           <p className="hint">Nenhuma integração.</p>
         )}
       </section>
+      <details className={panel} data-testid="repo-specs">
+        <summary className={`${sectionTitle} cursor-pointer`}>
+          <h2 className={sectionHeading}>Especificações</h2>
+        </summary>
+        {detail.rows.length === 0 ? (
+          <p className="hint">Nenhuma spec neste repositório.</p>
+        ) : (
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full text-[0.8125rem]">
+              <thead>
+                <tr className="text-left text-ink-soft">
+                  <th scope="col">Spec</th>
+                  <th scope="col">Prioridade</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Plano</th>
+                  <th scope="col">Tarefas</th>
+                  <th scope="col">Depende de</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detail.rows.map((row) => (
+                  <tr key={row.specId} data-testid={`repo-spec-${row.specId}`}>
+                    <td>{row.title ?? row.specId}</td>
+                    <td>{row.priority ?? 'sem dados'}</td>
+                    <td>{row.blocked ? 'Bloqueada' : row.status}</td>
+                    <td>{row.plan ? 'Sim' : 'Não'}</td>
+                    <td>{`${row.status === 'done' ? row.tasks : 0} de ${row.tasks}`}</td>
+                    <td>{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </details>
       {dashboard && <Timeline timeline={dashboard.timeline} />}
     </div>
   );

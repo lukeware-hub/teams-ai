@@ -1260,11 +1260,16 @@ Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `re
 - `Falhas e bloqueios`: só aparece com item. Cada item traz o motivo e, quando há uma run ou tarefa, o link `Abrir run`, que leva à decisão pendente.
 - `Integrações`, com as linhas da arquitetura que tocam o repositório.
 - `Linha do tempo`: os eventos de todas as runs da spec, em frase, com agente, hora, resultado (ponto `good` ou `bad`) e link para a run. Mostra até 200 eventos, paginados de 10 em 10 como a tabela de runs, com o aviso do total. Recolhível, aberta por padrão.
-- A tabela de `Especificações` sai desta página; o board de entregas ocupa o lugar dela.
+- `Aguardando dependências`: só aparece com item. Lista as tarefas que esperam outra spec ou tarefa terminar, com o que falta.
+- A tabela de `Especificações` fica abaixo do board, num bloco recolhível (§27.3.1).
 - Em telas estreitas, os cartões ficam em duas colunas e as tabelas viram cartões (§11.16).
 - Premissas: `Entregas` e `Progresso` contam tarefas. Run parada pelo dono não é falha. O cartão de tarefas do repositório na página do projeto usa a mesma contagem.
 
 Dado que a fonte não existe mostra `sem dados`, nunca um número.
+
+#### 27.3.1 Tabela de especificações (recolhível)
+
+Bloco recolhível, fechado por padrão, abaixo do board de entregas. Colunas: spec, prioridade, estado, plano, tarefas `n de m`, depende de. Em telas estreitas, a tabela rola na horizontal dentro do seu painel. Filtro, paginação e a abertura das tarefas de cada linha ainda não estão implementados.
 
 ### 26.10 Etapa de arquitetura: aviso de documentos
 
@@ -1340,7 +1345,7 @@ Ordem da linha: tarefas mescladas · em andamento · bloqueadas · **atividade**
 [barra ████████░░░░░░░░░░]  0 de 4 tarefas mescladas · 1 em andamento · Desenvolvimento implementando a tarefa T0-scaffold há 1 min 12 s · 23 etapas · US$ 0.0961
 ```
 
-### 27.1 Validação e volta para o agente
+### 27.6 Validação e volta para o agente
 
 - A entrega só se valida quando a run termina sem tarefa bloqueada. Com tarefa bloqueada, "Concluir especificação" e "Relatar problema" ficam desabilitados e a nota diz quantas tarefas estão bloqueadas.
 - "Abrir aplicação" aparece só quando o serviço responde com página web (ou é front). "Abrir Swagger" aparece só quando o caminho de documentação declarado no plano responde com sucesso.

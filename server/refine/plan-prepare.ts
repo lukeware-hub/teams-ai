@@ -13,15 +13,13 @@ import type { Draft } from './draft.js';
 import { RefineEvent } from './events.js';
 import { criteriaOf, PREPARATION_STAGE, planInputDir, planInputsHash, planInputTexts, planStagingDir, PreparationFailed, type PlanInput, writePlanInputs } from './plan-inputs.js';
 import { planItems, type PlanItem, type PlanSource } from './plan-items.js';
-import { planFileOf, specSectionOf } from './plan-file.js';
+import { planFileOf, specSectionOf, taskFileOf } from './plan-file.js';
 import { planShapeIssues } from './plan-shape.js';
 import { type PlanStepResult, runPlanStep } from './plan-step.js';
 import { repositoryContextOf } from './architecture-step.js';
 import { taskShapeIssues } from './task-shape.js';
-import { taskPack } from './superpowers-pack.js';
-import { taskFileOf } from './plan-file.js';
+import { planPack, taskPack } from './superpowers-pack.js';
 import type { SpeckitStepFailure } from './state.js';
-import { planPack } from './superpowers-pack.js';
 
 /** The model and effort of the plan step: the setting the pilot measured for it (plan 107). The role's pin, which sets the builders, does not apply to it. */
 export const PLAN_STEP = { model: 'claude-sonnet-5-5', effort: 'low' } as const;
