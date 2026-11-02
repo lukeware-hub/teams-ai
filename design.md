@@ -1265,7 +1265,7 @@ Aparece só numa sessão de repositório de documentos cujo backlog ainda não f
 
 | Elemento | Especificação |
 |---|---|
-| Aviso | Cartão no topo da etapa `Arquitetura`, acima do título. Ícone `file-text`, tom `accent` (fundo `accent-soft`, borda `accent-line`). |
+| Aviso | Cartão no topo da etapa `Arquitetura`, acima do título. Ícone `file`, tom `accent` (fundo `accent-soft`, borda `accent-line`). |
 | Título | `Documentos` |
 | Texto | `Cria o repositório privado <dono>/<nome> e publica os documentos. Apagar o projeto aqui não apaga o repositório.` |
 | Nome | O destino do repositório (`docsTarget`): o dono do GitHub do projeto e, no monólito, o nome do projeto; nos microsserviços, `artefacty`. Vem do estado da sessão. |
@@ -1276,7 +1276,7 @@ Wireframe (aprovado com o texto e a posição pelo dono):
 
 ```
 ┌ Arquitetura ───────────────────────────────────────────────┐
-│ [file-text]  Documentos                                    │
+│ [file]       Documentos                                    │
 │              Cria o repositório privado dono/nome e        │
 │              publica os documentos. Apagar o projeto aqui  │
 │              não apaga o repositório.                      │
