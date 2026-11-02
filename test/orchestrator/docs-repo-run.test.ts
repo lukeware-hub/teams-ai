@@ -5,6 +5,8 @@ import { loadAgents } from '../../server/agents/registry.js';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
+import { git } from '../../server/git/git.js';
+import { readState } from '../../server/docs/project-state.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import type { StepRequest, StepOutcome } from '../../server/runner/step.js';
@@ -127,6 +129,29 @@ describe('readers of a docs-repo project', () => {
     expect(kinds).not.toContain('tech-spec');
     expect(prompts[0]).toContain(`stack: ${project.stack}`);
     expect(prompts[0]).not.toContain('ADR-001');
+    await run.close();
+  });
+
+  it('writes the plan of Phase 2 to the mirror, with no docs pull request', async () => {
+    await bind();
+    const script: Script = async (req) => {
+      if (req.kind === 'plan') return { ok: true, value: plan, summary } as StepOutcome<any>;
+      return { ok: false, failure: 'code', errors: ['not scripted'], summary, sandboxDisabled: false } as StepOutcome<any>;
+    };
+    const run = await Run.create(await withAgents(docsRepoDeps(script)), 'spec-001-plan-m2');
+    await run.execute();
+    expect(await readState(ws, `specs/${spec.specId}/plan.json`)).toMatchObject({ specId: spec.specId });
+    expect(await git(remote.repo, ['log', '--format=%s', 'origin/main'], execCommand)).not.toContain('docs(spec-001): plan');
+    await run.close();
+  });
+
+  it('marks the spec done in the mirror, with no docs branch on the repository', async () => {
+    await bind();
+    await writeState(ws, `specs/${spec.specId}/spec.json`, JSON.stringify({ ...spec, status: 'awaiting-validation' }));
+    const run = await Run.create(docsRepoDeps(noAgent, { spec: { ...spec, status: 'awaiting-validation' } }), 'spec-001-complete-m1');
+    expect(await run.completeSpec()).toBe('done');
+    expect(await readState(ws, `specs/${spec.specId}/spec.json`)).toMatchObject({ status: 'done' });
+    expect(await git(remote.repo, ['branch', '--list', 'docs/spec-001-done'], execCommand)).toBe('');
     await run.close();
   });
 
