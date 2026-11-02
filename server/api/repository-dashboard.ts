@@ -106,7 +106,7 @@ export interface DashboardRunRow {
   cost: number;
 }
 
-export interface AgentRow {
+export interface RoleActivity {
   role: string;
   steps: number;
   ok: number;
@@ -137,6 +137,7 @@ export interface TimelineEntry {
 
 export interface LastDeploy {
   runId: string;
+  specId: string;
   url: string | null;
   docsPath: string | null;
   services: Array<{ service: string; url: string | null; docsPath: string | null }> | null;
@@ -163,7 +164,7 @@ export interface RepoDashboard {
   runs: Capped<DashboardRunRow>;
   failures: Capped<DashboardItem>;
   blockers: Capped<DashboardItem>;
-  agents: AgentRow[];
+  agents: RoleActivity[];
   files: Capped<{ path: string; taskId: string }>;
   tests: { passed: number; failed: number; failures: Capped<{ taskId: string; gate: string; name: string }> };
   retries: { attempts: number; infra: number; flaky: number; replanned: number; fixes: number; reopened: number };
@@ -344,7 +345,7 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
       if (e.type === 'RUN_REOPENED') retries.reopened += 1;
       if (e.type === 'DEPLOY_VERIFIED') {
         const services = Array.isArray(d.services) ? (d.services as Array<Record<string, unknown>>).map((s) => ({ service: String(s.service), url: str(s.url), docsPath: str(s.docsPath) })) : null;
-        lastDeploy = { runId: run.runId, url: str(d.url), docsPath: str(d.docsPath), services };
+        lastDeploy = { runId: run.runId, specId: run.specId, url: str(d.url), docsPath: str(d.docsPath), services };
       }
       if (e.type === 'STEP_STARTED') started.set(String(d.stepId), { role: String(d.role), kind: String(d.kind), taskId: str(d.taskId) });
       if (e.type === 'STEP_FINISHED') {
@@ -392,12 +393,12 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
     }
   }
 
-  const agentRows: AgentRow[] = [...ROLES, ...[...agents.keys()].filter((r) => !(ROLES as readonly string[]).includes(r))].flatMap((role) => {
+  const agentRows: RoleActivity[] = [...ROLES, ...[...agents.keys()].filter((r) => !(ROLES as readonly string[]).includes(r))].flatMap((role) => {
     const a = agents.get(role);
     const owned = tasks.filter((t) => t.owner === role);
     const isOwner = role === 'dev' || role === 'devops' || role === 'front';
     if (!a && owned.length === 0) return [];
-    const row: AgentRow = {
+    const row: RoleActivity = {
       role,
       steps: a?.steps ?? 0,
       ok: a?.ok ?? 0,

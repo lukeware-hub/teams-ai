@@ -117,7 +117,7 @@ describe('activity from the journals', () => {
     const first = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', docsPath: '/docs' })]);
     const second = run('r2', 'cart', 2, 'done', [ev('r2', 'DEPLOY_VERIFIED', { url: 'http://localhost:3002', docsPath: '/docs' })]);
     const d = buildDashboard(input({ specs: [spec('cart')], runs: [second, first] }));
-    expect(d.lastDeploy).toEqual({ runId: 'r2', url: 'http://localhost:3002', docsPath: '/docs', services: null });
+    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', docsPath: '/docs', services: null });
   });
 
   it('lists a failed run among the failures and keeps the timeline newest first, capped', () => {

@@ -1257,7 +1257,7 @@ Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `re
 - Classificação da tarefa: `Falhou` é a tarefa parada pela própria causa, sem decisão pendente. `Bloqueada` é a tarefa que espera uma dependência ou uma decisão do dono. Uma run pausada aparece em `Bloqueios`, não como tarefa bloqueada.
 - `Atividade por agente`: uma linha por papel que atuou, com o nome que a run já usa para ele. Cada linha mostra etapas com sucesso e falha, tarefas criadas, iniciadas e concluídas, arquivos alterados, testes que passaram e falharam, custo e última atividade. Papel sem atividade não aparece.
 - `Runs`: tabela no padrão de §11.16, com run, tipo, estado, início, tarefas mescladas e custo. Uma linha abre `/runs/:runId`.
-- `Falhas e bloqueios`: só aparece com item. Cada item traz o motivo e, quando há decisão aberta, o botão `Responder`.
+- `Falhas e bloqueios`: só aparece com item. Cada item traz o motivo e, quando há uma run ou tarefa, o link `Abrir run`, que leva à decisão pendente.
 - `Integrações`, com as linhas da arquitetura que tocam o repositório.
 - `Linha do tempo`: os eventos de todas as runs da spec, em frase, com agente, hora, resultado (ponto `good` ou `bad`) e link para a run. Mostra até 200 eventos. Recolhível, aberta por padrão.
 - A tabela de `Especificações` sai desta página; o board de entregas ocupa o lugar dela.
