@@ -193,11 +193,11 @@ Goal: one pure module owns every document path; legacy output does not change.
 
 ## I6 - Commits at each boundary (size M, weight 2)
 
-- [ ] Journal hook after `push()`: synchronous, never awaited, silent on replay.
-- [ ] Boundary table: BacklogEnabled, BacklogDerived, SpecDerived, PlansStepDone, PlansPrepared; document edits ride the next boundary.
-- [ ] Level-triggered flush at open; `tickDocs` retries on the existing tick.
-- [ ] `Snapshot.docsSync` in memory; no journal fact per retry.
-- [ ] Burst test: six SPEC_DERIVED facts in one tick give one commit.
+- [x] Journal hook after `push()`: synchronous, never awaited, silent on replay.
+- [x] Boundary table: BacklogEnabled, BacklogDerived, SpecDerived, PlansStepDone, PlansPrepared; document edits ride the next boundary.
+- [x] Level-triggered flush at open; `tickDocs` retries on the existing tick.
+- [x] `Snapshot.docsSync` in memory; no journal fact per retry.
+- [x] Burst test: six SPEC_DERIVED facts in one tick give one commit.
 
 ## I7 - Closing, tags, Phase 0 narrowed (size L, weight 3)
 
