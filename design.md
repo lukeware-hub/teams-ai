@@ -1259,6 +1259,48 @@ Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `re
 
 Dado que a fonte não existe mostra `sem dados`, nunca um número.
 
+### 26.10 Etapa de arquitetura: aviso de documentos
+
+Aparece só numa sessão de repositório de documentos cujo backlog ainda não foi ativado. Em sessões legadas a etapa fica como está.
+
+| Elemento | Especificação |
+|---|---|
+| Aviso | Cartão no topo da etapa `Arquitetura`, acima do título. Ícone `file-text`, tom `accent` (fundo `accent-soft`, borda `accent-line`). |
+| Título | `Documentos` |
+| Texto | `Cria o repositório privado <dono>/<nome> e publica os documentos. Apagar o projeto aqui não apaga o repositório.` |
+| Nome | O destino do repositório (`docsTarget`): o dono do GitHub do projeto e, no monólito, o nome do projeto; nos microsserviços, `artefacty`. Vem do estado da sessão. |
+| Sincronização | Abaixo do aviso, o estado da publicação (estados abaixo): uma linha com a contagem enquanto há alterações esperando, ou o motivo da falha em palavras simples. Sem nada, não aparece. |
+| Botão | `Quebrar o backlog por repositório` (primário, como hoje). Numa sessão de repositório de documentos com o backlog desligado, chama a ativação do backlog, que cria o repositório. Com o backlog ligado, ou numa sessão legada, só navega para `Backlog`. |
+
+Wireframe (aprovado com o texto e a posição pelo dono):
+
+```
+┌ Arquitetura ───────────────────────────────────────────────┐
+│ [file-text]  Documentos                                    │
+│              Cria o repositório privado dono/nome e        │
+│              publica os documentos. Apagar o projeto aqui  │
+│              não apaga o repositório.                      │
+│              (linha de sincronização, se houver)           │
+├────────────────────────────────────────────────────────────┤
+│ Arquitetura                                                │
+│ Decida se o sistema é um monólito ou microsserviços …      │
+│ [cartão da decisão]                                        │
+│                                 [Quebrar o backlog por …]  │
+└────────────────────────────────────────────────────────────┘
+```
+
+Estados do aviso:
+- Mostrado: sessão de repositório de documentos, backlog desligado, destino conhecido.
+- Oculto: sessão legada; backlog já ligado; destino ainda sem dono conhecido (o aviso não mostra um nome incompleto).
+
+Estados da linha de sincronização (`DocsSyncNotice`):
+- Ausente: nada é mostrado (sessão sem sincronização).
+- Pendente: uma linha com a contagem de alterações esperando a publicação.
+- Falhou: o motivo em palavras simples, sem código.
+- Em dia: nada é mostrado.
+
+Regra do botão: a ação da etapa é a mesma da etapa `Backlog`, sem uma segunda rota. O dono vê o aviso antes de clicar, então o botão não cria um repositório sem aviso.
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:
