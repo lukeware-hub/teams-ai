@@ -4,7 +4,7 @@ import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
 import { FIVE_DOCS, FIVE_DOC_PATHS, repoPath, type DocsRun } from '../../docs/layout.js';
 import type { Spec } from '../../contracts/spec.js';
-import { writeState } from '../../docs/project-state.js';
+import { docsSnapshotDir, writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -71,7 +71,13 @@ async function runDocsRepoPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { doc
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
     return { ok: false, reason };
   }
-  const pinned = opts.docs ? await missingSnapshotFile(opts.docs, spec) : null;
+  if (!opts.docs) {
+    // The draft folder is the docs folder's parent, and its closing snapshot is named after it.
+    const reason = `the closing snapshot ${docsSnapshotDir(ws, path.basename(path.dirname(opts.docsDir)))} is missing`;
+    await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
+    return { ok: false, reason };
+  }
+  const pinned = await missingSnapshotFile(opts.docs, spec);
   if (pinned) {
     const reason = `the document ${pinned} is not in the closing snapshot`;
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });

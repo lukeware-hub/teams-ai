@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
-import { readState } from '../../server/docs/project-state.js';
+import { docsSnapshotDir, readState } from '../../server/docs/project-state.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { serviceWorkspace } from '../../server/orchestrator/workspace.js';
@@ -80,7 +80,7 @@ describe('phase 0 of a docs-repo project', () => {
   it('writes the machine files of the draft to the mirror, and no document to the repository', async () => {
     await writeDraft();
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
-    const d = deps(exec);
+    const d = deps(exec, { docs: { style: 'monolith', snapshot: await writeSnapshot() } });
     const run = await Run.create(d, 'hello-001-p0-1');
     expect(await run.executePhase0()).toEqual({ ok: true });
     expect(await readState(d.ws, 'project.json')).toEqual(JSON.parse(JSON.stringify(project)));
@@ -97,7 +97,7 @@ describe('phase 0 of a docs-repo project', () => {
       const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
       exec.onArgs('gh', ['repo', 'view'], (s) => ({ stdout: JSON.stringify(s.args[2] === 'o/orders-api' ? { nameWithOwner: 'o/orders-api', url: orders.origin } : { nameWithOwner: 'o/hello-app', url: remote.origin }) }));
       new FakeGh().install(exec);
-      const d = deps(exec, { project: makeProject({ projectId: 'hello-app', services: ['orders-api'] }) });
+      const d = deps(exec, { project: makeProject({ projectId: 'hello-app', services: ['orders-api'] }), docs: { style: 'monolith', snapshot: await writeSnapshot() } });
       const run = await Run.create(d, 'hello-001-p0-5');
       expect(await run.executePhase0()).toEqual({ ok: true });
       expect(await git(serviceWorkspace(d.ws, 'orders-api').repo, ['ls-tree', '--name-only', 'origin/main'], execCommand)).toBe('src');
@@ -139,6 +139,17 @@ describe('phase 0 of a docs-repo project', () => {
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     const run = await Run.create(deps(exec, { bootstrap: { docsDir: draftDocs, owner: 'o' }, docs: { style: 'monolith', snapshot } }), 'hello-001-p0-6');
     expect(await run.executePhase0()).toEqual({ ok: false, reason: 'the document docs/specify/hello-001/plan.md is not in the closing snapshot' });
+    await run.close();
+  });
+
+  it('fails with PHASE_FAILED that names the closing snapshot folder when the run has none', async () => {
+    await writeDraft();
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    const d = deps(exec);
+    const run = await Run.create(d, 'hello-001-p0-9');
+    const reason = `the closing snapshot ${docsSnapshotDir(d.ws, 'draft')} is missing`;
+    expect(await run.executePhase0()).toEqual({ ok: false, reason });
+    expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && e.data.reason === reason)).toBe(true);
     await run.close();
   });
 
