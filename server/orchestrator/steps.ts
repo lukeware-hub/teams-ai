@@ -580,8 +580,9 @@ ${opts.security || '- none'}`,
 
 /** The doc sections a spec cites, each judged against the code on main. */
 export function gapsPack(base: PackBase, opts: { sections: ReadonlyArray<{ doc: string; heading: string }> }): ContextPackInput {
+  const docsDir = base.docsRoot === undefined ? 'docs/' : `${base.docsRoot}/docs/`;
   return { ...common(base, 'gaps', 'test'), criteria: base.spec.acceptanceCriteria, feedback: [
-    'Judge each doc section below against the code on main. Read the section in docs/ (the file before the arrow, the heading after it) and the code it asks for, with Read, Grep and Glob. This step only reads: never edit or write a file.',
+    'Judge each doc section below against the code on main. Read the section in ' + docsDir + ' (the file before the arrow, the heading after it) and the code it asks for, with Read, Grep and Glob. This step only reads: never edit or write a file.',
     'Return one item per section. `status`: delivered when the code does all the section asks, partial when it does some of it, missing when it does none. `evidence`: the files and lines that prove what is built, for example `server/api/routes.ts:42`. `missing`: what the section asks that the code lacks, empty when delivered. `acIds`: the acceptance criteria that cover the section, only ids from the criteria list.',
     'Write `missing` in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow. Keep file paths and identifiers between backticks, untranslated.',
     `Sections:\n${opts.sections.map((s) => `- ${s.doc} › ${s.heading}`).join('\n')}`,
