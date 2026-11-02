@@ -3,10 +3,22 @@ import path from 'node:path';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { findCredential } from '../core/redact.js';
 import { execCommand, type Exec } from '../exec/command.js';
-import { git, headSha, pushMain, showFile, withRepoLock } from '../git/git.js';
+import { createAnnotatedTag, git, headSha, isAncestor, pushMain, pushTags, remoteTagTarget, showFile, withRepoLock } from '../git/git.js';
+import { createPrivateRepo, repoInfo, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { FIVE_DOCS, isAllowedPath, type Style } from './layout.js';
-import { docsStoreDir } from './project-state.js';
+import { FIVE_DOC_PATHS, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
+import {
+  docsClosingPath,
+  docsClosingRoot,
+  docsMarkerPath,
+  docsMirrorDir,
+  docsSnapshotDir,
+  docsSnapshotRoot,
+  docsStoreDir,
+  readDocsMarker,
+  writeDocsMarker,
+  type DocsMarker,
+} from './project-state.js';
 
 export class DocsStoreError extends Error {}
 
@@ -28,7 +40,7 @@ export interface Projection {
   bases?: Record<string, string>;
   /** Aliases that have started or been delivered: never written again. */
   frozen?: readonly string[];
-  /** Alias folders to delete, such as docs/specify/<alias>; only the ones this draft owns are removed. */
+  /** Alias folders of specs to delete, by their repository path; only the ones this draft owns are removed. */
   retire?: readonly string[];
   /** Known secret values of the platform and the project. */
   known?: readonly string[];
@@ -52,7 +64,6 @@ const NETWORK_MS = 30_000;
 const MAX_FILE_BYTES = 1024 * 1024;
 const LOCK_STALE_MS = 60_000;
 const PUSH_TRIES = 5;
-const FIVE_PATHS: readonly string[] = FIVE_DOCS.map((doc) => `docs/${doc}`);
 
 export const storeOf = (ws: Pick<Workspace, 'root'>, style: Style, exec: Exec = execCommand): Store => ({ dir: docsStoreDir(ws), style, exec });
 
@@ -196,7 +207,7 @@ async function decide(c: Ctx, p: Projection, files: ProjectedFile[]): Promise<De
     return folderOk.get(folder)!;
   };
   for (const f of files) {
-    if (FIVE_PATHS.includes(f.path)) {
+    if (FIVE_DOC_PATHS.includes(f.path)) {
       if (await documentWritable(c, f.path, p.bases?.[f.path] ?? null)) decision.accepted.push(f);
       else decision.diverged.push(f.path);
     } else if (await canWrite(path.posix.dirname(f.path))) {
@@ -267,7 +278,12 @@ export async function commitProjection(store: Store, p: Projection): Promise<Flu
 }
 
 export type PushFailure = 'busy' | 'protected' | 'auth' | 'offline' | 'other';
-export type PushOutcome = { ok: true; sha: string } | { ok: false; kind: PushFailure; message: string };
+export interface Refusal {
+  ok: false;
+  kind: PushFailure;
+  message: string;
+}
+export type PushOutcome = { ok: true; sha: string } | Refusal;
 
 const MESSAGES: Record<PushFailure, string> = {
   busy: 'Another change reached main first. The documents must be published again.',
@@ -277,7 +293,7 @@ const MESSAGES: Record<PushFailure, string> = {
   other: 'The documents could not be published.',
 };
 
-const failure = (kind: PushFailure): PushOutcome => ({ ok: false, kind, message: MESSAGES[kind] });
+const failure = (kind: PushFailure): Refusal => ({ ok: false, kind, message: MESSAGES[kind] });
 
 /** Network calls get a shorter limit than local git. */
 const networkExec = (exec: Exec): Exec => (spec) => exec({ ...spec, timeoutMs: NETWORK_MS });
@@ -316,4 +332,175 @@ export async function pushWithRecovery(store: Store): Promise<PushOutcome> {
     await pause(attempt);
   }
   return resetAndBusy(store);
+}
+
+export interface BindInput {
+  style: Style;
+  target: RepoTarget;
+  draftId: string;
+  documents: Record<string, string>;
+}
+
+const WRITE_PERMISSIONS = ['ADMIN', 'MAINTAIN', 'WRITE'];
+
+/** A repository that already exists must be private, not archived, and writable by the token's user. */
+function assertAdoptable(info: RepoInfo): void {
+  if (!info.isPrivate) throw new DocsStoreError(`${info.nameWithOwner} must be private`);
+  if (info.isArchived) throw new DocsStoreError(`${info.nameWithOwner} is archived`);
+  if (!WRITE_PERMISSIONS.includes(info.viewerPermission)) throw new DocsStoreError(`no write permission on ${info.nameWithOwner}`);
+}
+
+/** Creates the local clone on its main branch, unless it exists already. */
+async function initStore(store: Store): Promise<void> {
+  await fs.mkdir(store.dir, { recursive: true });
+  if (await exists(path.join(store.dir, '.git'))) return;
+  await withRepoLock(store.dir, () => git(store.dir, ['init', '-q', '-b', 'main'], store.exec));
+}
+
+async function setOrigin(store: Store, url: string): Promise<void> {
+  await withRepoLock(store.dir, async () => {
+    const remotes = await git(store.dir, ['remote'], store.exec);
+    const verb = remotes.split('\n').includes('origin') ? ['set-url', 'origin'] : ['add', 'origin'];
+    await git(store.dir, ['remote', ...verb, url], store.exec);
+  });
+}
+
+/** A remote main that the local history does not contain is other history, and is never adopted. */
+async function assertNoOtherHistory(store: Store): Promise<void> {
+  const remoteMain = await withRepoLock(store.dir, () =>
+    git(store.dir, ['rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main'], store.exec).catch(() => null),
+  );
+  if (remoteMain === null) return;
+  const contained = await withRepoLock(store.dir, () => isAncestor(store.dir, remoteMain, 'HEAD', store.exec));
+  if (!contained) throw new DocsStoreError('the repository already has other history, so it is not adopted');
+}
+
+/** Connects the store to its repository: created when missing, adopted when empty or ours, refused otherwise. Returns whether it was created. */
+async function attach(store: Store, target: RepoTarget, exec: Exec): Promise<boolean> {
+  const fullName = `${target.owner}/${target.name}`;
+  const info = await repoInfo(store.dir, fullName, exec);
+  if (info) assertAdoptable(info);
+  const url = info ? info.url : await createPrivateRepo(target, exec);
+  await setOrigin(store, `${url}.git`);
+  await git(store.dir, ['fetch', '-q', 'origin'], networkExec(exec));
+  await assertNoOtherHistory(store);
+  return info === null;
+}
+
+const sameBinding = (a: DocsMarker, b: DocsMarker): boolean => a.style === b.style && a.target.owner === b.target.owner && a.target.name === b.target.name;
+
+/**
+ * Binds a project to its documentation repository: the marker first, then the local history, then the remote.
+ * The push never forces, and the style and the repository are fixed by the marker.
+ */
+export async function bind(ws: Pick<Workspace, 'root'>, input: BindInput, exec: Exec = execCommand): Promise<{ sha: string; created: boolean }> {
+  const marker: DocsMarker = { layout: 'docs-repo', style: input.style, target: input.target, firstSha: null };
+  const earlier = await readDocsMarker(ws);
+  if (earlier) {
+    if (!sameBinding(earlier, marker)) throw new DocsStoreError('the project is already bound to another repository or style, and both are fixed');
+    if (earlier.firstSha) return { sha: earlier.firstSha, created: false };
+  }
+  await writeDocsMarker(ws, marker);
+  const store = storeOf(ws, input.style, exec);
+  await initStore(store);
+  if (!(await hasHead(store))) {
+    await commitProjection(store, { draftId: input.draftId, stepKey: 'bind', scope: 'refine', label: 'initial documents', files: input.documents });
+  }
+  const created = await attach(store, input.target, exec);
+  const sha = await withRepoLock(store.dir, () => headSha(store.dir, exec));
+  const pushed = await pushMain(store.dir, sha, networkExec(exec));
+  if (!pushed.ok) throw new DocsStoreError((pushed.kind === 'non-fast-forward' ? failure('busy') : failure(pushed.kind)).message);
+  await writeDocsMarker(ws, { ...marker, firstSha: sha });
+  return { sha, created };
+}
+
+export interface Closing {
+  summary: string;
+  aliases: readonly string[];
+}
+
+const CLOSE_TRIES = 3;
+
+/** The empty closing commit that marks where development starts. */
+function commitClosing(store: Store, draftId: string, summary: string): Promise<void> {
+  const oneLine = summary.replace(/\s+/g, ' ').trim();
+  const message = `docs: refinement closed, development starts [skip ci]\n\nClosing-Draft: ${draftId}\nSummary: ${oneLine}`;
+  return withRepoLock(store.dir, async () => {
+    await git(store.dir, ['commit', '-q', '--allow-empty', '-m', message], store.exec);
+  });
+}
+
+/** Detaches a snapshot of the documents at the closing commit, and writes the record that starts development. */
+async function finishClosing(ws: Pick<Workspace, 'root'>, store: Store, draftId: string, commit: string, aliases: readonly string[]): Promise<{ commit: string; snapshot: string }> {
+  const snapshot = docsSnapshotDir(ws, draftId);
+  await withRepoLock(store.dir, async () => {
+    await fs.mkdir(docsSnapshotRoot(ws), { recursive: true });
+    await git(store.dir, ['worktree', 'remove', '--force', snapshot], store.exec).catch(() => undefined);
+    await fs.rm(snapshot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await git(store.dir, ['worktree', 'prune'], store.exec);
+    await git(store.dir, ['worktree', 'add', '--detach', snapshot, commit], store.exec);
+  });
+  await fs.mkdir(docsClosingRoot(ws), { recursive: true });
+  const record = { commit, aliases: [...aliases], pendingTags: aliases.map(startTagOf) };
+  await writeFileAtomic(docsClosingPath(ws, draftId), `${JSON.stringify(record, null, 2)}\n`);
+  return { commit, snapshot };
+}
+
+/**
+ * Flushes the draft, adds the closing commit and publishes it until it is on origin main.
+ * A store that changed under the draft, or a push that never lands, refuses the close: nothing launches.
+ */
+export async function closeRefinement(ws: Pick<Workspace, 'root'>, store: Store, p: Projection, closing: Closing): Promise<{ commit: string; snapshot: string }> {
+  for (let attempt = 1; attempt <= CLOSE_TRIES; attempt++) {
+    const flushed = await commitProjection(store, p);
+    const refused = [...flushed.diverged, ...flushed.aliasTaken];
+    if (refused.length > 0) throw new DocsStoreError(`the store changed under this draft (${refused.join(', ')}); nothing launches`);
+    await commitClosing(store, p.draftId, closing.summary);
+    const pushed = await pushWithRecovery(store);
+    if (pushed.ok) return finishClosing(ws, store, p.draftId, pushed.sha, closing.aliases);
+    if (pushed.kind !== 'busy') throw new DocsStoreError(pushed.message);
+  }
+  throw new DocsStoreError('the closing commit could not be published after 3 tries; nothing launches');
+}
+
+const MAX_TAG_SUFFIX = 20;
+
+/** The commit a local tag names, read under the repository lock; null when there is no such tag. */
+const localTagAt = (store: Store, name: string): Promise<string | null> =>
+  withRepoLock(store.dir, () => git(store.dir, ['rev-parse', '--verify', '--quiet', `refs/tags/${name}^{commit}`], store.exec).catch(() => null));
+
+/** The first name of a start tag that is free, as the base or with .2, .3 ...; null when origin already has it at this commit. */
+async function freeTagName(store: Store, base: string, sha: string): Promise<string | null> {
+  for (let n = 1; n <= MAX_TAG_SUFFIX; n++) {
+    const name = n === 1 ? base : `${base}.${n}`;
+    const remote = await remoteTagTarget(store.dir, name, networkExec(store.exec));
+    if (remote === sha) return null;
+    const local = await localTagAt(store, name);
+    if (remote === null && (local === null || local === sha)) return name;
+  }
+  throw new DocsStoreError(`no free tag name for ${base}`);
+}
+
+/** Creates the start tags of the aliases at the closing commit and publishes them in one atomic push. Never moves a tag. */
+export async function createStartTags(store: Store, aliases: readonly string[], closingSha: string): Promise<{ tags: string[]; pushed: boolean }> {
+  const tags: string[] = [];
+  for (const alias of aliases) {
+    const name = await freeTagName(store, startTagOf(alias), closingSha);
+    if (name !== null) tags.push(name);
+  }
+  if (tags.length === 0) return { tags, pushed: true };
+  await withRepoLock(store.dir, async () => {
+    for (const name of tags) {
+      const local = await git(store.dir, ['rev-parse', '--verify', '--quiet', `refs/tags/${name}^{commit}`], store.exec).catch(() => null);
+      if (local === null) await createAnnotatedTag(store.dir, name, closingSha, `development starts (${name})`, store.exec);
+    }
+  });
+  const pushed = await pushTags(store.dir, tags, networkExec(store.exec));
+  return { tags, pushed: pushed.ok };
+}
+
+/** Removes everything the documents left on disk for a project. Nothing is refused, so a broken store can always be deleted. */
+export async function releaseDocs(ws: Pick<Workspace, 'root'>): Promise<void> {
+  const targets = [docsStoreDir(ws), docsSnapshotRoot(ws), docsMirrorDir(ws), docsMarkerPath(ws), docsClosingRoot(ws)];
+  for (const target of targets) await fs.rm(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }

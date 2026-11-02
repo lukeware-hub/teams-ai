@@ -18,11 +18,17 @@ export const docsMirrorDir = (ws: Pick<Workspace, 'root'>): string => path.posix
 /** The record that binds a project to its documentation repository. */
 export const docsMarkerPath = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'state', 'docs-store.json');
 
+/** The folder that holds every draft's detached copy of the documents. */
+export const docsSnapshotRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'docs-at');
+
 /** The detached copy of the documents a draft closed with, which the agents read. */
-export const docsSnapshotDir = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(ws.root, 'docs-at', draftId);
+export const docsSnapshotDir = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(docsSnapshotRoot(ws), draftId);
+
+/** The folder that holds every draft's closing record. */
+export const docsClosingRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'state', 'closing');
 
 /** The record of a draft's closing commit and the tags still to create. */
-export const docsClosingPath = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(ws.root, 'state', 'closing', `${draftId}.json`);
+export const docsClosingPath = (ws: Pick<Workspace, 'root'>, draftId: string): string => path.posix.join(docsClosingRoot(ws), `${draftId}.json`);
 
 export const DocsMarker = z.object({
   layout: z.literal('docs-repo'),

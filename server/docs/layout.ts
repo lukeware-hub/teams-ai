@@ -3,6 +3,9 @@ import { ID_PATTERNS } from '../core/ids.js';
 /** The five documents every project keeps, at the root of the docs folder. */
 export const FIVE_DOCS = ['project.md', 'flow.md', 'briefing.md', 'design.md', 'stack.md'] as const;
 
+/** The repository paths of the five documents, at the root of the docs folder. */
+export const FIVE_DOC_PATHS: readonly string[] = FIVE_DOCS.map((doc) => `docs/${doc}`);
+
 /** The three files of one spec, in its own folder of the documentation repository. */
 export const SPEC_FILES = { spec: 'spec.md', plan: 'plan.md', task: 'task.md' } as const;
 
