@@ -55,7 +55,7 @@ import { withRepairNotes } from '../program/repair-notes.js';
 import { ownerDecisionLines, type OwnerDecision } from './owner-decisions.js';
 import { androidToolchainOf, copyCargoRoot, stackDomains, stackKind, type AndroidToolchain, type StackKind } from '../runner/stacks.js';
 import type { DocsRun } from '../docs/layout.js';
-import { readState, updateState } from '../docs/project-state.js';
+import { readState, snapshotDesign, updateState } from '../docs/project-state.js';
 
 export interface RunDeps {
   cfg: Config;
@@ -772,7 +772,8 @@ export class Run {
     if (head === this.sharedDocsAt) return;
     this.sharedDocsAt = head;
     await this.loadAdrs();
-    this.design = await this.gitLocked(['show', 'origin/main:docs/design.md']).then((text) => text.slice(0, 6000)).catch(() => null);
+    const design = this.deps.docs ? await snapshotDesign(this.deps.docs.snapshot) : await this.gitLocked(['show', 'origin/main:docs/design.md']).catch(() => null);
+    this.design = design?.slice(0, 6000) ?? null;
   }
 
   /** What a step in a service's repository cannot read there: where every service answers. */

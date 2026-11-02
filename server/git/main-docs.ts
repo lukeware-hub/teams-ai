@@ -1,5 +1,7 @@
 import { SAFE_ID } from '../api/run-index.js';
 import { BACKLOG_DOCS } from '../contracts/backlog.js';
+import { docsStoreDir, isDocsRepo } from '../docs/project-state.js';
+import type { Workspace } from '../orchestrator/workspace.js';
 import { git as runGit, showFile } from './git.js';
 
 /** One project document as origin/main has it; `text` is null when main does not have it. */
@@ -18,6 +20,12 @@ async function mainPaths(repo: string, paths: string[]): Promise<Set<string>> {
 function docPath(file: string, present: ReadonlySet<string>, specBriefing: string | null): string {
   if (file !== 'briefing.md' || present.has('docs/briefing.md') || specBriefing === null || !present.has(specBriefing)) return `docs/${file}`;
   return specBriefing;
+}
+
+/** The project's five documents: from the documentation store when the project is docs-repo, else from origin/main of its repository. */
+export async function readProjectDocs(ws: Pick<Workspace, 'root' | 'repo'>, newestSpec: string | undefined): Promise<MainDoc[]> {
+  if (!(await isDocsRepo(ws))) return readMainDocs(ws.repo, newestSpec);
+  return readMainDocs(docsStoreDir(ws), undefined);
 }
 
 /** The five project documents as origin/main has them. `newestSpec` supplies the briefing when main has no root briefing. */

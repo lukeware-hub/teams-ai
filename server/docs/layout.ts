@@ -95,5 +95,12 @@ export function githubOwnerOf(projectMd: string): string | null {
   return value;
 }
 
+/** The alias of a spec file of the documentation repository (under docs/specify or docs/<service>/specify), or null for any other path. */
+export function parseRepoPath(rel: string): string | null {
+  const parts = rel.split('/');
+  const isSpecFile = (Object.values(SPEC_FILES) as string[]).includes(parts.at(-1) ?? '');
+  return isSpecFile && (isAllowedPath('monolith', rel) || isAllowedPath('microservices', rel)) ? parts.at(-2)! : null;
+}
+
 /** The tag that marks where development starts for one spec. */
 export const startTagOf = (alias: string): string => `dev-start/${assertAlias(alias)}`;
