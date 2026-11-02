@@ -43,6 +43,14 @@ const settle = async () => {
   }
   await new Promise((r) => setTimeout(r, 30)); // the session clears `busy` a tick after the last event lands
 };
+/** Waits briefly for a started evaluation to show as busy, so settle does not return before the evaluation begins. */
+const waitForEvaluation = async () => {
+  for (let i = 0; i < 50; i++) {
+    const snap = await snapshot();
+    if (snap.busy || snap.state?.status === 'evaluating') return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+};
 /** A plan that passes the shape check for one item: its header, one task naming the criteria, and an assumption with its reason. */
 const planFor = (key: string, ids: string[]): string =>
   `# ${key} Implementation Plan\n\n**Goal:** Build ${key}.\n\n**Architecture:** One module.\n\n**Tech Stack:** TypeScript.\n\n**Spec:** docs/specs/${key}/spec.md.\n\n## Global Constraints\n\n- The stack values of stack.md.\n\n## Review Focus\n\n- A repeated submit writes once.\n\n### Task 1: ${key} core\n\n**Files:**\n- Create: \`src/${key}.ts\`\n\n**Criteria:** ${ids.join(', ')}\n\n## Assumptions\n\n- None.\n`;
@@ -598,6 +606,7 @@ describe('refine api', () => {
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [move] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    await waitForEvaluation();
     await settle();
     expect((await snapshot()).state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied' }]);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/moves/move-po-c1-0/undo')).status).toBe(200);
