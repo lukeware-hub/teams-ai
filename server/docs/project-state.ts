@@ -82,6 +82,9 @@ async function readText(file: string): Promise<string | undefined> {
   }
 }
 
+/** A machine file of the mirror as it was written, or undefined when it is missing. */
+export const readStateText = (ws: Pick<Workspace, 'root'>, rel: string): Promise<string | undefined> => readText(statePath(ws, rel));
+
 /** The parsed content, or undefined when the text is missing or is not JSON. */
 function parseState(text: string | undefined): unknown {
   if (text === undefined) return undefined;

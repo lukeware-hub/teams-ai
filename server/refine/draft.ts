@@ -6,9 +6,10 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS, stepId } from '../core/ids.js';
+import { FIVE_DOCS } from '../docs/layout.js';
 import type { Exec } from '../exec/command.js';
 import { fetch as gitFetch, git, showFile } from '../git/git.js';
-import { mergeDoc, sameDoc } from '../git/merge-doc.js';
+import { mergeDoc, mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
 import { renderDecisions } from './decisions.js';
@@ -210,19 +211,40 @@ export async function createNewProject(d: Draft, name: string, description = '')
 const mainFiles = async (repo: string, exec: Exec, paths: readonly string[]): Promise<string[]> =>
   (await git(repo, ['ls-tree', '-r', '--name-only', 'origin/main', ...paths], exec)).split('\n').filter((f) => f !== '');
 
+/** Main as a draft reads it, by repository path: the project's clone (legacy) or the documentation store. */
+export interface MainCopy {
+  refresh(): Promise<void>;
+  /** The repository paths under docs/ that main holds. */
+  files(): Promise<string[]>;
+  /** The text of a repository path of main, or null when main does not hold it. */
+  text(rel: string): Promise<string | null>;
+  /** A documentation repository never merges text by union: an overlapping edit keeps conflict markers. */
+  strict: boolean;
+}
+
+/** Main as the project's clone holds it: a legacy project, merged by union. */
+export const repoMain = (repo: string, exec: Exec): MainCopy => ({
+  refresh: () => gitFetch(repo, exec),
+  files: () => mainFiles(repo, exec, ['docs/']),
+  text: (rel) => showFile(repo, 'origin/main', rel, exec),
+  strict: false,
+});
+
 /** Writes each file of main under `root`, at its repository path. */
-async function copyFromMain(repo: string, exec: Exec, files: readonly string[], root: string): Promise<void> {
+async function copyFromMain(source: MainCopy, files: readonly string[], root: string): Promise<void> {
   for (const rel of files) {
     const target = path.posix.join(root, rel);
+    const text = await source.text(rel);
+    if (text === null) throw new Error(`main does not hold ${rel}`);
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, await showFile(repo, 'origin/main', rel, exec));
+    await fs.writeFile(target, text);
   }
 }
 
-export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }): Promise<void> {
-  await gitFetch(repo, exec);
-  const files = await mainFiles(repo, exec, ['docs/']);
-  await copyFromMain(repo, exec, files, d.root);
+export async function createFromRepo(d: Draft, repo: string, exec: Exec, mode: { kind: 'new-spec'; description?: string } | { kind: 'continue'; report?: string; route?: RouteReport } | { kind: 'backlog' }, source: MainCopy = repoMain(repo, exec)): Promise<void> {
+  await source.refresh();
+  const files = await source.files();
+  await copyFromMain(source, files, d.root);
   await fs.mkdir(path.dirname(d.briefMd), { recursive: true });
   if (!files.includes('docs/stack.md')) await fs.writeFile(d.stackMd, stackTemplate());
   if (!files.includes('docs/flow.md')) await fs.writeFile(d.flowMd, flowTemplate());
@@ -291,6 +313,22 @@ export async function restoreFromBase(d: Draft, specId: string): Promise<void> {
   await fs.cp(path.posix.join(d.base, 'specs', specId), target, { recursive: true });
 }
 
+/** A sync that kept conflict markers in a document: its changes are still journaled, and the start is refused. */
+export class MainConflict extends Error {
+  readonly changed: Array<{ file: string; hash: string }>;
+
+  constructor(message: string, changed: Array<{ file: string; hash: string }>) {
+    super(message);
+    this.changed = changed;
+  }
+}
+
+/** The five documents of a draft that hold a conflict marker, by file name. */
+async function conflictedDocs(d: Draft): Promise<string[]> {
+  const docs = await Promise.all(FIVE_DOCS.map(async (doc) => ((await fs.readFile(path.posix.join(d.docs, doc), 'utf8').catch(() => '')).match(/^<{7}/m) ? [doc] : [])));
+  return docs.flat();
+}
+
 /** The project docs: a change main brings to one of them makes a derived spec stale. Other specs' files are not. */
 const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stack.md', 'flow.md', 'design.md', 'architecture.json']);
 
@@ -298,25 +336,29 @@ const PROJECT_DOCS = new Set(['project.md', 'project.json', 'briefing.md', 'stac
  * Before a start: what main changed since the draft began comes into the draft, merged with the draft's own edits, and the
  * base copy moves to main, so Phase 0 publishes only this spec's changes. Returns the project docs it changed.
  */
-export async function syncWithMain(d: Draft, repo: string, exec: Exec): Promise<Array<{ file: string; hash: string }>> {
+export async function syncWithMain(d: Draft, repo: string, exec: Exec, source: MainCopy = repoMain(repo, exec)): Promise<Array<{ file: string; hash: string }>> {
   if (!d.base || !(await fs.access(d.base).then(() => true, () => false))) return []; // a new project: main does not exist yet
-  await gitFetch(repo, exec);
+  await source.refresh();
   const own = `specs/${d.specId}/`;
   const changed: Array<{ file: string; hash: string }> = [];
-  for (const rel of (await mainFiles(repo, exec, ['docs/'])).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
-    const main = await showFile(repo, 'origin/main', `docs/${rel}`, exec);
+  for (const rel of (await source.files()).map((f) => f.slice('docs/'.length)).filter((f) => !f.startsWith(own))) {
+    const main = (await source.text(`docs/${rel}`)) ?? '';
     const base = await readBase(d, rel);
     if (sameDoc(main, base)) continue;
     const file = path.posix.join(d.docs, rel);
     const draft = await fs.readFile(file, 'utf8').catch(() => null);
+    const merge = source.strict ? mergeDocStrict : mergeDoc;
     // Without a base copy the doc is new on main, and Phase 0 would keep main's copy anyway.
-    const next = draft === null || base === null || sameDoc(draft, base) ? main : await mergeDoc(rel, base, main, draft, exec);
+    const next = draft === null || base === null || sameDoc(draft, base) ? main : await merge(rel, base, main, draft, exec);
     for (const [target, text] of [[file, next], [path.posix.join(d.base, rel), main]] as const) {
       await fs.mkdir(path.dirname(target), { recursive: true });
       await fs.writeFile(target, text);
     }
     if (PROJECT_DOCS.has(rel) && !sameDoc(next, draft)) changed.push({ file: rel, hash: sha256(next) });
   }
+  // A marker left by an earlier sync is refused again, so a conflicted text never reaches the store.
+  const marked = source.strict ? await conflictedDocs(d) : [];
+  if (marked.length > 0) throw new MainConflict(`Os documentos ${marked.join(', ')} têm conflito com main: resolva as marcas no rascunho e inicie de novo.`, changed);
   return changed;
 }
 

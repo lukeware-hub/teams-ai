@@ -6,7 +6,7 @@ import { execCommand, type Exec } from '../exec/command.js';
 import { createAnnotatedTag, git, headSha, isAncestor, pushMain, pushTags, remoteTagTarget, showFile, withRepoLock } from '../git/git.js';
 import { createPrivateRepo, repoInfo, type RepoInfo } from '../git/github.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, startTagOf, type RepoTarget, type Style } from './layout.js';
+import { FIVE_DOC_PATHS, isAliasFolder, isAllowedPath, parseRepoPath, startTagOf, type RepoTarget, type Style } from './layout.js';
 import {
   docsClosingRoot,
   docsMarkerPath,
@@ -138,15 +138,55 @@ interface Ctx {
   born: boolean;
 }
 
+/** Whether a ref names a commit in the store. */
+async function hasRef(store: Store, ref: string): Promise<boolean> {
+  return git(store.dir, ['rev-parse', '--verify', '--quiet', ref], store.exec).then(() => true, () => false);
+}
+
 async function hasHead(store: Store): Promise<boolean> {
-  return git(store.dir, ['rev-parse', '--verify', '--quiet', 'HEAD'], store.exec).then(() => true, () => false);
+  return hasRef(store, 'HEAD');
+}
+
+async function textAtHead(store: Store, rel: string): Promise<string | null> {
+  const listed = await git(store.dir, ['ls-tree', 'HEAD', '--', rel], store.exec);
+  return listed === '' ? null : showFile(store.dir, 'HEAD', rel, store.exec);
 }
 
 /** The text a file holds at HEAD, or null when HEAD does not have it. */
 async function headText(c: Ctx, rel: string): Promise<string | null> {
-  if (!c.born) return null;
-  const listed = await git(c.store.dir, ['ls-tree', 'HEAD', '--', rel], c.store.exec);
-  return listed === '' ? null : showFile(c.store.dir, 'HEAD', rel, c.store.exec);
+  return c.born ? textAtHead(c.store, rel) : null;
+}
+
+/** The spec files at a ref of the store, by repository path; none when the ref does not exist. */
+async function specFilesAt(store: Store, ref: string): Promise<string[]> {
+  if (!(await hasRef(store, ref))) return [];
+  const paths = (await git(store.dir, ['ls-tree', '-r', '--name-only', ref, '--', 'docs'], store.exec)).split('\n');
+  return paths.filter((p) => parseRepoPath(p) !== null);
+}
+
+/** The aliases that have a spec file at a ref of the store, HEAD by default: every spec folder the documentation repository holds. */
+export async function aliasesOnStore(store: Store, ref = 'HEAD'): Promise<string[]> {
+  return [...new Set((await specFilesAt(store, ref)).map((p) => parseRepoPath(p)!))];
+}
+
+/** The alias folders whose last commit this draft made, except the aliases in `keep`: the only folders it may remove. */
+async function ownedAliasFolders(store: Store, draftId: string, keep: readonly string[]): Promise<string[]> {
+  const c: Ctx = { store, draftId, born: true };
+  const folders = [...new Set((await specFilesAt(store, 'HEAD')).map((p) => path.posix.dirname(p)))];
+  const owned: string[] = [];
+  for (const folder of folders) if (!keep.includes(path.posix.basename(folder)) && (await aliasWritable(c, folder))) owned.push(folder);
+  return owned;
+}
+
+/** Removes the alias folders a discarded draft committed; the five documents, other drafts' folders and the `keep` aliases stay. */
+export async function retireAliases(store: Store, draftId: string, keep: readonly string[] = []): Promise<FlushResult> {
+  const retire = await ownedAliasFolders(store, draftId, keep);
+  return commitProjection(store, { draftId, stepKey: 'discard', scope: 'refine', label: 'draft discarded', files: {}, retire });
+}
+
+/** The text a file holds at the store's HEAD, or null when the store has no commit or the file. */
+export async function readStoreText(store: Store, rel: string): Promise<string | null> {
+  return (await hasHead(store)) ? textAtHead(store, rel) : null;
 }
 
 /** Whether a folder has any file at HEAD. */

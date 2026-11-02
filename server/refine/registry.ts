@@ -15,14 +15,16 @@ import { openProjectKnowledge } from '../knowledge/project-docs.js';
 import { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { expandHome, nextRunId, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { CENTRAL_REPO } from '../docs/layout.js';
-import { docsRepoLayoutEnabled, isDocsRepo, readState } from '../docs/project-state.js';
+import { docsRepoLayoutEnabled, isDocsRepo, listState, readDocsMarker, readState, readStateText, type DocsMarker } from '../docs/project-state.js';
+import { aliasesOnStore, storeOf } from '../docs/store.js';
 import { loadEvents } from '../store/event-store.js';
 import { currentEvent } from './events.js';
 import { answerFloor } from './auto-floor.js';
 import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, syncWithMain, type Draft, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
+import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
@@ -126,7 +128,8 @@ export class SessionRegistry {
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
       // A new project follows the rollout flags; a follow-on draft is stamped only when main holds its architecture.
       const stamp = create === 'new-project' ? (this.deps.repositoryFlow ?? REPOSITORY_FLOW) : architecture;
-      const docsRepo = create === 'new-project' && this.docsRepoLayout;
+      // A follow-on draft of a bound documentation repository writes to its store, as the first draft does.
+      const docsRepo = create === 'new-project' ? this.docsRepoLayout : create !== undefined && (await this.boundMarker(ws)) !== null;
       return create ? RefineSession.create(deps, create, { repositories: stamp === true, docsRepo }) : RefineSession.open(deps);
     })();
     this.sessions.set(key, p);
@@ -180,6 +183,36 @@ export class SessionRegistry {
     return this.session(draft, ws, 'new-project');
   }
 
+  /** The marker of a documentation repository whose first push landed; a legacy project, or a binding not finished, has none. */
+  private async boundMarker(ws: Workspace): Promise<DocsMarker | null> {
+    const marker = await readDocsMarker(ws);
+    return marker?.firstSha ? marker : null;
+  }
+
+  /** Main as this project's drafts read it: the store of a bound documentation repository, else the project's clone. */
+  private async mainOf(ws: Workspace): Promise<MainCopy> {
+    const marker = await this.boundMarker(ws);
+    return marker ? docsRepoMain(ws, storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec)) : repoMain(ws.repo, this.deps.exec);
+  }
+
+  /** A follow-on draft of a bound documentation repository starts from the mirror, so the mirror must hold the project. */
+  private async assertMirrorProject(ws: Workspace): Promise<void> {
+    if (!(await this.boundMarker(ws))) return;
+    if ((await readStateText(ws, 'project.json')) === undefined) throw new ConflictError(`o projeto ${ws.projectId} ainda não tem project.json no espelho; inicie uma spec antes de criar outra`);
+  }
+
+  /** A new spec of a bound documentation repository takes an alias that neither the mirror nor the store holds, local or on origin. */
+  private async assertAliasFree(ws: Workspace, specId: string): Promise<void> {
+    const marker = await this.boundMarker(ws);
+    if (!marker) return;
+    const store = storeOf(ws, marker.style, this.deps.ghExec ?? this.deps.exec);
+    // A failed fetch keeps the local check, so an offline owner is refused only for an alias the local store holds.
+    await gitFetch(store.dir, store.exec, { timeoutMs: 30_000 }).catch(() => undefined);
+    const onMirror = (await listState(ws, `specs/${specId}`)).length > 0;
+    const onStore = [...(await aliasesOnStore(store)), ...(await aliasesOnStore(store, 'origin/main'))].includes(specId);
+    if (onMirror || onStore) throw new ConflictError(`o alias ${specId} já existe no repositório de documentos; escolha outro nome para a spec`);
+  }
+
   private async specOnMain(ws: Workspace, specId: string): Promise<Spec | null> {
     if (!(await exists(path.join(ws.repo, '.git')))) {
       throw new ConflictError(`project ${ws.projectId} has no workspace clone; run it once from the CLI or add it as a project`);
@@ -201,7 +234,9 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
     if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description });
+    await this.assertMirrorProject(ws);
+    await this.assertAliasFree(ws, specId);
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description }, await this.mainOf(ws));
     return this.session(draft, ws, 'new-spec');
   }
 
@@ -209,6 +244,7 @@ export class SessionRegistry {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
     const ws = await this.ws(projectId);
+    await this.assertMirrorProject(ws);
     const spec = await this.specOnMain(ws, specId);
     if (spec?.status === 'done') throw new ConflictError(`spec ${specId} is concluded; create a new spec`);
     if (spec?.status !== 'awaiting-validation') throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation specs continue`);
@@ -223,7 +259,7 @@ export class SessionRegistry {
       await this.assertNoActiveRun(projectId, specId);
       await this.discardDraft(projectId, specId, session);
     }
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport });
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'continue', report, route: this.deps.routeReport }, await this.mainOf(ws));
     return this.session(draft, ws, 'continue');
   }
 
@@ -311,7 +347,8 @@ export class SessionRegistry {
     const session = await this.get(projectId, specId);
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, specId);
-    await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec));
+    const main = await this.mainOf(ws);
+    await session.syncWithMain(() => syncWithMain(draft, ws.repo, this.deps.exec, main));
     if (session.state.backlog?.enabled) return this.startProgram(projectId, specId, session, summaryHash);
     if (session.state.mode === 'new-project') throw new ConflictError('O backlog ainda não está pronto: avalie o projeto até ele ficar pronto antes de iniciar a análise.');
     // Any failure until the session records the run releases the start lock, so the session never stays locked by a start.
@@ -354,7 +391,7 @@ export class SessionRegistry {
     if ((await this.list()).some((row) => row.projectId === projectId)) return;
     const ws = await this.ws(projectId);
     const draft = draftPaths(ws, `${projectId}-backlog`);
-    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' });
+    await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' }, await this.mainOf(ws));
     const session = await this.session(draft, ws, 'backlog');
     await session.enableBacklog();
     // Many agent calls: the import does not wait for them.
@@ -365,10 +402,12 @@ export class SessionRegistry {
   async deleteDraft(projectId: string, specId: string): Promise<void> {
     const session = await this.get(projectId, specId);
     if (session.state.status === 'started') throw new ConflictError('session already started a run');
-    await this.discardDraft(projectId, specId, session);
+    await this.discardDraft(projectId, specId, session, true);
   }
 
-  private async discardDraft(projectId: string, specId: string, session: RefineSession): Promise<void> {
+  /** Ends a draft; only a deleted draft takes its alias folders out of the documentation store, a restarted one keeps them. */
+  private async discardDraft(projectId: string, specId: string, session: RefineSession, retire = false): Promise<void> {
+    if (retire) await session.retireDocs();
     session.beginDiscard();
     await session.abort();
     const draft = draftPaths(await this.ws(projectId), specId);

@@ -1,9 +1,9 @@
 import type { Style } from '../docs/layout.js';
 import { readClosingRecord, removeClosingRecord, writeClosingRecord } from '../docs/project-state.js';
-import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, type Store } from '../docs/store.js';
+import { closeRefinement, commitProjection, createStartTags, DocsStoreError, openStore, pushWithRecovery, retireAliases, type Store } from '../docs/store.js';
 import type { Exec } from '../exec/command.js';
 import type { Workspace } from '../orchestrator/workspace.js';
-import { projectDraftFiles, type SpecAlias } from './docs-projection.js';
+import { baseAliases, draftBases, projectDraftFiles, type SpecAlias } from './docs-projection.js';
 import type { Draft } from './draft.js';
 
 /** What the session shows of the sync: the changes waiting for a commit, and the last failure, in plain words. */
@@ -79,6 +79,13 @@ export class DocsSync {
     return done;
   }
 
+  /** A discarded draft that never started: its alias folders leave the store, and the removal is published. */
+  retire(): Promise<void> {
+    const done = this.chain.then(() => this.retireNow());
+    this.chain = done.catch(() => undefined);
+    return done;
+  }
+
   /** Drops the closing of a launch that never happened, so no start tag is ever published for it. */
   discardClosing(): Promise<void> {
     return this.enqueue(() => removeClosingRecord(this.input.ws, this.input.draft.specId).catch((err) => console.error(`closing of ${this.input.draft.specId}: ${messageOf(err)}`)));
@@ -113,11 +120,18 @@ export class DocsSync {
     return this.chain;
   }
 
+  private async retireNow(): Promise<void> {
+    const { ws, draft, style, exec } = this.input;
+    const store = await openStore(ws, style, exec);
+    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
+    if (flushed.sha !== null) await pushLocalCommits(store);
+  }
+
   private async closeNow(aliases: readonly string[]): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
     const files = await projectDraftFiles(draft, style, this.input.aliases());
-    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files };
+    const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft) };
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
     this.pending = 0;
@@ -141,7 +155,7 @@ export class DocsSync {
       const seen = { pending: this.pending, labels: this.labels.length };
       const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
-      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files });
+      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft) });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
       await pushLocalCommits(store);
       if (refused.length > 0) {
