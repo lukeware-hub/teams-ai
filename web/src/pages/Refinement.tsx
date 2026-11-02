@@ -320,6 +320,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
@@ -1102,14 +1103,15 @@ export function RefinementView(p: ViewProps) {
   const finalScreen = () => {
     const unfiled = unfiledQuestions(st);
     const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
+    const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5">
           <header className="grid gap-1">
             <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Revisão final</h2>
-            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Nada aqui bloqueia o próximo passo.</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Resumo</h2>
+            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
           </header>
           <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
             <p className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
@@ -1147,8 +1149,15 @@ export function RefinementView(p: ViewProps) {
             })}
           </div>
           <div className="grid gap-3" data-testid="final-pending">
-            <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
-            {byDoc.map(({ file, count }) => (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
+              {byDoc.length > 0 && (
+                <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
+                  {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
+                </button>
+              )}
+            </div>
+            {pendingOpen && byDoc.map(({ file, count }) => (
               <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
                 {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
                 <Icon name="arrow-right" size={16} />
@@ -1193,7 +1202,7 @@ export function RefinementView(p: ViewProps) {
       <p className="m-0 font-semibold">Ainda não dá para iniciar. Falta:</p>
       <ul className="m-0 grid list-disc gap-1 pl-5">{unmet.map((item) => <li key={item}>{item}</li>)}</ul>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-ink-soft">Na Revisão, cada item mostra o motivo. Corrija os documentos e avalie de novo.</span>
+        <span className="text-ink-soft">No Resumo, cada item mostra o motivo. Corrija o documento na sua etapa e avalie de novo.</span>
         <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
       </div>
     </div>
@@ -1230,9 +1239,6 @@ export function RefinementView(p: ViewProps) {
     ) : <>{prepareButton}{developButton}{startNote}</>
   ) : step === 'review' ? (
     <>
-      <ActionButton data-testid="evaluate" className="secondary" busy={evaluating} disabled={locked || atMax} title="Se tudo passar, o backlog começa a ser montado" onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
-        Avaliar tudo
-      </ActionButton>
       {backlogOn || st.repositories === true ? (
         <ActionButton
           data-testid="open-backlog"

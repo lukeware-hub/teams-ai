@@ -385,11 +385,14 @@ describe('the final review', () => {
     expect(scores).toContain('briefing.mdsem nota');
   });
 
-  it('lists the pending items by document, opens the stage from there, and shows the general questions in place', () => {
+  it('hides the pending items until the owner shows them, opens the stage from there, and keeps the general questions in place', () => {
     open('?etapa=revisao');
     show(reviewSnap());
-    expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
+    expect(screen.queryByTestId('pending-project.md')).toBeNull();
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('pending-toggle'));
+    expect(screen.getByTestId('pending-toggle').textContent).toBe('Ocultar pendências');
+    expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
     fireEvent.click(screen.getByTestId('pending-project.md'));
     expect(window.location.search).toContain('etapa=project.md');
     expect(screen.getByTestId('doc-project.md')).toBeTruthy();
@@ -434,18 +437,11 @@ describe('the final review', () => {
     expect(handlers.onScoreAll).toHaveBeenCalledTimes(1);
   });
 
-  it('evaluates everything with the agents, and asks first when nothing changed', async () => {
+  it('is the summary: it has no evaluate action, the owner refines in the stage', () => {
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ cycle: 0 }));
-    fireEvent.click(screen.getByTestId('evaluate'));
-    expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
-    cleanup();
-    open('?etapa=revisao');
-    const asked = show(reviewSnap());
-    fireEvent.click(screen.getByTestId('evaluate'));
-    expect(asked.onEvaluate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Reavaliar mesmo assim' }));
-    expect(asked.onEvaluate).toHaveBeenCalledTimes(1);
+    show(reviewSnap());
+    expect(screen.getByRole('heading', { name: 'Resumo' })).toBeTruthy();
+    expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
   it('breaks the backlog from the last screen', () => {

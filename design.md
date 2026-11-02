@@ -1237,7 +1237,7 @@ Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repo
 - uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
 - `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
 
-Uma verificação que falha desliga a primária e diz por quê: ao lado do botão, um bloco lista em palavras simples cada item que falta, com a orientação de corrigir os documentos e avaliar de novo, e o botão `Ver o que falta`, que leva à etapa Revisão. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+Uma verificação que falha desliga a primária e diz por quê: ao lado do botão, um bloco lista em palavras simples cada item que falta, com a orientação de corrigir os documentos e avaliar de novo, e o botão `Ver o que falta`, que leva à etapa Resumo (§26.11). Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
 
 ### 27.2 Projeto: repositórios
 
@@ -1312,6 +1312,44 @@ Estados da linha de sincronização (`DocsSyncNotice`):
 - Em dia: nada é mostrado.
 
 Regra do botão: a ação da etapa é a mesma da etapa `Backlog`, sem uma segunda rota. O dono vê o aviso antes de clicar, então o botão não cria um repositório sem aviso.
+
+### 26.11 Etapa Resumo
+
+A última etapa do assistente, antes de `Arquitetura` ou `Backlog`. Na tela e no assistente chama-se `Resumo`; o endereço continua `?etapa=revisao`. A etapa só mostra o estado do refinamento: não avalia, não processa e não edita documento. Para mudar algo, o dono volta à etapa do documento e processa lá.
+
+| Elemento | Especificação |
+|---|---|
+| Cabeçalho | Overline `Etapa final`, título `Resumo`, frase `Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.` |
+| Notas do Jev | Bloco `Notas do Jev` com a nota de cada documento, e a ação `Validar com o Jev` (secundária, largura total). Projeto confidencial: `Projeto confidencial: o Jev não lê os documentos.` |
+| Graphify | Uma linha por documento: `no Graphify` ou `fora do Graphify`; a linha fora do grafo tem `Adicionar ao Graphify`. |
+| Pendências | Recolhida por padrão. O cabeçalho tem `Pendências` e o botão secundário `Mostrar pendências (N)`, com N o total de pendências dos documentos. Aberta, o botão vira `Ocultar pendências` e cada documento vira um link `documento: n pendências`, que abre a etapa desse documento. |
+| Perguntas sem documento | Sempre visíveis, fora da lista recolhida, com o cartão para responder. Responder não edita documento. |
+| Lista de verificação | O painel da §26.3, sem mudança: PO, SM, consumo de IA, arquivos gerados e segredos. Mostra o motivo de cada item que falta para iniciar. |
+| Ações | `Voltar` (secundária) e `Continuar` (primária). Sem `Avaliar tudo`. |
+
+Wireframe (aprovado pelo dono com as escolhas abaixo):
+
+```
+Etapa final
+Resumo
+Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.
+
+┌ Notas do Jev ─────────────────────┐  ┌ Lista de verificação ─────┐
+│ flow.md 26% · project.md 42% …    │  │ Produto (PO) ▸            │
+│ [ Validar com o Jev ]             │  │ Técnico (SM) ▸            │
+└───────────────────────────────────┘  │ Consumo de IA             │
+┌ Graphify ─────────────────────────┐  │ Arquivos gerados          │
+│ flow.md: no Graphify …            │  │ Segredos                  │
+└───────────────────────────────────┘  └───────────────────────────┘
+┌ Pendências  [ Mostrar pendências (N) ] ──┐
+└──────────────────────────────────────────┘
+                       [ Voltar ]  [ Continuar ]
+```
+
+Escolhas do dono:
+- Pendências recolhidas por padrão: o resumo não mostra a lista sem clique.
+- Perguntas sem documento continuam respondíveis no resumo.
+- Só o nome muda; o endereço `?etapa=revisao` fica, para os links salvos e os testes.
 
 ## 27. Projects, Run, Status
 
