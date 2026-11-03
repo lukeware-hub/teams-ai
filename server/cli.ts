@@ -37,7 +37,7 @@ import { ChatService } from './chat/service.js';
 import { isConfidential } from './chat/confidential.js';
 import { ChatStore } from './chat/store.js';
 import { readProject, runsDir, writePid, type IndexDeps } from './api/run-index.js';
-import { supervise } from './supervisor/supervise.js';
+import { supervise, superviseTick, type Backoff } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
 import { planFileFor, taskFileFor } from './refine/plan-prepare.js';
@@ -90,6 +90,7 @@ const PROGRAM_TICK_MS = 15_000;
 
 /** How often the heal driver looks at the drafts a failure left in error, and how long after boot it first looks. */
 const HEAL_TICK_MS = 60_000;
+const SUPERVISE_TICK_MS = 60_000;
 const HEAL_SETTLE_MS = 30_000;
 
 /** A decider that threw answers nothing, with its redacted reason, instead of passing for an exhausted one. */
@@ -163,6 +164,19 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const programTimer = setInterval(tick, PROGRAM_TICK_MS);
   programTimer.unref();
   setTimeout(tick, 5_000).unref();
+  // A run killed by a restart is resumed here when the owner lets the agents decide; a user's Stop stays stopped.
+  const control = defaultRunControl(repoRoot);
+  const backoff: Backoff = new Map();
+  const superviseAll = async () => {
+    const { cfg: live } = await readUserConfig();
+    for (const { dir } of live.projects) {
+      const read = await readProject(dir).catch(() => null);
+      if (!read || !agentsDecideFor(live, read.project.projectId)) continue;
+      await superviseTick({ idx: { cfg: live, isAlive: (pid) => isAlive(control, pid) }, control, projectDir: dir, intervalMs: SUPERVISE_TICK_MS, now: Date.now, log: io.stderr }, backoff);
+    }
+  };
+  const superviseTimer = setInterval(() => superviseAll().catch((err) => io.stderr(`supervise tick: ${err instanceof Error ? err.message : String(err)}`)), SUPERVISE_TICK_MS);
+  superviseTimer.unref();
   // The heal driver does nothing unless refine.heal.enabled is set, and it reads that flag on every tick.
   const heal = new RefineHealer(
     () => registry.healTargets(),
@@ -218,7 +232,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     },
     port,
   );
-  return { port: api.port, close: async () => { clearInterval(programTimer); clearInterval(healTimer); clearTimeout(healSettle); await api.close(); } };
+  return { port: api.port, close: async () => { clearInterval(programTimer); clearInterval(healTimer); clearInterval(superviseTimer); clearTimeout(healSettle); await api.close(); } };
 }
 
 function flags(argv: string[]): Record<string, string | true> {
