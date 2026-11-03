@@ -171,8 +171,9 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       method: 'POST',
       path: `${S}/specs/check`,
       handler: wrap(async ({ params, json }) => {
-        const run = (await get(params)).startSpecs();
-        if (!run) return json(200, { started: false });
+        const s = await get(params);
+        const run = s.startSpecs();
+        if (!run) return json(200, { started: false, reason: s.specsNotStartedReason() });
         run.catch(logRunFailure(params));
         json(202, { started: true });
       }),

@@ -923,7 +923,7 @@ export function RefinementView(p: ViewProps) {
   /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} onRetry={() => void p.onCheckSpecs?.()} onAsk={() => void p.onAskSpecs?.()} onApprove={() => setAsk({ title: 'Seguir com o specs.md reprovado', text: 'O PO ou o SM reprovou este specs.md. Se você seguir, o desenvolvimento pode começar com os pontos que eles apontaram ainda em aberto.', confirmLabel: 'Seguir mesmo assim', tone: 'accent', icon: 'check', onConfirm: () => void p.onApproveSpecs?.() })} />}
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} waitingOn={st.status === 'ready' ? [] : st.checklist.filter((c) => !c.passed).map((c) => c.detail || c.id)} onRetry={() => p.onCheckSpecs?.()} onAsk={() => void p.onAskSpecs?.()} onApprove={() => setAsk({ title: 'Seguir com o specs.md reprovado', text: 'O PO ou o SM reprovou este specs.md. Se você seguir, o desenvolvimento pode começar com os pontos que eles apontaram ainda em aberto.', confirmLabel: 'Seguir mesmo assim', tone: 'accent', icon: 'check', onConfirm: () => void p.onApproveSpecs?.() })} />}
       {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
         <div data-testid="specs-questions" className="grid gap-3">
           <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>
@@ -1588,7 +1588,15 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
-        onCheckSpecs={act(() => refineApi.checkSpecs(projectId, specId))}
+        onCheckSpecs={async () => {
+          setError(null);
+          try {
+            return await refineApi.checkSpecs(projectId, specId);
+          } catch (e) {
+            setError((e as Error).message);
+            return undefined;
+          }
+        }}
         onAskSpecs={act(() => refineApi.askSpecs(projectId, specId))}
         onApproveSpecs={act(() => refineApi.approveSpecs(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}

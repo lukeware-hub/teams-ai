@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { SpecsVerdictView } from '../api.js';
 import { Icon } from '../components/Icons.js';
 
@@ -30,7 +31,9 @@ const stamp = (at: string): string => new Date(at).toLocaleString('pt-BR', { day
 /** The automatic repairs a rejected specs.md gets before the owner is asked; the same number the server uses. */
 export const SPECS_REPAIRS = 2;
 
-export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked = false, onAsk, onApprove }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void; repairs?: number; asked?: boolean; onAsk?: () => void; onApprove?: () => void }) {
+export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked = false, onAsk, onApprove, waitingOn = [] }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void | Promise<unknown>; repairs?: number; asked?: boolean; onAsk?: () => void; onApprove?: () => void; waitingOn?: readonly string[] }) {
+  // Why the last click started nothing, as the server said it.
+  const [note, setNote] = useState('');
   const hash = specsMd?.hash;
   const bothFailed = reviews.po?.verdict === 'failed' && reviews.sm?.verdict === 'failed';
   const fileStatus = hash !== undefined ? 'Gerado' : busy ? 'Gerando' : bothFailed ? 'Falhou' : 'Aguardando o backlog';
@@ -73,7 +76,9 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked
       )}
       {!busy && onRetry && !asked && !(repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected')) && !current.every((c) => c.review?.verdict === 'approved') && (
         <div className="mt-[0.6rem] grid gap-1">
-          <button type="button" data-testid="specs-check-retry" className="primary h-10 px-[0.8rem]" onClick={onRetry}>{hash === undefined ? 'Gerar e checar o specs.md' : 'Checar de novo'}</button>
+          <button type="button" data-testid="specs-check-retry" className="primary h-10 px-[0.8rem]" onClick={() => void Promise.resolve(onRetry()).then((r) => setNote((r as { started?: boolean; reason?: string } | undefined)?.started === false ? ((r as { reason?: string }).reason ?? '') : ''))}>{hash === undefined ? 'Gerar e checar o specs.md' : 'Checar de novo'}</button>
+          {note && <span data-testid="specs-check-note" role="status" className="text-warn">{note}</span>}
+          {waitingOn.length > 0 && <span data-testid="specs-check-waiting" className="text-ink-soft">Antes de checar, o time revisa os documentos, e eles ainda têm pendências: {waitingOn.join('; ')}.</span>}
           <span className="text-ink-soft">Só roda quando você clicar: abrir ou recarregar a página não chama os agentes.</span>
         </div>
       )}

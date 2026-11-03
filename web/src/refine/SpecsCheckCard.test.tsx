@@ -68,3 +68,25 @@ describe('the specs.md card when the repairs did not settle it', () => {
     expect(screen.getByTestId('specs-check-approve')).toBeTruthy();
   });
 });
+
+describe('the specs.md button says why nothing started', () => {
+  it('shows the reason the server gave when the click started nothing', async () => {
+    const onRetry = vi.fn().mockResolvedValue({ started: false, reason: 'O time ainda está trabalhando. Espere ele terminar e clique de novo.' });
+    render(<SpecsCheck specsMd={null} reviews={{}} busy={false} onRetry={onRetry} />);
+    fireEvent.click(screen.getByTestId('specs-check-retry'));
+    expect((await screen.findByTestId('specs-check-note')).textContent).toContain('ainda está trabalhando');
+  });
+
+  it('shows no note when the click started the work', async () => {
+    const onRetry = vi.fn().mockResolvedValue({ started: true });
+    render(<SpecsCheck specsMd={null} reviews={{}} busy={false} onRetry={onRetry} />);
+    fireEvent.click(screen.getByTestId('specs-check-retry'));
+    await Promise.resolve();
+    expect(screen.queryByTestId('specs-check-note')).toBeNull();
+  });
+
+  it('says what the documents still lack, since the team reviews them first', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{}} busy={false} onRetry={() => undefined} waitingOn={['1 pergunta obrigatória em aberto']} />);
+    expect(screen.getByTestId('specs-check-waiting').textContent).toContain('1 pergunta obrigatória em aberto');
+  });
+});

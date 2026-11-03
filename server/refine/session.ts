@@ -1172,15 +1172,31 @@ export class RefineSession {
   /** Opens the specs check when the backlog is ready and a reviewer still owes its approval of this text; null when nothing is due. */
   startSpecs(): Promise<void> | null {
     if (this.busy || this.starting || this.syncing || this.discarding || this.state.status === 'started') return null;
-    const specs = this.specsOf();
-    if (!specs || this.specsSettled(specs.hash)) return null;
+    const b = this.state.backlog;
+    if (!b?.enabled || b.detail !== true || b.items.length === 0) return null;
+    const now = this.specsOf();
+    if (now && this.specsSettled(now.hash)) return null;
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.specsRounds(ctl, specs).finally(() => {
+    const run = (async () => {
+      // The backlog is not ready yet (a check of the documents is open, or they changed): the agents evaluate it first, then specs.md is checked.
+      if (!now) await this.timedChain(ctl);
+      const specs = this.specsOf();
+      if (specs && !this.specsSettled(specs.hash)) await this.specsRounds(ctl, specs);
+    })().finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
     this.running = run;
     return run;
+  }
+
+  /** Why the check of specs.md did not start, in plain words, for the button that asked. */
+  specsNotStartedReason(): string {
+    if (this.busy || this.starting || this.syncing) return 'O time ainda está trabalhando. Espere ele terminar e clique de novo.';
+    if (this.state.status === 'started') return 'O desenvolvimento já começou.';
+    const b = this.state.backlog;
+    if (!b?.enabled || b.detail !== true || b.items.length === 0) return 'O backlog ainda não está pronto: quebre e detalhe o backlog antes de gerar o specs.md.';
+    return 'O specs.md já está aprovado.';
   }
 
   /** The check of specs.md, and when a reviewer rejects it, up to MAX_SPECS_REPAIRS rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */

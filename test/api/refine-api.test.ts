@@ -924,7 +924,7 @@ describe('refine api', () => {
     expect(done.state.evaluation?.endedAt).toBeTruthy();
 
     // Both approved for this text: a visit starts nothing.
-    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false });
+    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false, reason: 'O specs.md já está aprovado.' });
     expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(3);
   });
 
@@ -1012,6 +1012,36 @@ describe('refine api', () => {
     const after = await snapshot();
     expect(after.state.questions.find((q: { questionId: string }) => q.questionId === asked.questionId).status).toBe('answered');
     expect(after.state.specsRepairs).toBe(0);
+    expect(after.specsApproved).toBe(true);
+  });
+
+  it('the check evaluates the backlog first when it is not ready, then checks specs.md, instead of doing nothing', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const failing = PO.map((c: { id: string; passed: boolean; detail: string }, i: number) => (i === 0 ? { ...c, passed: false, detail: 'objetivo sem critério' } : c));
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: failing, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    // A check of the documents is open, so the backlog is not ready and specs.md could not be checked: the old button did nothing.
+    expect((await snapshot()).state.status).not.toBe('ready');
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
+    const click = await (await call('POST', `${url}/specs/check`)).json();
+    expect(click).toEqual({ started: true });
+    await settle();
+    const after = await snapshot();
+    expect(after.state.status).toBe('ready');
     expect(after.specsApproved).toBe(true);
   });
 
