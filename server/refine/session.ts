@@ -48,7 +48,7 @@ import { DocsStoreError, holdsConflictMarkers, openStore, readStoreText } from '
 import { readDocsMarker } from '../docs/project-state.js';
 import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
 import { mergeDocStrict, sameDoc } from '../git/merge-doc.js';
-import { boundaryLabel, isDocumentEdit } from './docs-boundary.js';
+import { boundaryLabel } from './docs-boundary.js';
 import { DocsSync, type DocsSyncView } from './docs-sync.js';
 import type { SpecAlias } from './docs-projection.js';
 
@@ -716,12 +716,11 @@ export class RefineSession {
     else void this.docs.publish();
   }
 
-  /** A boundary waits for the tick's commit and a document edit rides the next boundary; nothing counts once the draft starts or syncs. */
+  /** A boundary or a document change is committed at the next tick; nothing counts once the draft starts or syncs. */
   private onFact(e: StoredEvent): void {
     if (!this.docs || this.state.status === 'started' || this.discarding || this.starting || this.syncing) return;
     const label = boundaryLabel(e, this.state.backlog);
     if (label !== null) this.docs.boundary(label);
-    else if (isDocumentEdit(e.type)) this.docs.edit();
   }
 
   /** The specs this draft derived: each alias folder, and for a microservice its repository. */

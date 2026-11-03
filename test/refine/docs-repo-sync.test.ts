@@ -61,7 +61,7 @@ const commitCount = (): Promise<number> => git(origin(), ['rev-list', '--count',
 const subject = (): Promise<string> => git(origin(), ['log', '-1', '--format=%s', 'main']);
 
 describe('a documentation repository session syncs its documents', () => {
-  it('the Backlog step binds the store, and the next tick commits a saved document with the Backlog label', async () => {
+  it('the Backlog step binds the store, and the next tick commits the enable and a saved document in one commit', async () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
@@ -70,7 +70,7 @@ describe('a documentation repository session syncs its documents', () => {
     await debounced();
     await s.tickDocs();
     expect(await commitCount()).toBe(2);
-    expect(await subject()).toBe('docs(refine): backlog enabled [skip ci]');
+    expect(await subject()).toBe('docs(refine): backlog enabled, document project.md [skip ci]');
   });
 
   it('attaching the documents again keeps the pending count and the last failure', async () => {
@@ -88,15 +88,18 @@ describe('a documentation repository session syncs its documents', () => {
     expect((await s.snapshot()).docsSync).toEqual(before);
   });
 
-  it('a document saved alone waits for the next boundary', async () => {
+  it('a document saved alone is committed at the next tick, under its own label', async () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
     await s.tickDocs();
-    expect(await commitCount()).toBe(1);
+    await debounced();
+    await s.tickDocs();
     await s.saveDoc('stack.md', '# Stack\n\nOutra linguagem.\n');
     await s.tickDocs();
-    expect(await commitCount()).toBe(1);
+    await debounced();
+    await s.tickDocs();
+    expect(await subject()).toBe('docs(refine): document stack.md [skip ci]');
   });
 
   it('opening a bound session flushes what the store lacks, once', async () => {
@@ -154,7 +157,7 @@ describe('a documentation repository session syncs its documents', () => {
     expect(s.events.length).toBe(events);
   });
 
-  it('a save counts as pending until the next boundary commits it', async () => {
+  it('a save is committed at the next tick, so nothing stays pending', async () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
@@ -163,7 +166,7 @@ describe('a documentation repository session syncs its documents', () => {
     await s.tickDocs();
     await debounced();
     await s.tickDocs();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
   });
 
   it('a session that is not a documentation repository has no docsSync', async () => {

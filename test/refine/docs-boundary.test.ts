@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boundaryLabel, isDocumentEdit } from '../../server/refine/docs-boundary.js';
+import { boundaryLabel } from '../../server/refine/docs-boundary.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import type { BacklogState } from '../../server/refine/state.js';
 
@@ -38,16 +38,16 @@ describe('boundaryLabel', () => {
   });
 });
 
-describe('isDocumentEdit', () => {
-  it('marks the facts that change a document and wait for the next boundary', () => {
-    for (const type of [RefineEvent.DocEdited, RefineEvent.PatchAccepted, RefineEvent.DocMoved, RefineEvent.DocMoveUndone, RefineEvent.DocReshaped, RefineEvent.DocReshapeUndone]) {
-      expect(isDocumentEdit(type)).toBe(true);
+describe('a document change', () => {
+  it('is a boundary of its own, named by its file, so it reaches the store at the next tick', () => {
+    expect(boundaryLabel({ type: RefineEvent.DocEdited, data: { file: 'briefing.md' } }, backlog)).toBe('document briefing.md');
+    expect(boundaryLabel({ type: RefineEvent.PatchAccepted, data: { file: 'stack.md' } }, backlog)).toBe('document stack.md');
+    for (const type of [RefineEvent.DocMoved, RefineEvent.DocMoveUndone, RefineEvent.DocReshaped, RefineEvent.DocReshapeUndone]) {
+      expect(boundaryLabel({ type, data: {} }, backlog)).toBe('documents edited');
     }
   });
 
-  it('is false for a boundary fact and for any other fact', () => {
-    expect(isDocumentEdit(RefineEvent.BacklogEnabled)).toBe(false);
-    expect(isDocumentEdit(RefineEvent.SpecDerived)).toBe(false);
-    expect(isDocumentEdit(RefineEvent.QuestionAnswered)).toBe(false);
+  it('is null for any other fact', () => {
+    expect(boundaryLabel({ type: RefineEvent.QuestionAnswered, data: {} }, backlog)).toBeNull();
   });
 });

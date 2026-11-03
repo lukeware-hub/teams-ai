@@ -2,18 +2,6 @@ import type { StoredEvent } from '../store/event-store.js';
 import { RefineEvent } from './events.js';
 import type { BacklogState } from './state.js';
 
-/** The facts that change a document and wait for the next boundary to reach the store. */
-const EDITS: ReadonlySet<string> = new Set([
-  RefineEvent.DocEdited,
-  RefineEvent.PatchAccepted,
-  RefineEvent.DocMoved,
-  RefineEvent.DocMoveUndone,
-  RefineEvent.DocReshaped,
-  RefineEvent.DocReshapeUndone,
-]);
-
-export const isDocumentEdit = (type: string): boolean => EDITS.has(type);
-
 type Fact = Pick<StoredEvent, 'type' | 'data'>;
 
 /** The commit label of a plan or task step that validated, or null when it did not finish an item's file. */
@@ -37,6 +25,15 @@ export function boundaryLabel(fact: Fact, backlog: BacklogState | null): string 
       return stepLabel(fact.data, backlog);
     case RefineEvent.PlansPrepared:
       return 'plans prepared';
+    // A document change is committed at the next tick, not held for a later boundary: the store follows the draft at once.
+    case RefineEvent.DocEdited:
+    case RefineEvent.PatchAccepted:
+      return typeof fact.data.file === 'string' ? `document ${fact.data.file}` : 'documents edited';
+    case RefineEvent.DocMoved:
+    case RefineEvent.DocMoveUndone:
+    case RefineEvent.DocReshaped:
+    case RefineEvent.DocReshapeUndone:
+      return 'documents edited';
     default:
       return null;
   }
