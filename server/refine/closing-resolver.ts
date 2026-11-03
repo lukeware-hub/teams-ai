@@ -10,6 +10,19 @@ export const safePatches = (rows: readonly PatchRow[]): PatchRow[] => rows.filte
 
 /** Resolves the closing checks with the agents, without the owner. It stops when the summary passes, when a round changes nothing, when the owner must act, or after CLOSING_ROUNDS. */
 export async function resolveClosing(s: RefineSession): Promise<void> {
+  // One resolver per session: a second call while one runs does nothing.
+  if (resolving.has(s)) return;
+  resolving.add(s);
+  try {
+    await resolveOnce(s);
+  } finally {
+    resolving.delete(s);
+  }
+}
+
+const resolving = new WeakSet<RefineSession>();
+
+async function resolveOnce(s: RefineSession): Promise<void> {
   // Before the review closes, only the stage documents are resolved: the later steps wait for the owner's Continuar.
   if (s.state.reviewClosed !== true) return ignoreConflict(() => resolveStages(s));
   for (let round = 0; round < CLOSING_ROUNDS; round++) {

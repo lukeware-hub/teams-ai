@@ -68,6 +68,12 @@ describe('resolveClosing', () => {
     expect(s.runPlans).not.toHaveBeenCalled();
   });
 
+  it('a second call while one runs does nothing', async () => {
+    const s = fakeSession({ summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'questions', ok: true, detail: '' }], 'h2')], patches: [patch('p1')] });
+    await Promise.all([resolveClosing(s as unknown as RefineSession), resolveClosing(s as unknown as RefineSession)]);
+    expect(s.accept).toHaveBeenCalledTimes(1);
+  });
+
   it('decides the architecture again when it is stale, and waits for it to settle', async () => {
     const s = fakeSession({
       summaries: [summary([{ id: 'architecture', ok: false, detail: 'a' }], 'h1'), summary([{ id: 'architecture', ok: true, detail: '' }], 'h2')],
