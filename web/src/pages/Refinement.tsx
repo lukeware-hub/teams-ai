@@ -404,8 +404,12 @@ export function RefinementView(p: ViewProps) {
   const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
   const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
   // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
+  // The view follows only an owner who is on the stage that just ended: one reading another document stays there.
+  const stageBefore = useRef(onStage);
   useEffect(() => {
-    if (newProject && onStage) setTab(onStage);
+    const before = stageBefore.current;
+    stageBefore.current = onStage;
+    if (newProject && onStage) setTab((current) => (before === undefined || current === before ? onStage : current));
   }, [onStage, newProject]);
   // Each arrival at the backlog checks specs.md again; the server starts nothing when both approvals stand.
   useEffect(() => {
