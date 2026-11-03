@@ -93,6 +93,17 @@ describe('document graph in the stages', () => {
     await reopened.close();
   });
 
+  it('the heal driver may retry a failed stage review, but leaves a healthy stage session alone', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    expect(s.healView().staged).toBe(true);
+    await s.evaluateStage('flow.md');
+    expect(s.state.status).toBe('error');
+    expect(s.healView().staged).toBe(false);
+    expect(s.healView().cycle).toBeDefined();
+    await s.close();
+  });
+
   it('a failed review does not put the document in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);

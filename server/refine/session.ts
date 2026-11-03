@@ -351,8 +351,8 @@ export class RefineSession {
     return {
       busy: this.busy || this.discarding,
       started: this.state.status === 'started',
-      // A new project's stage reviews run until the owner closes the final review, and the driver does not call them.
-      staged: this.state.stages === true && this.state.reviewClosed !== true,
+      // A new project's stage reviews run until the owner closes the final review; the driver only retries one that failed.
+      staged: this.state.stages === true && this.state.reviewClosed !== true && this.state.status !== 'error',
       paused: runs.paused,
       cycle: this.state.status === 'error' ? runs.cycle : undefined,
       speckit: this.state.speckit?.status === 'failed' ? runs.speckit : undefined,
