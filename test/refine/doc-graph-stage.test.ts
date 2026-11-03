@@ -77,6 +77,15 @@ describe('document graph in the stages', () => {
     await s.close();
   });
 
+  it('a failed review does not put the document in the graph', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await s.evaluateStage('flow.md');
+    expect(s.state.status).toBe('error');
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
+    await s.close();
+  });
+
   it('keeps the stage open when the extraction fails, names the reason, and advances on a retry', async () => {
     let fail = true;
     const flaky = async (dir: string, outDir: string) => {

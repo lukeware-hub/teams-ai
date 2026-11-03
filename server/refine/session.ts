@@ -553,8 +553,8 @@ export class RefineSession {
       await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
-      // A repository session adds the reviewed document to the graph when its review ends; the owner still moves on with Continuar.
-      if (this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
+      // A repository session adds the reviewed document to the graph when its review ends; a failed review adds nothing.
+      if (this.state.status !== 'error' && this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
         await this.journal.fact(RefineEvent.DocGraphStarted, { file });
         await this.indexStage(file, false);
       }
