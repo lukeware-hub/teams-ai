@@ -152,6 +152,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/specs/check`,
+      handler: wrap(async ({ params, json }) => {
+        const run = (await get(params)).startSpecs();
+        if (!run) return json(200, { started: false });
+        run.catch(logRunFailure(params));
+        json(202, { started: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/backlog`,
       handler: wrap(async ({ params, json }) => {
         await (await get(params)).enableBacklog();
@@ -336,6 +346,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         await (await get(ctx.params)).addToGraph(doc as DocFile);
         // The extraction runs in the background; the page follows it through the snapshot.
         ctx.json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/not-applicable`,
+      handler: wrap(async (ctx) => {
+        const s = await get(ctx.params);
+        await s.markNotApplicable();
+        // A repository session answers once the extraction is under way; the page follows it through the snapshot.
+        ctx.json(s.state.repositories === true ? 202 : 200, { ok: true });
       }),
     },
     {

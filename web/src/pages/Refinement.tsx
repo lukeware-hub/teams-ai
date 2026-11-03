@@ -25,6 +25,7 @@ import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
@@ -211,6 +212,8 @@ export interface ViewProps {
   /** "Anexar imagem": the agent's design.md adjusted from template images (base64), or null when it failed. */
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
+  /** Opening the final review: PO and SM check specs.md when something is still owed. */
+  onCheckSpecs?(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
   /** Decides the architecture of the five documents, in a repository session. */
   onDecideArchitecture?(): void | Promise<unknown>;
@@ -221,6 +224,8 @@ export interface ViewProps {
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
   /** The final review puts a document in the Graphify graph as it is now; `false` says the server refused. */
   onAddToGraph?(doc: DocFile): void | boolean | Promise<unknown>;
+  /** design.md is marked not applicable: the server writes the mark, keeps it as passed and, in a repository session, adds it to the graph. */
+  onNotApplicable?(): void | boolean | Promise<unknown>;
   /** The owner moves on from the final review to the backlog; `false` says the server refused. */
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
@@ -402,6 +407,10 @@ export function RefinementView(p: ViewProps) {
   useEffect(() => {
     if (newProject && onStage) setTab(onStage);
   }, [onStage, newProject]);
+  // Each arrival at the final review checks specs.md again; the server starts nothing when both approvals stand.
+  useEffect(() => {
+    if (step === 'review' && backlogOn) void p.onCheckSpecs?.();
+  }, [step, backlogOn]);
   const stageStep = newProject ? stageAction(st) : null;
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
   const backlogBlock = (note: ReactNode) => (
@@ -547,7 +556,7 @@ export function RefinementView(p: ViewProps) {
   };
   const markNotApplicable = () => replaceDoc('design.md', { title: 'Marcar o design como não se aplica', text: 'O texto do design será trocado por "Não se aplica".', confirmLabel: 'Marcar', icon: 'check' }, () => {
     setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
-    p.onSaveDoc('design.md', NOT_APPLICABLE_DESIGN);
+    void p.onNotApplicable?.();
   });
   const attachDoc = async (files: FileList | null, doc: DocFile = tab) => {
     const file = files?.[0];
@@ -919,7 +928,8 @@ export function RefinementView(p: ViewProps) {
           </div>
         </dl>
       </div>
-      <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
+      {backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} />}
+      <div data-testid="refinement-quality-checklists"className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
           <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
           <Checklist items={st.checklist} role="po" />
@@ -1233,23 +1243,22 @@ export function RefinementView(p: ViewProps) {
       <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
-  // The backlog items are what specs.md is made of: until an evaluation writes them, the review offers to generate them.
-  const specsMissing = backlogOn && (st.backlog?.items.length ?? 0) === 0;
+  // Continuar waits for specs.md to be written and approved by PO and SM; until then it stays visible and disabled, with the reason beside it.
+  const specsGate = backlogOn && snap.specsApproved !== true;
+  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}) : null;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
     ) : <>{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
-      {specsMissing && (
-        <ActionButton data-testid="generate-specs" className="primary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => p.onEvaluate()} icon={<Icon name="refresh" size={16} />}>
-          Gerar specs.md
-        </ActionButton>
-      )}
       {backlogOn || st.repositories === true ? (
+        <>
+          {specsReason && <span data-testid="open-backlog-reason" className="text-[0.8rem] text-ink-soft">{specsReason}</span>}
         <ActionButton
           data-testid="open-backlog"
-          className={specsMissing ? 'secondary' : 'primary'}
+          className="primary"
+          disabled={specsGate}
           onClick={async () => {
             if (stageSession && !st.reviewClosed) {
               const result = await p.onCloseReview?.();
@@ -1262,6 +1271,7 @@ export function RefinementView(p: ViewProps) {
         >
           {st.repositories === true ? 'Continuar' : 'Abrir backlog e execução'}
         </ActionButton>
+        </>
       ) : (
         <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
@@ -1485,12 +1495,17 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
+        onCheckSpecs={act(() => refineApi.checkSpecs(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onResolveClosing={act(() => refineApi.resolve(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onAddToGraph={(doc) => refineApi.addToGraph(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onNotApplicable={act(async () => {
+          await refineApi.notApplicable(projectId, specId);
+          load();
+        })}
         onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}

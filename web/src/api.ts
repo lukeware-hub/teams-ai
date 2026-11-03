@@ -549,6 +549,10 @@ export interface RefineState {
   architecture?: { docsHash: string; decision: ArchitectureView } | null;
   /** The last architecture decision failed, with the reason in plain words. */
   architectureError?: string | null;
+  /** specs.md as last written from the detailed backlog: the hash of its text and its size. */
+  specsMd?: { hash: string; bytes: number } | null;
+  /** The PO's and the SM's last verdict on specs.md; each names the hash of the text it read. */
+  specsReview?: Partial<Record<'po' | 'sm', SpecsVerdictView>>;
   /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
   architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
@@ -593,6 +597,15 @@ export interface ClosingSummary {
   summaryHash: string;
 }
 
+/** A reviewer's verdict on specs.md; `failed` when its analysis did not finish. */
+export interface SpecsVerdictView {
+  specsHash: string;
+  verdict: 'approved' | 'rejected' | 'failed';
+  findings: string[];
+  reason: string | null;
+  at: string | null;
+}
+
 export interface Snapshot {
   projectId: string;
   specId: string;
@@ -610,6 +623,8 @@ export interface Snapshot {
   closing?: ClosingSummary;
   /** The architecture was decided on documents that have changed since. */
   architectureStale?: boolean;
+  /** specs.md is written from the current backlog and PO and SM both approved it. */
+  specsApproved?: boolean;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
   stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
   /** True when the session has the documentation-repository stamp. */
@@ -659,6 +674,7 @@ export const refineApi = {
   undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
   closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
+  checkSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/check`).then((r) => json<{ started: boolean }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
   reask: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/reask`).then((r) => json<{ ok: true }>(r)),
@@ -672,6 +688,7 @@ export const refineApi = {
   scoreDoc: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/score`).then((r) => json<{ ok: true }>(r)),
   continueStage: (p: string, s: string, doc?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stage/continue`, doc ? { doc } : undefined).then((r) => json<{ ok: true }>(r)),
   addToGraph: (p: string, s: string, doc: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/graph/add`, { doc }).then((r) => json<{ ok: true }>(r)),
+  notApplicable: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/not-applicable`).then((r) => json<{ ok: true }>(r)),
   closeReview: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/review/close`).then((r) => json<{ ok: true }>(r)),
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),

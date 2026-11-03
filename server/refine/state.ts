@@ -154,6 +154,15 @@ export interface DroppedQuestion {
   matchedAnswer: string | null;
 }
 
+/** A reviewer's verdict on specs.md: `failed` when its analysis did not finish, and the reason says why. */
+export interface SpecsVerdict {
+  specsHash: string;
+  verdict: 'approved' | 'rejected' | 'failed';
+  findings: string[];
+  reason: string | null;
+  at: string | null;
+}
+
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
@@ -196,6 +205,10 @@ export interface RefineState {
   graphError?: { file: DocFile; reason: string } | null;
   /** The architecture the documents support, with the hash of the documents it was decided on; a later edit of a document makes it stale. */
   architecture?: { docsHash: string; decision: Architecture } | null;
+  /** specs.md as last written from the detailed backlog: the hash of its text and its size. */
+  specsMd?: { hash: string; bytes: number } | null;
+  /** The PO's and the SM's last verdict on specs.md; each names the hash of the text it read. */
+  specsReview?: Partial<Record<'po' | 'sm', SpecsVerdict>>;
   /** The summary the owner authorized the development on, by its hash; absent until that authorization. */
   authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
@@ -443,6 +456,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.CycleFailed:
       s.error = String(d.reason);
       s.status = 'error';
+      break;
+    case RefineEvent.SpecsMdWritten:
+      s.specsMd = { hash: String(d.hash), bytes: Number(d.bytes) };
+      break;
+    case RefineEvent.SpecsReviewed:
+      s.specsReview = {
+        ...s.specsReview,
+        [String(d.role)]: { specsHash: String(d.specsHash), verdict: d.verdict as SpecsVerdict['verdict'], findings: (d.findings as string[]) ?? [], reason: (d.reason as string | null) ?? null, at: e.at ?? null },
+      };
       break;
     case RefineEvent.EvaluationStarted:
       s.evaluation = { startedAt: e.at ?? '', endedAt: null };

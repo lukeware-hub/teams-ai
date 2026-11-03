@@ -16,7 +16,8 @@ const checks = (value: number) => ({ complete: value, concrete: value, consisten
 const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: Object.fromEntries(Object.entries(docs).map(([file, score]) => [file, { score, checks: { complete: 0.44, concrete: 0.72, consistent: 0.84, scoped: 0.6 } }])) });
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn() });
+const verdict = (specsHash: string, value: 'approved' | 'rejected', findings: string[] = []) => ({ specsHash, verdict: value, findings, reason: null, at: '2026-11-03T14:02:00.000Z' });
+const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onCheckSpecs: vi.fn(),onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn(), onNotApplicable: vi.fn(() => true) });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -340,11 +341,12 @@ describe('the actions of the editor', () => {
     const handlers = show(base());
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(handlers.onSaveDoc).not.toHaveBeenCalled();
+    expect(handlers.onNotApplicable).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
     expect(screen.getByTestId('stage-confirm').className).not.toContain('confirm-danger');
     fireEvent.click(screen.getByTestId('stage-confirm'));
-    expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
+    expect(handlers.onNotApplicable).toHaveBeenCalledTimes(1);
+    expect(handlers.onSaveDoc).not.toHaveBeenCalled();
   });
 
   it('marks an empty design as not applicable without asking', () => {
@@ -353,7 +355,7 @@ describe('the actions of the editor', () => {
     const handlers = show({ ...snap, docs: { ...snap.docs, 'design.md': '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(handlers.onSaveDoc).toHaveBeenCalledWith('design.md', expect.stringContaining('Não se aplica'));
+    expect(handlers.onNotApplicable).toHaveBeenCalledTimes(1);
   });
 
   it('offers Sugerir from the second document on, not on flow.md', () => {
@@ -430,12 +432,36 @@ describe('the final review', () => {
     expect(screen.getByTestId('spec-tree')).toBeTruthy();
   });
 
-  it('offers Gerar specs.md while the backlog has no items, and that button runs the evaluation that writes them', () => {
+  it('checks specs.md by itself each time the final review opens, with no button for it', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ backlog }));
-    fireEvent.click(screen.getByTestId('generate-specs'));
-    expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
+    const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsApproved: false });
+    expect(handlers.onCheckSpecs).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('generate-specs')).toBeNull();
+  });
+
+  it('Continuar stays visible and disabled, with the reason, until PO and SM approve the written specs.md', () => {
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
+    open('?etapa=revisao');
+    show({
+      ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }),
+      specsApproved: false,
+    });
+    expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Falta a aprovação do SM');
+    expect(screen.getByTestId('specs-check-po-status').textContent).toBe('Aprovado');
+    expect(screen.getByTestId('specs-check-sm-finding').textContent).toBe('AC-003 não cobre o objetivo');
+  });
+
+  it('Continuar is enabled once specs.md is approved by both, with no reason shown', () => {
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
+    open('?etapa=revisao');
+    show({
+      ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'approved') } }),
+      specsApproved: true,
+    });
+    expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('open-backlog-reason')).toBeNull();
   });
 
   it('asks the Jev for the scores of all five documents when some have none', () => {
@@ -470,7 +496,7 @@ describe('the final review', () => {
 
   it('opens stage 7 when the backlog exists, and comes back to the review from it', async () => {
     open('?etapa=revisao');
-    show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
+    show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(screen.getByTestId('stage-wizard')).toBeTruthy();
@@ -482,7 +508,7 @@ describe('the final review', () => {
 
   it('closes the review on the server when the owner opens the backlog', async () => {
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
+    const handlers = show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(handlers.onCloseReview).toHaveBeenCalledTimes(1);
@@ -500,7 +526,7 @@ describe('the final review', () => {
 
   it('shows the review done once closed, and does not close it again', () => {
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }));
+    const handlers = show({ ...reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     expect(screen.getByTestId('backlog-stage')).toBeTruthy();
     expect(handlers.onCloseReview).not.toHaveBeenCalled();

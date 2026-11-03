@@ -397,6 +397,10 @@ export const writeSpecsIndex = (d: Draft, index: unknown): Promise<void> => writ
 
 export const writeBacklogMd = (d: Draft, text: string): Promise<void> => writeFileAtomic(path.posix.join(d.docs, 'backlog.md'), withNewline(text));
 
+/** `docs/specs.md`: the detailed backlog's specs as one document, written as it is and read back to confirm it. */
+export const writeSpecsMd = (d: Draft, text: string): Promise<void> => writeFileAtomic(path.posix.join(d.docs, 'specs.md'), text);
+export const readSpecsMd = (d: Draft): Promise<string | null> => fs.readFile(path.posix.join(d.docs, 'specs.md'), 'utf8').catch(() => null);
+
 export async function draftHash(d: Draft): Promise<string> {
   const [project, briefing, stack, flow, design] = await Promise.all([readDoc(d, 'project.md'), readDoc(d, 'briefing.md'), readDoc(d, 'stack.md'), readDoc(d, 'flow.md'), readDoc(d, 'design.md')]);
   return sha256(canonicalJson({ project, brief: briefing, stack, flow, design }));
