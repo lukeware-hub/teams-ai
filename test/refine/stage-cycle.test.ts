@@ -231,6 +231,28 @@ describe('runStageCycle', () => {
     expect(runAgent.mock.calls[0]![0]).toMatchObject({ role: 'sm' });
   });
 
+  it('drops a suggestion that only cites a decision the stack document already states, and keeps a real one', async () => {
+    const draft = await newDraft();
+    const stack = '## Documentação\n\n- Swagger para documentar a API REST.\n\nSwagger\n';
+    await writeDoc(draft, 'stack.md', stack);
+    const journal = foldingJournal();
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind === 'suggest') return reshaped(stack);
+      if ((req.pack.feedback ?? '').includes('(reorganize in full)')) return answer([]);
+      return answer([
+        { file: 'docs/stack.md', find: 'Swagger\n', replace: '- Swagger para documentar a API REST, conforme a decisão sm-s4-0.\n', reason: 'A decisão sm-s4-0 documenta a API.' },
+        { file: 'docs/stack.md', find: '## Documentação', replace: '## Documentação e testes', reason: 'O título cobre também os testes.' },
+      ]);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'stack.md');
+    expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed).map((e) => e.data.find)).toEqual(['## Documentação']);
+  });
+
+  it('tells the stage reviewer to propose only a change that says something new', () => {
+    const docs = { 'project.md': '', 'briefing.md': '', 'stack.md': '## Stack\n', 'flow.md': '', 'design.md': '' };
+    expect(stageReviewPack({ role: 'sm', specHash: 'h', principles: [], file: 'stack.md', docs, specId: 'shop-002', history: [], rejected: [] }).feedback).toContain('PATCH WORTH:');
+  });
+
   it('a failed review fails the cycle with its reason, and changes nothing', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

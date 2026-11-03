@@ -58,6 +58,9 @@ const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM
 /** Every role reads all five documents from its own point of view and reports what it sees outside its area as a finding. */
 const FINDINGS_RULE = 'FINDINGS: read all five documents through your own lens, and report a defect in a document you do not own as an entry in `findings` (doc, severity blocking or advice, the exact quote copied character for character, the problem in text, and the fix). Report at most 3 findings per document, and only a defect that would make the implementation wrong or untestable. A finding never replaces the checklist ids of your own role.';
 
+/** Every role: a patch is proposed only when it changes what the documents say, so the owner reads only real suggestions. */
+export const PATCH_WORTH = 'PATCH WORTH: propose a docPatch only when it changes what the documents say: it adds a missing fact, number, name, limit, rule or decision, or corrects one that is wrong or contradicted. Read the document as it stands before each patch. A change that only restates, reformats or cites a decision or question id for what the text already says, or repeats a line the document already holds, is not proposed; never write a question or decision id into a document. When the documents already say what the answer decides, return no patch.';
+
 /** R11.10: before the detailing, PO and SM leave what a spec decides to the detailing; nothing else waits. */
 const OUTLINE_REVIEW_RULE = 'Outline review (no spec yet): never ask about or patch a detail a spec decides, such as a status code, a message, a field, a validation or the content of an e-mail; the detailing settles it, so a missing detail fails no checklist id now, and this narrows the flow.md review and the Jev preflight notes. It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.';
 
@@ -215,6 +218,7 @@ export function refinePack(input: {
       : `design.md is Front's: read it as context, never ask about it or patch it. Report it only as a contradiction with another document.`,
     rolesRule(input.role),
     FINDINGS_RULE,
+    PATCH_WORTH,
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE, ...(input.role === 'front' ? [] : [DECISION_RULE])]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...(input.derived.spec || detail || input.role === 'front' ? [] : [OUTLINE_REVIEW_RULE]),

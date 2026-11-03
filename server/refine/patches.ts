@@ -1,5 +1,6 @@
 import { createPatch } from 'diff';
 import { DOC_REL, type DocFile } from './draft.js';
+import { changesNothing } from './scope-guard.js';
 
 export interface DocPatchIn {
   file: string;
@@ -32,7 +33,7 @@ export function docOf(file: string, specId: string, projectBriefing = false): Do
 /** Shown as the reason when another change covered a pending suggestion, so it no longer applies. */
 export const COVERED_REASON = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
-/** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once. */
+/** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once; a change that says nothing new is refused too. */
 export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false): PatchCheck {
   const file = docOf(p.file, specId, projectBriefing);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
@@ -41,6 +42,7 @@ export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<D
   const n = count(text, p.find);
   if (n === 0) return { ok: false, reason: `find not found in ${file}` };
   if (n > 1) return { ok: false, reason: `find occurs ${n} times in ${file}` };
+  if (changesNothing(text, applyPatch(text, p)!)) return { ok: false, reason: 'the change adds nothing the document does not already say' };
   return { ok: true, file };
 }
 

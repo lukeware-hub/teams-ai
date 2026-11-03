@@ -18,7 +18,7 @@ Etapa 1, Refinar documentos:
 
 1. Revise os documentos e clique em **Avaliar**. Dois agentes revisam: **Produto** (objetivos, critérios de aceite e fluxo de negócio) e **Técnico** (tecnologias, tarefas e viabilidade).
 2. Responda as **perguntas em aberto**. As marcadas como obrigatórias bloqueiam o avanço. Você pode escrever a resposta e clicar em **Responder**, ou **Ignorar** as que não são obrigatórias.
-3. Revise as **sugestões de alteração**: aceite ou rejeite cada uma. Aceitar uma sugestão pede nova avaliação.
+3. Revise as **sugestões de alteração**: aceite ou rejeite cada uma. Aceitar uma sugestão pede nova avaliação. Os agentes só sugerem o que muda o texto: uma sugestão que só troca a forma, cita uma decisão ou repete o que o documento já diz não chega a você.
 4. Se mudou algum documento, clique em **Reavaliar**.
 5. Quando a lista de verificação estiver toda atendida, o backlog é montado e detalhado na mesma avaliação. Não há um segundo clique.
 

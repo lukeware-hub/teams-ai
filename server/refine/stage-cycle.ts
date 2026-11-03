@@ -12,7 +12,7 @@ import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
-import { historyBlocks, reorganizePack } from './packs.js';
+import { historyBlocks, PATCH_WORTH, reorganizePack } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeAll } from './reshape.js';
@@ -100,6 +100,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
     '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
+    PATCH_WORTH,
     ...(input.jev ? [input.jev] : []),
     ...(input.score ? jevIndex(input.file, input.score) : []),
     context,

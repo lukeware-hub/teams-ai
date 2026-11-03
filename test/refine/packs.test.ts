@@ -33,6 +33,12 @@ describe('refinePack', () => {
     }
   });
 
+  it('tells every role to propose only a change that says something new', () => {
+    for (const role of ['po', 'sm', 'front'] as const) {
+      expect(refinePack({ ...base, role }).feedback).toContain('PATCH WORTH:');
+    }
+  });
+
   it('tells the front agent to review only and answer with the JSON object', () => {
     const { feedback } = refinePack({ ...base, role: 'front' });
     expect(feedback).toContain('This is a review, not an implementation task');
