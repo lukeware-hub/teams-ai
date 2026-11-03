@@ -341,7 +341,7 @@ describe('the Jev pass line', () => {
     script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.settled();
-    await expect(s.continueStage('flow.md')).rejects.toThrow(/nota do Jev de flow\.md está em 40%, abaixo de 60%/);
+    await expect(s.continueStage('flow.md')).rejects.toThrow(/nota do Jev de flow\.md está em 40%, abaixo de 50%/);
     await s.continueStage('flow.md', true);
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);

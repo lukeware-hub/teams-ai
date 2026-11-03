@@ -21,8 +21,8 @@ export interface DocScore {
 /** A check below this value is doubted. */
 export const DOUBT_BELOW = 0.6;
 
-/** A document scored below this is improved once by its agents, and the owner confirms before the stage moves on. */
-export const PASS_LINE = 0.6;
+/** A document scored below this is improved once by its agents, and the owner confirms before the stage moves on. Real Jev scores sit between 32% and 66% (median 55%), so 50% stops the weak ones and lets about seven in ten through. */
+export const PASS_LINE = 0.5;
 
 export interface ScoreUsage {
   inputTokens: number;
