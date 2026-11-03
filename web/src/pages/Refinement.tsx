@@ -24,7 +24,7 @@ import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
-import { lastEvaluationText, ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
@@ -61,6 +61,8 @@ const errorText = (text: string | null) => text
   .replaceAll('timeout', 'tempo limite excedido')
   .replaceAll('internal error', 'erro interno')
   .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
+// The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
+const isBusyError = (e: Error) => e.message.startsWith('Já tem uma avaliação em andamento');
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 
 /** The alignment line: the last stage review's divergences of the document, or else the full round's contradictions check. */
@@ -1362,6 +1364,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const navigate = useNavigate();
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busyNotice, setBusyNotice] = useState(false);
   const [starting, setStarting] = useState(false);
   const [closingOpen, setClosingOpen] = useState(false);
   const applied = useRef(0);
@@ -1431,8 +1434,10 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
+    setBusyNotice(false);
     return f().catch((e: Error) => {
-      setError(e.message);
+      if (isBusyError(e)) setBusyNotice(true);
+      else setError(e.message);
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
     });
   };
@@ -1460,6 +1465,11 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {busyNotice && snap.state.status === 'evaluating' && (
+        <ProcessBox title="Processando" since={snap.state.evaluation?.startedAt ?? null} tone="good" testId="busy-notice">
+          <span className="text-[0.75rem] leading-[1.35]">Já existe uma avaliação em andamento. Aguarde o fim dela para avaliar de novo.</span>
+        </ProcessBox>
+      )}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
         <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">
