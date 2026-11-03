@@ -248,6 +248,8 @@ export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
   private queuedReview: Promise<void> | null = null;
+  /** A graph extraction is the only thing running: the owner's answers and rejections do not wait for it, since they edit no document. */
+  private indexing = false;
   /** The documents whose low score already got its one extra review. */
   private readonly improved = new Set<DocFile>();
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
@@ -341,6 +343,12 @@ export class RefineSession {
     this.guardStarting();
     if (this.discarding) throw new BusyError('o rascunho está sendo descartado');
     if (this.busy) throw new BusyError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
+  }
+
+  /** Like `guard`, but a graph extraction does not stop the action: it changes no document. */
+  private guardLight(): void {
+    if (this.busy && this.indexing) return;
+    this.guard();
   }
 
   ensureCanEvaluate(): void {
@@ -488,8 +496,10 @@ export class RefineSession {
   /** Shows the extraction in the state, then runs it in the background; the session stays busy until the graph has the document or refused it. */
   private startIndexing(file: DocFile, advance = true): Promise<void> {
     const started = this.journal.fact(RefineEvent.DocGraphStarted, { file });
+    this.indexing = true;
     this.running = started.then(() => this.indexStage(file, advance)).finally(() => {
       this.running = null;
+      this.indexing = false;
     });
     return started.then(() => undefined);
   }
@@ -1187,7 +1197,7 @@ export class RefineSession {
 
   /** `docsAnswered`: the owner's mark that the documents already answered it, the label the routing eval reads. */
   async answer(questionId: string, text: string, docsAnswered = false): Promise<void> {
-    // A stage answer is only recorded, so the owner answers the whole batch while a review runs.
+    // A stage answer is only recorded, so the owner answers the whole batch while a review or an extraction runs.
     if (this.state.backlog?.enabled || !this.busy) this.guard();
     const q = this.question(questionId, true);
     // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
@@ -1209,7 +1219,7 @@ export class RefineSession {
   }
 
   async skip(questionId: string): Promise<void> {
-    this.guard();
+    this.guardLight();
     if (this.question(questionId).blocking) throw new ConflictError(`question ${questionId} is blocking and cannot be skipped`);
     await this.journal.fact(RefineEvent.QuestionSkipped, { questionId });
   }
@@ -1234,8 +1244,8 @@ export class RefineSession {
     this.guard();
     const { file } = this.patch(patchId);
     await this.applyPatchRow(patchId);
-    // A document already in the graph goes again when its text changes, so the graph never keeps the old text.
-    if (this.state.repositories === true && this.deps.extractDocs && (this.state.graphed ?? []).includes(file as DocFile)) await this.startIndexing(file as DocFile, false);
+    // A document already in the graph holds an older text now: it is marked, and goes back in once, when the stage continues or the summary runs.
+    if (this.state.repositories === true && (this.state.graphed ?? []).includes(file as DocFile)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
   }
 
   /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */
@@ -1267,7 +1277,7 @@ export class RefineSession {
   }
 
   async reject(patchId: string, reason: string | null): Promise<void> {
-    this.guard();
+    this.guardLight();
     this.patch(patchId);
     await this.journal.fact(RefineEvent.PatchRejected, { patchId, reason });
   }

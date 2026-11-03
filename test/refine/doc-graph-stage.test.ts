@@ -211,7 +211,7 @@ Editado.
     await s.close();
   });
 
-  it('an accepted suggestion on a document in the graph puts the new text in the graph again', async () => {
+  it('an accepted suggestion starts no extraction: it marks the graph outdated, and Continuar puts the document back in once', async () => {
     let runs = 0;
     const counting = async (dir: string, outDir: string) => {
       runs += 1;
@@ -225,8 +225,13 @@ Editado.
     const before = runs;
     const patch = s.state.patches.find((p) => p.status === 'pending')!;
     await s.accept(patch.patchId);
+    expect(s.busy).toBe(false);
+    expect(runs).toBe(before);
+    expect(s.state.graphed).not.toContain('flow.md');
+    await s.continueStage();
     await s.settled();
     expect(runs).toBe(before + 1);
+    expect(s.state.graphed).toContain('flow.md');
     await s.close();
   });
 
@@ -340,6 +345,38 @@ describe('the Jev pass line', () => {
     await s.continueStage('flow.md', true);
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
+    await s.close();
+  });
+});
+
+describe('the owner keeps working while the graph extraction runs', () => {
+  it('rejects a suggestion and skips a question while a document goes to the graph, and edits wait', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const slow = async (dir: string, outDir: string) => {
+      calls += 1;
+      if (calls > 1) await gate;
+      await extractDocs(dir, outDir);
+    };
+    const s = await RefineSession.create({ ...deps(), extractDocs: slow }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    const ask = { text: 'Qual o prazo?', blocking: false, relatedAcIds: [], options: [] };
+    script['refine/po'] = [refineOut(green(PO), [ask], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  - passo novo', reason: 'novo passo' }])];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    const patch = s.state.patches.find((p) => p.status === 'pending')!;
+    const question = s.state.questions.find((q) => q.status === 'pending')!;
+    await s.reject(patch.patchId, null);
+    await s.continueStage();
+    expect(s.state.graphing).toBe('flow.md');
+    await s.skip(question.questionId);
+    expect(s.state.questions.find((q) => q.questionId === question.questionId)?.status).toBe('skipped');
+    await expect(s.saveDoc('flow.md', `${FLOW}\nEditado.\n`)).rejects.toThrow();
+    release();
+    await s.settled();
     await s.close();
   });
 });

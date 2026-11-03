@@ -668,6 +668,10 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.graphing = null;
       s.graphError = null;
       break;
+    case RefineEvent.DocGraphStale:
+      // The graph holds an older text of this document; it goes back in when the stage continues or the summary runs.
+      s.graphed = (s.graphed ?? []).filter((file) => file !== docName(d.file));
+      break;
     case RefineEvent.DocGraphFailed:
       s.graphing = null;
       s.graphError = { file: docName(d.file), reason: String(d.reason) };
