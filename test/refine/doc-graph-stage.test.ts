@@ -145,7 +145,8 @@ describe('document graph in the stages', () => {
     await finishStages(s);
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
-    await expect(s.enableBacklog()).rejects.toThrow(/Adicione os cinco documentos ao Graphify antes: falta flow\.md/);
+    // The edit outdates the later stages first; their reviews also put the documents back in the graph.
+    await expect(s.enableBacklog()).rejects.toThrow(/etapas desatualizadas antes: project\.md, briefing\.md, stack\.md, design\.md/);
     await s.close();
   });
 

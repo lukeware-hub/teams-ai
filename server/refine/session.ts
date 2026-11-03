@@ -460,6 +460,12 @@ export class RefineSession {
     if (open.length > 0) throw new ConflictError(`Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`);
   }
 
+  /** The steps after the documents wait while a document is outdated: its stage is reviewed again first. */
+  private guardNoStale(): void {
+    const stale = Object.keys(this.state.staleBy ?? {});
+    if (this.state.stages === true && stale.length > 0) throw new ConflictError(`Revise de novo as etapas desatualizadas antes: ${stale.join(', ')}.`);
+  }
+
   /** In a repository session the backlog and the evaluation wait until all five documents are in the Graphify graph. */
   private guardGraphed(): void {
     if (this.state.repositories !== true || this.state.stages !== true) return;
@@ -627,6 +633,7 @@ export class RefineSession {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardStagesDone();
+    this.guardNoStale();
     if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
     if (this.state.backlog?.enabled && !this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de seguir.');
     await this.journal.fact(RefineEvent.ReviewClosed, {});
@@ -823,6 +830,7 @@ export class RefineSession {
     this.guard();
     if (this.state.repositories !== true) throw new ConflictError('só um refinamento com repositórios decide a arquitetura');
     this.guardStagesDone();
+    this.guardNoStale();
     this.guardGraphed();
     const ctl = (this.abortCtl = new AbortController());
     const started = this.docsNow().then(async (docs) => {
@@ -882,6 +890,7 @@ export class RefineSession {
   private async enableBacklogStep(bindRepo = false): Promise<void> {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
+    this.guardNoStale();
     this.guardGraphed();
     // Plan 90: the owner's answers reach the brief first, so the architecture is decided on the documents the backlog is made of.
     await this.recordOwnerAnswers();
@@ -922,6 +931,7 @@ export class RefineSession {
   runPlans(): Promise<void> {
     this.guard();
     this.guardStagesDone();
+    this.guardNoStale();
     const backlog = this.state.backlog;
     if (backlog?.enabled && (!backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec))) {
       throw new ConflictError('Detalhe o backlog antes de preparar os planos: cada item precisa da sua spec.');

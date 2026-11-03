@@ -594,7 +594,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (hasDerivation(s)) s.stale = true;
       if (s.readiness) s.readiness.outdated = true;
       s.outdatedDocs = [...new Set([...(s.outdatedDocs ?? []), docName(d.file)])];
-      markStaleStages(s, docName(d.file));
+      // A recorded decision only adds the owner's answer, so the later stages stay current.
+      if (d.source !== 'decision') markStaleStages(s, docName(d.file));
       markSpeckitStale(s);
       // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
       if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
