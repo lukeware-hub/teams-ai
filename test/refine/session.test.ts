@@ -187,6 +187,30 @@ describe('RefineSession', () => {
     expect(seen[1]).toContain('did not match the output schema: docPatch.3.reason');
   });
 
+  it('starts the Front review while the PO and the SM reviews run, not after them', async () => {
+    let poStarted!: () => void;
+    const poSeen = new Promise<void>((resolve) => {
+      poStarted = resolve;
+    });
+    const base = makeFakeRunAgent(script);
+    const runAgent = ((req: { kind: string; role: string }, ctx: unknown) => {
+      if (req.kind === 'refine' && req.role === 'po') poStarted();
+      return (base as never as (r: unknown, c: unknown) => unknown)(req, ctx);
+    }) as never;
+    // The Front answers only once the PO has started: a Front that runs first would wait for ever.
+    const frontAgent = (async () => {
+      await poSeen;
+      return { ok: true, value: { specHash: 'x', checklist: [], questions: [], docPatch: [] }, summary: {} };
+    }) as never;
+    const s = await RefineSession.create({ ...deps(), runAgent, frontAgent }, 'new-spec');
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await s.evaluate();
+    expect(s.state.status).not.toBe('error');
+    await s.close();
+  }, 8000);
+
   it('the heal view of a draft a timeout stopped shows the failure in a row, and a pause the driver journals stops the heal', async () => {
     const frontAgent = (async () => ({ ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false })) as never;
     const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');

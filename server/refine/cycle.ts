@@ -361,8 +361,9 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
-  // Front's review waits for the moves: its patches are checked after them.
+  // Front's review runs with the PO's and the SM's: it reads the same documents, and its patches are checked after the moves.
   let frontReview: z.infer<typeof RefineOutput> | null = null;
+  let frontRun: Promise<StepOutcome<z.infer<typeof RefineOutput>>> | null = null;
   if (deps.frontAgent) {
     const askFront = (note: string | null) => deps.frontAgent!({ kind: 'refine', role: 'front',
       pack: withNote(fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
@@ -370,11 +371,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
         derived, backlog, retrieval: [], history: journal.state.questions,
         rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })), note),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
-    // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
-    const review = await retryOnSchema((note) => askFront(note));
-    if (!review.ok && review.failure !== 'schema') { await failAgent('A revisão do Front', review); return; }
-    if (!review.ok) discardedPatches.push({ role: 'front', file: 'design.md', reason: 'O agente Front respondeu fora do formato duas vezes, então as sugestões visuais deste ciclo foram puladas. Use Reavaliar para tentar de novo.' });
-    frontReview = review.ok ? (review.value as z.infer<typeof RefineOutput>) : null;
+    frontRun = retryOnSchema((note) => askFront(note)) as Promise<StepOutcome<z.infer<typeof RefineOutput>>>;
   }
 
   const state = journal.state;
@@ -414,7 +411,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       },
       ctx,
     );
-  const [po, sm] = (await Promise.all([step('po'), step('sm')])) as [StepOutcome<z.infer<typeof RefineOutput>>, StepOutcome<z.infer<typeof RefineOutput>>];
+  const [po, sm, front] = (await Promise.all([step('po'), step('sm'), frontRun])) as [StepOutcome<z.infer<typeof RefineOutput>>, StepOutcome<z.infer<typeof RefineOutput>>, StepOutcome<z.infer<typeof RefineOutput>> | null];
   if (!po.ok) {
     await failAgent('A revisão do PO', po);
     return;
@@ -423,6 +420,10 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     await failAgent('A revisão do SM', sm);
     return;
   }
+  // The model now and then drops a required field of one suggestion. The suggestions are advice, so one more try, and then the cycle goes on without them instead of failing.
+  if (front && !front.ok && front.failure !== 'schema') { await failAgent('A revisão do Front', front); return; }
+  if (front && !front.ok) discardedPatches.push({ role: 'front', file: 'design.md', reason: 'O agente Front respondeu fora do formato duas vezes, então as sugestões visuais deste ciclo foram puladas. Use Reavaliar para tentar de novo.' });
+  frontReview = front?.ok ? front.value : null;
   // The reviewers read these documents, so the quotes they copy are checked against them.
   const reviewed = { ...docs };
   // A finding stands only when its quote is in the document it names: a claim the documents do not show is not routed to the owner.
