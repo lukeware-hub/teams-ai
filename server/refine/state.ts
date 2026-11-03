@@ -235,6 +235,8 @@ export interface RefineState {
   reviewClosed?: boolean;
   /** The round the current stage began at; its rounds count from here. */
   stageStartCycle?: number;
+  /** An architecture decision started and has not ended: a restart that finds it set cuts it. */
+  architectureRunning?: boolean;
   /** What the last stage review of each document found against the documents before it; an empty list is aligned. */
   stageAlignment?: Partial<Record<DocFile, string[]>>;
   /** A stage the owner moved on from, whose earlier document changed after it: that document's name, until the stage is reviewed again. */
@@ -668,6 +670,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.graphing = null;
       s.graphError = null;
       break;
+    case RefineEvent.ArchitectureStarted:
+      s.architectureRunning = true;
+      break;
     case RefineEvent.DocGraphStale:
       // The graph holds an older text of this document; it goes back in when the stage continues or the summary runs.
       s.graphed = (s.graphed ?? []).filter((file) => file !== docName(d.file));
@@ -678,6 +683,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.ArchitectureDecided: {
       const v = d as unknown as { docsHash: string; architecture: Architecture; questions: Question[] };
+      s.architectureRunning = false;
       s.architecture = { docsHash: String(v.docsHash), decision: v.architecture };
       s.architectureError = null;
       s.architectureIssues = [];
@@ -687,6 +693,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     }
     case RefineEvent.ArchitectureFailed:
+      s.architectureRunning = false;
       s.architectureError = String(d.reason);
       s.architectureIssues = Array.isArray(d.issues) ? d.issues.map(String) : [];
       break;
