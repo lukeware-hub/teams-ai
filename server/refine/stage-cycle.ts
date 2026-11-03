@@ -113,6 +113,9 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const role = OWNER[file];
     const run = role === 'front' && deps.frontAgent ? deps.frontAgent : deps.runAgent;
     const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
+    // The stage document takes its template's layout first, so the Jev, the review and its patches all read that text.
+    const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
+    await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
     // The Jev reads the stage with the documents before it; the first stage has none to compare with, so it is not asked.
     let jev: JevValidationResult | undefined;
     const confidential = await isConfidential(draft, journal.state);
@@ -123,9 +126,6 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
     const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)));
-    const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
-    // The stage document takes its template's layout before the review, so the review and its patches read that text.
-    await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
     let n = 0;
     // Every patch is checked against the documents as the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
