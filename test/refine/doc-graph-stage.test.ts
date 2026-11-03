@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, writeDoc, type DocFile } from '../../server/refine/draft.js';
 import { DOC_STAGES } from '../../server/refine/doc-stages.js';
@@ -101,6 +101,20 @@ describe('document graph in the stages', () => {
     expect(s.state.status).toBe('error');
     expect(s.healView().staged).toBe(false);
     expect(s.healView().cycle).toBeDefined();
+    await s.close();
+  });
+
+  it('scores the reviewed document with the Jev on its own, once, and not when the review failed', async () => {
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>, _files?: readonly string[]) => ({ available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null }));
+    const s = await RefineSession.create({ ...deps(), extractDocs, scoreDocs: scoreDocs as never }, 'new-project', { repositories: true });
+    await s.answerConfidentiality(false);
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await s.evaluateStage('flow.md');
+    expect(scoreDocs).not.toHaveBeenCalled();
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    expect(scoreDocs).toHaveBeenCalledTimes(1);
+    expect(scoreDocs.mock.calls[0]![1]).toEqual(['flow.md']);
     await s.close();
   });
 
