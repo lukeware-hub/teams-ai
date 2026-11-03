@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changesNothing, patchChangesScope, structureOf } from '../../server/refine/scope-guard.js';
+import { changesNothing, joinsListItems, patchChangesScope, structureOf, writesOrchestratorId } from '../../server/refine/scope-guard.js';
 
 describe('scope guard for document patches', () => {
   it('flags a patch that adds or removes a list item', () => {
@@ -56,5 +56,27 @@ describe('changesNothing: a change that only restates, reformats or drops a frag
 
   it('lets through a change of a Mermaid edge', () => {
     expect(changesNothing('A --> B\n', 'A --> C\n')).toBe(false);
+  });
+});
+
+describe('writesOrchestratorId and joinsListItems: a change that writes a decision id or joins two list items', () => {
+  it('flags a replacement that writes an orchestrator id the find does not hold', () => {
+    expect(writesOrchestratorId('Swagger', '- Swagger para documentar a API REST, conforme a decisão sm-s4-0.')).toBe(true);
+    expect(writesOrchestratorId('- Vitest para testes.', '- Vitest para testes (po-c3-0).')).toBe(true);
+  });
+
+  it('lets through a replacement that keeps an id the find already holds, and a change without one', () => {
+    expect(writesOrchestratorId('- Porta 8080 (sm-s4-0).', '- Porta 8081 (sm-s4-0).')).toBe(false);
+    expect(writesOrchestratorId('- Porta 8080.', '- Porta 8081.')).toBe(false);
+  });
+
+  it('flags a replacement that joins a second list item onto the first line', () => {
+    expect(joinsListItems('- Vitest para testes.', '- Vitest para testes. - Docker e Docker Compose para subir o serviço localmente.')).toBe(true);
+  });
+
+  it('lets through a list item on its own line, a dash inside a sentence, and a fix of an item already joined', () => {
+    expect(joinsListItems('- Vitest para testes.', '- Vitest para testes.\n- Docker para subir o serviço localmente.')).toBe(false);
+    expect(joinsListItems('O login é simples.', 'O login é simples. - Ver a regra AC-001.')).toBe(false);
+    expect(joinsListItems('- Vitest para testes. - Docker.', '- Vitest para testes.\n- Docker.')).toBe(false);
   });
 });

@@ -35,11 +35,23 @@ describe('patches', () => {
     expect(applyPatch('a\nb', { find: '', replace: '## C\n' })).toBe('a\nb\n## C\n');
     expect(checkPatch({ file: 'docs/project.md', find: '', replace: 'x', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: false, reason: 'find not found in project.md' });
   });
-  it('refuses a suggestion that only cites a decision the document already states', () => {
+  it('refuses a suggestion that only repeats a line the document already states', () => {
     const stack = { 'stack.md': '## Documentação\n\n- Swagger para documentar a API REST.\n\nSwagger\n' } as const;
-    expect(checkPatch({ file: 'docs/stack.md', find: 'Swagger\n', replace: '- Swagger para documentar a API REST, conforme a decisão sm-s4-0.\n', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: false, reason: 'the change adds nothing the document does not already say' });
+    expect(checkPatch({ file: 'docs/stack.md', find: 'Swagger\n', replace: '- Swagger para documentar a API REST.\n', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: false, reason: 'the change adds nothing the document does not already say' });
   });
   it('lets a line through when only another document holds it', () => {
     expect(checkPatch({ file: 'docs/specs/hello-001/briefing.md', find: '## Objectives', replace: '## Objectives\n- fast', reason: 'r' }, 'hello-001', docs)).toEqual({ ok: true, file: 'briefing.md' });
+  });
+  it('refuses a suggestion that writes a decision id into the document, even with new content', () => {
+    const stack = { 'stack.md': '## Tooling\n\n- Vitest para testes.\n' } as const;
+    expect(checkPatch({ file: 'docs/stack.md', find: '- Vitest para testes.', replace: '- Vitest para testes e Playwright para o fluxo (sm-s4-0).', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: false, reason: 'the change writes an orchestrator id into the document' });
+  });
+  it('refuses a suggestion that joins two list items on one line', () => {
+    const stack = { 'stack.md': '## Tooling\n\n- Vitest para testes.\n' } as const;
+    expect(checkPatch({ file: 'docs/stack.md', find: '- Vitest para testes.', replace: '- Vitest para testes. - Docker e Docker Compose para subir o serviço localmente.', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: false, reason: 'the change joins two list items on one line' });
+  });
+  it('accepts a new list item on its own line', () => {
+    const stack = { 'stack.md': '## Tooling\n\n- Vitest para testes.\n' } as const;
+    expect(checkPatch({ file: 'docs/stack.md', find: '- Vitest para testes.', replace: '- Vitest para testes.\n- Docker para subir o serviço localmente.', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: true, file: 'stack.md' });
   });
 });

@@ -55,3 +55,18 @@ export function changesNothing(before: string, after: string): boolean {
   if (added.length + removed.length === 0) return false;
   return added.every((line) => had.has(line)) && removed.every((line) => added.some((a) => a.includes(line)));
 }
+
+/** An orchestrator id as an agent cites it: a question, a patch or a decision of one cycle or round, such as po-c3-0 or sm-s4-0. */
+const ORCHESTRATOR_ID = /\b(?:po|sm|front)-[cs]\d+-\d+\b/g;
+
+/** Whether the replacement writes an orchestrator id into the document, one that the text it replaces did not hold. */
+export function writesOrchestratorId(find: string, replace: string): boolean {
+  const held = new Set(find.match(ORCHESTRATOR_ID) ?? []);
+  return (replace.match(ORCHESTRATOR_ID) ?? []).some((id) => !held.has(id));
+}
+
+/** A list item line that carries a second item after a sentence end, such as "- Testes. - Docker": two items on one line. */
+const JOINED_ITEMS = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+.*[.;][ \t]+[-*+][ \t]+\S/m;
+
+/** Whether the replacement joins two list items on one line, which the text it replaces did not do. */
+export const joinsListItems = (find: string, replace: string): boolean => JOINED_ITEMS.test(replace) && !JOINED_ITEMS.test(find);
