@@ -24,7 +24,7 @@ import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
-import { scoresDocs } from './readiness.js';
+import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
@@ -248,6 +248,8 @@ export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
   private queuedReview: Promise<void> | null = null;
+  /** The documents whose low score already got its one extra review. */
+  private readonly improved = new Set<DocFile>();
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
   private starting = false;
   /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
@@ -566,17 +568,34 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.StagePassed, { file, hash: sha256(text) });
   }
 
+  /** One review of a stage document, then the safe suggestions accepted and the Jev score taken again. */
+  private async reviewAndScore(deps: Parameters<typeof runStageCycle>[0], file: DocFile): Promise<void> {
+    await runStageCycle(deps, this.state.cycle + 1, file);
+    if (this.state.status === 'error') return;
+    await this.acceptSafePatches(file);
+    // The Jev score of the reviewed document follows on its own: the owner no longer asks for it with a button.
+    if (this.deps.scoreDocs && scoresDocs(this.state.mode)) {
+      const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs: this.deps.scoreDocs };
+      await recordScore(scored, this.state.cycle, await isConfidential(scored.draft, this.state), [file]);
+    }
+  }
+
+  /** The Jev score of a document in percent when it is below the pass line, else null. */
+  private lowScore(file: DocFile): number | null {
+    const score = this.state.readiness?.docs?.[file]?.score;
+    return score !== undefined && score < PASS_LINE ? percentOf(score) : null;
+  }
+
   private async timedStage(ctl: AbortController, file: DocFile, restore: boolean): Promise<void> {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f) };
-      await runStageCycle(deps, this.state.cycle + 1, file);
-      if (this.state.status !== 'error') await this.acceptSafePatches(file);
-      // The Jev score of the reviewed document follows on its own: the owner no longer asks for it with a button.
-      if (this.state.status !== 'error' && this.deps.scoreDocs && scoresDocs(this.state.mode)) {
-        const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs: this.deps.scoreDocs };
-        await recordScore(scored, this.state.cycle, await isConfidential(scored.draft, this.state), [file]);
+      await this.reviewAndScore(deps, file);
+      // A document scored below the pass line is reviewed once more, now with its new score in front of the agents.
+      if (this.state.status !== 'error' && this.lowScore(file) !== null && !this.improved.has(file)) {
+        this.improved.add(file);
+        await this.reviewAndScore(deps, file);
       }
       // A repository session adds the reviewed document to the graph when its review ends; a failed review adds nothing.
       if (this.state.status !== 'error' && this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
@@ -589,12 +608,14 @@ export class RefineSession {
   }
 
   /** The owner moves on from a document's stage, the named one or else the current one; the rounds of the next stage count from here. */
-  async continueStage(doc?: DocFile): Promise<void> {
+  async continueStage(doc?: DocFile, confirmLowScore = false): Promise<void> {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     const target = doc ?? this.currentStage();
     if (!target) throw new ConflictError('todas as etapas já foram concluídas');
     if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
+    const low = (this.state.doneStages ?? []).includes(target) ? null : this.lowScore(target);
+    if (low !== null && !confirmLowScore) throw new ConflictError(`A nota do Jev de ${target} está em ${low}%, abaixo de ${percentOf(PASS_LINE)}%. Confirme para continuar mesmo assim.`);
     // A finished document only goes back to the graph when a human edit took it out of there: the review then comes first, and the extraction adds it again.
     const finished = (this.state.doneStages ?? []).includes(target);
     if (finished && (this.state.repositories !== true || (this.state.graphed ?? []).includes(target))) throw new ConflictError(`a etapa ${target} já foi concluída`);

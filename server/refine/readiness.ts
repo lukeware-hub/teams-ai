@@ -21,6 +21,9 @@ export interface DocScore {
 /** A check below this value is doubted. */
 export const DOUBT_BELOW = 0.6;
 
+/** A document scored below this is improved once by its agents, and the owner confirms before the stage moves on. */
+export const PASS_LINE = 0.6;
+
 export interface ScoreUsage {
   inputTokens: number;
   outputTokens: number;

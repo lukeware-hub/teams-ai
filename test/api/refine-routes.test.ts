@@ -20,7 +20,9 @@ describe('refine routes', () => {
     const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/stage/continue'))!;
     const json = vi.fn();
     await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'briefing.md' }), json } as never);
-    expect(continueStage).toHaveBeenCalledWith('briefing.md');
+    expect(continueStage).toHaveBeenCalledWith('briefing.md', false);
+    await route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'briefing.md', confirmLowScore: true }), json } as never);
+    expect(continueStage).toHaveBeenLastCalledWith('briefing.md', true);
     await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ doc: 'brief.md' }), json } as never)).rejects.toMatchObject({ status: 400 });
   });
 

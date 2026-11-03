@@ -126,7 +126,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     // The stage's own key: a change to a later document leaves the review's key as it was.
     const specHash = sha256(JSON.stringify(scope.map((f) => [f, docs[f]])));
     // What the review reads: the documents, the answers and the decisions on suggestions. The same input gives the same review.
-    const inputKey = sha256(JSON.stringify([specHash, deps.principles(), journal.state.questions.map((q) => [q.questionId, q.status, q.answer ?? null]), journal.state.patches.map((p) => [p.patchId, p.status])]));
+    const inputKey = sha256(JSON.stringify([specHash, deps.principles(), journal.state.questions.map((q) => [q.questionId, q.status, q.answer ?? null]), journal.state.patches.map((p) => [p.patchId, p.status]), journal.state.readiness?.docs?.[file] ?? null]));
     if (deps.lastReviewKey?.(file) === inputKey) {
       await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: [], divergences: journal.state.stageAlignment?.[file] ?? [], discardedPatches: [], inputKey, replayed: true });
       return;

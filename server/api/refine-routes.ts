@@ -329,10 +329,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       method: 'POST',
       path: `${S}/stage/continue`,
       handler: wrap(async (ctx) => {
-        const doc = str(await optionalBody(ctx), 'doc', true);
+        const body = await optionalBody(ctx);
+        const doc = str(body, 'doc', true);
         if (doc && !DOC_STAGES.includes(doc as DocFile)) throw new HttpError(400, `unknown doc ${doc}`);
         const s = await get(ctx.params);
-        await s.continueStage(doc ? (doc as DocFile) : undefined);
+        await s.continueStage(doc ? (doc as DocFile) : undefined, (body as Record<string, unknown> | null)?.confirmLowScore === true);
         // A repository session answers once the extraction is under way; the page follows it through the snapshot.
         ctx.json(s.state.repositories === true ? 202 : 200, { ok: true });
       }),

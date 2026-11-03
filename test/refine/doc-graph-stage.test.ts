@@ -300,3 +300,46 @@ Editado.
     await s.close();
   });
 });
+
+describe('the Jev pass line', () => {
+  const low = { available: true, model: 'jev-1.13.0', average: 0.4, docs: { 'flow.md': { score: 0.4, checks: { complete: 0.4, concrete: 0.4, consistent: 0.4, scoped: 0.4 } } }, usage: null };
+  const high = { ...low, average: 0.9, docs: { 'flow.md': { score: 0.9, checks: { complete: 0.9, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } };
+  const session = async (scoreDocs: unknown) => {
+    const s = await RefineSession.create({ ...deps(), extractDocs, scoreDocs: scoreDocs as never }, 'new-project', { repositories: true });
+    await s.answerConfidentiality(false);
+    await writeDoc(draft(), 'flow.md', FLOW);
+    return s;
+  };
+
+  it('has the agents review a low-scored document once more, and not a third time', async () => {
+    const s = await session(async () => low);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO)), refineOut(green(PO))];
+    calls.length = 0;
+    await s.evaluateStage('flow.md');
+    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(2);
+    await s.evaluateStage('flow.md');
+    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(2);
+    await s.close();
+  });
+
+  it('does not review a good document twice', async () => {
+    const s = await session(async () => high);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    calls.length = 0;
+    await s.evaluateStage('flow.md');
+    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
+    await s.close();
+  });
+
+  it('asks the owner to confirm before moving on from a low-scored stage, and moves on once confirmed', async () => {
+    const s = await session(async () => low);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    await expect(s.continueStage('flow.md')).rejects.toThrow(/nota do Jev de flow\.md está em 40%, abaixo de 60%/);
+    await s.continueStage('flow.md', true);
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
+    await s.close();
+  });
+});
