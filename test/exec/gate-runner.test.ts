@@ -295,6 +295,12 @@ describe('runGate', () => {
       expect(r).toMatchObject({ passed: true, failure: null });
     });
 
+    it('passes when the command writes a null line count, the task has no code to cover yet', async () => {
+      const f = files({});
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": null}').exec, ...f.deps });
+      expect(r).toMatchObject({ passed: true, failure: null });
+    });
+
     it('fails even on exit 0 when the summary is below the floor', async () => {
       const f = files({});
       const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 79.9}').exec, ...f.deps });

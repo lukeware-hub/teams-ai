@@ -302,7 +302,7 @@ export const E2E_CONTRACT =
  * when the command's own exit code is 0. coverageExemptions lists paths the tool's own ignore mechanism already
  * excluded from the denominator, each with a reason of at least 10 characters. */
 export const COVERAGE_CONTRACT =
-  'gate "coverage" (blocking) runs the test suite with whatever coverage tool the stack has, then writes plan.coveragePath as one line of JSON {"linesPct": <number>}; the orchestrator fails the gate when linesPct is below 80, or the file is missing or malformed, regardless of the command\'s own exit code; a path the tool\'s own config already excludes from coverage goes in plan.coverageExemptions as {path, reason} (reason of at least 10 characters)';
+  'gate "coverage" (blocking) runs the test suite with whatever coverage tool the stack has, then writes plan.coveragePath as one line of JSON {"linesPct": <number>}; when the tool measures no code lines at all (no source file yet), it writes {"linesPct": null}, which is not applicable and passes; the orchestrator fails the gate when linesPct is a number below 80, or the file is missing or malformed, regardless of the command\'s own exit code; a path the tool\'s own config already excludes from coverage goes in plan.coverageExemptions as {path, reason} (reason of at least 10 characters)';
 
 export function planRules(firstSpec: boolean | 'services', requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [

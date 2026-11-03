@@ -6,6 +6,10 @@ describe('parseCoverageSummary', () => {
     expect(parseCoverageSummary('{"linesPct": 83.4}')).toEqual({ linesPct: 83.4 });
   });
 
+  it('parses a null linesPct as no code lines to measure', () => {
+    expect(parseCoverageSummary('{"linesPct": null}')).toEqual({ linesPct: null });
+  });
+
   it('returns null on invalid JSON, wrong shape, non-numeric or missing linesPct', () => {
     expect(parseCoverageSummary('not json')).toBeNull();
     expect(parseCoverageSummary('[]')).toBeNull();
@@ -22,6 +26,10 @@ describe('coveragePasses', () => {
     expect(coveragePasses({ linesPct: 80.1 })).toBe(true);
     expect(coveragePasses({ linesPct: 79.9 })).toBe(false);
     expect(coveragePasses(null)).toBe(false);
+  });
+
+  it('passes a summary with no code lines, since there is nothing to cover yet', () => {
+    expect(coveragePasses({ linesPct: null })).toBe(true);
   });
 
   it('honors a custom floor', () => {
