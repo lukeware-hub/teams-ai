@@ -1256,8 +1256,11 @@ export function RefinementView(p: ViewProps) {
       {backlogBlock(startLine)}
     </div>
   );
+  // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
+  const specsGate = st.stages === true && backlogOn && snap.specsApproved !== true;
+  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating) : null;
   const developButton = (
-    <ActionButton data-testid="start" className={speckitReady && canStart ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
+    <ActionButton data-testid="start" className={speckitReady && canStart && !specsGate ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady || specsGate} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
     </ActionButton>
   );
@@ -1312,22 +1315,17 @@ export function RefinementView(p: ViewProps) {
       <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
-  // Continuar waits for specs.md to be written and approved by PO and SM; until then it stays visible and disabled, with the reason beside it.
-  const specsGate = backlogOn && snap.specsApproved !== true;
-  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating) : null;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{prepareButton}{developButton}</>
+    ) : <>{specsReason && <span data-testid="open-backlog-reason" className="text-[0.8rem] text-ink-soft">{specsReason}</span>}{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
       {backlogOn || st.repositories === true ? (
         <>
-          {specsReason && <span data-testid="open-backlog-reason" className="text-[0.8rem] text-ink-soft">{specsReason}</span>}
         <ActionButton
           data-testid="open-backlog"
           className="primary"
-          disabled={specsGate}
           onClick={async () => {
             if (stageSession && !st.reviewClosed) {
               const result = await p.onCloseReview?.();

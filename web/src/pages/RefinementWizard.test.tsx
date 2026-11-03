@@ -440,13 +440,14 @@ describe('the final review', () => {
     expect(screen.queryByTestId('generate-specs')).toBeNull();
   });
 
-  it('Continuar stays visible and disabled, with the reason, until PO and SM approve the written specs.md', () => {
+  it('Continuar on the summary stays open while the specs.md is not approved, and the backlog step shows what it waits for', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     const snap = { ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }), specsApproved: false };
     open('?etapa=revisao');
     show(snap);
-    expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Falta a aprovação do SM');
+    // The summary never waits for the specs.md: it is made and checked in the backlog step.
+    expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('open-backlog-reason')).toBeNull();
     cleanup();
     open('?etapa=backlog');
     show(snap);

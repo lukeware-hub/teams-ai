@@ -18,7 +18,7 @@ const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: (async () => ({ ok: false, failure: 'schema', errors: [], summary: {} })) as unknown as RunAgent, secretsDir: `${root}/secrets`, retrieval: () => [] });
 
 /** Every fact a repository session holds before its summary: five documents graphed, an architecture, a backlog of two items, their specs, plans and task lists. */
-async function readyWizard(): Promise<RefineSession> {
+async function readyWizard(runAgent?: RunAgent): Promise<RefineSession> {
   await createNewProject(draft(), 'Hello');
   const docs = Object.fromEntries(await Promise.all(DOC_STAGES.map(async (f) => [f, await readDoc(draft(), f)]))) as Record<DocFile, string>;
   const created = await RefineSession.create(deps(), 'new-project', { repositories: true });
@@ -66,8 +66,11 @@ async function readyWizard(): Promise<RefineSession> {
   }
   await again.fact(RefineEvent.PlansPrepared, { inputHash });
   await again.close();
-  return RefineSession.open(deps());
+  return RefineSession.open({ ...deps(), ...(runAgent ? { runAgent } : {}) });
 }
+
+/** Reviewers that approve the specs.md they are given. */
+const approving = (async (_req: unknown, ctx: { specHash: string }) => ({ ok: true, value: { verdict: 'approved', findings: [], specHash: ctx.specHash }, summary: {} })) as unknown as RunAgent;
 
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-closing-'))).replace(/\\/g, '/');
@@ -97,8 +100,21 @@ describe('closing summary and the owner\'s authorization', () => {
     await session.close();
   });
 
+  it('refuses to start until PO and SM approved the specs.md, and starts once they did', async () => {
+    const session = await readyWizard(approving);
+    const { summaryHash } = await session.closingSummary();
+    await expect(session.freezeProgram(summaryHash)).rejects.toThrow('O specs.md precisa estar gerado e aprovado por PO e SM');
+    await session.startSpecs();
+    await session.settled();
+    const entries = await session.freezeProgram((await session.closingSummary()).summaryHash);
+    expect(entries.length).toBe(2);
+    await session.close();
+  });
+
   it('starts with the summary\'s hash, and journals the authorization before the program starts', async () => {
-    const session = await readyWizard();
+    const session = await readyWizard(approving);
+    await session.startSpecs();
+    await session.settled();
     const { summaryHash } = await session.closingSummary();
     const entries = await session.freezeProgram(summaryHash);
     expect(entries.map((e) => e.specId).sort()).toEqual(['cart', 'catalog']);

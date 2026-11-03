@@ -141,7 +141,7 @@ describe('stage 7 of a new project prepares the development', () => {
 
   it('opens "Iniciar desenvolvimento" once the preparation is done and current', () => {
     const h = handlersWithSpeckit();
-    renderView(wizard({ speckit: speckit() as never }), h);
+    renderView({ ...wizard({ speckit: speckit() as never }), specsApproved: true } as never, h);
     expect(screen.getByTestId('speckit-done')).toBeTruthy();
     const start = screen.getByTestId('start') as HTMLButtonElement;
     expect(start.textContent).toContain('Iniciar desenvolvimento');
@@ -150,11 +150,17 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the start closed, with the reason beside it, until PO and SM approve the specs.md', () => {
+    renderView(wizard({ speckit: speckit() as never, status: 'ready' }), handlersWithSpeckit());
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Preparando o specs.md');
+  });
+
   it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks once', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
     const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
     const h = { ...handlersWithSpeckit(), onResolveClosing: vi.fn() };
-    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, h);
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing, specsApproved: true } as never, h);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId('closing-alert')).toBeNull();
     expect(h.onResolveClosing).toHaveBeenCalledTimes(1);

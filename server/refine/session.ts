@@ -694,7 +694,6 @@ export class RefineSession {
     this.guardStagesDone();
     this.guardNoStale();
     if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
-    if (this.state.backlog?.enabled && !this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de seguir.');
     await this.journal.fact(RefineEvent.ReviewClosed, {});
   }
 
@@ -1434,6 +1433,8 @@ export class RefineSession {
       if (summaryHash === undefined) throw new ConflictError('Abra o resumo do refinamento e confirme antes de iniciar.');
       const summary = await this.closingSummary();
       if (summary.summaryHash !== summaryHash) throw new ConflictError('O resumo mudou desde que você o abriu: revise-o antes de iniciar.');
+      // The specs.md is made and checked in the backlog step, so the development starts only once PO and SM approved it.
+      if (!this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de iniciar o desenvolvimento.');
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
