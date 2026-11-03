@@ -1191,7 +1191,10 @@ export class RefineSession {
 
   async accept(patchId: string): Promise<void> {
     this.guard();
+    const { file } = this.patch(patchId);
     await this.applyPatchRow(patchId);
+    // A document already in the graph goes again when its text changes, so the graph never keeps the old text.
+    if (this.state.repositories === true && this.deps.extractDocs && (this.state.graphed ?? []).includes(file as DocFile)) await this.startIndexing(file as DocFile, false);
   }
 
   /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */

@@ -174,6 +174,25 @@ describe('document graph in the stages', () => {
     await s.close();
   });
 
+  it('an accepted suggestion on a document in the graph puts the new text in the graph again', async () => {
+    let runs = 0;
+    const counting = async (dir: string, outDir: string) => {
+      runs += 1;
+      await extractDocs(dir, outDir);
+    };
+    const s = await RefineSession.create({ ...deps(), extractDocs: counting }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  - passo novo', reason: 'novo passo' }])];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    const before = runs;
+    const patch = s.state.patches.find((p) => p.status === 'pending')!;
+    await s.accept(patch.patchId);
+    await s.settled();
+    expect(runs).toBe(before + 1);
+    await s.close();
+  });
+
   it('refuses to add a document that is already in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
