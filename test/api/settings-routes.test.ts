@@ -20,10 +20,13 @@ afterEach(async () => {
 });
 
 describe('settings routes', () => {
-  it('lists the eight agents on manual Haiku at low by default, then shows a manual pick', async () => {
+  it('lists the eight agents on manual Haiku at low by default, except the reviewers on Sonnet, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
     expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env']);
-    expect(first.agents.every((a) => JSON.stringify(a.setting) === JSON.stringify({ model: 'claude-haiku-5-5', effort: 'low' }))).toBe(true);
+    for (const a of first.agents) {
+      const model = a.role === 'po' || a.role === 'sm' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
+      expect(a.setting).toEqual({ model, effort: 'low' });
+    }
 
     expect((await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-opus-5-5', effort: 'max' })).status).toBe(200);
     const after = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };

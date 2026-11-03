@@ -1,4 +1,4 @@
-import { AgentSetting, Config, DEFAULT_AGENT_SETTING, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type Role } from '../config/config.js';
+import { AgentSetting, Config, defaultAgentSetting, ROLES, PLAN_AGENTS_MAX, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type Role } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { effortFor } from '../runner/model-policy.js';
 import { readUserConfig, setAgentSetting, setAgentsDecide, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
@@ -97,7 +97,7 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const settings = cfg.agentSettings[projectId] ?? {};
         json(200, {
           agents: ROLES.map((role) => {
-            const setting = role in settings ? settings[role] ?? null : DEFAULT_AGENT_SETTING;
+            const setting = role in settings ? settings[role] ?? null : defaultAgentSetting(role);
             return { role, setting, inUse: inUseOf(cfg, role, setting) };
           }),
         });

@@ -11,6 +11,13 @@ describe('the agent setting of a role', () => {
     const out = manualAgentSettings({ dev: { model: 'claude-opus-5-5', effort: 'high' }, sm: null });
     expect(out.dev).toEqual({ model: 'claude-opus-5-5', effort: 'high' });
     expect(out.sm).toBeUndefined();
-    expect(out.po).toEqual(DEFAULT_AGENT_SETTING);
+    expect(out.test).toEqual(DEFAULT_AGENT_SETTING);
+  });
+
+  it('gives the product owner and the scrum master Sonnet, since they review the documents', () => {
+    const out = manualAgentSettings(undefined);
+    expect(out.po).toEqual({ model: 'claude-sonnet-5-5', effort: 'low' });
+    expect(out.sm).toEqual({ model: 'claude-sonnet-5-5', effort: 'low' });
+    expect(out.dev).toEqual(DEFAULT_AGENT_SETTING);
   });
 });

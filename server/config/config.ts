@@ -121,11 +121,17 @@ export type AgentSetting = z.infer<typeof AgentSetting>;
 /** The setting a role takes when its project has none: a manual Haiku at low effort. */
 export const DEFAULT_AGENT_SETTING: AgentSetting = { model: MODELS.haiku, effort: 'low' };
 
+/** The setting the product owner and the scrum master take when their project has none: they review the documents, so they get the deeper model. */
+const REVIEWER_DEFAULT: AgentSetting = { model: MODELS.sonnet, effort: 'low' };
+
+/** The setting a role takes when its project has none. */
+export const defaultAgentSetting = (role: Role): AgentSetting => (role === 'po' || role === 'sm' ? REVIEWER_DEFAULT : DEFAULT_AGENT_SETTING);
+
 /** The manual settings a run uses: a role never set takes the default, and a role stored as null (automatic) takes none. */
 export function manualAgentSettings(stored: Partial<Record<Role, AgentSetting | null>> = {}): Partial<Record<Role, AgentSetting>> {
   const out: Partial<Record<Role, AgentSetting>> = {};
   for (const role of ROLES) {
-    const setting = role in stored ? stored[role] : DEFAULT_AGENT_SETTING;
+    const setting = role in stored ? stored[role] : defaultAgentSetting(role);
     if (setting) out[role] = setting;
   }
   return out;
