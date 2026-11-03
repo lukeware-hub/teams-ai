@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { BacklogView } from '../api.js';
 import { SpecTree } from './SpecTree.js';
@@ -19,6 +19,28 @@ describe('SpecTree', () => {
     const gaps = within(screen.getByTestId('tree-gaps'));
     expect(gaps.getByText(/9\. Faturamento/)).toBeTruthy();
     expect(gaps.getByText(/AC-002 sem tarefa/)).toBeTruthy();
+  });
+
+  it('lists the tasks behind the tasks chip, and closes it on a second click', () => {
+    render(<SpecTree backlog={backlog} />);
+    const chip = screen.getByRole('button', { name: '1 tarefa' });
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect(within(screen.getByTestId('coverage-list-tasks')).getByText('P1 Cadastro do caso')).toBeTruthy();
+    fireEvent.click(chip);
+    expect(screen.queryByTestId('coverage-list-tasks')).toBeNull();
+  });
+
+  it('lists the specs and the criteria with their tasks, or says when a criterion has none', () => {
+    render(<SpecTree backlog={backlog} />);
+    fireEvent.click(screen.getByRole('button', { name: '1 spec' }));
+    expect(within(screen.getByTestId('coverage-list-specs')).getByText('k-caso')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '2 critérios' }));
+    expect(screen.queryByTestId('coverage-list-specs')).toBeNull();
+    const criteria = within(screen.getByTestId('coverage-list-criteria'));
+    expect(criteria.getByText(/AC-001: dado um paciente/)).toBeTruthy();
+    expect(criteria.getByText('P1')).toBeTruthy();
+    expect(criteria.getByText('sem tarefa')).toBeTruthy();
   });
 
   it('hides the gaps while the detailing runs', () => {
