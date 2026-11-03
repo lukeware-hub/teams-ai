@@ -308,3 +308,17 @@ describe('the wizard Continuar names why it is closed', () => {
     expect(screen.queryByTestId('wizard-continue-reason')).toBeNull();
   });
 });
+
+describe('a stage question during the review', () => {
+  const asked = { ...question(true), questionId: 'po-s1-0', file: 'flow.md', text: 'Quem usa o fluxo?' };
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
+
+  it('stays on screen and can be answered while the agents review the stage', () => {
+    const evaluation = { startedAt: '2026-11-03T10:00:00Z', endedAt: null };
+    const h = renderView(project({ stages: true, status: 'evaluating', evaluation, questions: [asked as never] } as never));
+    expect(screen.getByText('Quem usa o fluxo?')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('answer'), { target: { value: 'Clientes' } });
+    fireEvent.click(screen.getByTestId('answer-po-s1-0'));
+    expect(h.onAnswer).toHaveBeenCalledWith('po-s1-0', 'Clientes', false);
+  });
+});

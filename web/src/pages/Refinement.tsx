@@ -735,6 +735,8 @@ export function RefinementView(p: ViewProps) {
     </ConfirmDialog>
   ) : null;
   /** One pending question with its options, answer box and actions; `remaining` counts the open ones, this included. */
+  // A stage question can be answered while the agents review: the server only records it and runs one review for the batch.
+  const answerLocked = locked && (st.stages !== true || st.backlog?.enabled === true);
   const questionCard = (current: QuestionRow, remaining: number) => (
         <div data-testid="refinement-question-card" className="rounded-lg border border-line bg-surface-sunken p-4">
           <div data-testid="refinement-question-badges" className="flex flex-wrap items-center gap-[0.35rem]">
@@ -788,7 +790,7 @@ export function RefinementView(p: ViewProps) {
             <ActionButton
               className="primary"
               data-testid={`answer-${current.questionId}`}
-              disabled={locked || answer.trim() === ''}
+              disabled={answerLocked || answer.trim() === ''}
               onClick={() => {
                 const sent = p.onAnswer(current.questionId, answer, docsAnswered);
                 setAnswer('');
@@ -1121,7 +1123,7 @@ export function RefinementView(p: ViewProps) {
             </ol>
           )}
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
-          {!locked && questions[0] && questionCard(questions[0], questions.length)}
+          {questions[0] && (!locked || !answerLocked) && questionCard(questions[0], questions.length)}
           {!locked && patches.map(patchCard)}
           {discarded.map((d, i) => <p data-testid="refinement-stage-discarded" key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
