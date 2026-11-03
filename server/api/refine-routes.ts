@@ -178,7 +178,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const file = s.state.stages === true ? s.state.questions.find((q) => q.questionId === questionId)?.file : undefined;
         await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
         // The answer goes to the agents at once: the stage's review runs in the background, as the Processar button starts it.
-        if (file && (DOC_STAGES as readonly string[]).includes(file)) s.evaluateStage(file as DocFile).catch(logRunFailure(params));
+        if (file && (DOC_STAGES as readonly string[]).includes(file)) s.reviewAfterAnswers(file as DocFile).catch(logRunFailure(params));
         json(200, { ok: true });
       }),
     },

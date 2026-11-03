@@ -247,6 +247,7 @@ const approvedAt = (v: SpecsVerdict | undefined, hash: string): boolean => v?.sp
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
+  private queuedReview: Promise<void> | null = null;
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
   private starting = false;
   /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
@@ -1132,7 +1133,8 @@ export class RefineSession {
 
   /** `docsAnswered`: the owner's mark that the documents already answered it, the label the routing eval reads. */
   async answer(questionId: string, text: string, docsAnswered = false): Promise<void> {
-    this.guard();
+    // A stage answer is only recorded, so the owner answers the whole batch while a review runs.
+    if (this.state.backlog?.enabled || !this.busy) this.guard();
     const q = this.question(questionId, true);
     // R11.10 (plan 90): a backlog reads the owner's answer from the briefing; written first, a retry rewrites the same heading.
     if (this.state.backlog?.enabled) {
@@ -1141,6 +1143,15 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
     }
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
+  }
+
+  /** One review of the stage after the answers: answers given while a review runs wait for it and share one more review. */
+  reviewAfterAnswers(file: DocFile): Promise<void> {
+    this.queuedReview ??= this.settled().then(() => {
+      this.queuedReview = null;
+      return this.evaluateStage(file);
+    });
+    return this.queuedReview;
   }
 
   async skip(questionId: string): Promise<void> {
