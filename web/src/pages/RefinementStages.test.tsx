@@ -260,3 +260,21 @@ describe('a question offers its choices as buttons', () => {
     expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 });
+
+describe('the summary resolves the stage pending items with the agents', () => {
+  const allDone = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+  const summary = (over: Partial<Snapshot['state']>) => project({ stages: true, doneStages: allDone, graphed: allDone, ...over } as never);
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=revisao'));
+
+  it('asks the agents once to review the outdated stages', () => {
+    const h = { ...handlers(), onResolveClosing: vi.fn() };
+    renderView(summary({ staleBy: { 'stack.md': 'briefing.md' } } as never), h);
+    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing when no stage has a pending item', () => {
+    const h = { ...handlers(), onResolveClosing: vi.fn() };
+    renderView(summary({}), h);
+    expect(h.onResolveClosing).not.toHaveBeenCalled();
+  });
+});

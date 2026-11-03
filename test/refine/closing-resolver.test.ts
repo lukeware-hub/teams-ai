@@ -8,10 +8,11 @@ const summary = (checks: Check[], summaryHash = 'h') => ({ ok: checks.every((c) 
 const patch = (patchId: string, over: Partial<PatchRow> = {}): PatchRow => ({ patchId, role: 'sm', file: 'stack.md', find: 'a', replace: 'b', reason: '', diff: '', status: 'pending', cycle: 1, ...over } as PatchRow);
 
 /** A session stand-in: the summary the test sets, and every call the resolver makes is recorded. */
-function fakeSession(opts: { summaries: ReturnType<typeof summary>[]; patches?: PatchRow[]; architecture?: unknown; stale?: boolean; accept?: (id: string) => Promise<void> }) {
+function fakeSession(opts: { summaries: ReturnType<typeof summary>[]; patches?: PatchRow[]; architecture?: unknown; stale?: boolean; staleBy?: Record<string, string>; reviewClosed?: boolean; accept?: (id: string) => Promise<void> }) {
   let i = 0;
   const s = {
-    state: { patches: opts.patches ?? [], architecture: opts.architecture ?? { docsHash: 'd' } },
+    state: { patches: opts.patches ?? [], architecture: opts.architecture ?? { docsHash: 'd' }, staleBy: opts.staleBy, reviewClosed: opts.reviewClosed ?? true },
+    evaluateStage: vi.fn(async () => undefined),
     closingSummary: vi.fn(async () => opts.summaries[Math.min(i++, opts.summaries.length - 1)]),
     accept: vi.fn(opts.accept ?? (async () => undefined)),
     evaluate: vi.fn(async () => undefined),
@@ -40,6 +41,30 @@ describe('resolveClosing', () => {
     expect(s.accept).toHaveBeenCalledTimes(1);
     expect(s.accept).toHaveBeenCalledWith('p1');
     expect(s.evaluate).toHaveBeenCalledTimes(1);
+    expect(s.runPlans).not.toHaveBeenCalled();
+  });
+
+  it('reviews each outdated stage again before the other checks', async () => {
+    const s = fakeSession({
+      summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'questions', ok: true, detail: '' }], 'h2')],
+      staleBy: { 'stack.md': 'briefing.md', 'design.md': 'briefing.md' },
+    });
+    await resolveClosing(s as unknown as RefineSession);
+    expect(s.evaluateStage.mock.calls).toEqual([['stack.md'], ['design.md']]);
+  });
+
+  it('before the review closes, resolves only the stages: outdated reviews and safe patches, no later step', async () => {
+    const s = fakeSession({
+      summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }])],
+      staleBy: { 'stack.md': 'briefing.md' },
+      patches: [patch('p1')],
+      reviewClosed: false,
+      architecture: null,
+    });
+    await resolveClosing(s as unknown as RefineSession);
+    expect(s.evaluateStage).toHaveBeenCalledWith('stack.md');
+    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.decideArchitecture).not.toHaveBeenCalled();
     expect(s.runPlans).not.toHaveBeenCalled();
   });
 

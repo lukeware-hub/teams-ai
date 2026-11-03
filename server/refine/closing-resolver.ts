@@ -1,4 +1,5 @@
 import { ConflictError, type RefineSession } from './session.js';
+import type { DocFile } from './draft.js';
 import { isApproval, type PatchRow } from './state.js';
 
 /** Rounds at most: each one accepts the safe patches, evaluates, decides the architecture and prepares the plans that are still open. */
@@ -9,6 +10,8 @@ export const safePatches = (rows: readonly PatchRow[]): PatchRow[] => rows.filte
 
 /** Resolves the closing checks with the agents, without the owner. It stops when the summary passes, when a round changes nothing, when the owner must act, or after CLOSING_ROUNDS. */
 export async function resolveClosing(s: RefineSession): Promise<void> {
+  // Before the review closes, only the stage documents are resolved: the later steps wait for the owner's Continuar.
+  if (s.state.reviewClosed !== true) return ignoreConflict(() => resolveStages(s));
   for (let round = 0; round < CLOSING_ROUNDS; round++) {
     const before = await s.closingSummary();
     if (before.ok) return;
@@ -26,16 +29,7 @@ export async function resolveClosing(s: RefineSession): Promise<void> {
 
 /** One round, in the order the checks depend on: patches, then the checklist, then the architecture, then the plans. */
 async function resolveRound(s: RefineSession, failing: string[]): Promise<void> {
-  let accepted = 0;
-  for (const p of safePatches(s.state.patches)) {
-    try {
-      await s.accept(p.patchId);
-      accepted++;
-    } catch (err) {
-      // A patch the last one covered is dropped by the session; the others still apply.
-      if (!(err instanceof ConflictError)) throw err;
-    }
-  }
+  const accepted = await resolveStages(s);
   if (accepted > 0 || failing.includes('questions')) await s.evaluate();
   if (s.state.architecture == null || (await s.isArchitectureStale())) {
     await s.decideArchitecture();
@@ -46,4 +40,32 @@ async function resolveRound(s: RefineSession, failing: string[]): Promise<void> 
     await s.runPlans();
     await s.settled();
   }
+}
+
+/** A conflict is the owner's next move, so the resolver stops quietly. */
+async function ignoreConflict(run: () => Promise<unknown>): Promise<void> {
+  try {
+    await run();
+  } catch (err) {
+    if (!(err instanceof ConflictError)) throw err;
+  }
+}
+
+/** Reviews each outdated stage again with its own role, then accepts the safe patches; returns how many were accepted. */
+export async function resolveStages(s: RefineSession): Promise<number> {
+  for (const file of Object.keys(s.state.staleBy ?? {}) as DocFile[]) {
+    await s.evaluateStage(file);
+    await s.settled();
+  }
+  let accepted = 0;
+  for (const p of safePatches(s.state.patches)) {
+    try {
+      await s.accept(p.patchId);
+      accepted++;
+    } catch (err) {
+      // A patch the last one covered is dropped by the session; the others still apply.
+      if (!(err instanceof ConflictError)) throw err;
+    }
+  }
+  return accepted;
 }

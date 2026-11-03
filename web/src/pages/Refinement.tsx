@@ -1221,6 +1221,14 @@ export function RefinementView(p: ViewProps) {
     resolvedFor.current = closingHash;
     void resolveClosing?.();
   }, [closingHash, closingFailing.length, locked, st.backlog?.detail, resolveClosing]);
+  // On the summary, the team reviews the outdated stages and accepts the safe patches on its own, once per set of pending items.
+  const stagePending = [...Object.keys(st.staleBy ?? {}), ...st.patches.filter((x) => x.status === 'pending').map((x) => x.patchId)].sort().join(',');
+  const stagesResolvedFor = useRef('');
+  useEffect(() => {
+    if (step !== 'review' || stagePending === '' || locked || st.reviewClosed === true || stagesResolvedFor.current === stagePending) return;
+    stagesResolvedFor.current = stagePending;
+    void resolveClosing?.();
+  }, [step, stagePending, locked, st.reviewClosed, resolveClosing]);
   const startLine = (
     startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>
   );
