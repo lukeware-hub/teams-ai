@@ -52,6 +52,8 @@ const TASK_ID = 'font-mono text-[0.8125rem] font-semibold';
 const TASK_ID_BUTTON = `h-auto flex-none border-0 bg-transparent p-0 text-left text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline ${TASK_ID}`;
 // The compact secondary button that opens a failure's detail dialog, with a 44px hit area on touch.
 const DETAIL_BUTTON = 'secondary h-10 flex-none px-3 text-[0.8125rem] pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1.5';
+// The outcome's actions share one row that fills the card, and stack full width on phones.
+const OUTCOME_ACTIONS = 'flex w-full gap-2 max-md:flex-col [&>*]:flex-1';
 // On narrow screens a title keeps a readable width instead of squeezing beside its id and chips.
 const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
 // A test name that opens its line on GitHub: text colour until hovered, and a row-high touch target.
@@ -542,7 +544,7 @@ export interface DecideAction {
 const OTHER_ANSWER = 'Outra resposta…';
 
 /** The owner's open questions of a blocked run: one choice each, or a text of their own. One submit saves them all. */
-function DecisionForm({ decisions, busy, error, onSubmit }: { decisions: RunDecision[]; busy: boolean; error: string | null; onSubmit: (answers: Array<{ taskId: string; answer: string }>) => void }) {
+function DecisionForm({ decisions, busy, error, actions, onSubmit }: { decisions: RunDecision[]; busy: boolean; error: string | null; actions: ReactNode; onSubmit: (answers: Array<{ taskId: string; answer: string }>) => void }) {
   const [picks, setPicks] = useState<Record<string, string>>(() => Object.fromEntries(decisions.map((d) => [d.taskId, d.options.find((o) => o.recommended)?.label ?? d.options[0]?.label ?? OTHER_ANSWER])));
   const [texts, setTexts] = useState<Record<string, string>>({});
   const answerOf = (d: RunDecision): string => (picks[d.taskId] === OTHER_ANSWER ? (texts[d.taskId] ?? '').trim() : (picks[d.taskId] ?? ''));
@@ -558,8 +560,9 @@ function DecisionForm({ decisions, busy, error, onSubmit }: { decisions: RunDeci
           ) : null}
         </div>
       ))}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className={OUTCOME_ACTIONS}>
         <ActionButton className="primary-button" data-testid="decide" busy={busy} disabled={!ready || busy} onClick={() => onSubmit(decisions.map((d) => ({ taskId: d.taskId, answer: answerOf(d) })))} icon={<Icon name="send" size={16} />}>Decidir e continuar</ActionButton>
+        {actions}
       </div>
       {error ? <p className="error" data-testid="decide-error">{error}</p> : null}
     </div>
@@ -919,32 +922,39 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                       <div>
                         <dt>Próximo passo</dt>
                         <dd>
-                          {pendingDecisions.length ? (
-                            <DecisionForm decisions={pendingDecisions} busy={decideAction?.busy ?? false} error={decideAction?.error ?? null} onSubmit={(answers) => decideAction?.onDecide(answers)} />
-                          ) : (
-                            <p data-testid="outcome-hint">{stop.hint}</p>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3">
-                            {redeploying ? (
-                              <ActionButton className="primary-button" data-testid="redeploy" busy={redeployAction.busy} onClick={redeployAction.onRedeploy} icon={<Icon name="refresh" size={16} />}>
-                                {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
-                              </ActionButton>
-                            ) : null}
-                            {reprocessAction && !detail.locked && !autonomous ? (
-                              <span className="inline-flex items-center gap-[0.35rem]">
-                                <ActionButton className={redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
-                                  {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
-                                </ActionButton>
-                                <InfoTip label="Reprocessar" text={TIP.reprocess} />
-                              </span>
-                            ) : null}
-                            {detail.report ? (
-                              <Link className="link-button" to={`/runs/${detail.runId}/validation`}>
-                                Ver relatório
-                                <Icon name="arrow-right" size={16} />
-                              </Link>
-                            ) : null}
-                          </div>
+                          {(() => {
+                            const actions = (
+                              <>
+                                {redeploying ? (
+                                  <ActionButton className="primary-button" data-testid="redeploy" busy={redeployAction.busy} onClick={redeployAction.onRedeploy} icon={<Icon name="refresh" size={16} />}>
+                                    {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
+                                  </ActionButton>
+                                ) : null}
+                                {reprocessAction && !detail.locked && !autonomous ? (
+                                  <span className="flex min-w-0 flex-1 items-center gap-[0.35rem]">
+                                    <ActionButton className={`${redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} flex-1`} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
+                                      {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
+                                    </ActionButton>
+                                    <InfoTip label="Reprocessar" text={TIP.reprocess} />
+                                  </span>
+                                ) : null}
+                                {detail.report ? (
+                                  <Link className="link-button" to={`/runs/${detail.runId}/validation`}>
+                                    Ver relatório
+                                    <Icon name="arrow-right" size={16} />
+                                  </Link>
+                                ) : null}
+                              </>
+                            );
+                            return pendingDecisions.length ? (
+                              <DecisionForm decisions={pendingDecisions} busy={decideAction?.busy ?? false} error={decideAction?.error ?? null} actions={actions} onSubmit={(answers) => decideAction?.onDecide(answers)} />
+                            ) : (
+                              <>
+                                <p data-testid="outcome-hint">{stop.hint}</p>
+                                <div className={OUTCOME_ACTIONS}>{actions}</div>
+                              </>
+                            );
+                          })()}
                           {redeployAction?.error ? <p className="error" data-testid="redeploy-error">{redeployAction.error}</p> : null}
                           {reprocessAction?.error ? <p className="error" data-testid="reprocess-error">{reprocessAction.error}</p> : null}
                         </dd>
