@@ -430,6 +430,14 @@ describe('the final review', () => {
     expect(screen.getByTestId('spec-tree')).toBeTruthy();
   });
 
+  it('offers Gerar specs.md while the backlog has no items, and that button runs the evaluation that writes them', () => {
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
+    open('?etapa=revisao');
+    const handlers = show(reviewSnap({ backlog }));
+    fireEvent.click(screen.getByTestId('generate-specs'));
+    expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
+  });
+
   it('asks the Jev for the scores of all five documents when some have none', () => {
     open('?etapa=revisao');
     const handlers = show(reviewSnap({ confidential: false }));

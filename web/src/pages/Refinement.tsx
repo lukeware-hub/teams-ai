@@ -1251,16 +1251,23 @@ export function RefinementView(p: ViewProps) {
       <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
+  // The backlog items are what specs.md is made of: until an evaluation writes them, the review offers to generate them.
+  const specsMissing = backlogOn && (st.backlog?.items.length ?? 0) === 0;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
     ) : <>{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
+      {specsMissing && (
+        <ActionButton data-testid="generate-specs" className="primary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => p.onEvaluate()} icon={<Icon name="refresh" size={16} />}>
+          Gerar specs.md
+        </ActionButton>
+      )}
       {backlogOn || st.repositories === true ? (
         <ActionButton
           data-testid="open-backlog"
-          className="primary"
+          className={specsMissing ? 'secondary' : 'primary'}
           onClick={async () => {
             if (stageSession && !st.reviewClosed) {
               const result = await p.onCloseReview?.();
