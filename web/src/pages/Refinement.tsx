@@ -1195,7 +1195,9 @@ export function RefinementView(p: ViewProps) {
   // The closing checks only alert: the start stays open, and each unmet check says what to fix, with its divergences.
   const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
   const failingChecklist = st.checklist.filter((c) => !c.passed);
-  const closingRows = closingFailing.flatMap((check) => (check.id === 'questions' && failingChecklist.length > 0
+  const closingRows = closingFailing.flatMap((check) => (check.id === 'architecture'
+    ? [<li key={check.id}>{check.detail}. <button type="button" className="link-button" data-testid="closing-architecture" onClick={() => goTo('architecture')}>Decidir a arquitetura de novo</button></li>]
+    : check.id === 'questions' && failingChecklist.length > 0
     ? failingChecklist.map((item) => (
       <li key={`${check.id}-${item.id}`}>
         <b>{checkLabel[item.id] ?? item.id}</b>: {checkDetail(item.detail)}
@@ -1246,7 +1248,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} stale={snap.architectureStale === true} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (

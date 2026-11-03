@@ -728,6 +728,20 @@ describe('the architecture step names what the documentation repository does', (
     expect(window.location.search).toContain('etapa=backlog');
   });
 
+  it('the architecture card says the decision is stale when the documents changed after it', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.getByTestId('architecture-stale').textContent).toBe('Os documentos mudaram depois desta decisão: use Redefinir para decidir de novo.');
+  });
+
+  it('the backlog summary names the architecture gap, and its action opens the architecture step', () => {
+    window.history.replaceState(null, '', '/?etapa=backlog');
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
+    const closing = { ok: false, checks: [{ id: 'architecture', ok: false, detail: 'a arquitetura não está decidida sobre os documentos atuais' }], assumptions: [], repositories: [], summaryHash: 'h' };
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing } as never)} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('closing-architecture'));
+    expect(window.location.search).toContain('etapa=arquitetura');
+  });
+
   it('the architecture button asks for a decision on the click when none exists, and does not move', () => {
     render(<MemoryRouter><RefinementView snap={architectureStep({ architecture: null })} busy={false} events={[]} {...on()} /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('architecture-continue'));
@@ -747,7 +761,7 @@ describe('the architecture step names what the documentation repository does', (
   it('the architecture button blocks on the click when the documents changed since the decision, and does not move', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
-    expect(screen.queryByTestId('architecture-stale')).toBeNull();
+    expect(screen.getByTestId('architecture-stale')).toBeTruthy();
     fireEvent.click(screen.getByTestId('architecture-continue'));
     expect(screen.getByTestId('architecture-note').textContent).toBe('Os documentos mudaram: decida a arquitetura de novo.');
     expect(window.location.search).toContain('etapa=arquitetura');
