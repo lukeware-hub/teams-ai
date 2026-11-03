@@ -27,13 +27,13 @@ describe('the buttons of a repository, by its kind', () => {
 });
 
 describe('a button with nothing to open', () => {
-  it('hides the Swagger button when the plan declares no documentation, and keeps the application reason', () => {
+  it('shows the Swagger button blocked, with its reason, when the plan declares no documentation, and keeps the application reason', () => {
     const monolith = shortcutsOf('monolith', 'live-skill', deploy({ docsPath: null }), probe({ ui: false, docs: false }), HOST);
-    expect(monolith).toEqual([{ kind: 'app', href: null, reason: 'a aplicação não responde na raiz' }]);
+    expect(monolith).toEqual([{ kind: 'swagger', href: null, reason: 'Swagger não existe' }, { kind: 'app', href: null, reason: 'a aplicação não responde na raiz' }]);
   });
 
-  it('hides both buttons of an API that declares no documentation, since it has no page at its root', () => {
-    expect(shortcutsOf('monolith', 'live-skill', deploy({ kind: 'api', docsPath: null }), probe({ ui: false, docs: false }), HOST)).toEqual([]);
+  it('keeps the Swagger button blocked, with its reason, when the plan declares no documentation; the application button stays hidden for an API', () => {
+    expect(shortcutsOf('monolith', 'live-skill', deploy({ kind: 'api', docsPath: null }), probe({ ui: false, docs: false }), HOST)).toEqual([{ kind: 'swagger', href: null, reason: 'Swagger não existe' }]);
   });
 
   it('hides the application button of an API even when it declares its documentation', () => {

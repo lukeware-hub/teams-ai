@@ -20,8 +20,8 @@ export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeplo
 function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string, probeFailed: boolean): Shortcut | null {
   if (!deploy) return { kind, href: null, reason: 'sem dados: nenhum deploy verificado ainda' };
   const address = addressOf(repo, deploy);
-  // The plan declares no documentation page, or an API has no page at its root: nothing to open, so no button.
-  if (kind === 'swagger' && !address.docsPath) return null;
+  // The plan declares no documentation page: the Swagger button stays, blocked, with the reason.
+  if (kind === 'swagger' && !address.docsPath) return { kind, href: null, reason: 'Swagger não existe' };
   if (kind === 'app' && deploy.kind === 'api') return null;
   if (!probe) return { kind, href: null, reason: probeFailed ? 'não foi possível verificar o sistema' : 'verificando se o sistema responde' };
   if (!probe.online) return { kind, href: null, reason: 'sistema desligado' };
