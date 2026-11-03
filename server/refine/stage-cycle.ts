@@ -56,7 +56,7 @@ const LOOK_FOR: Record<ScoreCheck, string> = {
   complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
   concrete: 'replace vague words, placeholders and open questions with exact values, names, limits or observable behavior',
   consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
-  scoped: 'find content the charter gives to another document; if an earlier document lacks it, ask the owner where it goes, and never delete content that no other document holds',
+  scoped: 'find content the charter gives to another document; if an earlier document lacks it, add it there with a patch to that document, and never delete content that no other document holds',
 };
 
 /** The place a doubt names in its document: the whole document, or the part with the headings that bound it. */
@@ -88,7 +88,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
     '- Return an empty checklist: this stage does not evaluate the checklist.',
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
-    '- Ask a question only when the document cannot be completed without the owner; mark it blocking only when the stage cannot continue without the answer.',
+    '- Ask a question only under question rule 5 (a scope change nothing that exists settles); decide everything else yourself and record it as an assumption. Mark a question blocking only when the stage cannot continue without the answer.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
     PATCH_WORTH,
     ...(input.jev ? [input.jev] : []),

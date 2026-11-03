@@ -95,7 +95,7 @@ export function architecturePack(input: ArchitecturePackInput): ContextPackInput
     `Name each microservice repository with the suffix of its type: ${SERVICE_SUFFIXES.map((s) => `-${s}`).join(', ')}. ${SERVICE_NAMING}`,
     'Every repository cites an evidence quote copied word for word from one of the five documents. Never invent a repository or a responsibility the documents do not state.',
     'Integrations link a consumer and a provider, both repositories of this architecture, with the contract they share (an endpoint, an event, a file).',
-    'A split the documents do not settle is a question for the owner, never a guess: blocking when the answer changes the repositories.',
+    'A split the documents do not settle defaults to one repository, recorded as an assumption; ask the owner only under question rule 5, blocking when the answer changes the repositories.',
     'Return the rationale naming the document and the section it rests on.',
     ...(input.issues && input.issues.length > 0 ? ['The last answer broke these rules, fix them all:', ...input.issues.map((i) => `- ${i}`)] : []),
     ...(input.answers.length > 0 ? ['### Owner answers\n' + input.answers.map((a) => `- ${a}`).join('\n')] : []),
