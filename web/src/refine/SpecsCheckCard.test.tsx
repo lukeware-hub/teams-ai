@@ -47,3 +47,24 @@ describe('the specs.md card while the agents repair it', () => {
     expect(screen.queryByTestId('specs-check-repairing')).toBeNull();
   });
 });
+
+describe('the specs.md card when the repairs did not settle it', () => {
+  const rejected = { specsHash: 'h', verdict: 'rejected' as const, findings: ['x'], reason: null, at: null };
+
+  it('offers to ask the team and to follow anyway, and calls each', () => {
+    const onAsk = vi.fn();
+    const onApprove = vi.fn();
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={2} onAsk={onAsk} onApprove={onApprove} />);
+    fireEvent.click(screen.getByTestId('specs-check-ask'));
+    fireEvent.click(screen.getByTestId('specs-check-approve'));
+    expect(onAsk).toHaveBeenCalledTimes(1);
+    expect(onApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it('once the team asked, points to the questions and offers only to follow anyway', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={2} asked onAsk={() => undefined} onApprove={() => undefined} />);
+    expect(screen.queryByTestId('specs-check-ask')).toBeNull();
+    expect(screen.getByTestId('specs-check-gave-up').textContent).toContain('Responda as perguntas abaixo');
+    expect(screen.getByTestId('specs-check-approve')).toBeTruthy();
+  });
+});

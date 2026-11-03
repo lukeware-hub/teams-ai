@@ -353,7 +353,7 @@ export interface DroppedQuestionRow {
   relatedAcIds?: string[];
   /** The document of a stage review's question; absent for a question of a full round or a plan question. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
-  origin?: 'speckit';
+  origin?: 'speckit' | 'specs';
   command?: string;
   itemKey?: string;
   matchedQuestionId: string;
@@ -378,7 +378,7 @@ export interface QuestionRow {
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   options?: Array<{ label: string; detail: string; recommended?: boolean }>;
   /** Set on a question plan left open during its preparation. */
-  origin?: 'speckit';
+  origin?: 'speckit' | 'specs';
   /** The backlog item a plan question is about. */
   itemKey?: string;
   /** The plain words the owner reads about a plan question: what it is about and why it needs a decision. */
@@ -678,6 +678,8 @@ export const refineApi = {
   undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
   closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
+  askSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/ask`).then((r) => json<{ asked: boolean }>(r)),
+  approveSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/approve`).then((r) => json<{ ok: true }>(r)),
   checkSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/check`).then((r) => json<{ started: boolean }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),

@@ -419,3 +419,28 @@ describe('specs.md starts by itself in the backlog step', () => {
     expect(h.onCheckSpecs).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('the questions the team asked about specs.md', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
+  const asked = { ...question(true), questionId: 'specs-1-0', origin: 'specs', text: 'Qual seção justifica o item base?', options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] };
+  const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null };
+  const snap = () => project({ stages: true, status: 'answering', backlog: detailed as never, specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected }, specsRepairs: 2, specsAsked: 'h', questions: [asked as never] } as never);
+
+  it('shows the question on the backlog step, with the recommended choice already marked, and sends it with one click', () => {
+    const h = { ...handlers(), onCheckSpecs: vi.fn() };
+    renderView(snap(), h);
+    expect(screen.getByTestId('specs-questions-intro')).toBeTruthy();
+    expect(screen.getByText('Qual seção justifica o item base?')).toBeTruthy();
+    expect(screen.getByTestId('option-group-option-objetivos').getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByTestId('answer-specs-1-0'));
+    expect(h.onAnswer).toHaveBeenCalledWith('specs-1-0', 'Objetivos', false);
+  });
+
+  it('keeps the start closed with the reason beside it, and shows the question nowhere else', () => {
+    renderView(snap());
+    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Responda as perguntas sobre o specs.md');
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+

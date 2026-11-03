@@ -39,7 +39,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, specsQuestions, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { PASS_LINE, percentOf } from '@server/refine/readiness';
 
@@ -219,6 +219,10 @@ export interface ViewProps {
   onEvaluate(): void | Promise<unknown>;
   /** Opening the final review: PO and SM check specs.md when something is still owed. */
   onCheckSpecs?(): void | Promise<unknown>;
+  /** The owner asks the team for help with a specs.md the repairs did not settle. */
+  onAskSpecs?(): void | Promise<unknown>;
+  /** The owner follows with the specs.md although a reviewer rejected it. */
+  onApproveSpecs?(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
   /** Decides the architecture of the five documents, in a repository session. */
   onDecideArchitecture?(): void | Promise<unknown>;
@@ -393,6 +397,7 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
+  const specsAsked = specsQuestions(st);
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -769,7 +774,10 @@ export function RefinementView(p: ViewProps) {
   // A stage question can be answered while the agents review: the server only records it and runs one review for the batch.
   const answerLocked = locked && (st.stages !== true || st.backlog?.enabled === true);
   const questionCard = (current: QuestionRow, remaining: number) => {
-    const { text: answer, docs: docsAnswered } = draftOf(current.questionId);
+    const typed = draftOf(current.questionId);
+    // A question the team asked about specs.md comes with its recommended choice marked: one click confirms it.
+    const answer = typed.text === '' && drafts[current.questionId] === undefined && current.origin === 'specs' ? (current.options?.find((o) => o.recommended)?.label ?? '') : typed.text;
+    const docsAnswered = typed.docs;
     const setAnswer = (text: string) => setDraft(current.questionId, { text });
     const setDocsAnswered = (docs: boolean) => setDraft(current.questionId, { docs });
     return (
@@ -798,7 +806,7 @@ export function RefinementView(p: ViewProps) {
               })}
             </div>
           )}
-          {current.blocking && <p data-testid="refinement-question-blocking-note" className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
+          {current.blocking && <p data-testid="refinement-question-blocking-note" className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' || current.origin === 'specs' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
             <small data-testid="refinement-question-criteria" className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
@@ -935,7 +943,13 @@ export function RefinementView(p: ViewProps) {
   /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} onRetry={() => void p.onCheckSpecs?.()} />}
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} onRetry={() => void p.onCheckSpecs?.()} onAsk={() => void p.onAskSpecs?.()} onApprove={() => setAsk({ title: 'Seguir com o specs.md reprovado', text: 'O PO ou o SM reprovou este specs.md. Se você seguir, o desenvolvimento pode começar com os pontos que eles apontaram ainda em aberto.', confirmLabel: 'Seguir mesmo assim', tone: 'accent', icon: 'check', onConfirm: () => void p.onApproveSpecs?.() })} />}
+      {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
+        <div data-testid="specs-questions" className="grid gap-3">
+          <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>
+          {specsAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, specsAsked.length - i)}</Fragment>)}
+        </div>
+      )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
           <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
@@ -1258,7 +1272,7 @@ export function RefinementView(p: ViewProps) {
   );
   // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
   const specsGate = st.stages === true && backlogOn && snap.specsApproved !== true;
-  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating) : null;
+  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating, specsAsked.length > 0) : null;
   const developButton = (
     <ActionButton data-testid="start" className={speckitReady && canStart && !specsGate ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady || specsGate} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
@@ -1585,6 +1599,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onCheckSpecs={act(() => refineApi.checkSpecs(projectId, specId))}
+        onAskSpecs={act(() => refineApi.askSpecs(projectId, specId))}
+        onApproveSpecs={act(() => refineApi.approveSpecs(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onResolveClosing={act(() => refineApi.resolve(projectId, specId))}

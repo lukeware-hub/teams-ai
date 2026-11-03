@@ -39,3 +39,9 @@ describe('the specs.md step says what is true', () => {
     expect(specsBlockReason('ready', undefined, failed, true)).toBe('Gerando o specs.md');
   });
 });
+
+describe('the start reason while the team waits for the owner', () => {
+  it('says to answer the questions, whatever else is missing', () => {
+    expect(specsBlockReason('answering', 'h', {}, false, true)).toBe('Responda as perguntas sobre o specs.md');
+  });
+});

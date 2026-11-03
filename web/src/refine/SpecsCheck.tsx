@@ -13,7 +13,8 @@ export const currentReview = (reviews: Reviews, role: Role, hash: string | undef
   hash !== undefined && reviews[role]?.specsHash === hash ? reviews[role] : undefined;
 
 /** Why the final review cannot go on yet, in plain words; null once specs.md is written and PO and SM approved it. */
-export function specsBlockReason(status: string, hash: string | undefined, reviews: Reviews, running = true): string | null {
+export function specsBlockReason(status: string, hash: string | undefined, reviews: Reviews, running = true, asked = false): string | null {
+  if (asked) return 'Responda as perguntas sobre o specs.md';
   if (status !== 'ready') return 'Aguardando o backlog ficar pronto';
   if (hash === undefined) {
     if (running) return 'Gerando o specs.md';
@@ -29,7 +30,7 @@ const stamp = (at: string): string => new Date(at).toLocaleString('pt-BR', { day
 /** The automatic repairs a rejected specs.md gets before the owner is asked; the same number the server uses. */
 export const SPECS_REPAIRS = 2;
 
-export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0 }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void; repairs?: number }) {
+export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked = false, onAsk, onApprove }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void; repairs?: number; asked?: boolean; onAsk?: () => void; onApprove?: () => void }) {
   const hash = specsMd?.hash;
   const bothFailed = reviews.po?.verdict === 'failed' && reviews.sm?.verdict === 'failed';
   const fileStatus = hash !== undefined ? 'Gerado' : busy ? 'Gerando' : bothFailed ? 'Falhou' : 'Aguardando o backlog';
@@ -61,7 +62,15 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0 }: { s
         })}
       </ul>
       {busy && repairs > 0 && <p data-testid="specs-check-repairing" className="m-0 mt-[0.6rem] text-ink-soft">Os agentes estão corrigindo o que os revisores apontaram (tentativa {repairs} de {SPECS_REPAIRS}).</p>}
-      {!busy && repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected') && <p data-testid="specs-check-gave-up" className="m-0 mt-[0.6rem] text-warn">Os agentes já tentaram corrigir {SPECS_REPAIRS} vezes. Os pontos acima pedem uma decisão sua ou uma mudança nos documentos.</p>}
+      {!busy && repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected') && (
+        <div data-testid="specs-check-gave-up" className="mt-[0.6rem] grid gap-2">
+          <p className="m-0 text-warn">{asked ? 'Os agentes tentaram corrigir 2 vezes e precisam de uma decisão sua. Responda as perguntas abaixo.' : 'Os agentes tentaram corrigir 2 vezes e não resolveram. Peça ajuda ao time: ele corrige o que os documentos já resolvem e pergunta só o resto, com uma recomendação.'}</p>
+          <div className="flex flex-wrap gap-2">
+            {!asked && onAsk && <button type="button" data-testid="specs-check-ask" className="primary h-10 px-[0.8rem]" onClick={onAsk}>Pedir ajuda ao time</button>}
+            {onApprove && <button type="button" data-testid="specs-check-approve" className="secondary h-10 px-[0.8rem]" onClick={onApprove}>Seguir mesmo assim</button>}
+          </div>
+        </div>
+      )}
       {!busy && onRetry && (hash === undefined || current.some((c) => c.review?.verdict === 'failed')) && (
         <button type="button" data-testid="specs-check-retry" className="secondary mt-[0.6rem] h-10 px-[0.8rem]" onClick={onRetry}>Tentar de novo</button>
       )}

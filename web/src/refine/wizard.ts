@@ -78,7 +78,7 @@ export const docQuestions = (st: Pick<State, 'questions'>, file: DocFile): Quest
 
 /** The pending questions that name no document: the ones a full round asked. The plan preparation's belong to stage 7. */
 export const unfiledQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
-  pendingQuestions(st).filter((q) => q.file === undefined && q.origin !== 'speckit').sort((a, b) => Number(b.blocking) - Number(a.blocking));
+  pendingQuestions(st).filter((q) => q.file === undefined && q.origin !== 'speckit' && q.origin !== 'specs').sort((a, b) => Number(b.blocking) - Number(a.blocking));
 
 /** The pending questions the plan preparation asked while it prepared the development, blocking ones first. */
 export const speckitQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
@@ -88,3 +88,7 @@ export const speckitQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
 export const docPatches = (st: Pick<State, 'patches'>, file: DocFile): PatchRow[] => st.patches.filter((p) => p.status === 'pending' && p.file === file);
 
 export const pendingCount = (st: Pick<State, 'questions' | 'patches'>, file: DocFile): number => docQuestions(st, file).length + docPatches(st, file).length;
+
+/** The pending questions the team asked about specs.md when its repairs did not settle it, blocking ones first. */
+export const specsQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
+  pendingQuestions(st).filter((q) => q.origin === 'specs').sort((a, b) => Number(b.blocking) - Number(a.blocking));
