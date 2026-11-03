@@ -285,6 +285,9 @@ export const emptyRefineState = (): RefineState => ({
 const STICKY: ReadonlySet<RefineStatus> = new Set(['evaluating', 'error', 'started']);
 
 /** An adjustment's approval (R11.7.4) is the owner's decision, never a reviewer's suggestion. */
+/** The patches the agents may accept alone: no scope change and no owner decision. */
+export const safePatches = (rows: readonly PatchRow[]): PatchRow[] => rows.filter((p) => p.status === 'pending' && !p.scopeChange && !isApproval(p));
+
 export const isApproval = (p: Pick<PatchRow, 'replace'>) => approvalKey(p.replace.split('\n', 1)[0]!.replace(/^#+\s*/, '')) !== null;
 
 /** Every checklist item passed, with at least one item reported. */

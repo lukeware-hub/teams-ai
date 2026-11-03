@@ -145,10 +145,21 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('keeps the review valid when the owner accepts a patch of the review itself', async () => {
+  it('accepts on its own a suggestion that changes no scope, when the review ends', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
+    await s.evaluateStage('flow.md');
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => p.status)).toEqual(['accepted']);
+    await expect(s.continueStage()).resolves.toBeUndefined();
+    await s.settled();
+    await s.close();
+  });
+
+  it('keeps the review valid when the owner accepts a patch of the review itself', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  - passo novo', reason: 'novo passo' }])];
     await s.evaluateStage('flow.md');
     const patch = s.state.patches.find((p) => p.file === 'flow.md' && p.status === 'pending');
     expect(patch).toBeDefined();

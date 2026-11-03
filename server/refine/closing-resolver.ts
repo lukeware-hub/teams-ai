@@ -1,12 +1,11 @@
 import { ConflictError, type RefineSession } from './session.js';
 import type { DocFile } from './draft.js';
-import { isApproval, type PatchRow } from './state.js';
+import { safePatches } from './state.js';
 
 /** Rounds at most: each one accepts the safe patches, evaluates, decides the architecture and prepares the plans that are still open. */
 export const CLOSING_ROUNDS = 3;
 
-/** The patches the agents may accept alone: no scope change and no owner decision. */
-export const safePatches = (rows: readonly PatchRow[]): PatchRow[] => rows.filter((p) => p.status === 'pending' && !p.scopeChange && !isApproval(p));
+export { safePatches };
 
 /** Resolves the closing checks with the agents, without the owner. It stops when the summary passes, when a round changes nothing, when the owner must act, or after CLOSING_ROUNDS. */
 export async function resolveClosing(s: RefineSession): Promise<void> {

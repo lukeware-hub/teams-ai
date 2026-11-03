@@ -36,7 +36,7 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { SPECS_REVIEWERS, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
@@ -562,6 +562,7 @@ export class RefineSession {
       await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
       await runStageCycle(deps, this.state.cycle + 1, file);
+      if (this.state.status !== 'error') await this.acceptSafePatches(file);
       // A repository session adds the reviewed document to the graph when its review ends; a failed review adds nothing.
       if (this.state.status !== 'error' && this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
         await this.journal.fact(RefineEvent.DocGraphStarted, { file });
@@ -1190,6 +1191,19 @@ export class RefineSession {
 
   async accept(patchId: string): Promise<void> {
     this.guard();
+    await this.applyPatchRow(patchId);
+  }
+
+  /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */
+  private async acceptSafePatches(file: DocFile): Promise<void> {
+    for (const p of safePatches(this.state.patches.filter((x) => x.file === file))) {
+      await this.applyPatchRow(p.patchId).catch((err) => {
+        if (!(err instanceof ConflictError)) throw err;
+      });
+    }
+  }
+
+  private async applyPatchRow(patchId: string): Promise<void> {
     const p = this.patch(patchId);
     const before = await readDoc(this.deps.draft, p.file);
     const after = applyPatch(before, p);
