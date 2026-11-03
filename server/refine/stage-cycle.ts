@@ -104,7 +104,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
 export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: DocFile): Promise<void> {
   const { draft, journal } = deps;
   const hash = await draftHash(draft);
-  await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash });
+  await journal.fact(RefineEvent.CycleStarted, { cycle, draftHash: hash, file });
   try {
     const docs = Object.fromEntries(await Promise.all(DOC_STAGES.map(async (f) => [f, await readDoc(draft, f)]))) as Record<DocFile, string>;
     const scope = scopeOf(file);

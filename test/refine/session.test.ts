@@ -737,6 +737,19 @@ describe('RefineSession stage review', () => {
     await s.close();
   });
 
+  it('counts the rounds per document: an earlier document reviewed again spends none of the current stage', async () => {
+    const s = await RefineSession.create({ ...deps(), limits: { max: 2 } }, 'new-project', { repositories: false });
+    await s.evaluateStage('flow.md');
+    await s.continueStage();
+    await s.evaluateStage('project.md');
+    await s.evaluateStage('flow.md');
+    await s.evaluateStage('flow.md');
+    // flow.md was reviewed again twice after its stage ended, and project.md still has one round left.
+    await expect(s.evaluateStage('project.md')).resolves.toBeUndefined();
+    expect(() => s.evaluateStage('project.md')).toThrow(ConflictError);
+    await s.close();
+  });
+
   it('evaluate in a stage session reviews the open stage only, and another document keeps its text', async () => {
     await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });

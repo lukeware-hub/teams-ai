@@ -435,9 +435,19 @@ export class RefineSession {
     return (await docsBind.configuredOwner()) ?? (await viewerLogin(this.deps.ws.root, docsBind.exec)) ?? undefined;
   }
 
+  /** The reviews a document has had since its stage last advanced, failed ones too: a re-review of an earlier document spends nothing here. */
+  private reviewsOf(file: DocFile): number {
+    let count = 0;
+    for (const e of this.journal.events) {
+      if (e.type === RefineEvent.StageAdvanced && e.data.doc === file) count = 0;
+      else if (e.type === RefineEvent.CycleStarted && e.data.file === file) count += 1;
+    }
+    return count;
+  }
+
   /** The rounds the current stage has used count against its limit. */
-  private guardRounds(): void {
-    const rounds = this.state.cycle - (this.state.stageStartCycle ?? 0);
+  private guardRounds(file?: DocFile): void {
+    const rounds = file ? this.reviewsOf(file) : this.state.cycle - (this.state.stageStartCycle ?? 0);
     if (rounds >= this.limits().max) throw new ConflictError(`o refinamento já tem ${rounds} rodadas nesta etapa, o limite de ${this.limits().max}: revise os documentos e inicie a análise, ou ajuste TEAMS_AI_REFINE_MAX_ROUNDS`);
   }
 
@@ -523,7 +533,7 @@ export class RefineSession {
   private startStage(file: DocFile, restore: boolean): Promise<void> {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
-    this.guardRounds();
+    this.guardRounds(file);
     this.guardStage(file);
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedStage(ctl, file, restore).finally(() => {
