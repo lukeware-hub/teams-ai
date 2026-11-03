@@ -26,6 +26,11 @@ const refineOut = (checklist: unknown[], questions: unknown[] = [], docPatch: un
 const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 
+/** Passes the five stages of a new project: the whole documents are evaluated only after them. */
+async function passStages(s: RefineSession): Promise<void> {
+  for (let i = 0; i < 5; i += 1) await s.continueStage();
+}
+
 /** The plan preparation every start needs: the single spec, one item, writes its plan file with the spec's criterion ids. */
 async function prepare(s: RefineSession): Promise<void> {
   const ids = s.state.derived!.spec.acceptanceCriteria.map((c) => c.id).join(', ');
@@ -98,6 +103,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q1', text: 'Which DB?', blocking: false, relatedAcIds: [] }], [{ file: 'docs/project.md', find: '## Vision', replace: '## Product vision', reason: 'clearer' }, { file: 'docs/project.md', find: 'nope', replace: 'x', reason: 'r' }])];
     script['refine/sm'] = [refineOut(green(SM), [{ id: 'q2', text: 'which db?', blocking: true, relatedAcIds: [] }, { id: 'q3', text: 'Port?', blocking: true, relatedAcIds: [] }])];
+    await passStages(s);
     await s.evaluate();
     const st = s.state;
     expect(st.status).toBe('answering');
@@ -122,6 +128,7 @@ describe('RefineSession', () => {
     script['refine/front'] = [refineOut([], [], [{ file: 'docs/design.md', find: '# Design', replace: '# Product design', reason: 'define the visual contract' }])];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     expect(s.state.patches).toHaveLength(1);
     expect(s.state.patches[0]).toMatchObject({ role: 'front', file: 'design.md', status: 'pending' });
@@ -247,6 +254,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     await s.answer('po-c1-0', 'project.md › Execução: 8080', true);
     await s.close();
@@ -259,6 +267,7 @@ describe('RefineSession', () => {
     const reading = new Promise<number | undefined>((resolve) => { release = resolve; });
     const s = await RefineSession.create({ ...deps(), autoAnswerFloor: () => reading } as never, 'new-project', { repositories: false });
     script['derive/po'] = [derived];
+    await passStages(s);
     const evaluating = s.evaluate();
     const aborting = s.abort();
     release(undefined);
@@ -276,6 +285,7 @@ describe('RefineSession', () => {
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }]), refineOut(green(PO), [{ id: 'q2', text: 'Name?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
     script['answer/po'] = [{ answer: 'project.md › Execução: 8080.' }];
+    await passStages(s);
     await s.evaluate();
     expect(s.state.questions.find((q) => q.questionId === 'po-c1-0')).toMatchObject({ status: 'answered', answeredBy: 'po' });
     floor = undefined;
@@ -292,6 +302,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }])];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     const brief = await readDoc(draft(), 'briefing.md');
     await s.answer('po-c1-0', '8080');
@@ -361,6 +372,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## V', reason: 'r' }, { file: 'docs/project.md', find: '## Personas', replace: '## People', reason: 'r' }])];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     await s.accept('po-c1-0');
     expect(await readDoc(draft(), 'project.md')).toContain('## V');
@@ -389,6 +401,7 @@ describe('RefineSession', () => {
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\n## Visão\n\nTexto.\n\n## Pessoas\n\nTexto.\n');
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: '## Visão', replace: '## Resumo', reason: 'r' }])];
     script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/flow.md', find: '## Visão', replace: '## Objetivo', reason: 'r' }, { file: 'docs/flow.md', find: '## Pessoas', replace: '## Gente', reason: 'r' }])];
+    await passStages(s);
     await s.evaluate();
     await s.accept('po-c1-0');
     const byId = Object.fromEntries(s.state.patches.map((x) => [x.patchId, x.status]));
@@ -406,6 +419,7 @@ describe('RefineSession', () => {
     const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' };
     script['refine/po'] = [refineOut(green(PO), [], [], [move])];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     expect(s.state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', from: 'project.md', to: 'flow.md' }]);
     expect(await readDoc(draft(), 'project.md')).not.toContain('O usuário valida');
@@ -425,6 +439,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     expect(s.state.error).toBeNull();
     expect(s.state.status).toBe('drafting');
@@ -440,6 +455,7 @@ describe('RefineSession', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO), [], [], [{ from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' }])];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     await s.saveDoc('flow.md', `${await readDoc(draft(), 'flow.md')}\nEditado pelo dono.\n`);
     await expect(s.undoMove('move-po-c1-0')).rejects.toThrow(/mudou depois dela/);
@@ -454,6 +470,7 @@ describe('RefineSession', () => {
       { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n', reason: 'preencher' },
       { file: 'docs/flow.md', find: '# Application flow', replace: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n', reason: 'preencher' },
     ])];
+    await passStages(s);
     await s.evaluate();
     expect(await readDoc(draft(), 'stack.md')).toBe('# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n');
     expect(await readDoc(draft(), 'flow.md')).toContain('flowchart TD');
@@ -765,6 +782,17 @@ describe('RefineSession stage review', () => {
     await s.close();
   });
 
+  it('evaluate in a stage session reviews the open stage only, and another document keeps its text', async () => {
+    await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    script['suggest/po'] = [{ text: SHAPED_BRIEF }];
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluate();
+    expect(s.state.cycle).toBe(1);
+    expect(await readDoc(draft(), 'briefing.md')).toBe(LOOSE_BRIEF);
+    await s.close();
+  });
+
   it('reshapes the stage document into its template, and undo puts back the text it had', async () => {
     await writeDoc(draft(), 'briefing.md', LOOSE_BRIEF);
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
@@ -920,6 +948,7 @@ describe('RefineSession document score', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
     await s.evaluate();
     expect(scoreDocs).toHaveBeenCalled();
     expect(s.events.some((e) => e.type === 'REFINE_DOCS_SCORED')).toBe(true);

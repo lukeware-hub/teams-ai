@@ -950,6 +950,9 @@ export class RefineSession {
   }
 
   async evaluate(): Promise<void> {
+    // A stage session reviews its open document only; the whole documents are evaluated once every stage is done.
+    const stage = this.state.stages === true ? this.currentStage() : undefined;
+    if (stage) return this.evaluateStage(stage);
     this.ensureCanEvaluate();
     this.guardRounds();
     this.guardStagesDone();

@@ -1,11 +1,11 @@
 import type { z } from 'zod';
-import type { DocMoveProposal, RefineOutput } from '../agents/outputs.js';
+import type { RefineOutput } from '../agents/outputs.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
-import { applyMoves, isConfidential, titlesOf, type CycleJournal, type RunAgent } from './cycle.js';
+import { isConfidential, type CycleJournal, type RunAgent } from './cycle.js';
 import { DIGEST_NOTE, docDigest } from './docs-view.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
@@ -15,7 +15,7 @@ import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } f
 import { historyBlocks, PATCH_WORTH, reorganizePack } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
-import { reshapeAll } from './reshape.js';
+import { reshapeStage } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
@@ -28,9 +28,6 @@ const VALIDATION_KEY: Record<DocFile, keyof ValidationDocs> = { 'project.md': 'p
 
 /** How much of each earlier document the review reads: every heading, with the start of its section. */
 const STAGE_DIGEST_CHARS = 2000;
-
-/** The most passages one stage moves; a stage moves a few lines forward, never whole sections. */
-const STAGE_MAX_MOVES = 3;
 
 export interface StageCycleDeps {
   draft: Draft;
@@ -53,13 +50,6 @@ const inScope = (name: string, specId: string, scope: readonly DocFile[]): boole
   const file = namedDoc(name, specId);
   return file !== undefined && scope.includes(file);
 };
-
-/** Moves of a stage go forward only: out of its own document and into a later one. */
-const forwardMoves = (file: DocFile, specId: string, moves: readonly DocMoveProposal[]): DocMoveProposal[] =>
-  moves.filter((m) => {
-    const to = namedDoc(m.to, specId);
-    return namedDoc(m.from, specId) === file && to !== undefined && DOC_STAGES.indexOf(to) > DOC_STAGES.indexOf(file);
-  });
 
 /** What the review looks for in each place the Jev doubts, one sentence per check. */
 const LOOK_FOR: Record<ScoreCheck, string> = {
@@ -110,7 +100,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
   return { kind: 'refine', role: input.role, specHash: input.specHash, principles: [...input.principles], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 60_000 };
 }
 
-/** One review of a stage's document, in two passes: the reorganization of that document (its moves go forward only), then the owner's review, which asks what the owner must decide and lists findings and contradictions against the documents before it. Then the document's score is taken. */
+/** One review of a stage's document, in two passes: the reorganization of that document, then the owner's review, which asks what the owner must decide and lists findings and contradictions against the documents before it. Then the document's score is taken. Only the stage document changes. */
 export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: DocFile): Promise<void> {
   const { draft, journal } = deps;
   const hash = await draftHash(draft);
@@ -139,9 +129,8 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       return;
     }
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
-    await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: false, asked: titlesOf(journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.text)) }, [{ role, moves: forwardMoves(file, draft.specId, reorganized.value.moves ?? []), limit: STAGE_MAX_MOVES }], discardedPatches);
-    // Every document takes its template's layout before the review, so the review and its patches read that text.
-    await reshapeAll({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, docs, discardedPatches);
+    // The stage document takes its template's layout before the review, so the review and its patches read that text.
+    await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
     let n = 0;
     // Every patch is checked against the documents as the moves and the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {

@@ -80,6 +80,8 @@ async function startBacklog(): Promise<string> {
   script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
   script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
   script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+  // The five stages pass first: an evaluation reviews the whole documents only after them.
+  for (let i = 0; i < 5; i += 1) await call('POST', `${url}/stage/continue`);
   await call('POST', `${url}/evaluate`);
   await settle();
   await preparePlans(url);

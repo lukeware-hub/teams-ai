@@ -186,10 +186,9 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('refuses to close the final review, to evaluate, to break the backlog or to plan before the five documents are done', async () => {
+  it('refuses to close the final review, to break the backlog or to plan before the five documents are done', async () => {
     const s = await stamped();
     await expect(s.closeReview()).rejects.toThrow(/Conclua as etapas dos documentos antes: falta flow\.md, project\.md, briefing\.md, stack\.md, design\.md/);
-    await expect(s.evaluate()).rejects.toBeInstanceOf(ConflictError);
     await expect(s.enableBacklog()).rejects.toBeInstanceOf(ConflictError);
     expect(() => s.runPlans()).toThrow(ConflictError);
     await s.close();

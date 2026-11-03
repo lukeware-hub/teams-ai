@@ -150,6 +150,11 @@ afterEach(async () => {
   await fs.rm(home, { recursive: true, force: true });
 });
 
+/** Passes the five stages of the new project, so an evaluation reviews the whole documents. */
+const passStages = async () => {
+  for (let i = 0; i < 5; i += 1) await call('POST', '/api/refine/hello-app/hello-app-001/stage/continue');
+};
+
 describe('refine api', () => {
   it('suggests readable ids and creates a project with the suggested first spec', async () => {
     expect((await call('POST', '/api/names/suggest', { kind: 'bogus', description: 'x' })).status).toBe(400);
@@ -180,6 +185,7 @@ describe('refine api', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [{ checklist: PO, questions: [{ id: 'q', text: 'Port?', blocking: true, relatedAcIds: [] }], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await passStages();
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(202);
     const events = await fetch(`${base()}/api/refine/hello-app/hello-app-001/events`, { headers: { 'last-event-id': '1' } });
     const reader = events.body!.getReader();
@@ -294,6 +300,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     expect((await call('POST', `${url}/evaluate`)).status).toBe(202);
     await settle();
     const snap = await snapshot();
@@ -318,6 +325,7 @@ describe('refine api', () => {
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     // One evaluation derives the outline and details every item: the detail is part of it, so no second round is needed.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
@@ -406,6 +414,7 @@ describe('refine api', () => {
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     // The one evaluation derives the outline and details every item: the detail is part of it, not a second click.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
@@ -431,6 +440,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs/base/spec.json`;
@@ -453,6 +463,7 @@ describe('refine api', () => {
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     // One evaluation derives the outline, details every item and asks the two questions about the criteria.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     for (const q of (await snapshot()).state.questions) {
@@ -476,6 +487,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     spawnShouldFail = true;
@@ -501,6 +513,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
@@ -528,6 +541,7 @@ describe('refine api', () => {
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
     script['refine/po'] = [{ checklist: PO, questions: [{ id: 'q1', text: 'O health responde em JSON?', blocking: true, relatedAcIds: [] }], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const [q] = (await snapshot()).state.questions;
@@ -549,6 +563,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const ready = (await snapshot()).state;
@@ -575,6 +590,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     await registry.tickPrograms();
@@ -626,6 +642,7 @@ describe('refine api', () => {
     script['derive/po'] = [derived];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [], moves: [{ from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' }] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await passStages();
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await waitForEvaluation();
     await settle();
@@ -699,6 +716,7 @@ describe('refine api', () => {
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-003'], dependsOn: [] }], risks: [] }] }];
     // Once the docs are ready, the same evaluation goes on into the backlog: the outline, then the detail of every item.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const planned = (await snapshot()).state;
@@ -717,6 +735,7 @@ describe('refine api', () => {
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     // The documents are ready, so the evaluation goes on into the backlog, which has no answer scripted here: it fails.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('error');
@@ -735,6 +754,7 @@ describe('refine api', () => {
     const broken = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: ['zzz'], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items: broken } }, { project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items: broken } }];
     // The docs are ready, so the evaluation goes on into the backlog: the outline breaks a rule and asks the owner.
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const asked = (await snapshot()).state;
@@ -765,6 +785,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [spec];
     script['preplan/sm'] = [preplan];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
@@ -817,6 +838,7 @@ describe('refine api', () => {
     script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [{ name: 'db', purpose: 'p', secretNames: ['DB_URL'] }] } }];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await passStages();
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
     const put = await call('PUT', '/api/refine/hello-app/hello-app-001/secrets/DB_URL', { value: 'postgres://secret' });
@@ -847,6 +869,7 @@ describe('refine api', () => {
     script['derive/po'] = [{ ...derived, spec: { ...derived.spec, externalDependencies: [{ name: 'db', purpose: 'p', secretNames: ['DB_URL'] }] } }];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    await passStages();
     await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
     await settle();
     expect((await (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json()).secrets).toEqual([{ name: 'DB_URL', present: false, hint: null, uses: [{ dependency: 'db', purpose: 'p' }], mentions: [] }]);
@@ -892,6 +915,7 @@ describe('refine api', () => {
     script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
     script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
     script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');

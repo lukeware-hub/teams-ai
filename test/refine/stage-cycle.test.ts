@@ -176,17 +176,16 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     expect(await readDoc(draft, 'briefing.md')).toBe(SHAPED_BRIEF);
   });
 
-  it('gives each document reshaped in one cycle its own id and its own kept text', async () => {
+  it('reshapes the stage document only, with its own id and its own kept text', async () => {
     const draft = await newDraft();
     const looseStack = '# Stack\n\n## Notas\n\n- Node 22, React, SQLite e Vitest.\n';
     await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
     await writeDoc(draft, 'stack.md', looseStack);
     const journal = foldingJournal();
-    const answers = [reshaped(SHAPED_BRIEF), reshaped('# Stack\n\n## Runtime\n\n- Node 22.\n\n## Frameworks\n\n- React.\n\n## Storage\n\n- SQLite.\n\n## Tooling\n\n- Vitest.\n')];
-    await runStageCycle({ draft, journal, runAgent: agentFor(() => answers.shift()) as never, principles: () => [] }, 1, 'briefing.md');
-    expect(journal.state.reshapes.map((r) => [r.file, r.reshapeId])).toEqual([['briefing.md', 'reshape-c1-briefing'], ['stack.md', 'reshape-c1-stack']]);
+    await runStageCycle({ draft, journal, runAgent: agentFor(() => reshaped(SHAPED_BRIEF)) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.state.reshapes.map((r) => [r.file, r.reshapeId])).toEqual([['briefing.md', 'reshape-c1-briefing']]);
     expect(await readFile(reshapeBackup(draft, 'reshape-c1-briefing'), 'utf8')).toBe(LOOSE_BRIEF);
-    expect(await readFile(reshapeBackup(draft, 'reshape-c1-stack'), 'utf8')).toBe(looseStack);
+    expect(await readDoc(draft, 'stack.md')).toBe(looseStack);
   });
 });
 
@@ -355,22 +354,14 @@ describe('runStageCycle', () => {
     expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: message, detail: message });
   });
 
-  it('a move out of the stage document into a later one is never applied backward: only forward moves of the stage are passed on', async () => {
+  it('a move never reaches another document: the stage changes its own document only', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     const backward = { from: 'docs/project.md', to: 'docs/flow.md', quote: '# Shop', text: 'texto', reason: 'r' };
+    const forward = { from: 'docs/project.md', to: 'docs/briefing.md', quote: '# Shop', text: 'texto', reason: 'r' };
     const otherDocument = { from: 'docs/flow.md', to: 'docs/briefing.md', quote: '# Flow', text: 'texto', reason: 'r' };
-    await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [backward, otherDocument]), answer([])) as never, principles: () => [] }, 1, 'project.md');
+    await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [backward, forward, otherDocument]), answer([])) as never, principles: () => [] }, 1, 'project.md');
     expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(false);
-  });
-
-  it('a forward move whose quote the stage document does not hold is discarded with its reason, and the review goes on', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    const forward = { from: 'docs/project.md', to: 'docs/briefing.md', quote: 'trecho que não existe', text: 'texto', reason: 'r' };
-    await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [forward]), answer([])) as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.state.discarded).toEqual([expect.objectContaining({ role: 'po', file: 'docs/project.md', cycle: 1 })]);
-    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
   });
 
   it('a finding or a contradiction outside the stage and the documents before it is dropped', async () => {
@@ -393,14 +384,15 @@ describe('runStageCycle', () => {
     expect(journal.state.findings).toEqual([expect.objectContaining({ doc: 'briefing.md', quote: 'O pedido fecha em dois dias.' })]);
   });
 
-  it('a forward move cited from the briefing in its spec folder is applied', async () => {
+  it('a move cited from the stage document in its spec folder is not applied to a later document', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     await writeDoc(draft, 'briefing.md', '# Briefing\n\nRegra de prazo: trinta dias.\n');
     await writeDoc(draft, 'stack.md', '# Pilha\n\nNode.js.\n');
     const move = { from: `docs/specs/${draft.specId}/briefing.md`, to: 'docs/stack.md', quote: 'Regra de prazo: trinta dias.', text: 'Regra de prazo: trinta dias.', reason: 'r' };
     await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [move]), answer([])) as never, principles: () => [] }, 1, 'briefing.md');
-    expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(true);
+    expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(false);
+    expect(await readDoc(draft, 'stack.md')).toBe('# Pilha\n\nNode.js.\n');
   });
 
   it('the review names its document by the bare name, which a patch may cite', () => {
@@ -628,16 +620,6 @@ describe('runStageCycle', () => {
       await runStageCycle({ draft: await newDraft(), journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
       expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Where the Jev doubts');
     }
-  });
-
-  it('a move that cuts a passage a pending question asks about is refused, whatever its target', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    journal.state.questions = [{ questionId: 'po-c0-0', role: 'po', text: 'Qual é o "Prazo de entrega"?', blocking: true, relatedAcIds: [], cycle: 0, status: 'pending', answer: null }] as never;
-    const forward = { from: 'docs/project.md', to: 'docs/briefing.md', quote: 'Prazo de entrega', text: 'texto', reason: 'r' };
-    await runStageCycle({ draft, journal, runAgent: passes(answer([], [], [], [], [forward]), answer([])) as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.state.discarded).toEqual([expect.objectContaining({ role: 'po', cycle: 1, reason: expect.stringContaining('a pergunta pendente cita este trecho') })]);
-    expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(false);
   });
 
   it('a question without choices or subject is recorded without them', async () => {
