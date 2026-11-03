@@ -59,6 +59,17 @@ describe('RefinementPage of a new project', () => {
     await waitFor(() => expect(review).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 
+  it('shows a refused Continuar at the top of the page and scrolls to it', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
+    vi.spyOn(refineApi, 'continueStage').mockRejectedValue(new Error('Revise a etapa flow.md antes de continuar.'));
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as never;
+    renderPage();
+    fireEvent.click(await screen.findByTestId('wizard-continue'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Revise a etapa flow.md'));
+    expect(scrollTo).toHaveBeenCalled();
+  });
+
   it('sends the reprocess of the stage document to the API', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ passedStages: ['flow.md'] }));
     const again = vi.spyOn(refineApi, 'reprocessStage').mockResolvedValue({ ok: true });

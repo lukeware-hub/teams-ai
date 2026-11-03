@@ -1529,13 +1529,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onResolveClosing={act(() => refineApi.resolve(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
-        onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
-        onAddToGraph={(doc) => refineApi.addToGraph(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
+        onContinueStage={(doc) => act(() => refineApi.continueStage(projectId, specId, doc))()}
+        onAddToGraph={(doc) => act(() => refineApi.addToGraph(projectId, specId, doc))()}
         onNotApplicable={act(async () => {
           await refineApi.notApplicable(projectId, specId);
           load();
         })}
-        onCloseReview={() => refineApi.closeReview(projectId, specId).then(() => true, (e: Error) => (setError(e.message), false))}
+        onCloseReview={act(() => refineApi.closeReview(projectId, specId))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}
