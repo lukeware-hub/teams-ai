@@ -195,14 +195,17 @@ Editado.
     await s.close();
   });
 
-  it('puts an edited finished document back in the graph as it is, without a review first', async () => {
+  it('reviews an edited finished document again, and then puts it back in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
     await finishStages(s);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
     expect(s.state.graphed).not.toContain('flow.md');
+    calls.length = 0;
+    script['refine/po'] = [refineOut(green(PO))];
     await s.addToGraph('flow.md');
     await s.settled();
+    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
     expect(s.state.graphed).toContain('flow.md');
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.close();

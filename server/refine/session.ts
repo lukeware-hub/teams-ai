@@ -631,7 +631,7 @@ export class RefineSession {
     if (this.state.stages === true && this.state.repositories === true) await this.continueStage('design.md');
   }
 
-  /** The final review puts a finished document in the graph as it is now: the review, question and suggestion gates do not apply. */
+  /** The final review puts a finished document in the graph: one edited since its review is reviewed again first, and the question and suggestion gates do not apply. */
   async addToGraph(file: DocFile): Promise<void> {
     this.guard();
     if (this.state.repositories !== true || this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo com repositórios tem Graphify por etapa');
@@ -640,6 +640,11 @@ export class RefineSession {
     const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
     if (problem) throw new ConflictError(problem);
     if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+    // A document edited since its review is reviewed again first, by its own role; the review then puts it in the graph.
+    if (!(this.state.reviewedStages ?? []).includes(file)) {
+      void this.startStage(file, false);
+      return;
+    }
     // The stage does not move: it is already done.
     await this.startIndexing(file, false);
   }
