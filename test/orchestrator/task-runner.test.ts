@@ -1009,6 +1009,24 @@ describe('TaskRunner: gate fixes and repeated attempts', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.Feedback && String(e.data.text).includes('no gate named nope'))).toBe(true);
   });
 
+  it('blocks for the owner when a spec-gap answer repeats the command the gate already runs, instead of sending the Dev back', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'Run it again', assumption: 'T1: x', gateFix: { gate: 'unit-test', command: 'npm test' } });
+      if (req.kind === 'block-options') return ok({ specHash: HASH, question: 'Pular o gate unit-test nesta tarefa?', options: [{ label: 'Pular', detail: 'O gate não roda nesta tarefa.' }, { label: 'Ajustar o ambiente', detail: 'Corrigir a causa da falha.' }] });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls === 1 ? ok({ specHash: HASH, status: 'spec-gap', summary: 'gate', changedFiles: [], question: 'q' }) : devDone()(req);
+    };
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
+    expect(devCalls).toBe(1);
+    expect(journal.events.some((e) => e.type === OrchEvent.GateFixed)).toBe(false);
+    expect(state().state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('The gate unit-test still fails with the command it already runs');
+    expect(journal.events.some((e) => e.type === OrchEvent.DecisionRequested)).toBe(true);
+  });
+
   describe('a gate image change the spec-gap answer carries', () => {
     const imageAgent = (imageFix: { gateImage: string }): Agent => {
       let devCalls = 0;

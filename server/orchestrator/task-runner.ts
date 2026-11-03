@@ -557,29 +557,45 @@ export class TaskRunner {
     const overrule = await this.autonomous();
     // The same frozen paths the scope check rejects for this task; the first spec's scaffold may change them.
     const frozenPaths = this.deps.firstSpec && this.task.bootstrapsFrozenPaths ? [] : this.deps.plan.frozenPaths;
-    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule, frozenPaths }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    // The gate commands as they run now: the SM answers from the same plan the orchestrator runs, not the one before its fixes.
+    const gates = effectivePlan(this.deps.plan, [...(this.deps.priorGateFixes ?? []), ...this.deps.journal.events], this.task.def.service ?? null).gates.map(({ name, command }) => ({ name, command }));
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule, frozenPaths, gates }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;
     await this.deps.journal.fact(OrchEvent.SpecGapAnswered, { taskId: this.taskId, question, answer: value.answer, assumption: value.assumption });
-    if (value.gateFix) await this.fixGate(value.gateFix, value.assumption);
+    if (value.gateFix && !(await this.fixGate(value.gateFix, value.assumption))) return;
     if (value.imageFix) await this.fixImage(value.imageFix.gateImage, value.assumption, overrule);
     await this.feedback(`Spec-gap answer from SM:\nQ: ${question}\nA: ${value.answer}`);
     return this.implement();
   }
 
-  /** A corrected gate command takes effect only past the plan's own checks; the journal keeps the command it replaces. */
-  private async fixGate(fix: GateFix, reason: string): Promise<void> {
+  /**
+   * A corrected gate command takes effect only past the plan's own checks; the journal keeps the command it replaces.
+   * Returns false when the owner must decide: the fix repeats the command the gate already runs, so the agents cannot change the outcome.
+   */
+  private async fixGate(fix: GateFix, reason: string): Promise<boolean> {
     const service = this.task.def.service ?? null;
     const fixes = gateFixes(this.deps.journal.events, service);
     const plan = applyGateFixes(this.deps.plan, [...gateFixes(this.deps.priorGateFixes ?? [], service), ...fixes]);
     const errors = gateFixErrors(plan, fix, fixes.filter((f) => f.gate === fix.gate).length);
+    if (errors.some((e) => e.endsWith('already runs this command'))) {
+      await this.escalate(`The gate ${fix.gate} still fails with the command it already runs. Only the owner can change its scope or its environment: ${reason}`);
+      return false;
+    }
     if (errors.length > 0) {
       await this.feedback(`Gate fix not applied: ${errors.join('; ')}.`);
-      return;
+      return true;
     }
     const before = plan.gates.find((g) => g.name === fix.gate)!.command;
     await this.deps.journal.fact(OrchEvent.GateFixed, { taskId: this.taskId, service, gate: fix.gate, before, after: fix.command, reason });
     await this.feedback(`Gate ${fix.gate} corrected in the plan: the gates run the new command from now on.`);
+    return true;
+  }
+
+  /** What the agents cannot decide goes to the owner as a question with its choices; the task stays blocked until then. */
+  private async escalate(reason: string): Promise<void> {
+    await this.askOwner(this.task.def, reason);
+    await this.block(reason);
   }
 
   /** A newer gate image of the same toolchain takes effect only when the owner lets the agents decide; the journal keeps the image it replaces. */

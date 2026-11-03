@@ -432,9 +432,9 @@ describe('the final review', () => {
     expect(screen.getByTestId('spec-tree')).toBeTruthy();
   });
 
-  it('checks specs.md by itself each time the final review opens, with no button for it', () => {
+  it('checks specs.md by itself each time the backlog stage opens, with no button for it', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
-    open('?etapa=revisao');
+    open('?etapa=backlog');
     const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsApproved: false });
     expect(handlers.onCheckSpecs).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('generate-specs')).toBeNull();
@@ -442,13 +442,14 @@ describe('the final review', () => {
 
   it('Continuar stays visible and disabled, with the reason, until PO and SM approve the written specs.md', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
+    const snap = { ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }), specsApproved: false };
     open('?etapa=revisao');
-    show({
-      ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }),
-      specsApproved: false,
-    });
+    show(snap);
     expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Falta a aprovação do SM');
+    cleanup();
+    open('?etapa=backlog');
+    show(snap);
     expect(screen.getByTestId('specs-check-po-status').textContent).toBe('Aprovado');
     expect(screen.getByTestId('specs-check-sm-finding').textContent).toBe('AC-003 não cobre o objetivo');
   });
