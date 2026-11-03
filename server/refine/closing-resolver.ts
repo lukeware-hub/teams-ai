@@ -69,6 +69,13 @@ export async function resolveStages(s: RefineSession): Promise<number> {
     await s.evaluateStage(file);
     await s.settled();
   }
+  // A finished document that left the graph goes back in, so the closing check on the graph passes without the owner.
+  if (s.state.repositories === true) {
+    for (const file of (s.state.doneStages ?? []).filter((f) => !(s.state.graphed ?? []).includes(f))) {
+      await s.addToGraph(file);
+      await s.settled();
+    }
+  }
   let accepted = 0;
   for (const p of safePatches(s.state.patches)) {
     try {

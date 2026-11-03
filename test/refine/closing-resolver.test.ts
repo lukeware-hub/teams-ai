@@ -8,10 +8,11 @@ const summary = (checks: Check[], summaryHash = 'h') => ({ ok: checks.every((c) 
 const patch = (patchId: string, over: Partial<PatchRow> = {}): PatchRow => ({ patchId, role: 'sm', file: 'stack.md', find: 'a', replace: 'b', reason: '', diff: '', status: 'pending', cycle: 1, ...over } as PatchRow);
 
 /** A session stand-in: the summary the test sets, and every call the resolver makes is recorded. */
-function fakeSession(opts: { summaries: ReturnType<typeof summary>[]; patches?: PatchRow[]; architecture?: unknown; stale?: boolean; staleBy?: Record<string, string>; reviewClosed?: boolean; accept?: (id: string) => Promise<void> }) {
+function fakeSession(opts: { summaries: ReturnType<typeof summary>[]; patches?: PatchRow[]; architecture?: unknown; stale?: boolean; staleBy?: Record<string, string>; doneStages?: string[]; graphed?: string[]; reviewClosed?: boolean; accept?: (id: string) => Promise<void> }) {
   let i = 0;
   const s = {
-    state: { patches: opts.patches ?? [], architecture: opts.architecture ?? { docsHash: 'd' }, staleBy: opts.staleBy, reviewClosed: opts.reviewClosed ?? true },
+    addToGraph: vi.fn(async () => undefined),
+    state: { repositories: true, doneStages: opts.doneStages, graphed: opts.graphed, patches: opts.patches ?? [], architecture: opts.architecture ?? { docsHash: 'd' }, staleBy: opts.staleBy, reviewClosed: opts.reviewClosed ?? true },
     evaluateStage: vi.fn(async () => undefined),
     closingSummary: vi.fn(async () => opts.summaries[Math.min(i++, opts.summaries.length - 1)]),
     accept: vi.fn(opts.accept ?? (async () => undefined)),
@@ -66,6 +67,16 @@ describe('resolveClosing', () => {
     expect(s.accept).toHaveBeenCalledWith('p1');
     expect(s.decideArchitecture).not.toHaveBeenCalled();
     expect(s.runPlans).not.toHaveBeenCalled();
+  });
+
+  it('puts a finished document that left the graph back in', async () => {
+    const s = fakeSession({
+      summaries: [summary([{ id: 'documents', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'documents', ok: true, detail: '' }], 'h2')],
+      doneStages: ['flow.md', 'project.md'],
+      graphed: ['flow.md'],
+    });
+    await resolveClosing(s as unknown as RefineSession);
+    expect(s.addToGraph.mock.calls).toEqual([['project.md']]);
   });
 
   it('a second call while one runs does nothing', async () => {
