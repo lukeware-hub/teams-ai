@@ -1,6 +1,8 @@
 import type { Divergence } from '@server/refine/checklist';
-import type { RepoDashboard } from '@server/api/repository-dashboard.js';
-export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
+import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashboard.js';
+import type { Page, PageRequest } from '@server/api/paging.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
+export type { Page, PageRequest } from '@server/api/paging.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
 import type { DocsSyncView } from '@server/refine/docs-sync';
@@ -253,6 +255,15 @@ const R = '/api';
 export type StartedRun = { runId: string; queued?: undefined } | { queued: true; draftId: string };
 /** Where a started spec is followed: its run, or the execution screen of the program that queued it. */
 export const startedPath = (projectId: string, r: StartedRun) => (r.queued ? `/refine/${projectId}/${r.draftId}/program` : `/runs/${r.runId}`);
+/** The query string of one table page: page, size, search, facet and sort. */
+export function pageQuery(req: PageRequest): string {
+  const params = new URLSearchParams({ page: String(req.page), size: String(req.size), q: req.q, facet: req.facet });
+  if (req.sort) {
+    params.set('sort', req.sort);
+    params.set('dir', req.dir);
+  }
+  return params.toString();
+}
 const jsonPost = (p: string, body?: unknown) => fetch(`${R}${p}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 /** A repository card of the project page: its kind, what it is for, its counts, and its state. */
 export interface RepoCardView {
@@ -292,12 +303,18 @@ export const runApi = {
   repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
+  repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
+    fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),
+  repositoryDashboardTable: <T,>(projectId: string, repo: string, table: DashboardTable, req: PageRequest) =>
+    fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard/${table}?${pageQuery(req)}`).then((r) => json<Page<T>>(r)),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   deleteProject: (projectId: string, deleteGithub: boolean) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub }) }).then((r) => json<{ deleted: true }>(r)),
   githubRepos: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/github-repos`).then((r) => json<{ repos: string[] }>(r)).then((b) => b.repos),
   deletingProjects: () => fetch(`${R}/project-deletions`).then((r) => json<{ deleting: string[] }>(r)).then((b) => b.deleting),
   runs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs`).then((r) => json<RunRow[]>(r)),
+  projectRunsPage: (projectId: string, req: PageRequest) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/runs/page?${pageQuery(req)}`).then((r) => json<Page<RunRow>>(r)),
+  projectSpecsPage: (projectId: string, req: PageRequest) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/specs/page?${pageQuery(req)}`).then((r) => json<Page<SpecPageRow>>(r)),
   docs: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/docs`).then((r) => json<{ docs: ProjectDoc[] }>(r)),
   /** A spec a running backlog program owns is queued there instead: the answer names that program's draft. */
   startRun: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/runs`).then((r) => json<StartedRun>(r)),
@@ -314,6 +331,7 @@ export const runApi = {
   run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),
   step: (runId: string, stepId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}`).then((r) => json<{ prompt: string; output: unknown }>(r)),
   testLinks: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/test-links`).then((r) => json<Record<string, TestLink>>(r)),
+  validationTable: <T,>(runId: string, table: 'smoke' | 'evidence', req: PageRequest) => fetch(`${R}/runs/${encodeURIComponent(runId)}/validation/${table}?${pageQuery(req)}`).then((r) => json<Page<T>>(r)),
   runEvents: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/events`,
 };
 
@@ -461,6 +479,8 @@ export interface BacklogView {
   preplans?: Record<string, { inputHash: string; specRev: string; preplan: PreplanView | null; issues: string[]; cycle: number }>;
   acHighWater?: number;
 }
+import type { SpecPageRow } from '@server/api/project-pages.js';
+export type { SpecPageRow };
 /** One spec of the program that runs the backlog (server/program/controller.ts). */
 export interface ProgramViewItem {
   specId: string;
@@ -622,6 +642,7 @@ const send = (method: string, p: string, body?: unknown) => fetch(`${R}${p}`, { 
 export const refineApi = {
   list: () => fetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
   newProject: (projectId: string, name: string, description = '', firstSpecId = '') => send('POST', '/projects/new', { projectId, name, description, firstSpecId }).then((r) => json<{ sessionId: string }>(r)),
+  closingRepositories: (projectId: string, specId: string, req: PageRequest) => fetch(`${R}/refine/${encodeURIComponent(projectId)}/${encodeURIComponent(specId)}/closing/repositories?${pageQuery(req)}`).then((r) => json<Page<ClosingSummary['repositories'][number]>>(r)),
   suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>

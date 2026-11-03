@@ -1,18 +1,20 @@
 import { Link } from 'react-router-dom';
-import type { Capped, TimelineEntry } from '../../api.js';
-import { Pagination, usePagination } from '../../components/DataTable.js';
+import { runApi, type TimelineEntry } from '../../api.js';
+import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
 import { panel, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
-/** The events of every run of the repository, newest first, paged; each with its agent and a link to its run. Open by default. */
-export function Timeline({ timeline }: { timeline: Capped<TimelineEntry> }) {
-  const view = usePagination(timeline.list, 'timeline');
+/** The events of every run of the repository, newest first, one page at a time; each with its agent and a link to its run. Open by default. */
+export function Timeline({ projectId, repo }: { projectId: string; repo: string }) {
+  const view = usePagedTable(`${projectId}/${repo}/timeline`, (req) => runApi.repositoryDashboardTable<TimelineEntry>(projectId, repo, 'timeline', req));
   return (
     <details className={panel} open data-testid="repo-timeline">
       <summary data-testid="timeline-summary" className={`${sectionTitle} cursor-pointer`}>
-        <h2 data-testid="timeline-heading" className={sectionHeading}>{`Linha do tempo (${timeline.total})`}</h2>
+        <h2 data-testid="timeline-heading" className={sectionHeading}>{`Linha do tempo (${view.total})`}</h2>
       </summary>
-      {timeline.total === 0 ? (
+      {!view.loaded ? (
+        <p data-testid="timeline-loading" className="hint" role="status">Carregando a linha do tempo…</p>
+      ) : view.total === 0 ? (
         <p data-testid="timeline-empty" className="hint">sem dados: nenhum evento registrado.</p>
       ) : (
         <>
@@ -29,7 +31,6 @@ export function Timeline({ timeline }: { timeline: Capped<TimelineEntry> }) {
           <Pagination view={view} />
         </>
       )}
-      {timeline.total > timeline.list.length && <p data-testid="timeline-truncated" className="hint">{`Mostrando os ${timeline.list.length} eventos mais recentes de ${timeline.total}.`}</p>}
     </details>
   );
 }

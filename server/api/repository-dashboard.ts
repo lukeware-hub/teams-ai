@@ -5,6 +5,7 @@ import { reduceEvents, type TaskRuntime } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { parseRunId } from '../core/ids.js';
 import { loadEvents, type StoredEvent } from '../store/event-store.js';
+import { queryPage, type Page, type PageRequest, type TableSpec } from './paging.js';
 import path from 'node:path';
 
 /** A list shown up to its cap; `total` counts every item. */
@@ -13,7 +14,7 @@ export interface Capped<T> {
   list: T[];
 }
 
-export const CAPS = { tasks: 500, runs: 200, failures: 100, files: 100, tests: 50, timeline: 200 } as const;
+export const CAPS = { tasks: 500, files: 100, tests: 50 } as const;
 
 export type SpecState = 'delivered' | 'awaiting' | 'failed' | 'blocked' | 'running' | 'pending' | 'not-started';
 export type TaskState = 'delivered' | 'running' | 'pending' | 'blocked' | 'failed';
@@ -167,15 +168,30 @@ export interface RepoDashboard {
   };
   specs: DashboardSpec[];
   tasks: Capped<DashboardTask>;
-  runs: Capped<DashboardRunRow>;
-  failures: Capped<DashboardItem>;
-  blockers: Capped<DashboardItem>;
-  agents: RoleActivity[];
   files: Capped<{ path: string; taskId: string }>;
   tests: { passed: number; failed: number; failures: Capped<{ taskId: string; gate: string; name: string }> };
   retries: { attempts: number; infra: number; flaky: number; replanned: number; fixes: number; reopened: number };
-  timeline: Capped<TimelineEntry>;
   lastDeploy: LastDeploy | null;
+}
+
+/** The dashboard's paged tables: each is read one page at a time from the server. */
+export interface DashboardLists {
+  runs: DashboardRunRow[];
+  timeline: TimelineEntry[];
+  failures: DashboardItem[];
+  blockers: DashboardItem[];
+  agents: RoleActivity[];
+}
+
+export const DASHBOARD_TABLES = ['runs', 'timeline', 'failures', 'blockers', 'agents'] as const;
+export type DashboardTable = (typeof DASHBOARD_TABLES)[number];
+/** The row each paged dashboard table lists. */
+export interface DashboardListRow {
+  runs: DashboardRunRow;
+  timeline: TimelineEntry;
+  failures: DashboardItem;
+  blockers: DashboardItem;
+  agents: RoleActivity;
 }
 
 const cap = <T>(all: T[], n: number): Capped<T> => ({ total: all.length, list: all.slice(0, n) });
@@ -319,6 +335,32 @@ export function specViews(specs: DashboardSpecInput[], runs: DashboardRun[]): { 
 
 /** The dashboard of a repository from its specs and runs. Reads no file: the caller gives the journals. */
 export function buildDashboard(input: DashboardInput): RepoDashboard {
+  return analyze(input).dashboard;
+}
+
+/** One paged table of the dashboard, read with the whole list so the page cut is exact. */
+export function dashboardPage<K extends DashboardTable>(input: DashboardInput, table: K, req: PageRequest): Page<DashboardListRow[K]> {
+  const lists = analyze(input).lists;
+  switch (table) {
+    case 'runs':
+      return queryPage(lists.runs, {}, req) as Page<DashboardListRow[K]>;
+    case 'timeline':
+      return queryPage(lists.timeline, { text: (e) => [e.text, e.runId, e.specId] }, req) as Page<DashboardListRow[K]>;
+    case 'failures':
+      return queryPage(lists.failures, ITEM_TABLE, req) as Page<DashboardListRow[K]>;
+    case 'blockers':
+      return queryPage(lists.blockers, ITEM_TABLE, req) as Page<DashboardListRow[K]>;
+    case 'agents':
+      return queryPage(lists.agents, { text: (a) => [a.role] }, req) as Page<DashboardListRow[K]>;
+  }
+}
+
+const ITEM_TABLE: TableSpec<DashboardItem> = {
+  text: (item) => [item.text, item.taskId ?? '', item.runId ?? ''],
+  facet: (item) => item.kind,
+};
+
+function analyze(input: DashboardInput): { dashboard: RepoDashboard; lists: DashboardLists } {
   const { specs, tasks, unreadable } = specViews(input.specs, input.runs);
   const owners = new Map(tasks.map((t) => [`${t.specId}/${t.taskId}`, t.owner]));
   const sum = (key: 'total' | 'delivered' | 'running' | 'pending' | 'blocked' | 'failed') => specs.reduce((acc, s) => acc + s[key], 0);
@@ -474,7 +516,7 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
 
   const delivered = sum('delivered');
   const total = sum('total');
-  return {
+  const dashboard: RepoDashboard = {
     counts: {
       tasks: total,
       delivered,
@@ -493,14 +535,10 @@ export function buildDashboard(input: DashboardInput): RepoDashboard {
     },
     specs,
     tasks: cap(tasks, CAPS.tasks),
-    runs: cap(runRows, CAPS.runs),
-    failures: cap(failures, CAPS.failures),
-    blockers: cap(blockers, CAPS.failures),
-    agents: agentRows,
     files: cap(fileList, CAPS.files),
     tests: { passed: testsPassed, failed: testsFailed, failures: cap(testFailures, CAPS.tests) },
     retries,
-    timeline: cap(timeline, CAPS.timeline),
     lastDeploy,
   };
+  return { dashboard, lists: { runs: runRows, timeline, failures, blockers, agents: agentRows } };
 }

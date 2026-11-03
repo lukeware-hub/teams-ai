@@ -39,12 +39,15 @@ import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { probeProcess, type ProbeProcess } from './process-identity.js';
 import { deleteRepo } from '../git/github.js';
-import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource } from './repositories.js';
+import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource, type RepoSpec } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
-import { buildDashboard, loadRepoRuns, specViews } from './repository-dashboard.js';
+import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews } from './repository-dashboard.js';
+import { pageRequest, queryPage, type TableSpec } from './paging.js';
+import { RUN_TABLE, SPEC_TABLE, specPageRow } from './project-pages.js';
+import { VALIDATION_TABLES, validationPage, withoutTableRows } from './validation-tables.js';
 import type { Report } from '../orchestrator/phases/report.js';
 import { z } from 'zod';
 
@@ -181,6 +184,11 @@ export function cloneFailure(stderr: string): string {
   return 'não foi possível clonar o repositório';
 }
 
+const REPO_SPEC_TABLE: TableSpec<RepoSpec> = {
+  text: (r) => [r.specId, r.title ?? ''],
+};
+
+
 /** Puts the address this run deployed on into a report merged from main, whose own deploy may have used another port. */
 /** A doc section the user accepted as out of scope; kept beside the run, so the report stays as the agents wrote it. */
 export interface GapDecision { doc: string; heading: string; note: string; at: string }
@@ -199,6 +207,15 @@ export function withDeployedAddress(report: unknown, deployed: Record<string, un
     ...(r.service ? { service: { ...r.service, url: deployed.url, port: deployed.port } } : {}),
     ...(r.services ? { services: r.services.map((x) => { const c = cards.find((k) => k.service === x.service); return c ? { ...x, url: c.url, port: c.port } : x; }) } : {}),
   };
+}
+
+/** A run's report: its own, else the one merged on main for a run with none; a deploy on another address replaces the planned one. */
+export async function reportOf(evs: readonly StoredEvent[], specId: string, project: string | null, docsWs: Workspace): Promise<unknown> {
+  const docsRepo = await isDocsRepo(docsWs);
+  const own = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report;
+  const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED')?.data;
+  const merged = own ?? (docsRepo ? ((await readState(docsWs, `specs/${specId}/report.json`)) ?? null) : project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
+  return own || !deployed ? merged : withDeployedAddress(merged, deployed);
 }
 
 /** `{decisions: [{taskId, answer}]}` from the run screen: every answer a text of 1 to 2000 characters. */
@@ -440,6 +457,22 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     src.specs = src.specs.map((spec) => (views.has(spec.specId) ? { ...spec, tasks: views.get(spec.specId)!.total, delivered: views.get(spec.specId)!.delivered } : spec));
     return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns };
   };
+  // The dashboard's input for one repository; the summary and each paged table read the same input.
+  const dashboardInput = async (params: Record<string, string>) => {
+    const name = params.repo!;
+    if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
+    const { src, repoRuns } = await repoSource(params.projectId!);
+    const detail = src ? repositoryDetail(src, name) : null;
+    if (!detail) throw new HttpError(404, `unknown repository ${name}`);
+    const ids = new Set(detail.rows.map((r) => r.specId));
+    return {
+      specs: detail.rows,
+      runs: repoRuns.filter((r) => ids.has(r.specId)),
+      questions: detail.questions.map((q) => q.text),
+      missingSecrets: detail.missingSecrets,
+      programStops: detail.reasons.map((r) => ({ specId: r.specId, reason: r.reason })),
+    };
+  };
   return [
     {
       method: 'GET',
@@ -459,29 +492,36 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const detail = src ? repositoryDetail(src, name) : null;
         if (!detail) throw new HttpError(404, `unknown repository ${name}`);
         const ids = new Set(detail.rows.map((r) => r.specId));
-        json(200, { ...detail, history: await historyOf(runsRoot, runs.filter((r) => ids.has(r.specId))) });
+        // The specs come one page at a time from the specs route.
+        json(200, { ...detail, rows: [], history: await historyOf(runsRoot, runs.filter((r) => ids.has(r.specId))) });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/specs`,
+      handler: async ({ params, query, json }) => {
+        const name = params.repo!;
+        if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
+        const { src } = await repoSource(params.projectId!);
+        const detail = src ? repositoryDetail(src, name) : null;
+        if (!detail) throw new HttpError(404, `unknown repository ${name}`);
+        json(200, queryPage(detail.rows, REPO_SPEC_TABLE, pageRequest(query)));
       },
     },
     {
       method: 'GET',
       path: `${P}/projects/:projectId/repositories/:repo/dashboard`,
       handler: async ({ params, json }) => {
-        const name = params.repo!;
-        if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
-        const { src, repoRuns } = await repoSource(params.projectId!);
-        const detail = src ? repositoryDetail(src, name) : null;
-        if (!detail) throw new HttpError(404, `unknown repository ${name}`);
-        const ids = new Set(detail.rows.map((r) => r.specId));
-        json(
-          200,
-          buildDashboard({
-            specs: detail.rows,
-            runs: repoRuns.filter((r) => ids.has(r.specId)),
-            questions: detail.questions.map((q) => q.text),
-            missingSecrets: detail.missingSecrets,
-            programStops: detail.reasons.map((r) => ({ specId: r.specId, reason: r.reason })),
-          }),
-        );
+        json(200, buildDashboard(await dashboardInput(params)));
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/dashboard/:table`,
+      handler: async ({ params, query, json }) => {
+        const table = DASHBOARD_TABLES.find((t) => t === params.table);
+        if (!table) throw new HttpError(404, `unknown dashboard table ${params.table}`);
+        json(200, dashboardPage(await dashboardInput(params), table, pageRequest(query)));
       },
     },
     {
@@ -629,6 +669,27 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         } finally {
           deleting.delete(projectId);
         }
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/runs/page`,
+      handler: async ({ params, query, json }) => {
+        const idx = await index();
+        await projectDir(idx, params.projectId!);
+        json(200, queryPage(await listRuns(idx, params.projectId!), RUN_TABLE, pageRequest(query)));
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/specs/page`,
+      handler: async ({ params, query, json }) => {
+        const idx = await index();
+        const projectId = params.projectId!;
+        await projectDir(idx, projectId);
+        const runs = await listRuns(idx, projectId);
+        const specs = ((await listProjects(idx)).find((p) => p.projectId === projectId)?.specs ?? []).map((s) => specPageRow(s, runs));
+        json(200, queryPage(specs, SPEC_TABLE, pageRequest(query)));
       },
     },
     {
@@ -922,12 +983,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
               .catch(() => null)
               .then((text) => text ?? fs.readFile(path.join(project, 'docs', 'README.md'), 'utf8').catch(() => null))
           : null;
-        // A run with no report of its own (the deploy run of an imported spec) shows the one merged on main.
-        const own = [...evs].reverse().find((e) => e.type === 'REPORT_READY')?.data.report;
-        const deployed = [...evs].reverse().find((e) => e.type === 'DEPLOY_VERIFIED')?.data;
-        const merged = own ?? (docsRepo ? ((await readState(docsWs, `specs/${specId}/report.json`)) ?? null) : project ? await fs.readFile(path.join(project, 'docs', 'specs', specId, 'report.json'), 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => null) : null);
-        // The merged report keeps the address of its own deploy; this run's deploy may have used another port.
-        const report = own || !deployed ? merged : withDeployedAddress(merged, deployed);
+        const report = withoutTableRows(await reportOf(evs, specId, project, docsWs) as Report | null);
         const phase = [...evs].reverse().find((e) => e.type === 'PHASE_STARTED')?.data.phase ?? 0;
         let status: string = finished ? String(finished.data.result) : interrupted ? 'interrupted' : state.status;
         // Same answer as the run list: a run that delivered a concluded spec is done and locked (see listRuns). A live run is neither.
@@ -952,6 +1008,23 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           report,
           phase,
         });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/runs/:runId/validation/:table`,
+      handler: async ({ params, query, json }) => {
+        const table = VALIDATION_TABLES.find((t) => t === params.table);
+        if (!table) throw new HttpError(404, `unknown validation table ${params.table}`);
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const evs = await events(runsDir(idx), runId);
+        const startedEv = evs.find((e) => e.type === 'RUN_STARTED');
+        const specId = String(startedEv?.data.specId ?? '');
+        const projectId = String(startedEv?.data.projectId ?? '');
+        const project = await projectDir(idx, projectId, specId).catch(() => null);
+        const report = (await reportOf(evs, specId, project, workspacePaths(idx.cfg, projectId, deps.home))) as Report | null;
+        json(200, validationPage(report, table, pageRequest(query)));
       },
     },
     {

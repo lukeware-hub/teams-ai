@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { refineApi, runApi, startedPath, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
-import { Pagination, SortHeader, TableFilters, usePagination, useTableView } from '../components/DataTable.js';
+import { Pagination, SortHeader, TableFilters, usePagedTable } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, LABEL, RECENT_RUNS, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 max-md:px-4';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
@@ -130,25 +130,12 @@ export function ProjectHubView(p: {
   onDeleteDraft: (specId: string) => void;
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
-  const [showAll, setShowAll] = useState(false);
-  const runsView = useTableView(p.runs, {
-    sorts: { run: runName, spec: (r) => r.specId, at: (r) => (r.at ? Date.parse(r.at) : null), status: (r) => LABEL[r.status] ?? r.status, tokens: (r) => r.tokens, cost: (r) => r.cost },
-    text: (r) => [runName(r), r.runId, r.specId],
-    facet: (r) => r.status,
-    facetLabel: (status) => LABEL[status] ?? status,
-  });
-  // The chip's status: the active run's, or 'idle' for a running spec with no run.
-  const shownStatus = (s: SpecRow) => (s.activeRunId ? (p.runs.find((r) => r.runId === s.activeRunId)?.status ?? 'running') : s.status === 'running' ? 'idle' : s.status);
-  const specsView = useTableView(p.project?.specs ?? [], {
-    sorts: {},
-    text: (s) => [s.specId],
-    facet: shownStatus,
-    facetLabel: (status) => LABEL[status] ?? status,
-  });
+  const projectId = p.project?.projectId ?? '';
+  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status);
+  const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), (status) => LABEL[status] ?? status);
   const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
-  const groupSpecs = (rows: SpecRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => groupOf(shownStatus(s)) === g) })).filter((g) => g.rows.length > 0);
-  const specsPage = usePagination(groupSpecs(specsView.rows).flatMap((g) => g.rows), `${specsView.query}|${specsView.facet}`);
-  const groupedSpecs = groupSpecs(specsPage.rows);
+  const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
+  const groupedSpecs = groupSpecs(specsView.rows);
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -184,7 +171,6 @@ export function ProjectHubView(p: {
       setSuggesting(false);
     }
   };
-  const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? p.runs.find((r) => r.specId === specId && r.kind === 'deploy')?.runId ?? '';
   if (p.notFound) {
     return (
       <main data-testid="project-hub-not-found">
@@ -282,7 +268,7 @@ export function ProjectHubView(p: {
                   </thead>
                   <tbody data-testid="project-hub-runs-tbody" className="@max-[44rem]:block">
                     {runsView.rows.length === 0 ? <tr data-testid="project-hub-runs-empty-row"><td data-testid="project-hub-runs-empty-cell" colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
-                    {(showAll ? runsView.rows : runsView.rows.slice(0, RECENT_RUNS)).map((r) => (
+                    {runsView.rows.map((r) => (
                       <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
                         <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
                         <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
@@ -315,12 +301,7 @@ export function ProjectHubView(p: {
                   </tbody>
                 </table>
               </div>
-              {runsView.rows.length > RECENT_RUNS ? (
-                <button data-testid="project-hub-runs-toggle" type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[6px] pointer-coarse:after:content-['']" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
-                  {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
-                  <Icon name="chevron" size={14} />
-                </button>
-              ) : null}
+              <Pagination view={runsView} />
             </>
           )}
         </div>
@@ -482,7 +463,7 @@ export function ProjectHubView(p: {
                 ...g.rows.map((s) => (
                 <li data-testid={`project-hub-spec-${s.specId}`} className={row} key={s.specId}>
                   <span data-testid={`project-hub-spec-id-${s.specId}`} className={rowId}>{s.specId}</span>
-                  {chip(shownStatus(s))}
+                  {chip(s.shownStatus)}
                   <span data-testid={`project-hub-spec-actions-${s.specId}`} className={rowActions}>
                     {CONTINUABLE.has(s.status) ? (
                       <ActionButton className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)} icon={<Icon name="arrow-right" size={14} />}>
@@ -501,8 +482,8 @@ export function ProjectHubView(p: {
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
-                      lastRunOf(s.specId) ? (
-                        <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                      s.lastRunId ? (
+                        <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${s.lastRunId}/validation`}>
                           Validar
                           <Icon name="arrow-right" size={14} />
                         </Link>
@@ -512,8 +493,8 @@ export function ProjectHubView(p: {
                         </ActionButton>
                       )
                     ) : s.status === 'done' ? (
-                      lastRunOf(s.specId) ? (
-                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${lastRunOf(s.specId)}/validation`}>
+                      s.lastRunId ? (
+                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${s.lastRunId}/validation`}>
                           Ver validação
                           <Icon name="arrow-right" size={14} />
                         </Link>
@@ -531,7 +512,7 @@ export function ProjectHubView(p: {
               ])}
             </ul>
           )}
-          <Pagination view={specsPage} />
+          <Pagination view={specsView} />
         </div>
       </section>
       {p.drafts.length > 0 ? (

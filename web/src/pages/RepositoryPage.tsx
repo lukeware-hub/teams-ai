@@ -9,6 +9,7 @@ import { FailuresBlockers } from './repository/FailuresBlockers.js';
 import { IndicatorCards } from './repository/IndicatorCards.js';
 import { RepoHeader } from './repository/RepoHeader.js';
 import { RunsTable } from './repository/RunsTable.js';
+import { SpecsTable } from './repository/SpecsTable.js';
 import { Timeline } from './repository/Timeline.js';
 
 const POLL_MS = 5000;
@@ -80,9 +81,9 @@ export function RepositoryPage() {
         <>
           <IndicatorCards dashboard={dashboard} />
           <DeliveryBoard specs={dashboard.specs} tasks={dashboard.tasks.list} />
-          <AgentActivity agents={dashboard.agents} />
-          <RunsTable runs={dashboard.runs} />
-          <FailuresBlockers failures={dashboard.failures} blockers={dashboard.blockers} />
+          <AgentActivity projectId={projectId} repo={repoId} />
+          <RunsTable projectId={projectId} repo={repoId} />
+          <FailuresBlockers projectId={projectId} repo={repoId} failures={dashboard.counts.failures} blockers={dashboard.counts.blockers} />
         </>
       )}
       <section data-testid="repository-integrations" className={panel}>
@@ -103,38 +104,9 @@ export function RepositoryPage() {
         <summary data-testid="repository-specs-summary" className={`${sectionTitle} cursor-pointer`}>
           <h2 data-testid="repository-specs-heading" className={sectionHeading}>Especificações</h2>
         </summary>
-        {detail.rows.length === 0 ? (
-          <p data-testid="repository-specs-empty" className="hint">Nenhuma spec neste repositório.</p>
-        ) : (
-          <div data-testid="repository-specs-scroll" className="-mx-1 overflow-x-auto">
-            <table data-testid="repository-specs-table" className="w-full text-[0.8125rem]">
-              <thead data-testid="repository-specs-head">
-                <tr data-testid="repository-specs-head-row" className="text-left text-ink-soft">
-                  <th data-testid="repository-specs-th-spec" scope="col">Spec</th>
-                  <th data-testid="repository-specs-th-priority" scope="col">Prioridade</th>
-                  <th data-testid="repository-specs-th-state" scope="col">Estado</th>
-                  <th data-testid="repository-specs-th-plan" scope="col">Plano</th>
-                  <th data-testid="repository-specs-th-tasks" scope="col">Tarefas</th>
-                  <th data-testid="repository-specs-th-depends" scope="col">Depende de</th>
-                </tr>
-              </thead>
-              <tbody data-testid="repository-specs-body">
-                {detail.rows.map((row) => (
-                  <tr key={row.specId} data-testid={`repo-spec-${row.specId}`}>
-                    <td data-testid={`repository-spec-title-${row.specId}`}>{row.title ?? row.specId}</td>
-                    <td data-testid={`repository-spec-priority-${row.specId}`}>{row.priority ?? 'sem dados'}</td>
-                    <td data-testid={`repository-spec-state-${row.specId}`}>{row.blocked ? 'Bloqueada' : row.status}</td>
-                    <td data-testid={`repository-spec-plan-${row.specId}`}>{row.plan ? 'Sim' : 'Não'}</td>
-                    <td data-testid={`repository-spec-tasks-${row.specId}`}>{`${row.status === 'done' ? row.tasks : 0} de ${row.tasks}`}</td>
-                    <td data-testid={`repository-spec-depends-${row.specId}`}>{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <SpecsTable projectId={projectId} repo={repoId} />
       </details>
-      {dashboard && <Timeline timeline={dashboard.timeline} />}
+      <Timeline projectId={projectId} repo={repoId} />
     </div>
   );
 }

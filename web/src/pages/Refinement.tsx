@@ -1450,7 +1450,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       <header data-testid="refinement-breadcrumb" className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span data-testid="refinement-breadcrumb-home-label">Projetos</span></Link><span data-testid="refinement-breadcrumb-sep-1">›</span><strong data-testid="refinement-breadcrumb-project">{projectId}</strong><span data-testid="refinement-breadcrumb-sep-2">›</span><span data-testid="refinement-breadcrumb-spec">{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
       {closingOpen && snap.closing && (
-        <ClosingDialog summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
+        <ClosingDialog projectId={projectId} specId={specId} summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildDashboard, CAPS, type DashboardInput, type DashboardRun, type DashboardSpecInput } from '../../server/api/repository-dashboard.js';
+import { buildDashboard, dashboardPage, type DashboardInput, type DashboardRun, type DashboardSpecInput, type DashboardTable } from '../../server/api/repository-dashboard.js';
 import { DEPENDENCY_BLOCKED } from '../../server/pipeline/task-state.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
+
+const page = <K extends DashboardTable>(input: DashboardInput, table: K) => dashboardPage(input, table, { page: 1, size: 100, q: '', facet: '', sort: null, dir: 'asc' });
 
 let seq = 0;
 const AT = '2026-11-01T10:00:00.000Z';
@@ -18,7 +20,8 @@ describe('task states across runs', () => {
   it('counts a task delivered in an earlier run once, even when a successor run delivers it again', () => {
     const first = run('cart-run-1', 'cart', 1, 'complete', [planned('cart-run-1', 'T1-route'), to('cart-run-1', 'T1-route', 'merged')]);
     const second = run('cart-run-2', 'cart', 2, 'complete', [planned('cart-run-2', 'T1-route'), to('cart-run-2', 'T1-route', 'merged')]);
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] }));
+    const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] });
+    const d = buildDashboard(inp);
     expect(d.counts).toMatchObject({ tasks: 1, delivered: 1, progress: 100 });
     expect(d.tasks.list).toHaveLength(1);
   });
@@ -26,7 +29,8 @@ describe('task states across runs', () => {
   it('lets a merge in one run beat a block of the same task in a later run', () => {
     const first = run('cart-run-1', 'cart', 1, 'complete', [planned('cart-run-1', 'T1-route'), to('cart-run-1', 'T1-route', 'merged')]);
     const second = run('cart-run-2', 'cart', 2, 'blocked', [planned('cart-run-2', 'T1-route'), ev('cart-run-2', 'TASK_BLOCKED', { taskId: 'T1-route', reason: 'o banco recusou a conexão' }), to('cart-run-2', 'T1-route', 'blocked')]);
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] }));
+    const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [first, second] });
+    const d = buildDashboard(inp);
     expect(states(d)).toEqual({ 'T1-route': 'delivered' });
   });
 
@@ -43,47 +47,54 @@ describe('task states across runs', () => {
       to('r1', 'T3-c', 'blocked'),
       ev('r1', 'TASK_BLOCKED', { taskId: 'T3-c', reason: 'o banco recusou a conexão' }),
     ];
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 3 })], runs: [run('r1', 'cart', 1, 'blocked', events)] }));
+    const inp = input({ specs: [spec('cart', { tasks: 3 })], runs: [run('r1', 'cart', 1, 'blocked', events)] });
+    const d = buildDashboard(inp);
     expect(states(d)).toEqual({ 'T1-a': 'blocked', 'T2-b': 'blocked', 'T3-c': 'failed' });
-    expect(d.failures.list.map((f) => f.taskId)).toEqual(['T3-c']);
-    expect(d.blockers.list.filter((b) => b.kind === 'task').map((b) => b.taskId)).toEqual(['T1-a', 'T2-b']);
+    expect(page(inp, 'failures').list.map((f) => f.taskId)).toEqual(['T3-c']);
+    expect(page(inp, 'blockers').list.filter((b) => b.kind === 'task').map((b) => b.taskId)).toEqual(['T1-a', 'T2-b']);
   });
 
   it('counts a task on a live run as running and on a finished run as pending', () => {
     const live = run('r1', 'cart', 1, 'running', [planned('r1', 'T1-a'), to('r1', 'T1-a', 'ready'), to('r1', 'T1-a', 'implementing')]);
     const done = run('r2', 'pay', 1, 'paused:quota', [planned('r2', 'T1-b'), to('r2', 'T1-b', 'ready'), to('r2', 'T1-b', 'implementing')]);
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 }), spec('pay', { tasks: 1 })], runs: [live, done] }));
+    const inp = input({ specs: [spec('cart', { tasks: 1 }), spec('pay', { tasks: 1 })], runs: [live, done] });
+    const d = buildDashboard(inp);
     expect(d.counts).toMatchObject({ running: 1, pending: 1 });
-    expect(d.blockers.list.map((b) => b.text)).toEqual(['Run r2 pausada: limite de uso dos modelos']);
+    expect(page(inp, 'blockers').list.map((b) => b.text)).toEqual(['Run r2 pausada: limite de uso dos modelos']);
   });
 
   it('counts a superseded task nowhere and its replacements instead', () => {
     const events = [planned('r1', 'T1-route'), ev('r1', 'TASK_REPLANNED', { taskId: 'T1-route', replacements: [task('T1-a'), task('T1-b')] })];
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] }));
+    const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] });
+    const d = buildDashboard(inp);
     expect(d.counts.tasks).toBe(2);
     expect(d.tasks.list.map((t) => t.taskId)).toEqual(['T1-a', 'T1-b']);
   });
 
   it('counts the tasks a spec has not planned yet as not started', () => {
-    const d = buildDashboard(input({ specs: [spec('cart', { status: 'planned', tasks: 4, plan: true })] }));
+    const inp = input({ specs: [spec('cart', { status: 'planned', tasks: 4, plan: true })] });
+    const d = buildDashboard(inp);
     expect(d.counts).toMatchObject({ tasks: 4, pending: 4, delivered: 0 });
     expect(d.specs[0]?.state).toBe('pending');
   });
 
   it('counts a spec delivered before journals existed as delivered', () => {
-    const d = buildDashboard(input({ specs: [spec('old', { status: 'done', tasks: 3 })] }));
+    const inp = input({ specs: [spec('old', { status: 'done', tasks: 3 })] });
+    const d = buildDashboard(inp);
     expect(d.counts).toMatchObject({ tasks: 3, delivered: 3, progress: 100, specsDelivered: 1 });
   });
 
   it('lists a journal that does not replay as a failure instead of counting its tasks as not started', () => {
     const broken = run('r1', 'cart', 1, 'running', [to('r1', 'T1-a', 'implementing')]);
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [broken] }));
-    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: journal não pôde ser lido' }]);
+    const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [broken] });
+    const d = buildDashboard(inp);
+    expect(page(inp, 'failures').list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: journal não pôde ser lido' }]);
     expect(d.counts.pending).toBe(1);
   });
 
   it('reads zeros and no progress for a repository with no specs', () => {
-    const d = buildDashboard(input({ specs: [spec('x', { status: 'refining' })] }));
+    const inp = input({ specs: [spec('x', { status: 'refining' })] });
+    const d = buildDashboard(inp);
     expect(d.counts).toMatchObject({ tasks: 0, runs: 0, progress: null });
     expect(d.specs[0]?.state).toBe('not-started');
   });
@@ -97,10 +108,11 @@ describe('task states across runs', () => {
       ev('cart-run-1', 'TASK_BLOCKED', { taskId: 'T2-pay', reason: 'o banco recusou a conexão' }),
     ]);
     const next = run('cart-run-2', 'cart', 2, 'done', [planned('cart-run-2', 'T1-route'), planned('cart-run-2', 'T3-ui'), to('cart-run-2', 'T3-ui', 'merged')]);
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 2 })], runs: [old, next] }));
+    const inp = input({ specs: [spec('cart', { tasks: 2 })], runs: [old, next] });
+    const d = buildDashboard(inp);
     expect(states(d)).toEqual({ 'T1-route': 'delivered', 'T3-ui': 'delivered' });
     expect(d.counts).toMatchObject({ tasks: 2, delivered: 2, failed: 0 });
-    expect(d.failures.list).toEqual([]);
+    expect(page(inp, 'failures').list).toEqual([]);
   });
 });
 
@@ -108,15 +120,17 @@ describe('failed runs once the spec moves on', () => {
   it('lists a failed run as history when a newer run of the spec finished', () => {
     const failed = run('cart-run-1', 'cart', 1, 'phase-failed', []);
     const done = run('cart-run-2', 'cart', 2, 'done', []);
-    const d = buildDashboard(input({ specs: [spec('cart')], runs: [failed, done] }));
-    expect(d.failures.list).toEqual([]);
+    const inp = input({ specs: [spec('cart')], runs: [failed, done] });
+    const d = buildDashboard(inp);
+    expect(page(inp, 'failures').list).toEqual([]);
   });
 
   it('keeps a failed run a failure while no newer run finished', () => {
     const done = run('cart-run-1', 'cart', 1, 'done', []);
     const failed = run('cart-run-2', 'cart', 2, 'phase-failed', []);
-    const d = buildDashboard(input({ specs: [spec('cart')], runs: [done, failed] }));
-    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'cart-run-2', taskId: null, text: 'Run cart-run-2: falhou em uma fase' }]);
+    const inp = input({ specs: [spec('cart')], runs: [done, failed] });
+    const d = buildDashboard(inp);
+    expect(page(inp, 'failures').list).toEqual([{ kind: 'run', specId: 'cart', runId: 'cart-run-2', taskId: null, text: 'Run cart-run-2: falhou em uma fase' }]);
   });
 });
 
@@ -133,9 +147,10 @@ describe('activity from the journals', () => {
       ev('r1', 'ATTEMPT_CONSUMED', { taskId: 'T1-route' }),
       ev('r1', 'INFRA_RETRY', { taskId: 'T1-route', gate: 'unit' }),
     ];
-    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] }));
-    const dev = d.agents.find((a) => a.role === 'dev');
-    const test = d.agents.find((a) => a.role === 'test');
+    const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] });
+    const d = buildDashboard(inp);
+    const dev = page(inp, 'agents').list.find((a) => a.role === 'dev');
+    const test = page(inp, 'agents').list.find((a) => a.role === 'test');
     expect(dev).toMatchObject({ steps: 1, ok: 1, failed: 0, tokens: 15, costUsd: 0.5, durationMs: 1000, files: 2, created: 1, tests: null });
     expect(test).toMatchObject({ steps: 1, failed: 1, tests: { passed: 1, failed: 1 }, created: null });
     expect(d.files.total).toBe(2);
@@ -147,22 +162,25 @@ describe('activity from the journals', () => {
   it('gives the last deploy of the newest run that verified one', () => {
     const first = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', docsPath: '/docs' })]);
     const second = run('r2', 'cart', 2, 'done', [ev('r2', 'DEPLOY_VERIFIED', { url: 'http://localhost:3002', docsPath: '/docs' })]);
-    const d = buildDashboard(input({ specs: [spec('cart')], runs: [second, first] }));
+    const inp = input({ specs: [spec('cart')], runs: [second, first] });
+    const d = buildDashboard(inp);
     expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', kind: null, docsPath: '/docs', services: null });
   });
 
   it('gives the kind the plan declared for the last deploy', () => {
     const api = run('r1', 'cart', 1, 'done', [ev('r1', 'DEPLOY_VERIFIED', { url: 'http://localhost:3001', kind: 'api' })]);
-    const d = buildDashboard(input({ specs: [spec('cart')], runs: [api] }));
+    const inp = input({ specs: [spec('cart')], runs: [api] });
+    const d = buildDashboard(inp);
     expect(d.lastDeploy).toMatchObject({ kind: 'api', docsPath: null });
   });
 
-  it('lists a failed run among the failures and keeps the timeline newest first, capped', () => {
-    const events = Array.from({ length: CAPS.timeline + 5 }, (_, i) => ev('r1', 'RUN_RESUMED', {}, `2026-11-01T10:${String(i % 60).padStart(2, '0')}:00.000Z`));
-    const d = buildDashboard(input({ specs: [spec('cart')], runs: [run('r1', 'cart', 1, 'phase-failed', events)] }));
-    expect(d.failures.list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: falhou em uma fase' }]);
-    expect(d.timeline.total).toBe(CAPS.timeline + 5);
-    expect(d.timeline.list).toHaveLength(CAPS.timeline);
-    expect(d.timeline.list[0]?.at >= d.timeline.list[1]!.at).toBe(true);
+  it('lists a failed run among the failures and pages the timeline newest first', () => {
+    const events = Array.from({ length: 25 }, (_, i) => ev('r1', 'RUN_RESUMED', {}, `2026-11-01T10:${String(i).padStart(2, '0')}:00.000Z`));
+    const inp = input({ specs: [spec('cart')], runs: [run('r1', 'cart', 1, 'phase-failed', events)] });
+    expect(page(inp, 'failures').list).toEqual([{ kind: 'run', specId: 'cart', runId: 'r1', taskId: null, text: 'Run r1: falhou em uma fase' }]);
+    const second = dashboardPage(inp, 'timeline', { page: 2, size: 10, q: '', facet: '', sort: null, dir: 'asc' });
+    expect(second).toMatchObject({ total: 25, matched: 25, page: 2, pages: 3 });
+    expect(second.list).toHaveLength(10);
+    expect(second.list[0]!.at >= second.list[1]!.at).toBe(true);
   });
 });

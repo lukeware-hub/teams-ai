@@ -16,6 +16,7 @@ export interface RouteContext {
   req: IncomingMessage;
   res: ServerResponse;
   params: Record<string, string>;
+  query: URLSearchParams;
   body: (maxBytes?: number) => Promise<unknown>;
   json: (status: number, value: unknown) => void;
   sse: () => SseWriter;
@@ -218,7 +219,7 @@ export async function startApi(deps: ApiDeps, port: number): Promise<{ port: num
       };
     };
     try {
-      await match.route.handler({ req, res, params: match.params, body: (maxBytes) => readBody(req, maxBytes), json, sse });
+      await match.route.handler({ req, res, params: match.params, query: url.searchParams, body: (maxBytes) => readBody(req, maxBytes), json, sse });
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (err instanceof OwnerError) log(`${req.method} ${url.pathname} failed: ${err.detail}`);

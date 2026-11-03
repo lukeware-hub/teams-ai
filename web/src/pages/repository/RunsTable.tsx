@@ -1,18 +1,20 @@
 import { Link } from 'react-router-dom';
-import type { Capped, DashboardRunRow } from '../../api.js';
-import { Pagination, usePagination } from '../../components/DataTable.js';
+import { runApi, type DashboardRunRow } from '../../api.js';
+import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { chip, money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
 import { RUN_KIND_LABEL } from './labels.js';
 
-/** The runs of the repository's specs, newest first, paged; each row links to its run page. */
-export function RunsTable({ runs }: { runs: Capped<DashboardRunRow> }) {
-  const view = usePagination(runs.list, 'runs');
+/** The runs of the repository's specs, newest first, one page at a time; each row links to its run page. */
+export function RunsTable({ projectId, repo }: { projectId: string; repo: string }) {
+  const view = usePagedTable(`${projectId}/${repo}/runs`, (req) => runApi.repositoryDashboardTable<DashboardRunRow>(projectId, repo, 'runs', req));
   return (
     <section className={panel} data-testid="repo-runs">
       <div data-testid="runs-table-title" className={sectionTitle}>
         <h2 data-testid="runs-table-heading" className={sectionHeading}>Runs</h2>
       </div>
-      {runs.total === 0 ? (
+      {!view.loaded ? (
+        <p data-testid="runs-table-loading" className="hint" role="status">Carregando as runs…</p>
+      ) : view.total === 0 ? (
         <p data-testid="runs-table-empty" className="hint">sem dados: nenhuma run neste repositório.</p>
       ) : (
         <div data-testid="runs-table-scroll" className={`@container ${responsiveTable} -mx-1 overflow-x-auto`}>
@@ -43,7 +45,6 @@ export function RunsTable({ runs }: { runs: Capped<DashboardRunRow> }) {
             </tbody>
           </table>
           <Pagination view={view} />
-          {runs.total > runs.list.length && <p data-testid="runs-table-truncated" className="hint">{`Mostrando as ${runs.list.length} runs mais recentes de ${runs.total}.`}</p>}
         </div>
       )}
     </section>

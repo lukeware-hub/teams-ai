@@ -1,54 +1,108 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { PAGE_SIZES, type Page, type PageRequest } from '@server/api/paging.js';
 import { Icon } from './Icons.js';
 import { Select } from './Select.js';
 
-export type SortValue = string | number | null;
 type Sort = { key: string; direction: 'asc' | 'desc' } | null;
 
-// Numeric collation puts "T2" before "T10"; empty values always go last.
+// Numeric collation puts "T2" before "T10"; the facet options follow it.
 const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
-const compare = (a: SortValue, b: SortValue) => (typeof a === 'number' && typeof b === 'number' ? a - b : collator.compare(String(a), String(b)));
 
-/** Sorting by column, a text search and one dropdown filter over a table's rows. A third click on a header returns to the original order. */
-export function useTableView<T>(rows: T[], by: { sorts: Record<string, (row: T) => SortValue>; text: (row: T) => string[]; facet: (row: T) => string; facetLabel: (value: string) => string }) {
-  const [sort, setSort] = useState<Sort>(null);
-  const [query, setQuery] = useState('');
-  const [facet, setFacet] = useState('');
-  const q = query.trim().toLowerCase();
-  const filtered = q !== '' || facet !== '';
-  const matching = rows.filter((r) => (facet === '' || by.facet(r) === facet) && (q === '' || by.text(r).some((v) => v.toLowerCase().includes(q))));
-  const value = sort ? by.sorts[sort.key] : undefined;
-  const shown = value && sort
-    ? [...matching].sort((a, b) => {
-        const x = value(a);
-        const y = value(b);
-        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-        return sort.direction === 'asc' ? compare(x, y) : compare(y, x);
+/** A table whose pages, search, facet and sort are read from the server one page at a time; the view feeds the header, filters and pager. */
+export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) => Promise<Page<T>>, facetLabel: (value: string) => string = (v) => v) {
+  const [size, setSize] = useState<number>(PAGE_SIZES[1]);
+  const [page, setPage] = useState(1);
+  const [text, setText] = useState('');
+  const [query, setQueryNow] = useState('');
+  const [facet, setFacetNow] = useState('');
+  const [sort, setSortNow] = useState<Sort>(null);
+  const [data, setData] = useState<Page<T> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [lastScope, setLastScope] = useState(scope);
+  if (lastScope !== scope) {
+    setLastScope(scope);
+    setPage(1);
+  }
+  const fetchRef = useRef(fetchPage);
+  fetchRef.current = fetchPage;
+  const sortKey = sort?.key ?? null;
+  const direction = sort?.direction ?? 'asc';
+
+  // The search waits for a pause in typing, then goes back to the first page.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQueryNow(text.trim());
+      setPage(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [text]);
+
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    fetchRef.current({ page, size, q: query.toLowerCase(), facet, sort: sortKey, dir: direction })
+      .then((next) => {
+        if (!live) return;
+        setData(next);
+        setPage(next.page);
       })
-    : matching;
-  const options = [...new Set(rows.map(by.facet))].map((v) => ({ value: v, label: by.facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label));
+      .catch(() => {
+        if (live) setFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [scope, page, size, query, facet, sortKey, direction]);
+
+  const filtered = query !== '' || facet !== '';
+  const total = data?.total ?? 0;
+  const matched = data?.matched ?? 0;
+  const pages = data?.pages ?? 1;
+  const current = data?.page ?? page;
+  const options = (data?.facets ?? []).map((v) => ({ value: v, label: facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label));
   return {
-    rows: shown,
-    total: rows.length,
+    rows: data?.list ?? [],
+    loaded: data !== null,
+    failed,
+    total,
+    matched,
+    page: current,
+    pages,
+    size,
+    from: matched === 0 ? 0 : (current - 1) * size + 1,
+    to: Math.min(current * size, matched),
     sort,
-    query,
+    query: text,
     facet,
     options,
     filtered,
-    setQuery,
-    setFacet,
-    toggleSort: (key: string) => setSort(sort?.key !== key ? { key, direction: 'asc' } : sort.direction === 'asc' ? { key, direction: 'desc' } : null),
+    setQuery: setText,
+    setFacet: (value: string) => {
+      setFacetNow(value);
+      setPage(1);
+    },
+    setPage,
+    setSize: (next: number) => {
+      setSize(next);
+      setPage(1);
+    },
+    toggleSort: (key: string) => {
+      setSortNow(sort?.key !== key ? { key, direction: 'asc' } : sort.direction === 'asc' ? { key, direction: 'desc' } : null);
+      setPage(1);
+    },
     clear: () => {
-      setQuery('');
-      setFacet('');
+      setText('');
+      setQueryNow('');
+      setFacetNow('');
+      setPage(1);
     },
   };
 }
 
-type View = ReturnType<typeof useTableView<unknown>>;
+export type TableView<T = unknown> = ReturnType<typeof usePagedTable<T>>;
 
 /** A column header that sorts on click; `tip` stays outside the button so the two controls never nest. */
-export function SortHeader({ view, column, className, tip, children }: { view: Pick<View, 'sort' | 'toggleSort'>; column: string; className?: string; tip?: ReactNode; children: ReactNode }) {
+export function SortHeader({ view, column, className, tip, children }: { view: Pick<TableView, 'sort' | 'toggleSort'>; column: string; className?: string; tip?: ReactNode; children: ReactNode }) {
   const active = view.sort?.key === column ? view.sort.direction : null;
   return (
     <th data-testid={`sort-header-${column}`} scope="col" className={`whitespace-nowrap ${className ?? ''}`} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
@@ -68,14 +122,13 @@ export function SortHeader({ view, column, className, tip, children }: { view: P
 }
 
 /** Search box, dropdown filter, match count and a clear button, above a table. */
-export function TableFilters({ view, subject, placeholder, facetName }: { view: View; subject: string; placeholder: string; facetName: string }) {
-  const search = useRef<HTMLInputElement>(null);
+export function TableFilters({ view, subject, placeholder, facetName }: { view: TableView; subject: string; placeholder: string; facetName: string }) {
   return (
     <div data-testid="table-filters" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <label data-testid="table-filters-search" className="relative block min-w-0 flex-[0_1_20rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint">
         <span data-testid="table-filters-search-label" className="sr-only">Filtrar {subject}</span>
         <Icon name="search" size={16} />
-        <input data-testid="table-filters-search-input" ref={search} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder} />
+        <input data-testid="table-filters-search-input" className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder} />
       </label>
       {view.options.length > 1 ? (
         <label data-testid="table-filters-facet" className="block min-w-0 flex-none max-md:basis-full">
@@ -91,53 +144,19 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
           type="button"
           aria-label="Limpar filtros"
           className="min-w-[auto] w-[var(--control-height)] flex-none px-0"
-          onClick={() => {
-            view.clear();
-            search.current?.focus();
-          }}
+          onClick={view.clear}
         >
           <Icon name="close" size={16} />
         </button>
       ) : null}
-      <p data-testid="table-filters-count" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{view.filtered ? `${view.rows.length} de ${view.total}` : ''}</p>
+      <p data-testid="table-filters-count" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{view.filtered ? `${view.matched} de ${view.total}` : ''}</p>
     </div>
   );
 }
 
-export const PAGE_SIZES = [5, 10, 50, 100];
-
-/** Pages through rows, ten at a time by default; the page goes back to the first one when `resetKey` changes. */
-export function usePagination<T>(rows: T[], resetKey: string) {
-  const [size, setSizeValue] = useState(10);
-  const [requested, setPage] = useState(1);
-  const [lastKey, setLastKey] = useState(resetKey);
-  if (lastKey !== resetKey) {
-    setLastKey(resetKey);
-    setPage(1);
-  }
-  const pages = Math.max(1, Math.ceil(rows.length / size));
-  const page = Math.min(requested, pages);
-  return {
-    rows: rows.slice((page - 1) * size, page * size),
-    page,
-    pages,
-    size,
-    total: rows.length,
-    from: rows.length === 0 ? 0 : (page - 1) * size + 1,
-    to: Math.min(page * size, rows.length),
-    setPage,
-    setSize: (next: number) => {
-      setSizeValue(next);
-      setPage(1);
-    },
-  };
-}
-
-type Pages = ReturnType<typeof usePagination<unknown>>;
-
-/** Page size choice, range and previous and next buttons under a list; hidden when every row fits the smallest page. */
-export function Pagination({ view }: { view: Pages }) {
-  if (view.total <= PAGE_SIZES[0]!) return null;
+/** Page size choice, range and previous and next buttons under a table; hidden when every match fits the smallest page. */
+export function Pagination({ view }: { view: TableView }) {
+  if (view.matched <= PAGE_SIZES[0]) return null;
   return (
     <nav data-testid="pagination" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-label="Paginação">
       <label data-testid="pagination-size" className="flex items-center gap-2 text-[0.8125rem] text-ink-soft">
@@ -147,11 +166,11 @@ export function Pagination({ view }: { view: Pages }) {
         </Select>
       </label>
       <div data-testid="pagination-controls" className="flex items-center gap-3">
-        <p data-testid="pagination-range" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.total}`}</p>
-        <button data-testid="pagination-previous" type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === 1} onClick={() => view.setPage(view.page - 1)}>
+        <p data-testid="pagination-range" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.matched}`}</p>
+        <button data-testid="pagination-previous" type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page <= 1} onClick={() => view.setPage(view.page - 1)}>
           <Icon name="arrow-left" size={16} />
         </button>
-        <button data-testid="pagination-next" type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === view.pages} onClick={() => view.setPage(view.page + 1)}>
+        <button data-testid="pagination-next" type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page >= view.pages} onClick={() => view.setPage(view.page + 1)}>
           <Icon name="arrow-right" size={16} />
         </button>
       </div>

@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { validationPage } from '@server/api/validation-tables.js';
+import { type PageRequest } from '@server/api/paging.js';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { PUBLISHED_PORTS } from '@server/deploy/service-links';
 import { runApi, type GapsReport, type Report, type RunDetail } from '../api.js';
@@ -16,6 +18,12 @@ const report: Report = {
   tokens: { byRole: {}, total: { inputTokens: 10, outputTokens: 5, costUsd: 0.5 } }, summary: 'All good.',
 };
 const detail = (over: Partial<RunDetail> = {}): RunDetail => ({ runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'awaiting-validation', phase: 6, report, state: { status: 'running', order: [], tasks: [] }, finished: null, tokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, steps: 0 }, acceptanceCriteria: [], plan: null, ...over });
+
+// The validation tables read one page at a time: the pages are cut from the report the test shows.
+const serveReport = (shown: Report | null) => vi.spyOn(runApi, 'validationTable').mockImplementation(async (_runId, table, req: PageRequest) => validationPage(shown as never, table, req) as never);
+beforeEach(() => {
+  serveReport(report);
+});
 
 describe('ValidationView', () => {
   it('lists the open doc sections with what is missing and the recorded cause, and counts the delivered ones', () => {
@@ -86,10 +94,11 @@ describe('ValidationView', () => {
   });
 
 
-  it('shows service, script checkboxes, assumptions, blocked tasks and evidence; actions enabled when awaiting validation', () => {
+  it('shows service, script checkboxes, assumptions, blocked tasks and evidence; actions enabled when awaiting validation', async () => {
     const on = { report: vi.fn(), complete: vi.fn() };
+    serveReport(detail().report);
     render(<MemoryRouter><ValidationView detail={detail()} specStatus="awaiting-validation" onReport={on.report} onComplete={on.complete} /></MemoryRouter>);
-    expect(screen.getByTestId('smoke-AC-001').textContent).toContain('Passou');
+    expect((await screen.findByTestId('smoke-AC-001')).textContent).toContain('Passou');
     expect(screen.queryByTestId('validation-stop')).toBeNull();
     expect(screen.getByTestId('e2e-AC-001').textContent).toBe('Passou');
     expect(screen.getByTestId('e2e-AC-002').textContent).toContain('Não se aplica (devops only)');
@@ -222,13 +231,15 @@ describe('ValidationView service card', () => {
     expect(screen.getByTestId('service-unpublished').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);
   });
 
-  it('names each service in its smoke rows and links, keeps the recheck at button height and gives the published range', () => {
+  it('names each service in its smoke rows and links, keeps the recheck at button height and gives the published range', async () => {
     const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health', kind: 'api' as const, docsPath: '/docs' });
     const smoke = [{ acId: 'AC-001', testId: 's::[AC-001] a', status: 'passed' as const, service: 'orders' }, { acId: 'AC-001', testId: 's::[AC-001] b', status: 'passed' as const, service: 'inventory' }];
     const status = { online: true, status: 200, checkedAt: '2026-10-06T10:00:00.000Z', services: ['orders', 'inventory', 'ledger'].map((service) => ({ service, online: true, status: 200, docs: service === 'orders' })) };
-    view(detail({ report: { ...report, service: { ...report.service!, smoke }, services: [card('orders', 20001), card('inventory', 20002), card('ledger', 8080)] } }), { serviceStatus: status });
-    expect(screen.getByTestId('smoke-orders-AC-001').textContent).toContain('orders');
-    expect(screen.getByTestId('smoke-inventory-AC-001').textContent).toContain('inventory');
+    const shown = { ...report, service: { ...report.service!, smoke }, services: [card('orders', 20001), card('inventory', 20002), card('ledger', 8080)] };
+    serveReport(shown);
+    view(detail({ report: shown }), { serviceStatus: status });
+    expect((await screen.findByTestId('smoke-orders-AC-001')).textContent).toContain('orders');
+    expect((await screen.findByTestId('smoke-inventory-AC-001')).textContent).toContain('inventory');
     expect(screen.getByTestId('open-orders').getAttribute('aria-label')).toBe('Abrir Swagger (orders)');
     expect(screen.getByTestId('recheck-service').className).toContain('min-h-10');
     expect(screen.getByTestId('service-ledger').textContent).toContain(`${PUBLISHED_PORTS.from} a ${PUBLISHED_PORTS.to}`);

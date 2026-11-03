@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, runApi, type RepoDashboard, type RepoDetailView, type ServiceStatus } from '../api.js';
+import { queryPage, type PageRequest } from '@server/api/paging.js';
 import { RepositoryPage } from './RepositoryPage.js';
 
 const detail = (over: Partial<RepoDetailView> = {}): RepoDetailView => ({
@@ -33,20 +34,29 @@ const dashboard = (over: Partial<RepoDashboard> = {}): RepoDashboard => ({
       { specId: 'cart', runId: 'shop-api-cart-1', taskId: 'T1-cart', title: 'Carrinho', owner: 'dev', state: 'delivered', attempts: 0, reason: null, pr: 12 },
     ],
   },
-  runs: { total: 1, list: [{ runId: 'shop-api-cart-1', specId: 'cart', kind: 'run', status: 'complete', at: '2026-11-01T10:00:00.000Z', merged: 1, cost: 0.5 }] },
-  failures: { total: 0, list: [] },
-  blockers: { total: 1, list: [{ kind: 'task', specId: 'pay', runId: 'shop-api-pay-1', taskId: 'T2-pay', text: 'Tarefa T2-pay: uma dependência desta tarefa está bloqueada' }] },
+  files: { total: 0, list: [] },
+  tests: { passed: 4, failed: 1, failures: { total: 0, list: [] } },
+  retries: { attempts: 1, infra: 0, flaky: 0, replanned: 0, fixes: 0, reopened: 0 },
+  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', kind: 'api', docsPath: '/docs', services: null },
+  ...over,
+});
+
+// The specs the specs table pages through; a test sets them before it renders.
+let SPEC_ROWS: RepoDetailView['rows'] = [];
+
+// The dashboard's paged tables, served one page at a time the way the API serves them.
+const TABLE_ROWS: Record<string, unknown[]> = {
+  runs: [{ runId: 'shop-api-cart-1', specId: 'cart', kind: 'run', status: 'complete', at: '2026-11-01T10:00:00.000Z', merged: 1, cost: 0.5 }],
+  failures: [],
+  blockers: [{ kind: 'task', specId: 'pay', runId: 'shop-api-pay-1', taskId: 'T2-pay', text: 'Tarefa T2-pay: uma dependência desta tarefa está bloqueada' }],
   agents: [
     { role: 'dev', steps: 2, ok: 2, failed: 0, tokens: 100, costUsd: 0.5, durationMs: 1000, created: 2, started: 1, finished: 1, files: 3, tests: null, lastAt: '2026-11-01T10:00:00.000Z', lastDoing: 'implementando a tarefa' },
     { role: 'test', steps: 1, ok: 0, failed: 1, tokens: 10, costUsd: 0, durationMs: 200, created: null, started: null, finished: null, files: 0, tests: { passed: 4, failed: 1 }, lastAt: '2026-11-01T10:00:00.000Z', lastDoing: 'rodando as verificações' },
   ],
-  files: { total: 0, list: [] },
-  tests: { passed: 4, failed: 1, failures: { total: 0, list: [] } },
-  retries: { attempts: 1, infra: 0, flaky: 0, replanned: 0, fixes: 0, reopened: 0 },
-  timeline: { total: 1, list: [{ at: '2026-11-01T10:00:00.000Z', runId: 'shop-api-cart-1', specId: 'cart', text: 'Tarefa T1-cart mesclada na main (pull request #12)', tone: 'good', role: 'dev', taskId: 'T1-cart' }] },
-  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', kind: 'api', docsPath: '/docs', services: null },
-  ...over,
-});
+  timeline: [{ at: '2026-11-01T10:00:00.000Z', runId: 'shop-api-cart-1', specId: 'cart', text: 'Tarefa T1-cart mesclada na main (pull request #12)', tone: 'good', role: 'dev', taskId: 'T1-cart' }],
+};
+
+const serveTable = (_projectId: string, _repo: string, table: string, req: PageRequest) => Promise.resolve(queryPage(TABLE_ROWS[table] ?? [], {}, req));
 
 const probe = (over: Partial<ServiceStatus> = {}): ServiceStatus => ({ online: true, status: 200, ui: false, docs: true, checkedAt: '2026-11-01T10:00:00.000Z', ...over });
 
@@ -60,6 +70,8 @@ const renderAt = () =>
   );
 
 beforeEach(() => {
+  vi.spyOn(runApi, 'repositoryDashboardTable').mockImplementation(serveTable as never);
+  vi.spyOn(runApi, 'repositorySpecsPage').mockImplementation((_p, _r, req) => Promise.resolve(queryPage(SPEC_ROWS, { text: (r) => [r.specId, r.title ?? ''] }, req)));
   vi.spyOn(runApi, 'serviceStatus').mockResolvedValue(probe());
 });
 afterEach(() => vi.restoreAllMocks());
@@ -160,14 +172,15 @@ describe('RepositoryPage', () => {
       { specId: 'cart', status: 'done', activeRunId: null, repository: 'shop-api', title: 'Carrinho', priority: 'P1', dependsOn: [], plan: true, tasks: 3, blocked: false },
       { specId: 'pay', status: 'running', activeRunId: 'run-1', repository: 'shop-api', title: 'Pagamento', priority: 'P2', dependsOn: ['cart'], plan: false, tasks: 2, blocked: true },
     ];
-    vi.spyOn(runApi, 'repository').mockResolvedValue(detail({ rows }));
+    SPEC_ROWS = rows;
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
     vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
     renderAt();
     const specs = await screen.findByTestId('repo-specs');
     expect((specs as HTMLDetailsElement).open).toBe(false);
     fireEvent.click(within(specs).getByText('Especificações'));
     expect((specs as HTMLDetailsElement).open).toBe(true);
-    const cart = within(screen.getByTestId('repo-spec-cart'));
+    const cart = within(await screen.findByTestId('repo-spec-cart'));
     expect(cart.getByText('3 de 3')).toBeTruthy();
     const pay = within(screen.getByTestId('repo-spec-pay'));
     expect(pay.getByText('Bloqueada')).toBeTruthy();
@@ -176,10 +189,10 @@ describe('RepositoryPage', () => {
   });
 
   it('says "sem dados" for the timeline when the repository has no event', async () => {
+    vi.spyOn(runApi, 'repositoryDashboardTable').mockImplementation((_p, _r, table, req) => Promise.resolve(queryPage(table === 'timeline' ? [] : TABLE_ROWS[table] ?? [], {}, req)) as never);
     vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
-    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard({ timeline: { total: 0, list: [] } }));
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
     renderAt();
-    await screen.findByTestId('repo-timeline');
-    expect(screen.getByText('sem dados: nenhum evento registrado.')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('sem dados: nenhum evento registrado.')).toBeTruthy());
   });
 });

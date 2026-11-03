@@ -1,8 +1,9 @@
+import { refineApi, type ClosingSummary } from '../api.js';
+import { Pagination, usePagedTable } from '../components/DataTable.js';
 import { Dialog } from '../components/Dialog.js';
-import type { ClosingSummary } from '../api.js';
 
-/** The summary a repository session shows before the owner authorizes the development. */
-export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summary: ClosingSummary; busy: boolean; onCancel: () => void; onAuthorize: (summaryHash: string) => void }) {
+/** The summary a repository session shows before the owner authorizes the development; its repositories come one page at a time. */
+export function ClosingDialog({ projectId, specId, summary, busy, onCancel, onAuthorize }: { projectId: string; specId: string; summary: ClosingSummary; busy: boolean; onCancel: () => void; onAuthorize: (summaryHash: string) => void }) {
   return (
     <Dialog title="Resumo do refinamento" onClose={onCancel}>
       <div className="grid gap-4" data-testid="closing-summary">
@@ -14,26 +15,7 @@ export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summar
             </li>
           ))}
         </ol>
-        <table className="w-full text-[0.8125rem]" data-testid="closing-repositories">
-          <thead data-testid="closing-repos-head">
-            <tr className="text-left text-ink-soft" data-testid="closing-repos-head-row">
-              <th scope="col" data-testid="closing-repos-col-name">Repositório</th>
-              <th scope="col" data-testid="closing-repos-col-specs">Specs</th>
-              <th scope="col" data-testid="closing-repos-col-plans">Planos</th>
-              <th scope="col" data-testid="closing-repos-col-tasks">Tarefas</th>
-            </tr>
-          </thead>
-          <tbody data-testid="closing-repos-body">
-            {summary.repositories.map((repo) => (
-              <tr key={repo.name} data-testid={`closing-repo-${repo.name}`}>
-                <td data-testid={`closing-repo-name-${repo.name}`}>{repo.name}</td>
-                <td data-testid={`closing-repo-specs-${repo.name}`}>{repo.specs}</td>
-                <td data-testid={`closing-repo-plans-${repo.name}`}>{repo.plans}</td>
-                <td data-testid={`closing-repo-tasks-${repo.name}`}>{repo.tasks}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ClosingRepositories projectId={projectId} specId={specId} />
         <details data-testid="closing-assumptions">
           <summary data-testid="closing-assumptions-summary">{`Premissas assumidas (${summary.assumptions.length})`}</summary>
           <ul className="m-0 grid gap-1 pl-5 text-[0.8125rem]" data-testid="closing-assumptions-list">
@@ -52,5 +34,36 @@ export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summar
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** The repositories the closing covers, with their specs, plans and tasks, one page at a time. */
+function ClosingRepositories({ projectId, specId }: { projectId: string; specId: string }) {
+  const view = usePagedTable(`${projectId}/${specId}/closing`, (req) => refineApi.closingRepositories(projectId, specId, req));
+  if (!view.loaded) return <p data-testid="closing-repositories-loading" className="hint" role="status">Carregando os repositórios…</p>;
+  return (
+    <div>
+      <table className="w-full text-[0.8125rem]" data-testid="closing-repositories">
+        <thead data-testid="closing-repos-head">
+          <tr className="text-left text-ink-soft" data-testid="closing-repos-head-row">
+            <th scope="col" data-testid="closing-repos-col-name">Repositório</th>
+            <th scope="col" data-testid="closing-repos-col-specs">Specs</th>
+            <th scope="col" data-testid="closing-repos-col-plans">Planos</th>
+            <th scope="col" data-testid="closing-repos-col-tasks">Tarefas</th>
+          </tr>
+        </thead>
+        <tbody data-testid="closing-repos-body">
+          {view.rows.map((repo) => (
+            <tr key={repo.name} data-testid={`closing-repo-${repo.name}`}>
+              <td data-testid={`closing-repo-name-${repo.name}`}>{repo.name}</td>
+              <td data-testid={`closing-repo-specs-${repo.name}`}>{repo.specs}</td>
+              <td data-testid={`closing-repo-plans-${repo.name}`}>{repo.plans}</td>
+              <td data-testid={`closing-repo-tasks-${repo.name}`}>{repo.tasks}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <Pagination view={view} />
+    </div>
   );
 }

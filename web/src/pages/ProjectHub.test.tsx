@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { queryPage } from '@server/api/paging.js';
+import { RUN_TABLE, SPEC_TABLE, specPageRow } from '@server/api/project-pages.js';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
 import { appLinks, ProjectHub, ProjectHubView, shouldAutoDeploy } from './ProjectHub.js';
@@ -24,6 +26,26 @@ const runs = [
   { runId: 'hello-000-r1', specId: 'hello-000', projectId: 'hello-app', status: 'complete', at: '2026-09-23T09:00:00.000Z', tokens: 9000, cost: 3.33, stoppable: false },
 ].map(row);
 const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), restart: vi.fn(), validate: vi.fn(), deleteDraft: vi.fn() });
+
+/** Serves the project page tables from the runs and specs a test renders, one page at a time. */
+const servePages = (runList: unknown[], specList: unknown[]) => {
+  vi.spyOn(runApi, 'projectRunsPage').mockImplementation(async (_p, req) => queryPage(runList as never[], RUN_TABLE as never, req));
+  vi.spyOn(runApi, 'projectSpecsPage').mockImplementation(async (_p, req) => queryPage((specList as Array<Parameters<typeof specPageRow>[0]>).map((spec) => specPageRow(spec, runList as never[])), SPEC_TABLE, req));
+};
+/** Waits past the pause the search box keeps before it asks the server. */
+const settleSearch = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 300)));
+/** Lets the pages load after a render. */
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+// The project page reads its tables one page at a time: the pages come from the same mocked runs and projects.
+beforeEach(() => {
+  vi.spyOn(runApi, 'projectRunsPage').mockImplementation(async (projectId, req) => queryPage(await runApi.runs(projectId), RUN_TABLE as never, req));
+  vi.spyOn(runApi, 'projectSpecsPage').mockImplementation(async (projectId, req) => {
+    const runs = await runApi.runs(projectId);
+    const specs = ((await runApi.projects()).find((p) => p.projectId === projectId)?.specs ?? []).map((spec) => specPageRow(spec, runs));
+    return queryPage(specs, SPEC_TABLE, req);
+  });
+});
 
 describe('ProjectHub documents', () => {
   const docsOf = (name: string): ProjectDoc[] => [{ file: 'project.md', text: `# ${name}` }];
@@ -144,13 +166,15 @@ describe('ProjectHubView', () => {
     expect(screen.getByRole('link', { name: 'Baixar project.md' })).toBeTruthy();
   });
 
-  it('shows the project header, one action per spec status and per run status', () => {
+  it('shows the project header, one action per spec status and per run status', async () => {
     const o = on();
+    servePages(runs, (project).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     expect(screen.getByRole('heading', { level: 1, name: 'Hello app' })).toBeTruthy();
     expect(screen.getByText('A tiny HTTP service that greets by name.')).toBeTruthy();
     fireEvent.click(screen.getByTestId('start-hello-001'));
@@ -267,38 +291,44 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(o.deleteDraft).toHaveBeenCalledWith('hello-003');
   });
-  it('an awaiting-validation spec links to the validation page of its last run', () => {
+  it('an awaiting-validation spec links to the validation page of its last run', async () => {
     const o = on();
     const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] };
     const awaitingRuns = [row({ runId: 'hello-009-r1', specId: 'hello-009', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-24T11:00:00.000Z', tokens: 1, cost: 0, stoppable: false })];
+    servePages(awaitingRuns, (awaiting).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={awaiting} notFound={false} runs={awaitingRuns} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     expect(screen.getByTestId('validate-hello-009').getAttribute('href')).toBe('/runs/hello-009-r1/validation');
     fireEvent.click(screen.getByTestId('continue-hello-009'));
     expect(o.cont).toHaveBeenCalledWith('hello-009');
   });
-  it('an awaiting-validation spec without a run brings it up on Validar', () => {
+  it('an awaiting-validation spec without a run brings it up on Validar', async () => {
     const o = on();
     const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }] };
+    servePages([], (awaiting).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onValidate={o.validate} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     fireEvent.click(screen.getByTestId('validate-hello-009'));
     expect(o.validate).toHaveBeenCalledWith('hello-009');
   });
-  it('restarting an awaiting-validation spec asks first, then calls onRestart', () => {
+  it('restarting an awaiting-validation spec asks first, then calls onRestart', async () => {
     const o = on();
     const awaiting = { ...project, specs: [{ specId: 'hello-009', status: 'awaiting-validation', activeRunId: null }, { specId: 'hello-010', status: 'done', activeRunId: null }] };
+    servePages([], (awaiting).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     expect(screen.queryByTestId('restart-hello-010')).toBeNull();
     fireEvent.click(screen.getByTestId('restart-hello-009'));
     expect(o.restart).not.toHaveBeenCalled();
@@ -308,14 +338,16 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('delete-confirm'));
     expect(o.restart).toHaveBeenCalledWith('hello-009');
   });
-  it('explains every column of the runs table and every status flag, and lets each column sort and filter', () => {
+  it('explains every column of the runs table and every status flag, and lets each column sort and filter', async () => {
     const o = on();
     const runs = [row({ runId: 'hello-001-r1', n: 1, specId: 'hello-001', projectId: 'hello-app', status: 'deploy-failed', at: null, tokens: 10, cost: 0.1, stoppable: false })];
+    servePages(runs, (project).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     const table = within(screen.getByRole('table'));
     for (const column of ['Execução', 'Spec', 'Quando', 'Status', 'Tokens', 'Custo']) {
       const header = table.getByRole('columnheader', { name: new RegExp(`^${column}`) });
@@ -325,26 +357,21 @@ describe('ProjectHubView', () => {
     expect(table.getByRole('button', { name: 'O serviço não subiu no ambiente local.' })).toBeTruthy();
     expect(screen.getByLabelText('Filtrar execuções')).toBeTruthy();
   });
-  it('lists the five latest runs and expands to all of them', () => {
+  it('lists every run of the project, ten a page', async () => {
     const o = on();
     const seven = Array.from({ length: 7 }, (_, i) => row({ runId: `hello-001-r${7 - i}`, n: 7 - i, specId: 'hello-001', projectId: 'hello-app', status: 'complete', at: null, tokens: 10, cost: 0.1, stoppable: false }));
+    servePages(seven, (project).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={project} notFound={false} runs={seven} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     const runLinks = () => screen.queryAllByRole('link').filter((a) => /^\/runs\/hello-001-r\d+$/.test(a.getAttribute('href') ?? '')).map((a) => a.textContent);
-    expect(runLinks()).toEqual(['Execução #7', 'Execução #6', 'Execução #5', 'Execução #4', 'Execução #3']);
-    const more = screen.getByRole('button', { name: 'Mostrar todas (7)' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(more);
-    expect(runLinks()).toHaveLength(7);
-    expect(more.textContent).toBe('Mostrar menos');
-    expect(more.getAttribute('aria-expanded')).toBe('true');
-    fireEvent.click(more);
-    expect(runLinks()).toHaveLength(5);
+    await settle();
+    expect(runLinks()).toEqual(['Execução #7', 'Execução #6', 'Execução #5', 'Execução #4', 'Execução #3', 'Execução #2', 'Execução #1']);
   });
-  it('a concluded project: counts only agent runs, names each run, locks the old ones and points at a new spec', () => {
+  it('a concluded project: counts only agent runs, names each run, locks the old ones and points at a new spec', async () => {
     const o = on();
     const concluded = { ...project, specs: [{ specId: 'hello-001', status: 'done', activeRunId: null }] };
     const history = [
@@ -352,11 +379,13 @@ describe('ProjectHubView', () => {
       row({ runId: 'hello-app--hello-001--run-2', n: 2, locked: true, specId: 'hello-001', projectId: 'hello-app', status: 'interrupted', at: '2026-09-24T11:00:00.000Z', tokens: 10, cost: 0.5, stoppable: false }),
       row({ runId: 'hello-app--hello-001--deploy-run-3', kind: 'deploy', n: 3, specId: 'hello-001', projectId: 'hello-app', status: 'done', at: null, tokens: 0, cost: 0, stoppable: false }),
     ];
+    servePages(history, (concluded).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={concluded} notFound={false} runs={history} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     expect(screen.getByText('1 execução')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Conclusão #1' }).getAttribute('title')).toBe('hello-app--hello-001--complete-run-1');
     expect(screen.getByRole('link', { name: 'Deploy #3' })).toBeTruthy();
@@ -370,45 +399,54 @@ describe('ProjectHubView', () => {
     expect(screen.getByTestId('all-concluded').textContent).toContain('nova spec');
     expect(screen.getByTestId('open-new-spec').className).toContain('primary');
   });
-  it('filters the specs by alias and by status, and says when none match', () => {
+  it('filters the specs by alias and by status, and says when none match', async () => {
     const o = on();
+    servePages(runs, (project).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     const specs = within(screen.getByTestId('project-specs'));
     fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: '003' } });
+    await settleSearch();
     expect(specs.getByText('hello-003')).toBeTruthy();
     expect(specs.queryByText('hello-000')).toBeNull();
     expect(screen.getByText('1 de 4')).toBeTruthy();
     fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: '' } });
+    await settleSearch();
     fireEvent.change(specs.getByLabelText('Status'), { target: { value: 'done' } });
+    await settle();
     expect(specs.getByText('hello-000')).toBeTruthy();
     expect(specs.queryByText('hello-003')).toBeNull();
     fireEvent.change(specs.getByLabelText('Filtrar especificações'), { target: { value: 'zzz' } });
+    await settleSearch();
     expect(specs.getByText('Nenhuma spec corresponde ao filtro.')).toBeTruthy();
     fireEvent.click(specs.getByRole('button', { name: 'Limpar filtros' }));
+    await settle();
     expect(specs.getByText('hello-001')).toBeTruthy();
     expect(specs.getByText('hello-003')).toBeTruthy();
   });
-  it('groups the specs by who must act next, the human first, and leaves out the empty groups', () => {
+  it('groups the specs by who must act next, the human first, and leaves out the empty groups', async () => {
     const o = on();
     const grouped = { ...project, specs: [
       { specId: 'hello-010', status: 'done', activeRunId: null },
       { specId: 'hello-011', status: 'awaiting-validation', activeRunId: null },
       { specId: 'hello-012', status: 'planned', activeRunId: null },
     ] };
+    servePages([], (grouped).specs);
     const { container } = render(
       <MemoryRouter>
         <ProjectHubView project={grouped} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     const groups = Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
     expect(groups).toEqual(['Precisam de você', 'Prontas', 'Concluídas']);
     expect(screen.getByTestId('validate-hello-011')).toBeTruthy();
   });
-  it('pages the specs ten at a time, and each page shows the group headings of its own rows', () => {
+  it('pages the specs ten at a time, and each page shows the group headings of its own rows', async () => {
     const o = on();
     const many = [
       { specId: 'hello-000', status: 'awaiting-validation', activeRunId: null },
@@ -416,11 +454,13 @@ describe('ProjectHubView', () => {
       { specId: 'hello-011', status: 'done', activeRunId: null },
       { specId: 'hello-012', status: 'done', activeRunId: null },
     ];
+    servePages([], ({ ...project, specs: many }).specs);
     const { container } = render(
       <MemoryRouter>
         <ProjectHubView project={{ ...project, specs: many }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
+    await settle();
     const specs = within(screen.getByTestId('project-specs'));
     const ids = () => specs.queryAllByText(/^hello-\d{3}$/).map((el) => el.textContent);
     const headings = () => Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
@@ -428,6 +468,7 @@ describe('ProjectHubView', () => {
     expect(headings()).toEqual(['Precisam de você', 'Prontas']);
     expect(specs.getByText('1–10 de 13')).toBeTruthy();
     fireEvent.click(specs.getByRole('button', { name: 'Próxima página' }));
+    await settle();
     expect(ids()).toEqual(['hello-010', 'hello-011', 'hello-012']);
     expect(headings()).toEqual(['Prontas', 'Concluídas']);
     expect(specs.getByText('11–13 de 13')).toBeTruthy();
@@ -556,6 +597,7 @@ describe('auto deploy of a concluded project', () => {
 describe('the app that answers without links', () => {
   const viewOf = (apps: Parameters<typeof ProjectHubView>[0]['apps'], rows: Row[] = []) => {
     const o = on();
+    servePages(rows, concluded.specs);
     return render(
       <MemoryRouter>
         <ProjectHubView project={concluded} notFound={false} runs={rows} drafts={[]} apps={apps} onStartApp={o.start} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
@@ -567,8 +609,9 @@ describe('the app that answers without links', () => {
     expect(screen.getByTestId('apps-up-no-links').textContent).toContain('Nenhum deploy novo foi iniciado.');
     expect(screen.queryByTestId('start-app')).toBeNull();
   });
-  it('offers Retomar for an interrupted run, but not for an interrupted deploy: a resume would run the whole spec', () => {
+  it('offers Retomar for an interrupted run, but not for an interrupted deploy: a resume would run the whole spec', async () => {
     viewOf(null, [row({ runId: 'hello-001-r2', specId: 'hello-001', projectId: 'hello-app', status: 'interrupted', at: '2026-11-02T10:00:00.000Z', tokens: 0, cost: 0, stoppable: false }), deployRow('interrupted', 35)]);
+    await settle();
     expect(screen.getByTestId('resume-hello-001-r2')).toBeTruthy();
     expect(screen.queryByTestId('resume-hello-app--hello-001--deploy-run-35')).toBeNull();
   });
@@ -627,14 +670,16 @@ describe('the stop button of a running run', () => {
 });
 
 describe('the runs table on the project page', () => {
-  it('shows a run that waits for the owner only in the table, with no banner above it', () => {
+  it('shows a run that waits for the owner only in the table, with no banner above it', async () => {
     const o = on();
     const waiting = [row({ runId: 'hello-003-r1', specId: 'hello-003', projectId: 'hello-app', status: 'awaiting-validation', at: '2026-09-25T10:00:00.000Z', tokens: 10, cost: 0.01, stoppable: false })];
+    servePages(waiting, (project).specs);
     render(
       <MemoryRouter>
         <ProjectHubView project={project} notFound={false} runs={waiting} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
+    await settle();
     expect(screen.queryByTestId('attention-banner')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Abrir run' })).toBeNull();
     expect(screen.getByTitle('hello-003-r1').getAttribute('href')).toBe('/runs/hello-003-r1');

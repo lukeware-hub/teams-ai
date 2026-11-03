@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type GapCause, type GapDecision, type GapItem, type GapsReport, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
-import { SortHeader, TableFilters, useTableView } from '../components/DataTable.js';
+import { Pagination, SortHeader, TableFilters, usePagedTable } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
@@ -50,13 +50,8 @@ const RESULT_HELP = 'Passou: o teste confirmou o critério. Falhou: o teste rodo
 const resultLabel = (status: string) => RESULT[status]?.label ?? status;
 type Smoke = NonNullable<Report['service']>['smoke'][number];
 type Evidence = Report['evidence'][number];
-function SmokeTable({ smoke }: { smoke: Smoke[] }) {
-  const view = useTableView(smoke, {
-    sorts: { criterion: (s) => `${s.acId} ${s.service ?? ''}`, test: (s) => s.testId ?? null, result: (s) => resultLabel(s.status) },
-    text: (s) => [s.acId, s.service ?? '', s.testId ?? ''],
-    facet: (s) => s.status,
-    facetLabel: resultLabel,
-  });
+function SmokeTable({ runId }: { runId: string }) {
+  const view = usePagedTable(`${runId}/smoke`, (req) => runApi.validationTable<Smoke>(runId, 'smoke', req), resultLabel);
   return (
     <>
       <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
@@ -82,16 +77,12 @@ function SmokeTable({ smoke }: { smoke: Smoke[] }) {
           </tbody>
         </table>
       </div>
+      <Pagination view={view} />
     </>
   );
 }
-function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
-  const view = useTableView(evidence, {
-    sorts: { criterion: (r) => r.criterion, tasks: (r) => r.tasks.join(', ') || null, tests: (r) => r.tests.join(', ') || null, e2e: (r) => (r.e2e ? resultLabel(r.e2e) : null), result: (r) => resultLabel(r.status) },
-    text: (r) => [r.criterion, ...r.tasks, ...r.tests],
-    facet: (r) => r.status,
-    facetLabel: resultLabel,
-  });
+function EvidenceTable({ runId }: { runId: string }) {
+  const view = usePagedTable(`${runId}/evidence`, (req) => runApi.validationTable<Evidence>(runId, 'evidence', req), resultLabel);
   return (
     <>
       <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
@@ -121,6 +112,7 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
           </tbody>
         </table>
       </div>
+      <Pagination view={view} />
     </>
   );
 }
@@ -456,7 +448,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           ) : (
                             <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
                           )}
-                          <SmokeTable smoke={report.service.smoke} />
+                          <SmokeTable runId={detail.runId} />
                         </>
                       ) : (
                         <p data-testid="deploy-failure" className="error">
@@ -504,7 +496,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           <InfoTip text="Para cada critério de aceite: as tarefas que o implementaram e os testes automáticos que comprovam que ele funciona." />
                         </div>
                       </div>
-                      <EvidenceTable evidence={report.evidence} />
+                      <EvidenceTable runId={detail.runId} />
                     </section>
                     {report.gaps ? (
                       <GapsCard gaps={report.gaps} decisions={detail.gapDecisions ?? []} locked={detail.locked ?? false} canReport={enabled} onPrefill={setText} autonomous={detail.agentsDecide === true} onAccept={(gap, note) => onAcceptGap({ doc: gap.doc, heading: gap.heading, note })} />

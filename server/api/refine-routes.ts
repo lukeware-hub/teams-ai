@@ -7,6 +7,10 @@ import { ConflictError, NotFoundError } from '../refine/session.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
+import { pageRequest, queryPage, type TableSpec } from './paging.js';
+import type { ClosingSummary } from '../refine/session.js';
+
+const CLOSING_REPOSITORIES: TableSpec<ClosingSummary['repositories'][number]> = { text: (r) => [r.name] };
 import { HttpError, type Route, type RouteContext } from './server.js';
 
 const P = '/api';
@@ -94,6 +98,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async (ctx) => ctx.json(200, await idOf(await registry.restartSpec(ctx.params.projectId!, ctx.params.specId!)))),
     },
     { method: 'GET', path: S, handler: wrap(async ({ params, json }) => json(200, await (await get(params)).snapshot())) },
+    { method: 'GET', path: `${S}/closing/repositories`, handler: wrap(async ({ params, query, json }) => json(200, queryPage((await (await get(params)).closingSummary()).repositories, CLOSING_REPOSITORIES, pageRequest(query)))) },
     {
       method: 'DELETE',
       path: S,
@@ -158,7 +163,12 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/answers`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();
-        await (await get(params)).answer(str(b, 'questionId'), str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
+        const s = await get(params);
+        const questionId = str(b, 'questionId');
+        const file = s.state.stages === true ? s.state.questions.find((q) => q.questionId === questionId)?.file : undefined;
+        await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
+        // The answer goes to the agents at once: the stage's review runs in the background, as the Processar button starts it.
+        if (file && (DOC_STAGES as readonly string[]).includes(file)) s.evaluateStage(file as DocFile).catch(logRunFailure(params));
         json(200, { ok: true });
       }),
     },
