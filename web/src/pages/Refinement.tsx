@@ -817,7 +817,7 @@ export function RefinementView(p: ViewProps) {
             </small>
           )}
           {current.options && current.options.length > 0 && (
-            <OptionGroup lead="Escolha uma opção ou escreva a sua resposta abaixo." options={current.options} value={answer} onChange={setAnswer} disabled={locked} />
+            <OptionGroup lead="Escolha uma opção ou escreva a sua resposta abaixo." options={current.options} value={answer} onChange={setAnswer} disabled={answerLocked} />
           )}
           <label data-testid="refinement-question-answer-label" className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor={`refinement-answer-${current.questionId}`}>Sua resposta</label>
           <textarea id={`refinement-answer-${current.questionId}`} data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
@@ -829,6 +829,7 @@ export function RefinementView(p: ViewProps) {
             </label>
             <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
           </div>}
+          {answerLocked && <p data-testid="question-waiting" className="m-0 mb-2 text-[0.8125rem] text-ink-soft" role="status">O time está trabalhando nos documentos. Você responde assim que ele terminar: esta tela libera sozinha.</p>}
           <div data-testid="refinement-question-actions" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <ActionButton
               className="primary"

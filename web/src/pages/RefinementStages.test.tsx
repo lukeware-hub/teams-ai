@@ -444,3 +444,21 @@ describe('the questions the team asked about specs.md', () => {
   });
 });
 
+describe('a question the owner cannot answer yet', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
+  const asked = { ...question(true), questionId: 'specs-1-0', origin: 'specs', text: 'Qual seção justifica o item base?', options: [{ label: 'Objetivos', detail: 'Usa os objetivos.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos.' }] };
+  const snap = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, specsMd: { hash: 'h', bytes: 1 }, questions: [asked as never], ...over } as never);
+
+  it('says why while the team works, locks the choices and the button, and shows no note when free', () => {
+    const first = render(<MemoryRouter><RefinementView snap={snap({ status: 'evaluating' })} busy events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.getByTestId('question-waiting').textContent).toContain('libera sozinha');
+    expect((screen.getByTestId('answer-specs-1-0') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('option-group-option-objetivos') as HTMLButtonElement).disabled).toBe(true);
+    first.unmount();
+    render(<MemoryRouter><RefinementView snap={snap({ status: 'answering' })} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.queryByTestId('question-waiting')).toBeNull();
+    expect((screen.getByTestId('answer-specs-1-0') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
