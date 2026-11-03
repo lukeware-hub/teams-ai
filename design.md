@@ -1185,7 +1185,7 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 | Stage steps | An ordered list above the editor, labelled `Etapas dos documentos`. Each step shows its number, its file name in `ui`, and its state as text: `Feito`, `Atual` or `Pendente`. The current step has `aria-current="step"`. A step whose document changed after its note, or whose earlier document changed after the step was done, also shows `desatualizado`; the notice names the earlier document. State is never colour alone (§30.5). |
 | Confidentiality | A row above the editor until the owner answers: `Projeto confidencial?` with `Sim, é confidencial` and `Não é confidencial`. Until an answer, no document goes to the Jev and no score is taken. |
 | Attach | `Anexar arquivo` above the editor. The file is read as text and replaces the document, after the owner confirms when the document holds text. A file that cannot be read leaves the document as it was. |
-| Not applicable | `Não se aplica` above the editor of `design.md` only. It writes one sentence that says the project has no interface, after the same confirmation as Attach; the Jev counts a part marked not applicable as present. |
+| Not applicable | `Não se aplica` above the editor of `design.md` only. After the same confirmation as Attach, it writes one sentence that says the project has no interface, adds the document to the Graphify graph and ends its stage at once. Reprocess keeps that sentence and lets the agents improve its text, never the template; the Jev counts a part marked not applicable as present. |
 | Decisions | The `## Decisões` section of the briefing stays when a save or an attach leaves it out, so an answered question is never lost by an edit. |
 | Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergences. It is the last stage review's result for this document against the documents before it; before any stage review, it is the last full round's contradictions check. |
 | Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
@@ -1363,6 +1363,40 @@ Escolhas do dono:
 - Pendências recolhidas por padrão: o resumo não mostra a lista sem clique.
 - Perguntas sem documento continuam respondíveis no resumo.
 - Só o nome muda; o endereço `?etapa=revisao` fica, para os links salvos e os testes.
+
+### 26.11.1 Validação automática do specs.md (aprovado pelo dono)
+
+Ao abrir a etapa, o sistema grava `specs.md` a partir do backlog pronto, confirma a gravação lendo o arquivo de volta e pede a análise de PO e SM. Nenhum botão dispara isso. O painel `Lista de verificação` ganha o bloco `specs.md` acima de PO e SM. A análise roda de novo a cada abertura enquanto PO ou SM estiver reprovado ou com falha.
+
+| Elemento | Estados |
+|---|---|
+| Arquivo `specs.md` | `Gerando` · `Gerado` · `Falhou` |
+| PO e SM | `Pendente` · `Analisando` · `Aprovado` · `Reprovado` · `Falhou` |
+| Reprovado | cada motivo em uma linha, abaixo do nome do revisor |
+| Falhou | uma frase com o motivo; roda de novo na próxima abertura |
+| Última validação | `Última validação: dd/mm hh:mm`, uma linha |
+| Ação `Continuar` | habilitada só com o arquivo gerado e PO e SM aprovados; desabilitada até lá, com a razão ao lado: `Falta a aprovação do SM` ou `Aguardando a análise do PO` |
+
+Não há botão `Gerar specs.md`.
+
+Wireframe proposto:
+
+```
+┌ Lista de verificação ──────────────────────────┐
+│ Consumo de IA   20 chamadas · US$ 0,05         │
+│ ┌ specs.md ────────────────────────────────┐   │
+│ │ Gerado · 14 itens                        │   │
+│ │ Produto (PO)   Aprovado     dd/mm hh:mm  │   │
+│ │ Técnico (SM)   Reprovado    dd/mm hh:mm  │   │
+│ │   · AC-003 não cobre o objetivo Saúde    │   │
+│ └──────────────────────────────────────────┘   │
+│ Produto (PO) ▸    Técnico (SM) ▸               │
+│ Arquivos gerados  ·  Segredos                  │
+└────────────────────────────────────────────────┘
+          [ Voltar ]  [ Continuar ]  Falta a aprovação do SM
+```
+
+Escolhas do dono: o botão `Gerar specs.md` sai de vez; `Continuar` fica visível e desabilitado com a razão, em vez de sumir.
 
 ## 27. Projects, Run, Status
 

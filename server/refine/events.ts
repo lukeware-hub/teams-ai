@@ -102,6 +102,10 @@ export const RefineEvent = {
   ArchitectureDecided: 'REFINE_ARCHITECTURE_DECIDED',
   /** The architecture could not be decided, in plain words: `{reason}`. */
   ArchitectureFailed: 'REFINE_ARCHITECTURE_FAILED',
+  /** specs.md was written from the detailed backlog and read back: `{hash, bytes}`. */
+  SpecsMdWritten: 'REFINE_SPECS_MD_WRITTEN',
+  /** The PO's or the SM's verdict on specs.md at `specsHash`: `{role, specsHash, verdict, findings, reason}`; `failed` when the analysis did not finish. */
+  SpecsReviewed: 'REFINE_SPECS_REVIEWED',
   DecisionMade: 'DECISION_MADE',
 } as const;
 /** The names the journal wrote before the plan preparation was renamed, each with its current name. */

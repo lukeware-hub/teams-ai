@@ -4,7 +4,7 @@ import path from 'node:path';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { assumptionBullets } from './plan-shape.js';
 import { planFileOf } from './plan-file.js';
-import type { ArchitectureOutput, SuggestOutput } from '../agents/outputs.js';
+import type { ArchitectureOutput, SpecsReviewOutput, SuggestOutput } from '../agents/outputs.js';
 import { Architecture } from '../contracts/architecture.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { StepOutcome } from '../runner/step.js';
@@ -22,11 +22,12 @@ import { documentCounts } from '../knowledge/doc-graph.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { reshapeBackup } from './reshape.js';
+import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
-import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeDerived, writeDoc, type DocFile, type Draft } from './draft.js';
+import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, COVERED_REASON } from './patches.js';
@@ -35,7 +36,9 @@ import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { renderSpecsMd } from './specs-md.js';
+import { SPECS_REVIEWERS, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { preparePlans } from './plan-prepare.js';
@@ -199,6 +202,8 @@ export interface Snapshot {
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
+  /** specs.md is written from the current backlog and PO and SM both approved it: the final review may go on. */
+  specsApproved: boolean;
 }
 
 /**
@@ -235,6 +240,9 @@ export interface ClosingSummary {
   assumptions: string[];
   summaryHash: string;
 }
+
+/** The verdict approves the text with this hash. */
+const approvedAt = (v: SpecsVerdict | undefined, hash: string): boolean => v?.specsHash === hash && v.verdict === 'approved';
 
 export class RefineSession {
   private running: Promise<void> | null = null;
@@ -400,7 +408,7 @@ export class RefineSession {
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(),...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
@@ -528,7 +536,12 @@ export class RefineSession {
       return;
     }
     if ((this.state.passedStages ?? []).includes(file)) return;
-    const text = await readDoc(this.deps.draft, file);
+    await this.keepPassed(file, await readDoc(this.deps.draft, file));
+  }
+
+  /** Writes `text` as the text passed to a stage: the reprocess goes back to it. */
+  private async keepPassed(file: DocFile, text: string): Promise<void> {
+    const kept = path.posix.join(this.deps.draft.root, 'passed', file);
     await fs.mkdir(path.posix.dirname(kept), { recursive: true });
     await fs.writeFile(kept, text);
     await this.journal.fact(RefineEvent.StagePassed, { file, hash: sha256(text) });
@@ -583,6 +596,16 @@ export class RefineSession {
     }
   }
 
+  /** "Não se aplica" on design.md: the text is written and kept as passed; a repository session adds it to the graph and moves on at once. */
+  async markNotApplicable(): Promise<void> {
+    this.guard();
+    if (this.state.stages === true) this.guardStage('design.md');
+    await writeDoc(this.deps.draft, 'design.md', NOT_APPLICABLE_DESIGN);
+    await this.journal.fact(RefineEvent.DocEdited, { file: 'design.md', hash: sha256(NOT_APPLICABLE_DESIGN), source: 'human' });
+    await this.keepPassed('design.md', NOT_APPLICABLE_DESIGN);
+    if (this.state.stages === true && this.state.repositories === true) await this.continueStage('design.md');
+  }
+
   /** The final review puts a finished document in the graph as it is now: the review, question and suggestion gates do not apply. */
   async addToGraph(file: DocFile): Promise<void> {
     this.guard();
@@ -602,6 +625,7 @@ export class RefineSession {
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardStagesDone();
     if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
+    if (this.state.backlog?.enabled && !this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de seguir.');
     await this.journal.fact(RefineEvent.ReviewClosed, {});
   }
 
@@ -947,6 +971,72 @@ export class RefineSession {
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
+  }
+
+  /** The rendered specs.md of the detailed backlog and its hash, once the backlog is ready; null before that. */
+  private specsOf(): { text: string; hash: string } | null {
+    const b = this.state.backlog;
+    if (this.state.status !== 'ready' || !b?.enabled || b.detail !== true || b.items.length === 0) return null;
+    const text = renderSpecsMd(this.deps.draft.specId, b);
+    return { text, hash: sha256(text) };
+  }
+
+  /** specs.md is written for this text and both PO and SM approved it. */
+  private specsSettled(hash: string): boolean {
+    return this.state.specsMd?.hash === hash && SPECS_REVIEWERS.every((role) => approvedAt(this.state.specsReview?.[role], hash));
+  }
+
+  /** The gate of the final review: specs.md is written from the current backlog and approved by PO and SM. */
+  specsApproved(): boolean {
+    const specs = this.specsOf();
+    return specs !== null && this.specsSettled(specs.hash);
+  }
+
+  /** Opens the specs check when the backlog is ready and a reviewer still owes its approval of this text; null when nothing is due. */
+  startSpecs(): Promise<void> | null {
+    if (this.busy || this.starting || this.syncing || this.discarding || this.state.status === 'started') return null;
+    const specs = this.specsOf();
+    if (!specs || this.specsSettled(specs.hash)) return null;
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.timedSpecs(ctl, specs).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  /** Writes specs.md and reads it back, then PO and SM check it; a failure is journaled for each reviewer, never thrown. */
+  private async timedSpecs(ctl: AbortController, specs: { text: string; hash: string }): Promise<void> {
+    try {
+      await writeSpecsMd(this.deps.draft, specs.text);
+      if (sha256((await readSpecsMd(this.deps.draft)) ?? '') !== specs.hash) throw new Error('o arquivo não foi encontrado depois de gravado');
+      await this.journal.fact(RefineEvent.SpecsMdWritten, { hash: specs.hash, bytes: Buffer.byteLength(specs.text) });
+      const docs = await this.docsNow();
+      const pending = SPECS_REVIEWERS.filter((role) => !approvedAt(this.state.specsReview?.[role], specs.hash));
+      await Promise.all(pending.map((role) => this.reviewSpecs(role, specs, docs, ctl)));
+    } catch (err) {
+      const reason = `O specs.md não pôde ser gravado: ${err instanceof Error ? err.message : String(err)}. ${TRY_AGAIN}`;
+      for (const role of SPECS_REVIEWERS) await this.journal.fact(RefineEvent.SpecsReviewed, { role, specsHash: specs.hash, verdict: 'failed', findings: [], reason });
+    }
+  }
+
+  /** One reviewer's check of specs.md; its verdict is journaled, or `failed` when the step did not finish. */
+  private async reviewSpecs(role: SpecsReviewer, specs: { text: string; hash: string }, docs: Record<DocFile, string>, ctl: AbortController): Promise<void> {
+    const out = (await this.deps.runAgent<'specs-review'>(
+      {
+        kind: 'specs-review',
+        role,
+        pack: fitPackBudget(specsReviewPack({ role, specHash: specs.hash, specsMd: specs.text, docs: { projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'] } })),
+        cwd: this.deps.draft.root,
+        phase: 'refine',
+        taskId: null,
+        attempt: this.state.cycle,
+      },
+      { journal: this.journal, stepDir: this.deps.draft.steps, specHash: specs.hash, signal: ctl.signal },
+    )) as StepOutcome<SpecsReviewOutput>;
+    const verdict = out.ok ? { verdict: out.value.verdict, findings: out.value.findings, reason: null } : { verdict: 'failed', findings: [], reason: `A análise do ${role.toUpperCase()} não terminou. ${TRY_AGAIN}` };
+    await this.journal.fact(RefineEvent.SpecsReviewed, { role, specsHash: specs.hash, ...verdict });
   }
 
   /** One evaluation cycle; the caller holds the lock, since `running` is set before this runs. */

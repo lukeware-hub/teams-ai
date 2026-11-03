@@ -9,7 +9,7 @@ import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { Architecture } from '../contracts/architecture.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture', 'specs-review'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -371,6 +371,10 @@ const ArchitectureQuestion = z.object({ text: z.string().min(1), context: z.stri
 export const ArchitectureOutput = Architecture.extend({ specHash, questions: keepValid(ArchitectureQuestion) });
 export type ArchitectureOutput = z.infer<typeof ArchitectureOutput>;
 
+/** The PO's or the SM's verdict on specs.md: `approved` only when no check fails; each failed check is one finding. */
+export const SpecsReviewOutput = z.object({ specHash, verdict: z.enum(['approved', 'rejected']), findings: z.array(z.string().min(1)).max(30) });
+export type SpecsReviewOutput = z.infer<typeof SpecsReviewOutput>;
+
 export const ChatOutput = z.object({
   specHash,
   answer: z.string().min(1),
@@ -411,6 +415,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   speckit: SpeckitOutput,
   converge: ConvergeOutput,
   architecture: ArchitectureOutput,
+  'specs-review': SpecsReviewOutput,
 };
 
 export type OutputOf<K extends StepKind> = z.infer<(typeof OUTPUT_SCHEMAS)[K]>;

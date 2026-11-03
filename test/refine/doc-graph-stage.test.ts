@@ -3,10 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { createNewProject, draftPaths, writeDoc } from '../../server/refine/draft.js';
+import { createNewProject, draftPaths, readDoc, writeDoc, type DocFile } from '../../server/refine/draft.js';
 import { DOC_STAGES } from '../../server/refine/doc-stages.js';
 import { RefineSession } from '../../server/refine/session.js';
-import { makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
+import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
 let root = '';
 let ws: Workspace;
@@ -28,12 +28,12 @@ async function extractDocs(dir: string, outDir: string, tokens = { input_tokens:
   await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], ...tokens }));
 }
 
-/** Every stage reviewed and continued in order, the agents approving each one. */
-async function finishAllStages(s: RefineSession): Promise<void> {
+/** The given stages reviewed and continued in order, the agents approving each one. */
+async function finishStages(s: RefineSession, files: readonly DocFile[] = DOC_STAGES): Promise<void> {
   script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO)), refineOut(green(PO))];
   script['refine/sm'] = [refineOut(green(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']))];
   script['refine/front'] = [refineOut([])];
-  for (const file of DOC_STAGES) {
+  for (const file of files) {
     await s.evaluateStage(file);
     await s.continueStage();
     await s.settled();
@@ -117,7 +117,7 @@ describe('document graph in the stages', () => {
   it('refuses the backlog while a finished document is out of the graph, since its last edit', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
-    await finishAllStages(s);
+    await finishStages(s);
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
     await expect(s.enableBacklog()).rejects.toThrow(/Adicione os cinco documentos ao Graphify antes: falta flow\.md/);
@@ -127,7 +127,7 @@ describe('document graph in the stages', () => {
   it('puts an edited finished document back in the graph as it is, without a review first', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
-    await finishAllStages(s);
+    await finishStages(s);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
     expect(s.state.graphed).not.toContain('flow.md');
     await s.addToGraph('flow.md');
@@ -140,8 +140,36 @@ describe('document graph in the stages', () => {
   it('refuses to add a document that is already in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
-    await finishAllStages(s);
+    await finishStages(s);
     await expect(s.addToGraph('flow.md')).rejects.toThrow(/flow\.md já está no Graphify/);
+    await s.close();
+  });
+
+  it('marks the design as not applicable: the mark is written, the document goes to the graph and the stage ends at once', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishStages(s, DOC_STAGES.slice(0, 4));
+    await s.markNotApplicable();
+    await s.settled();
+    expect(await readDoc(draft(), 'design.md')).toMatch(/^Não se aplica/);
+    expect(s.state.graphed).toContain('design.md');
+    expect(s.state.doneStages).toEqual([...DOC_STAGES]);
+    await s.close();
+  });
+
+  it('reprocessing a not applicable design keeps the mark: the agents improve it and no reshape writes the template', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishStages(s, DOC_STAGES.slice(0, 4));
+    await s.markNotApplicable();
+    await s.settled();
+    calls.length = 0;
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.reprocessStage('design.md');
+    await s.settled();
+    expect(calls.some((c) => c.kind === 'suggest')).toBe(false);
+    expect(calls.some((c) => c.kind === 'refine' && c.role === 'po')).toBe(true);
+    expect(await readDoc(draft(), 'design.md')).toMatch(/^Não se aplica/);
     await s.close();
   });
 

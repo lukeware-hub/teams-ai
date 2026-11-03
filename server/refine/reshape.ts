@@ -8,6 +8,7 @@ import { dropCoveredPatches, type CycleJournal, type RunAgent } from './cycle.js
 import { readDoc, writeDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
+import { isNotApplicable } from './not-applicable.js';
 import type { ReshapeRow } from './state.js';
 import { reshapePack, SUGGEST_ROLE, TEMPLATE, type SuggestFile } from './suggest.js';
 import { isUntouched, shapeProblem } from './template-shape.js';
@@ -35,6 +36,8 @@ export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFi
   if (file === 'flow.md') return;
   const { draft, journal } = deps;
   const before = docs[file];
+  // Marked not applicable: the agents improve the mark's text, and it keeps its own shape.
+  if (isNotApplicable(file, before)) return;
   // Still the template itself, or already in its shape: nothing to rewrite.
   if (isUntouched(file, before, draft.projectId) || shapeProblem(file, before, before, draft.projectId) === null) return;
   // The owner undid this layout: the text stays as the owner left it until the owner changes it.

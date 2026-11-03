@@ -6,6 +6,7 @@ import { refineRoutes } from '../../server/api/refine-routes.js';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
 import { startApi } from '../../server/api/server.js';
+import { sha256 } from '../../server/contracts/hash.js';
 import { execCommand } from '../../server/exec/command.js';
 import { readUserConfig } from '../../server/onboarding/config-store.js';
 import type { RunAgent } from '../../server/refine/cycle.js';
@@ -879,6 +880,48 @@ describe('refine api', () => {
     expect(await fs.readFile(`${home}/runs/hello-app--hello-app-001--run-1/pid`, 'utf8')).toBe('5001');
     expect((await snapshot()).state).toMatchObject({ status: 'started', runId: 'hello-app--hello-app-001--run-1' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(409);
+  });
+
+  it('specs.md: written from the detailed backlog and read back; PO and SM check it, and only a rejected reviewer runs again', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    expect((await snapshot()).state.status).toBe('ready');
+
+    const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs.md`;
+    const reviewsBefore = calls.filter((c) => c.kind === 'specs-review').length;
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
+    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
+    await settle();
+    const written = await fs.readFile(file, 'utf8');
+    expect(written).toContain('## base: Base');
+    const first = (await snapshot()).state;
+    expect(first.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
+    expect(first.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }, sm: { verdict: 'approved' } });
+    expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(2);
+
+    // The rejected PO runs again on the next visit; the approved SM does not.
+    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
+    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
+    await settle();
+    const reviews = calls.filter((c) => c.kind === 'specs-review');
+    expect(reviews.length - reviewsBefore).toBe(3);
+    expect(reviews.at(-1)).toMatchObject({ role: 'po' });
+    expect((await snapshot()).state.specsReview).toMatchObject({ po: { verdict: 'approved' }, sm: { verdict: 'approved' } });
+    expect((await snapshot()).specsApproved).toBe(true);
+
+    // Both approved for this text: a visit starts nothing.
+    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false });
+    expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(3);
   });
 
   it('two concurrent start requests spawn exactly one run', async () => {
