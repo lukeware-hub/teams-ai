@@ -25,6 +25,18 @@ export function lastEvaluationText(evaluation: { startedAt: string; endedAt: str
   return Number.isNaN(ms) ? '—' : formatDuration(ms);
 }
 
+/** The time since `since`, counting each second; empty without a start. */
+export function Elapsed({ since }: { since: string | null | undefined }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [since]);
+  return since ? <span className="tabular-nums">{elapsedText(since, now)}</span> : null;
+}
+
 const tones = { accent: 'border-accent-line bg-accent-soft text-accent-ink', good: 'border-good-line bg-good-soft text-good', bad: 'border-warn-line bg-warn-soft text-warn' } as const;
 
 /** A process in progress in a colored box: a spinner, its title, the time since `since`, and its lines. */

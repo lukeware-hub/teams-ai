@@ -24,7 +24,7 @@ import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
-import { lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -1106,7 +1106,7 @@ export function RefinementView(p: ViewProps) {
             <h3 data-testid="refinement-stage-review-title" className="m-0 text-[1rem] font-semibold text-ink">Revisão da etapa</h3>
             <span data-testid="refinement-stage-count" className={`count-pill ${count > 0 ? 'tone-warn' : 'tone-good'}`}>{count === 1 ? '1 pendência' : `${count} pendências`}</span>
           </div>
-          {locked && <p data-testid="refinement-stage-locked" className="m-0 text-[0.8125rem] text-ink-soft" role="status">Avaliação em andamento.</p>}
+          {locked && <p data-testid="refinement-stage-locked" className="m-0 text-[0.8125rem] text-ink-soft" role="status">Avaliação em andamento{st.evaluation?.startedAt ? <> · <Elapsed since={st.evaluation.startedAt} /></> : '.'}</p>}
           <DocScoreInset label={docLabel[file]} doc={score}>
             {confidentialProject ? (
               <p data-testid="refinement-stage-confidential" className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>

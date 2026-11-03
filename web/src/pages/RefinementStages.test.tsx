@@ -338,3 +338,13 @@ describe('the summary says what the agents did on their own', () => {
     expect(screen.queryByTestId('final-auto-applied')).toBeNull();
   });
 });
+
+describe('the stage review panel while the agents work', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
+
+  it('counts the time of the running review next to its notice', () => {
+    const startedAt = new Date(Date.now() - 65_000).toISOString();
+    renderView(project({ stages: true, status: 'evaluating', evaluation: { startedAt, endedAt: null } } as never));
+    expect(screen.getByTestId('refinement-stage-locked').textContent).toMatch(/Avaliação em andamento · 01:0\d/);
+  });
+});
