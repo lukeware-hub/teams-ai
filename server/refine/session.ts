@@ -1096,15 +1096,22 @@ export class RefineSession {
   /** The check of specs.md, and when a reviewer rejects it, up to MAX_SPECS_REPAIRS rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
   private async specsRounds(ctl: AbortController, first: { text: string; hash: string }): Promise<void> {
     let specs = first;
+    let repaired = false;
     for (;;) {
-      await this.timedSpecs(ctl, specs);
-      const feedback = ctl.signal.aborted || (this.state.specsRepairs ?? 0) >= MAX_SPECS_REPAIRS ? null : this.specsFeedbackOf(specs.hash);
-      if (!feedback) return;
+      const repairable = () => ((this.state.specsRepairs ?? 0) < MAX_SPECS_REPAIRS ? this.specsFeedbackOf(specs.hash) : null);
+      // A text a reviewer already rejected goes straight back to the agents; any other is checked first, and so is the one a repair just made.
+      let feedback = repaired ? null : repairable();
+      if (!feedback) {
+        await this.timedSpecs(ctl, specs);
+        feedback = repairable();
+      }
+      if (!feedback || ctl.signal.aborted) return;
       await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
       await this.timedChain(ctl);
       const next = this.specsOf();
       if (!next || this.specsSettled(next.hash)) return;
       specs = next;
+      repaired = true;
     }
   }
 
