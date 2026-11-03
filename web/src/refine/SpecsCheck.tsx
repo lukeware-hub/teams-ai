@@ -13,9 +13,12 @@ export const currentReview = (reviews: Reviews, role: Role, hash: string | undef
   hash !== undefined && reviews[role]?.specsHash === hash ? reviews[role] : undefined;
 
 /** Why the final review cannot go on yet, in plain words; null once specs.md is written and PO and SM approved it. */
-export function specsBlockReason(status: string, hash: string | undefined, reviews: Reviews): string | null {
+export function specsBlockReason(status: string, hash: string | undefined, reviews: Reviews, running = true): string | null {
   if (status !== 'ready') return 'Aguardando o backlog ficar pronto';
-  if (hash === undefined) return 'Gerando o specs.md';
+  if (hash === undefined) {
+    if (running) return 'Gerando o specs.md';
+    return reviews.po?.verdict === 'failed' || reviews.sm?.verdict === 'failed' ? 'A geração do specs.md falhou. Use Tentar de novo.' : 'Preparando o specs.md';
+  }
   const missing = (['po', 'sm'] as const).filter((role) => currentReview(reviews, role, hash)?.verdict !== 'approved');
   return missing.length === 0 ? null : `Falta a aprovação do ${missing.map((role) => SHORT_ROLE[role]).join(' e do ')}`;
 }
@@ -23,7 +26,7 @@ export function specsBlockReason(status: string, hash: string | undefined, revie
 const stamp = (at: string): string => new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 /** The specs.md check in the verification panel: the file, what PO and SM said of it, and when. */
-export function SpecsCheck({ specsMd, reviews, busy }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean }) {
+export function SpecsCheck({ specsMd, reviews, busy, onRetry }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void }) {
   const hash = specsMd?.hash;
   const bothFailed = reviews.po?.verdict === 'failed' && reviews.sm?.verdict === 'failed';
   const fileStatus = hash !== undefined ? 'Gerado' : busy ? 'Gerando' : bothFailed ? 'Falhou' : 'Aguardando o backlog';
@@ -54,6 +57,9 @@ export function SpecsCheck({ specsMd, reviews, busy }: { specsMd: { hash: string
           );
         })}
       </ul>
+      {!busy && onRetry && (hash === undefined || current.some((c) => c.review?.verdict === 'failed')) && (
+        <button type="button" data-testid="specs-check-retry" className="secondary mt-[0.6rem] h-10 px-[0.8rem]" onClick={onRetry}>Tentar de novo</button>
+      )}
       <p data-testid="specs-check-last" className="m-0 mt-[0.6rem] text-ink-soft">{lastAt ? `Última validação: ${stamp(lastAt)}` : 'Nenhuma validação ainda.'}</p>
     </section>
   );

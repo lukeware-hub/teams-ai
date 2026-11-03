@@ -1084,6 +1084,8 @@ export class RefineSession {
 
   /** Writes specs.md and reads it back, then PO and SM check it; a failure is journaled for each reviewer, never thrown. */
   private async timedSpecs(ctl: AbortController, specs: { text: string; hash: string }): Promise<void> {
+    // An open evaluation spans the file and both checks, so the page shows the work, its timer and its end like any other.
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await writeSpecsMd(this.deps.draft, specs.text);
       if (sha256((await readSpecsMd(this.deps.draft)) ?? '') !== specs.hash) throw new Error('o arquivo não foi encontrado depois de gravado');
@@ -1094,6 +1096,8 @@ export class RefineSession {
     } catch (err) {
       const reason = `O specs.md não pôde ser gravado: ${err instanceof Error ? err.message : String(err)}. ${TRY_AGAIN}`;
       for (const role of SPECS_REVIEWERS) await this.journal.fact(RefineEvent.SpecsReviewed, { role, specsHash: specs.hash, verdict: 'failed', findings: [], reason });
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
   }
 

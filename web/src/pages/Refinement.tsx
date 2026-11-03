@@ -26,7 +26,7 @@ import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
-import { SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
+import { currentReview, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
@@ -421,9 +421,27 @@ export function RefinementView(p: ViewProps) {
     if (newProject && onStage) setTab((current) => (before === undefined || current === before ? onStage : current));
   }, [onStage, newProject]);
   // Each arrival at the backlog checks specs.md again; the server starts nothing when both approvals stand.
+  // The check also starts by itself as soon as the server is free: arriving while an evaluation ran used to leave it waiting for ever.
+  // A reviewer's real verdict (even a rejection) is never asked again on its own, and a failing check is tried twice at most.
+  const specsTries = useRef<Record<string, number>>({});
+  const arrivedAt = useRef('');
   useEffect(() => {
-    if (step === 'backlog' && backlogOn) void p.onCheckSpecs?.();
-  }, [step, backlogOn]);
+    const arrival = `${step}:${backlogOn}`;
+    const arrived = arrivedAt.current !== arrival;
+    arrivedAt.current = arrival;
+    if (step !== 'backlog' || !backlogOn) return;
+    if (arrived) {
+      void p.onCheckSpecs?.();
+      return;
+    }
+    if (st.status !== 'ready' || evaluating || snap.specsApproved === true) return;
+    const hash = st.specsMd?.hash;
+    const owed = hash === undefined || (['po', 'sm'] as const).some((role) => { const verdict = currentReview(st.specsReview ?? {}, role, hash)?.verdict; return verdict === undefined || verdict === 'failed'; });
+    const key = String(hash);
+    if (!owed || (specsTries.current[key] ?? 0) >= 2) return;
+    specsTries.current[key] = (specsTries.current[key] ?? 0) + 1;
+    void p.onCheckSpecs?.();
+  }, [step, backlogOn, st.status, evaluating, st.specsMd?.hash]);
   const stageStep = newProject ? stageAction(st) : null;
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
   const backlogBlock = (note: ReactNode) => (
@@ -917,7 +935,7 @@ export function RefinementView(p: ViewProps) {
   /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} />}
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} onRetry={() => void p.onCheckSpecs?.()} />}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
           <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
@@ -1296,7 +1314,7 @@ export function RefinementView(p: ViewProps) {
   );
   // Continuar waits for specs.md to be written and approved by PO and SM; until then it stays visible and disabled, with the reason beside it.
   const specsGate = backlogOn && snap.specsApproved !== true;
-  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}) : null;
+  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating) : null;
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>

@@ -388,3 +388,28 @@ describe('several questions of a stage on screen', () => {
     expect((screen.getByTestId('answer-po-s1-0') as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('specs.md starts by itself in the backlog step', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
+  const snapOf = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, ...over } as never);
+  const view = (snap: Snapshot, h: ReturnType<typeof handlers> & { onCheckSpecs: () => void }) => <MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...h} /></MemoryRouter>;
+
+  it('asks again once the evaluation that was running when the step opened has ended', () => {
+    const h = { ...handlers(), onCheckSpecs: vi.fn() };
+    const running = snapOf({ status: 'evaluating', evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: null } });
+    const r = render(view(running, h));
+    expect(h.onCheckSpecs).toHaveBeenCalledTimes(1);
+    r.rerender(view(snapOf({ status: 'ready', evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: '2026-11-03T10:01:00Z' } }), h));
+    expect(h.onCheckSpecs).toHaveBeenCalledTimes(2);
+  });
+
+  it('never asks again on its own for a text a reviewer already rejected', () => {
+    const h = { ...handlers(), onCheckSpecs: vi.fn() };
+    const reviews = { po: { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null }, sm: { specsHash: 'h', verdict: 'approved', findings: [], reason: null, at: null } };
+    const ready = (endedAt: string | null) => snapOf({ status: endedAt === null ? 'evaluating' : 'ready', specsMd: { hash: 'h', bytes: 1 }, specsReview: reviews, evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt } });
+    const r = render(view(ready(null), h));
+    r.rerender(view(ready('2026-11-03T10:01:00Z'), h));
+    expect(h.onCheckSpecs).toHaveBeenCalledTimes(1);
+  });
+});

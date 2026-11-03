@@ -894,6 +894,8 @@ describe('refine api', () => {
     expect(first.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
     expect(first.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }, sm: { verdict: 'approved' } });
     expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(2);
+    // The file and both checks ran inside an open evaluation, which has ended now.
+    expect(first.evaluation?.endedAt).toBeTruthy();
 
     // The rejected PO runs again on the next visit; the approved SM does not.
     script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];

@@ -30,3 +30,12 @@ describe('the specs.md gate', () => {
     expect(currentReview({ po: verdict('h1', 'failed') }, 'po', 'h2')).toBeUndefined();
   });
 });
+
+describe('the specs.md step says what is true', () => {
+  it('says it is being prepared when nothing runs yet, and that it failed when it did', () => {
+    expect(specsBlockReason('ready', undefined, {}, false)).toBe('Preparando o specs.md');
+    const failed = { po: { specsHash: 'h', verdict: 'failed' as const, findings: [], reason: 'x', at: null } };
+    expect(specsBlockReason('ready', undefined, failed, false)).toBe('A geração do specs.md falhou. Use Tentar de novo.');
+    expect(specsBlockReason('ready', undefined, failed, true)).toBe('Gerando o specs.md');
+  });
+});
