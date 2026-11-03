@@ -12,14 +12,21 @@ import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 import { validateArchitecture } from './architecture-validate.js';
 import { DOC_STAGES } from './doc-stages.js';
 import type { DocFile } from './draft.js';
+import { decisionsSpan } from './decisions.js';
 import { normHeading } from './sections.js';
 
 /** The architecture of one project: a monolith is one repository; microservices list one repository per service. */
 export const ARCHITECTURE_DOC = 'architecture';
 
-/** The hash of the five documents, as the architecture was decided on them; an edit of any of them changes it. */
+/** A document without its decisions section: the owner's answers to the architecture's own questions land there and must not outdate it. */
+const withoutDecisions = (text: string): string => {
+  const span = decisionsSpan(text);
+  return (span ? text.slice(0, span.start) + text.slice(span.end) : text).trimEnd();
+};
+
+/** The hash of the five documents, as the architecture was decided on them; an edit of any of them, except the recorded decisions, changes it. */
 export function docsHashOf(docs: Readonly<Record<DocFile, string>>): string {
-  return sha256(canonicalJson(DOC_STAGES.map((file) => [file, sha256(docs[file])])));
+  return sha256(canonicalJson(DOC_STAGES.map((file) => [file, sha256(withoutDecisions(docs[file]))])));
 }
 
 /** The services a stamped project gets from its architecture: its repositories, or none for a monolith (no services, no platform). */
