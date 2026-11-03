@@ -17,9 +17,8 @@ const base = {
   rejected: [],
 } as unknown as Parameters<typeof refinePack>[0];
 
-describe('refinePack of a stamped draft', () => {
-  it('asks the product owner to read the documents with the brainstorming skill only in a stamped draft', () => {
-    expect(refinePack({ ...base, role: 'po', stamped: true }).feedback).toContain('superpowers:brainstorming');
+describe('refinePack of the product owner', () => {
+  it('does not make the product owner load the brainstorming skill, which only asks the person questions', () => {
     expect(refinePack({ ...base, role: 'po' }).feedback).not.toContain('superpowers:brainstorming');
   });
 });

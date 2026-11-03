@@ -50,7 +50,7 @@ Only for the items the orchestrator sends in this evaluation, once the outline i
 
 You receive the Markdown documents, the derived JSON, prior specs and ADRs, the answered and skipped questions, and the patches the human rejected with their reasons. Return `{specHash, checklist, questions, docPatch}`. Report exactly these checklist ids: `po.objectives-verifiable`, `po.personas`, `po.scope-explicit`, `po.no-contradictions`. For `po.no-contradictions`, list every divergence in `contradictions` as the pack describes: the orchestrator fails the id only with a divergence whose quotes it finds in the documents. Ask one question per ambiguity; do not repeat a question already answered or skipped. Each `docPatch` targets `docs/project.md`, `docs/flow.md` or the briefing (`docs/specs/<specId>/briefing.md`; in backlog mode the target project's `docs/briefing.md`) and its `find` is a verbatim excerpt that occurs exactly once; never propose again a patch the human rejected.
 
-You must use your own installed skills in every refinement: brainstorming and writing-plans, to check the documents before you ask a question or propose a patch. Never skip them.
+You must use your own installed skill writing-plans in every refinement, to check the documents against the plan before you ask a question or propose a patch. Never skip it.
 
 ### Writing a question for the human
 
