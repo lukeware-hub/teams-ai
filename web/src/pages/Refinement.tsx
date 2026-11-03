@@ -1279,11 +1279,13 @@ export function RefinementView(p: ViewProps) {
     <>
       {architectureNote && <p role="alert" data-testid="architecture-note" className="m-0 basis-full text-[0.8125rem] text-warn">{architectureNote}</p>}
       <ActionButton data-testid="architecture-continue" className="primary" disabled={locked} onClick={() => {
+        if (backlogOn) return goTo('backlog');
         const block = architectureBlock();
         setArchitectureNote(block);
         if (block) return;
-        if (docsRepoNoBacklog) p.onEnableBacklog?.();
-        else goTo('backlog');
+        if (!docsRepoNoBacklog) return goTo('backlog');
+        // The button shows its spinner until the backlog is created; the page opens the backlog only when that succeeded.
+        return Promise.resolve(p.onEnableBacklog?.()).then((ok) => { if (ok === true) goTo('backlog'); });
       }} icon={<Icon name="arrow-right" size={16} />}>
         Quebrar o backlog por repositório
       </ActionButton>
@@ -1429,13 +1431,15 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     </main>
   );
   // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
+  // Resolves to whether the action succeeded, so a caller moves on only after it.
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
     setBusyNotice(false);
-    return f().catch((e: Error) => {
+    return f().then(() => true, (e: Error) => {
       if (isBusyError(e)) setBusyNotice(true);
       else setError(e.message);
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
+      return false;
     });
   };
   // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.

@@ -694,14 +694,38 @@ describe('the architecture step names what the documentation repository does', (
     expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('the architecture button goes on without a named owner: the server picks the owner, so the click creates the backlog', () => {
+  it('the architecture button creates the backlog, then opens it', async () => {
+    window.history.replaceState(null, '', '/?etapa=arquitetura');
     const h = on();
+    h.onEnableBacklog.mockResolvedValue(true);
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
+    expect(screen.queryByTestId('architecture-note')).toBeNull();
+    await waitFor(() => expect(window.location.search).toContain('etapa=backlog'));
+  });
+
+  it('the architecture button shows the spinner while the backlog is being created, and stays when it is refused', async () => {
+    window.history.replaceState(null, '', '/?etapa=arquitetura');
+    const h = on();
+    let finish!: (ok: boolean) => void;
+    h.onEnableBacklog.mockReturnValue(new Promise<boolean>((resolve) => { finish = resolve; }));
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
     const button = screen.getByTestId('architecture-continue') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
     fireEvent.click(button);
-    expect(h.onEnableBacklog).toHaveBeenCalled();
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect(button.disabled).toBe(true);
+    finish(false);
+    await waitFor(() => expect(button.getAttribute('aria-busy')).toBeNull());
+    expect(window.location.search).toContain('etapa=arquitetura');
+  });
+
+  it('with the backlog already on, the architecture button opens it even when the documents changed after the decision', () => {
+    window.history.replaceState(null, '', '/?etapa=arquitetura');
+    const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, architectureStale: true })} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('architecture-continue'));
     expect(screen.queryByTestId('architecture-note')).toBeNull();
+    expect(window.location.search).toContain('etapa=backlog');
   });
 
   it('the architecture button asks for a decision on the click when none exists, and does not move', () => {
