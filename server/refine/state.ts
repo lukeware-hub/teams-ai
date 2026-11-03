@@ -215,6 +215,10 @@ export interface RefineState {
   specsFeedback?: Record<string, string[]>;
   /** The automatic repairs of specs.md since it was last approved. */
   specsRepairs?: number;
+  /** The text of specs.md the team already asked the owner about, so it asks once per text. */
+  specsAsked?: string;
+  /** The text of specs.md the owner chose to follow with although a reviewer rejected it. */
+  specsOwnerApproved?: string;
   /** The summary the owner authorized the development on, by its hash; absent until that authorization. */
   authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
@@ -482,6 +486,14 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         delete s.specsFeedback;
       }
       break;
+    case RefineEvent.SpecsQuestionsAsked:
+      s.specsAsked = String(d.specsHash);
+      s.questions = [...s.questions, ...(d.questions as Question[]).map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
+      s.status = computeStatus(s);
+      break;
+    case RefineEvent.SpecsOwnerApproved:
+      s.specsOwnerApproved = String(d.specsHash);
+      break;
     case RefineEvent.SpecsFeedback:
       s.specsFeedback = d.feedback as Record<string, string[]>;
       s.specsRepairs = (s.specsRepairs ?? 0) + 1;
@@ -583,6 +595,12 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       }
       // The owner's answer is a decision the plan files must follow; an answer the PO or the SM took from the documents comes with a new derivation.
       if (e.type === RefineEvent.QuestionAnswered && d.by === undefined) markSpeckitStale(s);
+      // Once every question about specs.md is answered, the agents get their repairs again, with the owner's decisions in the documents.
+      if (q?.origin === 'specs' && !s.questions.some((x) => x.origin === 'specs' && x.status === 'pending')) {
+        s.specsRepairs = 0;
+        delete s.specsFeedback;
+        s.specsAsked = undefined;
+      }
       s.status = computeStatus(s);
       break;
     }

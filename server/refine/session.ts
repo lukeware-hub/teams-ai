@@ -7,6 +7,8 @@ import { planFileOf } from './plan-file.js';
 import type { ArchitectureOutput, SpecsReviewOutput, SuggestOutput } from '../agents/outputs.js';
 import { Architecture } from '../contracts/architecture.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
+import type { z } from 'zod';
+import type { RefineOutput } from '../agents/outputs.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { Project } from '../contracts/project.js';
 import { freezeSpec, providedSecretNames, Spec, type ExternalDependency } from '../contracts/spec.js';
@@ -30,7 +32,8 @@ import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
-import { applyPatch, COVERED_REASON } from './patches.js';
+import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
+import { patchChangesScope } from './scope-guard.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
@@ -38,7 +41,7 @@ import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
-import { SPECS_REVIEWERS, specsReviewPack, type SpecsReviewer } from './specs-review.js';
+import { SPECS_REVIEWERS, specsAskPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { preparePlans } from './plan-prepare.js';
@@ -1070,7 +1073,94 @@ export class RefineSession {
 
   /** specs.md is written for this text and both PO and SM approved it. */
   private specsSettled(hash: string): boolean {
-    return this.state.specsMd?.hash === hash && SPECS_REVIEWERS.every((role) => approvedAt(this.state.specsReview?.[role], hash));
+    return this.state.specsMd?.hash === hash && (this.state.specsOwnerApproved === hash || SPECS_REVIEWERS.every((role) => approvedAt(this.state.specsReview?.[role], hash)));
+  }
+
+  /** The owner follows with this specs.md although a reviewer rejected it: the decision is theirs, and it stands for this text only. */
+  async approveSpecsAnyway(): Promise<void> {
+    this.guard();
+    const hash = this.state.specsMd?.hash;
+    if (hash === undefined) throw new ConflictError('O specs.md ainda não foi gerado para este backlog.');
+    if (this.specsSettled(hash)) throw new ConflictError('O specs.md já está aprovado.');
+    // The owner decides: the questions the team asked about this text are closed with it.
+    for (const q of this.state.questions.filter((x) => x.origin === 'specs' && x.status === 'pending')) await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
+    await this.journal.fact(RefineEvent.SpecsOwnerApproved, { specsHash: hash });
+  }
+
+  /** The owner's last answer about specs.md: the backlog is detailed again with the decisions, then the text is checked. Null while a question is still open. */
+  continueSpecsAfterAnswers(): Promise<void> | null {
+    if (this.busy || this.state.questions.some((q) => q.origin === 'specs' && q.status === 'pending')) return null;
+    const ctl = (this.abortCtl = new AbortController());
+    const run = (async () => {
+      await this.timedChain(ctl);
+      const next = this.specsOf();
+      // The text after the owner's decision is checked first, even when it came out the same as the one rejected.
+      if (next && !this.specsSettled(next.hash)) await this.specsRounds(ctl, next, true);
+    })().finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run;
+    return run;
+  }
+
+  /** The PO's turn when the repairs did not settle specs.md: it fixes in the documents what they already settle, and asks the owner the rest, as choices with a recommendation. False when the agent gave no answer. */
+  async askAboutSpecs(): Promise<boolean> {
+    this.guard();
+    const specs = this.specsOf();
+    if (!specs || this.state.specsMd?.hash !== specs.hash) throw new ConflictError('O specs.md ainda não foi gerado para este backlog.');
+    const ctl = (this.abortCtl = new AbortController());
+    const run = this.askRound(ctl, specs).finally(() => {
+      this.running = null;
+      this.abortCtl = null;
+    });
+    this.running = run.then(() => undefined);
+    return run;
+  }
+
+  private async askRound(ctl: AbortController, specs: { text: string; hash: string }): Promise<boolean> {
+    const findings = SPECS_REVIEWERS.flatMap((role) => {
+      const review = this.state.specsReview?.[role];
+      return review?.specsHash === specs.hash && review.verdict === 'rejected' ? review.findings.map((text) => ({ role, text })) : [];
+    });
+    if (findings.length === 0) return false;
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
+    try {
+      const cycle = this.state.cycle;
+      const out = (await this.deps.runAgent<'refine'>(
+        { kind: 'refine', role: 'po', pack: fitPackBudget(specsAskPack({ specHash: specs.hash, specsMd: specs.text, findings })), cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: cycle },
+        { journal: this.journal, stepDir: this.deps.draft.steps, specHash: specs.hash, signal: ctl.signal },
+      )) as StepOutcome<z.infer<typeof RefineOutput>>;
+      if (!out.ok) return false;
+      // What the documents settle is fixed in them: the patches that change no scope are accepted at once, the others wait for the owner.
+      const docs = await this.docsNow();
+      let n = 0;
+      const files = new Set<DocFile>();
+      for (const p of out.value.docPatch) {
+        const check = checkPatch(p, this.deps.draft.specId, docs);
+        if (!check.ok) continue;
+        files.add(check.file);
+        await this.journal.fact(RefineEvent.PatchProposed, { patchId: patchIdOf('po', cycle, 100 + n++), role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
+      }
+      for (const file of files) await this.acceptSafePatches(file);
+      const questions: Question[] = out.value.questions.map((q, i) => ({
+        questionId: `specs-${specs.hash.slice(7, 15)}-${i}`,
+        role: 'po',
+        text: q.text,
+        blocking: true,
+        relatedAcIds: [],
+        cycle,
+        origin: 'specs',
+        ...(q.options.length ? { options: q.options } : {}),
+        ...(q.subject ? { subject: q.subject } : {}),
+      }));
+      await this.journal.fact(RefineEvent.SpecsQuestionsAsked, { specsHash: specs.hash, questions });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
+    }
   }
 
   /** The gate of the final review: specs.md is written from the current backlog and approved by PO and SM. */
@@ -1094,9 +1184,9 @@ export class RefineSession {
   }
 
   /** The check of specs.md, and when a reviewer rejects it, up to MAX_SPECS_REPAIRS rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
-  private async specsRounds(ctl: AbortController, first: { text: string; hash: string }): Promise<void> {
+  private async specsRounds(ctl: AbortController, first: { text: string; hash: string }, checkFirst = false): Promise<void> {
     let specs = first;
-    let repaired = false;
+    let repaired = checkFirst;
     for (;;) {
       const repairable = () => ((this.state.specsRepairs ?? 0) < MAX_SPECS_REPAIRS ? this.specsFeedbackOf(specs.hash) : null);
       // A text a reviewer already rejected goes straight back to the agents; any other is checked first, and so is the one a repair just made.
@@ -1105,7 +1195,11 @@ export class RefineSession {
         await this.timedSpecs(ctl, specs);
         feedback = repairable();
       }
-      if (!feedback || ctl.signal.aborted) return;
+      if (!feedback || ctl.signal.aborted) {
+        // The repairs are spent and a reviewer still rejects this text: the PO fixes the obvious in the documents and asks the owner the rest.
+        if (!ctl.signal.aborted && (this.state.specsRepairs ?? 0) >= MAX_SPECS_REPAIRS && this.state.specsAsked !== specs.hash && this.specsFeedbackOf(specs.hash) !== null) await this.askRound(ctl, specs);
+        return;
+      }
       await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
       await this.timedChain(ctl);
       const next = this.specsOf();

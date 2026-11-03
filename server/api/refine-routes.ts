@@ -152,6 +152,23 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/specs/approve`,
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).approveSpecsAnyway();
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/specs/ask`,
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        const asked = await s.askAboutSpecs();
+        json(200, { asked });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/specs/check`,
       handler: wrap(async ({ params, json }) => {
         const run = (await get(params)).startSpecs();
@@ -175,10 +192,13 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const b = await body();
         const s = await get(params);
         const questionId = str(b, 'questionId');
-        const file = s.state.stages === true ? s.state.questions.find((q) => q.questionId === questionId)?.file : undefined;
+        const asked = s.state.questions.find((q) => q.questionId === questionId);
+        const file = s.state.stages === true ? asked?.file : undefined;
         await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
         // The answer goes to the agents at once: the stage's review runs in the background, as the Processar button starts it.
         if (file && (DOC_STAGES as readonly string[]).includes(file)) s.reviewAfterAnswers(file as DocFile).catch(logRunFailure(params));
+        // The last answer about specs.md sends the backlog to the agents again, with the owner's decisions.
+        if (asked?.origin === 'specs') s.continueSpecsAfterAnswers()?.catch(logRunFailure(params));
         json(200, { ok: true });
       }),
     },

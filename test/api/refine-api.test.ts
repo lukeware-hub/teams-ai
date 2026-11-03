@@ -940,6 +940,9 @@ describe('refine api', () => {
     script['specs-review/po'] = [rejected, rejected, rejected];
     script['specs-review/sm'] = [rejected, rejected, rejected];
     for (const role of ['po', 'sm']) script[`refine/${role}`] = [{ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }, { checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }];
+    // After the second repair the PO is asked what to do: it asks the owner one question, as choices with a recommendation.
+    const ask = { id: 'q1', text: 'O item base precisa de uma origem. Qual seção dos documentos o justifica?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos do briefing', detail: 'A origem passa a ser a seção de objetivos.', recommended: true }, { label: 'Requisitos do projeto', detail: 'A origem passa a ser a seção de requisitos.' }] };
+    script['refine/po'].push({ checklist: [], questions: [ask], docPatch: [] });
     script['spec/po'] = [spec, spec];
     script['preplan/sm'] = [preplan, preplan];
     expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
@@ -951,6 +954,57 @@ describe('refine api', () => {
     expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }, sm: { verdict: 'rejected' } });
     // The agents were told which item the reviewers named.
     expect(calls.filter((c) => c.kind === 'spec').at(-1)?.prompt).toContain('O item base cita uma seção vazia');
+    // The repairs are spent, so the PO asked the owner, once, with a recommended choice, and the page can follow or ask again.
+    const question = done.state.questions.find((q: { origin?: string }) => q.origin === 'specs');
+    expect(question).toMatchObject({ status: 'pending', blocking: true, role: 'po', options: [{ label: 'Objetivos do briefing', recommended: true }, { label: 'Requisitos do projeto' }] });
+    expect(done.state.specsAsked).toBe(done.state.specsMd.hash);
+    // The owner may follow with the text although a reviewer rejected it.
+    expect((await call('POST', `${url}/specs/approve`)).status).toBe(200);
+    expect((await snapshot()).specsApproved).toBe(true);
+  });
+
+  it('the owner answers the question about specs.md: the agents detail the backlog again with the decision, and the new text is checked', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const outline = { project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    script['backlog/po'] = [outline, outline];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
+    script['specs-review/po'] = [rejected, rejected, rejected];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }];
+    script['refine/po'] = [review('po'), review('po'), { checklist: [], questions: [{ id: 'q1', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] }], docPatch: [] }];
+    script['refine/sm'] = [review('sm'), review('sm')];
+    script['spec/po'] = [spec, spec];
+    script['preplan/sm'] = [preplan, preplan];
+    await call('POST', `${url}/specs/check`);
+    await settle();
+    const asked = (await snapshot()).state.questions.find((q: { origin?: string }) => q.origin === 'specs');
+    expect(asked.status).toBe('pending');
+    // The answer sends the backlog to the agents again; this time the PO approves the new text.
+    script['backlog/po'] = [outline];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
+    expect((await call('POST', `${url}/answers`, { questionId: asked.questionId, text: 'Objetivos' })).status).toBe(200);
+    await settle();
+    const after = await snapshot();
+    expect(after.state.questions.find((q: { questionId: string }) => q.questionId === asked.questionId).status).toBe('answered');
+    expect(after.state.specsRepairs).toBe(0);
+    expect(after.specsApproved).toBe(true);
   });
 
   it('two concurrent start requests spawn exactly one run', async () => {

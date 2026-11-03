@@ -96,6 +96,8 @@ export const RefineEvent = {
   DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
   DocGraphStale: 'REFINE_DOC_GRAPH_STALE',
   SpecsFeedback: 'REFINE_SPECS_FEEDBACK',
+  SpecsQuestionsAsked: 'REFINE_SPECS_QUESTIONS_ASKED',
+  SpecsOwnerApproved: 'REFINE_SPECS_OWNER_APPROVED',
   /** The owner authorized the development on the summary with this hash: `{summaryHash}`. */
   DevelopmentAuthorized: 'REFINE_DEVELOPMENT_AUTHORIZED',
   /** The architecture step started on the five documents at this hash: `{docsHash}`. */
@@ -144,7 +146,7 @@ export interface Question {
   /** The validator message a system question answers; its text is plain, so a repeat is recognized on this. */
   rule?: string;
   /** Set on a question plan left open during its preparation, or on one the architecture step leaves open. */
-  origin?: 'speckit' | 'architecture';
+  origin?: 'speckit' | 'architecture' | 'specs';
   /** The backlog item a plan question is about. */
   itemKey?: string;
   /** The plan command that asked a plan question. */
