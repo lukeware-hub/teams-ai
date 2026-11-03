@@ -1205,13 +1205,13 @@ export class RefineSession {
   /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */
   private async acceptSafePatches(file: DocFile): Promise<void> {
     for (const p of safePatches(this.state.patches.filter((x) => x.file === file))) {
-      await this.applyPatchRow(p.patchId).catch((err) => {
+      await this.applyPatchRow(p.patchId, true).catch((err) => {
         if (!(err instanceof ConflictError)) throw err;
       });
     }
   }
 
-  private async applyPatchRow(patchId: string): Promise<void> {
+  private async applyPatchRow(patchId: string, auto = false): Promise<void> {
     const p = this.patch(patchId);
     const before = await readDoc(this.deps.draft, p.file);
     const after = applyPatch(before, p);
@@ -1221,7 +1221,7 @@ export class RefineSession {
     }
     await writeDoc(this.deps.draft, p.file, after);
     await this.journal.fact(RefineEvent.DocEdited, { file: p.file, hash: sha256(after), source: 'patch' });
-    await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
+    await this.journal.fact(RefineEvent.PatchAccepted, { patchId, ...(auto ? { auto: true } : {}) });
     // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
     for (const other of this.state.patches) {
       if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {

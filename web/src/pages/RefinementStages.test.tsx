@@ -322,3 +322,19 @@ describe('a stage question during the review', () => {
     expect(h.onAnswer).toHaveBeenCalledWith('po-s1-0', 'Clientes', false);
   });
 });
+
+describe('the summary says what the agents did on their own', () => {
+  const done = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+  const patch = (id: string, auto: boolean) => ({ patchId: id, role: 'po', file: 'flow.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status: 'accepted', decision: null, ...(auto ? { auto: true } : {}) });
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=revisao'));
+
+  it('counts the suggestions the agents accepted alone, and not the ones the owner accepted', () => {
+    renderView(project({ stages: true, doneStages: done, graphed: done, patches: [patch('a', true), patch('b', true), patch('c', false)] } as never));
+    expect(screen.getByTestId('final-auto-applied').textContent).toContain('2 sugestões');
+  });
+
+  it('says nothing when the agents applied none', () => {
+    renderView(project({ stages: true, doneStages: done, graphed: done, patches: [patch('c', false)] } as never));
+    expect(screen.queryByTestId('final-auto-applied')).toBeNull();
+  });
+});

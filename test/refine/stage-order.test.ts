@@ -150,7 +150,7 @@ describe('stage order, stamped sessions', () => {
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
     await s.evaluateStage('flow.md');
-    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => p.status)).toEqual(['accepted']);
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => [p.status, p.auto])).toEqual([['accepted', true]]);
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
     await s.close();

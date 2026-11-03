@@ -1149,6 +1149,7 @@ export function RefinementView(p: ViewProps) {
     const unfiled = unfiledQuestions(st);
     const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
     const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
+    const autoApplied = st.patches.filter((x) => x.auto === true).length;
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
       <div data-testid="refinement-final-layout" className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1158,6 +1159,7 @@ export function RefinementView(p: ViewProps) {
             <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none" data-testid="refinement-final-title">Resumo</h2>
             <p data-testid="refinement-final-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
           </header>
+          {autoApplied > 0 && <p data-testid="final-auto-applied" className="m-0 text-[0.875rem] text-ink-soft">Os agentes aplicaram {autoApplied === 1 ? '1 sugestão' : `${autoApplied} sugestões`} que não mudam o escopo, sem precisar de você.</p>}
           <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
             <p data-testid="refinement-final-scores-title" className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
             {DOC_STAGES.map((file) => {

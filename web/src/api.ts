@@ -397,6 +397,8 @@ export interface PatchRow {
   cycle: number;
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
+  /** The agents accepted it on their own: it changed no scope. */
+  auto?: boolean;
 }
 export interface DerivedDoc {
   spec: {

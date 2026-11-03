@@ -30,6 +30,8 @@ export interface PatchRow extends PendingPatch {
   cycle: number;
   status: 'pending' | 'accepted' | 'rejected' | 'dropped';
   decision: string | null;
+  /** The agents accepted it on their own: it changed no scope. */
+  auto?: boolean;
 }
 /** A finding one role reported on a document it does not own; kept only when its quote is in that document. */
 export interface FindingRow {
@@ -482,6 +484,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       const p = s.patches.find((x) => x.patchId === String(d.patchId));
       if (p) {
         p.status = e.type === RefineEvent.PatchAccepted ? 'accepted' : e.type === RefineEvent.PatchRejected ? 'rejected' : 'dropped';
+        if (e.type === RefineEvent.PatchAccepted && d.auto === true) p.auto = true;
         p.decision = (d.reason as string | null | undefined) ?? null;
       }
       if (e.type === RefineEvent.PatchAccepted && hasDerivation(s)) s.stale = true;
