@@ -70,6 +70,39 @@ describe('RefinementPage of a new project', () => {
     expect(scrollTo).toHaveBeenCalled();
   });
 
+  it('shows the processing banner while an evaluation is open, even before a cycle started, and not once it ended', async () => {
+    const open = { startedAt: new Date(Date.now() - 5_000).toISOString(), endedAt: null };
+    const spy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ evaluation: open }));
+    const first = renderPage();
+    expect(await screen.findByTestId('processing-banner')).toBeTruthy();
+    first.unmount();
+    spy.mockResolvedValue(stageState({ evaluation: { ...open, endedAt: new Date().toISOString() } }));
+    renderPage();
+    await screen.findByTestId('wizard-continue');
+    expect(screen.queryByTestId('processing-banner')).toBeNull();
+  });
+
+  it('shows the graph extraction on its own while the owner keeps working', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ graphing: 'flow.md' }));
+    renderPage();
+    expect((await screen.findByTestId('graphing-box')).textContent).toContain('flow.md');
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).readOnly).toBe(false);
+  });
+
+  it('reads the snapshot again every few seconds while work is open, as a safety net for the stream', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const spy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ evaluation: { startedAt: new Date().toISOString(), endedAt: null } }));
+      renderPage();
+      await screen.findByTestId('processing-banner');
+      const before = spy.mock.calls.length;
+      await act(async () => { vi.advanceTimersByTime(8_100); });
+      expect(spy.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('sends the reprocess of the stage document to the API', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ passedStages: ['flow.md'] }));
     const again = vi.spyOn(refineApi, 'reprocessStage').mockResolvedValue({ ok: true });

@@ -250,6 +250,7 @@ export class RefineSession {
   private queuedReview: Promise<void> | null = null;
   /** A graph extraction is the only thing running: the owner's answers and rejections do not wait for it, since they edit no document. */
   private indexing = false;
+  private readonly changedWhileIndexing = new Set<DocFile>();
   /** The documents whose low score already got its one extra review. */
   private readonly improved = new Set<DocFile>();
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
@@ -497,7 +498,11 @@ export class RefineSession {
   private startIndexing(file: DocFile, advance = true): Promise<void> {
     const started = this.journal.fact(RefineEvent.DocGraphStarted, { file });
     this.indexing = true;
-    this.running = started.then(() => this.indexStage(file, advance)).finally(() => {
+    this.running = started.then(() => this.indexStage(file, advance)).then(async () => {
+      // A document the owner changed while it was being extracted holds an older text in the graph: it is marked again.
+      for (const changed of this.changedWhileIndexing) await this.journal.fact(RefineEvent.DocGraphStale, { file: changed });
+    }).finally(() => {
+      this.changedWhileIndexing.clear();
       this.running = null;
       this.indexing = false;
     });
@@ -699,13 +704,14 @@ export class RefineSession {
 
   /** `baseHash` is the hash of the file the text was typed over: a file another change has moved since is a conflict, never an overwrite. Returns the hash of the file as saved. */
   async saveDoc(file: DocFile, text: string, baseHash?: string): Promise<string> {
-    this.guard();
+    this.guardLight();
     if (baseHash !== undefined && sha256(await readDoc(this.deps.draft, file)) !== baseHash) {
       throw new ConflictError('O documento mudou desde que você o abriu. Recarregue a página antes de salvar.');
     }
     const saved = file === 'briefing.md' ? await this.keepDecisions(text) : text;
     await writeDoc(this.deps.draft, file, saved);
     await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(saved), source: 'human' });
+    if (this.indexing) this.changedWhileIndexing.add(file);
     return sha256(await readDoc(this.deps.draft, file));
   }
 
@@ -1241,11 +1247,17 @@ export class RefineSession {
   }
 
   async accept(patchId: string): Promise<void> {
-    this.guard();
+    this.guardLight();
     const { file } = this.patch(patchId);
     await this.applyPatchRow(patchId);
-    // A document already in the graph holds an older text now: it is marked, and goes back in once, when the stage continues or the summary runs.
-    if (this.state.repositories === true && (this.state.graphed ?? []).includes(file as DocFile)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
+    await this.markGraphOutdated(file as DocFile);
+  }
+
+  /** A document already in the graph holds an older text now: it is marked, and goes back in once, when the stage continues or the summary runs. */
+  private async markGraphOutdated(file: DocFile): Promise<void> {
+    if (this.state.repositories !== true) return;
+    if (this.indexing) this.changedWhileIndexing.add(file);
+    else if ((this.state.graphed ?? []).includes(file)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
   }
 
   /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */

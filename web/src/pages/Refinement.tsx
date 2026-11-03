@@ -4,6 +4,7 @@ import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type Drop
 import { mdDownload } from '../download.js';
 import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
+import { visibleInterval } from '../visibleInterval.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
@@ -65,6 +66,8 @@ const errorText = (text: string | null) => text
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
 /** The pause after the last keystroke before a stage document is saved on its own. */
 const AUTOSAVE_MS = 1500;
+/** Whether an evaluation is open in the journal: it spans a stage's review, its score and its graph extraction, so the page shows the work from the first event to the last. */
+const evaluationOpen = (st: Pick<Snapshot['state'], 'evaluation'>): boolean => st.evaluation != null && st.evaluation.endedAt === null;
 const isBusyError = (e: Error) => e.message.startsWith('Já tem uma avaliação em andamento');
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 
@@ -1454,6 +1457,19 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     lastReopen.current = reopened;
     load();
   }, [reopened]);
+  // The stream is the way the page follows the work. As a safety net, while work is open the page also reads the snapshot every few seconds, and when its tab shows again.
+  const working = snap ? snap.state.status === 'evaluating' || evaluationOpen(snap.state) || Boolean(snap.state.graphing) : false;
+  useEffect(() => {
+    if (!working) return;
+    return visibleInterval(load, 8_000);
+  }, [working]);
+  useEffect(() => {
+    const onShow = () => {
+      if (!document.hidden) load();
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+  }, []);
   // The hash of each document as the page last read it: a save states it, so a file another change has moved is a conflict, not an overwrite.
   const baseHashes = useRef<Snapshot['hashes']>(undefined);
   useEffect(() => {
@@ -1517,10 +1533,15 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
-      {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
-      {busyNotice && snap.state.status === 'evaluating' && (
+      {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {busyNotice && (snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && (
         <ProcessBox title="Processando" since={snap.state.evaluation?.startedAt ?? null} tone="good" testId="busy-notice">
           <span data-testid="refinement-busy-notice-text" className="text-[0.75rem] leading-[1.35]">Já existe uma avaliação em andamento. Aguarde o fim dela para avaliar de novo.</span>
+        </ProcessBox>
+      )}
+      {snap.state.graphing && (
+        <ProcessBox title={`Adicionando ${snap.state.graphing} ao Graphify`} tone="accent" testId="graphing-box">
+          <span className="text-[0.75rem] leading-[1.35]">Você pode seguir: responder, rejeitar e editar continuam disponíveis.</span>
         </ProcessBox>
       )}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
@@ -1532,7 +1553,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       )}
       <RefinementView
         snap={snap}
-        busy={snap.state.status === 'evaluating'}
+        busy={snap.state.status === 'evaluating' || evaluationOpen(snap.state)}
         onSaveDoc={(f, t) => act(async () => {
           const { hash } = await refineApi.saveDoc(projectId, specId, f, t, baseHashes.current?.[f]);
           baseHashes.current = { ...baseHashes.current, [f]: hash };

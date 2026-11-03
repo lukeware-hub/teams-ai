@@ -350,7 +350,7 @@ describe('the Jev pass line', () => {
 });
 
 describe('the owner keeps working while the graph extraction runs', () => {
-  it('rejects a suggestion and skips a question while a document goes to the graph, and edits wait', async () => {
+  it('rejects a suggestion, skips a question and edits while a document goes to the graph', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -374,9 +374,11 @@ describe('the owner keeps working while the graph extraction runs', () => {
     expect(s.state.graphing).toBe('flow.md');
     await s.skip(question.questionId);
     expect(s.state.questions.find((q) => q.questionId === question.questionId)?.status).toBe('skipped');
-    await expect(s.saveDoc('flow.md', `${FLOW}\nEditado.\n`)).rejects.toThrow();
+    // An edit during the extraction is allowed, and leaves the graph marked outdated once the extraction ends.
+    await s.saveDoc('flow.md', `${FLOW}\nEditado.\n`);
     release();
     await s.settled();
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
     await s.close();
   });
 });
