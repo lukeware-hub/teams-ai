@@ -4,8 +4,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { refineApi, type Snapshot, type StoredEvent } from '../api.js';
 import { RefinementPage } from './Refinement.js';
 
-const journal = vi.hoisted(() => ({ events: [] as unknown[], reopened: 0 }));
-vi.mock('../useSse.js', () => ({ useJournal: (url: string | null) => ({ events: url ? journal.events : [], ended: false, error: null, reopened: journal.reopened }) }));
+const journal = vi.hoisted(() => ({ events: [] as unknown[], reopened: 0, listeners: new Set<() => void>() }));
+// The stream hook re-renders the page when an event arrives, as the real one does.
+vi.mock('../useSse.js', async () => {
+  const React = await import('react');
+  return {
+    useJournal: (url: string | null) => {
+      const [, force] = React.useReducer((n: number) => n + 1, 0);
+      React.useEffect(() => {
+        journal.listeners.add(force);
+        return () => void journal.listeners.delete(force);
+      }, []);
+      return { events: url ? journal.events : [], ended: false, error: null, reopened: journal.reopened };
+    },
+  };
+});
+const arrive = (...events: unknown[]) => act(async () => {
+  journal.events = [...journal.events, ...events];
+  journal.listeners.forEach((l) => l());
+});
 
 const event = (seq: number, type: string, data: Record<string, unknown>): StoredEvent => ({ seq, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type, kind: 'fact', data });
 const patch = { patchId: 'sm-c1-0', role: 'sm' as const, file: 'briefing.md' as const, find: 'a', replace: 'b', reason: 'clearer', diff: '--- briefing.md\n-a\n+b\n', cycle: 1 };
@@ -96,7 +113,23 @@ describe('RefinementPage of a new project', () => {
       renderPage();
       await screen.findByTestId('processing-banner');
       const before = spy.mock.calls.length;
-      await act(async () => { vi.advanceTimersByTime(8_100); });
+      await act(async () => { vi.advanceTimersByTime(5_100); });
+      expect(spy.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('also reads the snapshot every fifteen seconds when nothing runs, so a page never waits for a reload to learn what changed', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const spy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
+      renderPage();
+      await screen.findByTestId('wizard-continue');
+      const before = spy.mock.calls.length;
+      await act(async () => { vi.advanceTimersByTime(5_100); });
+      expect(spy.mock.calls.length).toBe(before);
+      await act(async () => { vi.advanceTimersByTime(10_100); });
       expect(spy.mock.calls.length).toBeGreaterThan(before);
     } finally {
       vi.useRealTimers();
@@ -164,6 +197,38 @@ describe('RefinementPage busy evaluation', () => {
     fireEvent.click(await screen.findByTestId('undo-move'));
     await waitFor(() => expect(screen.getByTestId('busy-notice').textContent).toContain('Processando'));
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('RefinementPage live', () => {
+  const renderLive = () => render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+
+  it('shows the work of an evaluation that starts after the page opened, and hides it when it ends, with no reload', async () => {
+    journal.events = [];
+    const s = snapshot(5);
+    // A snapshot read later holds every event up to its seq, as the server's does.
+    vi.spyOn(refineApi, 'snapshot').mockImplementation(async () => ({ ...s, seq: (journal.events.at(-1) as { seq: number } | undefined)?.seq ?? 5, state: { ...s.state, status: 'answering', error: null, patches: [], mode: 'new-project', stages: true } as never }));
+    renderLive();
+    await screen.findByTestId('wizard-continue');
+    expect(screen.queryByTestId('processing-banner')).toBeNull();
+    await arrive(event(6, 'REFINE_EVALUATION_STARTED', {}), event(7, 'REFINE_CYCLE_STARTED', { cycle: 2, draftHash: 'h' }));
+    expect(await screen.findByTestId('processing-banner')).toBeTruthy();
+    await arrive(event(8, 'REFINE_EVALUATED', { cycle: 2, checklist: [], questions: [], discardedPatches: [] }), event(9, 'REFINE_EVALUATION_ENDED', {}));
+    await waitFor(() => expect(screen.queryByTestId('processing-banner')).toBeNull());
+  });
+
+  it('shows a question the team asked after the page opened, with no reload', async () => {
+    journal.events = [];
+    const s = snapshot(5);
+    const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
+    window.history.replaceState(null, '', '/?etapa=backlog');
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 } } as never });
+    renderLive();
+    await screen.findByTestId('specs-check');
+    const question = { questionId: 'specs-1-0', role: 'po', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], cycle: 1, origin: 'specs', options: [{ label: 'Objetivos', detail: 'Usa os objetivos.', recommended: true }] };
+    await arrive(event(6, 'REFINE_SPECS_QUESTIONS_ASKED', { specsHash: 'h', questions: [question] }));
+    expect(await screen.findByText('Qual seção justifica o item base?')).toBeTruthy();
+    window.history.replaceState(null, '', '/');
   });
 });
 

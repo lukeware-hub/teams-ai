@@ -728,23 +728,27 @@ describe('the architecture step names what the documentation repository does', (
     expect(window.location.search).toContain('etapa=backlog');
   });
 
-  it('a stale architecture on the backlog is resolved by the agents once, with no alert', () => {
+  it('a stale architecture on the backlog is resolved by the agents only when the owner clicks, with no alert', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
     const closing = { ok: false, checks: [{ id: 'architecture', ok: false, detail: 'a arquitetura não está decidida sobre os documentos atuais' }], assumptions: [], repositories: [], summaryHash: 'h' };
     const h = { ...on(), onResolveClosing: vi.fn() };
     render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing, architectureStale: true } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
     expect(screen.queryByTestId('closing-alert')).toBeNull();
+    expect(h.onResolveClosing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('final-resolve-run'));
     expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
-  it('an empty backlog is resolved by the agents once, with no architecture action on the page', () => {
+  it('an empty backlog is resolved by the agents only when the owner clicks, with no architecture action on the page', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
     const closing = { ok: false, checks: [{ id: 'architecture', ok: false, detail: 'o backlog ainda não tem itens' }], assumptions: [], repositories: [], summaryHash: 'h' };
     const h = { ...on(), onResolveClosing: vi.fn() };
     render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
     expect(screen.queryByTestId('closing-architecture')).toBeNull();
+    expect(h.onResolveClosing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('final-resolve-run'));
     expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 

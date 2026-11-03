@@ -432,12 +432,13 @@ describe('the final review', () => {
     expect(screen.getByTestId('spec-tree')).toBeTruthy();
   });
 
-  it('checks specs.md by itself each time the backlog stage opens, with no button for it', () => {
+  it('calls no agent when the backlog stage opens: the specs.md is checked only on the click of the owner', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     open('?etapa=backlog');
     const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsApproved: false });
+    expect(handlers.onCheckSpecs).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('specs-check-retry'));
     expect(handlers.onCheckSpecs).toHaveBeenCalledTimes(1);
-    expect(screen.queryByTestId('generate-specs')).toBeNull();
   });
 
   it('Continuar on the summary stays open while the specs.md is not approved, and the backlog step shows what it waits for', () => {

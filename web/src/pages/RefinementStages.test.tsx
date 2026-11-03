@@ -156,13 +156,15 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Preparando o specs.md');
   });
 
-  it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks once', () => {
+  it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks only on the click', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
     const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
     const h = { ...handlersWithSpeckit(), onResolveClosing: vi.fn() };
     renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing, specsApproved: true } as never, h);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId('closing-alert')).toBeNull();
+    expect(h.onResolveClosing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('final-resolve-run'));
     expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
@@ -272,15 +274,18 @@ describe('the summary resolves the stage pending items with the agents', () => {
   const summary = (over: Partial<Snapshot['state']>) => project({ stages: true, doneStages: allDone, graphed: allDone, ...over } as never);
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=revisao'));
 
-  it('asks the agents once to review the outdated stages', () => {
+  it('asks the agents to review the outdated stages only when the owner clicks', () => {
     const h = { ...handlers(), onResolveClosing: vi.fn() };
     renderView(summary({ staleBy: { 'stack.md': 'briefing.md' } } as never), h);
+    expect(h.onResolveClosing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('final-resolve-run'));
     expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
   it('asks nothing when no stage has a pending item', () => {
     const h = { ...handlers(), onResolveClosing: vi.fn() };
     renderView(summary({}), h);
+    expect(screen.queryByTestId('final-resolve')).toBeNull();
     expect(h.onResolveClosing).not.toHaveBeenCalled();
   });
 });
@@ -395,31 +400,28 @@ describe('several questions of a stage on screen', () => {
   });
 });
 
-describe('specs.md starts by itself in the backlog step', () => {
+describe('specs.md starts only when the owner clicks', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
-  const snapOf = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, ...over } as never);
-  const view = (snap: Snapshot, h: ReturnType<typeof handlers> & { onCheckSpecs: () => void }) => <MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...h} /></MemoryRouter>;
+  const snapOf = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, status: 'ready', ...over } as never);
 
-  it('asks again once the evaluation that was running when the step opened has ended', () => {
+  it('calls no agent when the step opens, and the button generates and checks', () => {
     const h = { ...handlers(), onCheckSpecs: vi.fn() };
-    const running = snapOf({ status: 'evaluating', evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: null } });
-    const r = render(view(running, h));
+    renderView(snapOf({}), h);
+    expect(h.onCheckSpecs).not.toHaveBeenCalled();
+    expect(screen.getByTestId('specs-check-retry').textContent).toBe('Gerar e checar o specs.md');
+    fireEvent.click(screen.getByTestId('specs-check-retry'));
     expect(h.onCheckSpecs).toHaveBeenCalledTimes(1);
-    r.rerender(view(snapOf({ status: 'ready', evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: '2026-11-03T10:01:00Z' } }), h));
-    expect(h.onCheckSpecs).toHaveBeenCalledTimes(2);
   });
 
-  it('never asks again on its own for a text a reviewer already rejected', () => {
+  it('calls no agent for a text a reviewer rejected either, and offers to check again', () => {
     const h = { ...handlers(), onCheckSpecs: vi.fn() };
-    const reviews = { po: { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null }, sm: { specsHash: 'h', verdict: 'approved', findings: [], reason: null, at: null } };
-    const ready = (endedAt: string | null) => snapOf({ status: endedAt === null ? 'evaluating' : 'ready', specsMd: { hash: 'h', bytes: 1 }, specsReview: reviews, evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt } });
-    const r = render(view(ready(null), h));
-    r.rerender(view(ready('2026-11-03T10:01:00Z'), h));
-    expect(h.onCheckSpecs).toHaveBeenCalledTimes(1);
+    const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null };
+    renderView(snapOf({ specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected } }), h);
+    expect(h.onCheckSpecs).not.toHaveBeenCalled();
+    expect(screen.getByTestId('specs-check-retry').textContent).toBe('Checar de novo');
   });
 });
-
 describe('the questions the team asked about specs.md', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };

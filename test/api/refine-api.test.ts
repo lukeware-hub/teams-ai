@@ -201,6 +201,14 @@ describe('refine api', () => {
     while (!text.includes('REFINE_EVALUATED')) text += new TextDecoder().decode((await reader.read()).value);
     await reader.cancel();
     expect(text).not.toContain('"seq":1,');
+    // A page that read the snapshot asks only for what came after it, in the address.
+    const fromAddress = await fetch(`${base()}/api/refine/hello-app/hello-app-001/events?after=1`);
+    const addressReader = fromAddress.body!.getReader();
+    let fromText = '';
+    while (!fromText.includes('REFINE_EVALUATED')) fromText += new TextDecoder().decode((await addressReader.read()).value);
+    await addressReader.cancel();
+    expect(fromText).not.toContain('"seq":1,');
+    expect(fromText).toContain('event: journal');
     expect(text).toContain('event: journal');
     const snap = await snapshot();
     expect(snap.state.status).toBe('answering');

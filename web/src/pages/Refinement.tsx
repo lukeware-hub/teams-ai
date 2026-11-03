@@ -425,28 +425,7 @@ export function RefinementView(p: ViewProps) {
     stageBefore.current = onStage;
     if (newProject && onStage) setTab((current) => (before === undefined || current === before ? onStage : current));
   }, [onStage, newProject]);
-  // Each arrival at the backlog checks specs.md again; the server starts nothing when both approvals stand.
-  // The check also starts by itself as soon as the server is free: arriving while an evaluation ran used to leave it waiting for ever.
-  // A reviewer's real verdict (even a rejection) is never asked again on its own, and a failing check is tried twice at most.
-  const specsTries = useRef<Record<string, number>>({});
-  const arrivedAt = useRef('');
-  useEffect(() => {
-    const arrival = `${step}:${backlogOn}`;
-    const arrived = arrivedAt.current !== arrival;
-    arrivedAt.current = arrival;
-    if (step !== 'backlog' || !backlogOn) return;
-    if (arrived) {
-      void p.onCheckSpecs?.();
-      return;
-    }
-    if (st.status !== 'ready' || evaluating || snap.specsApproved === true) return;
-    const hash = st.specsMd?.hash;
-    const owed = hash === undefined || (['po', 'sm'] as const).some((role) => { const verdict = currentReview(st.specsReview ?? {}, role, hash)?.verdict; return verdict === undefined || verdict === 'failed'; });
-    const key = String(hash);
-    if (!owed || (specsTries.current[key] ?? 0) >= 2) return;
-    specsTries.current[key] = (specsTries.current[key] ?? 0) + 1;
-    void p.onCheckSpecs?.();
-  }, [step, backlogOn, st.status, evaluating, st.specsMd?.hash]);
+  // The agents start only when the owner clicks a button: opening or reloading a page never calls them.
   const stageStep = newProject ? stageAction(st) : null;
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
   const backlogBlock = (note: ReactNode) => (
@@ -1198,6 +1177,7 @@ export function RefinementView(p: ViewProps) {
             <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none" data-testid="refinement-final-title">Resumo</h2>
             <p data-testid="refinement-final-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
           </header>
+          {resolveBlock}
           {autoApplied > 0 && <p data-testid="final-auto-applied" className="m-0 text-[0.875rem] text-ink-soft">Os agentes aplicaram {autoApplied === 1 ? '1 sugestão' : `${autoApplied} sugestões`} que não mudam o escopo, sem precisar de você.</p>}
           <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
             <p data-testid="refinement-final-scores-title" className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
@@ -1263,6 +1243,7 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
+      {resolveBlock}
       {backlogOn && speckitStatus}
       {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
@@ -1283,24 +1264,17 @@ export function RefinementView(p: ViewProps) {
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
-  // The closing checks the agents can fix are resolved on their own, once per summary: the owner sees no alert.
   const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
-  const closingHash = snap.closing?.summaryHash;
   const resolveClosing = p.onResolveClosing;
-  const resolvedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (closingHash === undefined || closingFailing.length === 0 || st.backlog?.detail !== true || locked || resolvedFor.current === closingHash) return;
-    resolvedFor.current = closingHash;
-    void resolveClosing?.();
-  }, [closingHash, closingFailing.length, locked, st.backlog?.detail, resolveClosing]);
-  // On the summary, the team reviews the outdated stages and accepts the safe patches on its own, once per set of pending items.
+  // What the team can settle alone on the summary: stages outdated by an edit and suggestions that change no scope.
   const stagePending = [...Object.keys(st.staleBy ?? {}), ...st.patches.filter((x) => x.status === 'pending').map((x) => x.patchId)].sort().join(',');
-  const stagesResolvedFor = useRef('');
-  useEffect(() => {
-    if (step !== 'review' || stagePending === '' || locked || st.reviewClosed === true || stagesResolvedFor.current === stagePending) return;
-    stagesResolvedFor.current = stagePending;
-    void resolveClosing?.();
-  }, [step, stagePending, locked, st.reviewClosed, resolveClosing]);
+  const canResolve = resolveClosing !== undefined && !locked && st.reviewClosed !== true && (stagePending !== '' || (closingFailing.length > 0 && st.backlog?.detail === true));
+  const resolveBlock = canResolve ? (
+    <div data-testid="final-resolve" className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5">
+              <p className="m-0 text-[0.875rem] text-ink-soft">Há pendências que o time resolve sozinho: ele revisa o que mudou e aceita o que não muda o escopo. Só começa quando você clicar.</p>
+              <ActionButton data-testid="final-resolve-run" className="secondary h-10 w-full" onClick={() => p.onResolveClosing?.()} icon={<Icon name="refresh" size={16} />}>Deixar o time resolver as pendências</ActionButton>
+            </div>
+  ) : null;
   const startLine = (
     startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>
   );
@@ -1454,7 +1428,9 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const [starting, setStarting] = useState(false);
   const [closingOpen, setClosingOpen] = useState(false);
   const applied = useRef(0);
-  const { events, reopened } = useJournal(snap ? refineApi.events(projectId, specId) : null);
+  // The stream starts after the snapshot the page read first, so opening or reloading the page does not replay the whole journal.
+  const [streamFrom, setStreamFrom] = useState<number | null>(null);
+  const { events, reopened } = useJournal(snap && streamFrom !== null ? `${refineApi.events(projectId, specId)}?after=${streamFrom}` : null);
   // One snapshot read at a time: a request made during a read is answered by one more read after it, so a burst costs two reads.
   const reading = useRef<Promise<void> | null>(null);
   const rereadQueued = useRef(false);
@@ -1468,6 +1444,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       .then((s) => {
         // The snapshot already holds every event up to its seq: the replay applies only the ones after it.
         applied.current = s.seq ?? 0;
+        setStreamFrom((from) => from ?? s.seq ?? 0);
         setSnap({ ...s, docsDirty: false });
       })
       .catch((e: Error) => setError(e.message))
@@ -1489,12 +1466,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     lastReopen.current = reopened;
     load();
   }, [reopened]);
-  // The stream is the way the page follows the work. As a safety net, while work is open the page also reads the snapshot every few seconds, and when its tab shows again.
+  // The stream is the way the page follows the work. As a safety net the page also reads the snapshot on its own while its tab is visible: every few seconds while work is open, and every fifteen otherwise.
   const working = snap ? snap.state.status === 'evaluating' || evaluationOpen(snap.state) || Boolean(snap.state.graphing) : false;
+  const loaded = snap !== null;
   useEffect(() => {
-    if (!working) return;
-    return visibleInterval(load, 8_000);
-  }, [working]);
+    if (!loaded) return;
+    return visibleInterval(load, working ? 5_000 : 15_000);
+  }, [working, loaded]);
   useEffect(() => {
     const onShow = () => {
       if (!document.hidden) load();

@@ -71,8 +71,11 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked
           </div>
         </div>
       )}
-      {!busy && onRetry && (hash === undefined || current.some((c) => c.review?.verdict === 'failed')) && (
-        <button type="button" data-testid="specs-check-retry" className="secondary mt-[0.6rem] h-10 px-[0.8rem]" onClick={onRetry}>Tentar de novo</button>
+      {!busy && onRetry && !asked && !(repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected')) && !current.every((c) => c.review?.verdict === 'approved') && (
+        <div className="mt-[0.6rem] grid gap-1">
+          <button type="button" data-testid="specs-check-retry" className="primary h-10 px-[0.8rem]" onClick={onRetry}>{hash === undefined ? 'Gerar e checar o specs.md' : 'Checar de novo'}</button>
+          <span className="text-ink-soft">Só roda quando você clicar: abrir ou recarregar a página não chama os agentes.</span>
+        </div>
       )}
       <p data-testid="specs-check-last" className="m-0 mt-[0.6rem] text-ink-soft">{lastAt ? `Última validação: ${stamp(lastAt)}` : 'Nenhuma validação ainda.'}</p>
     </section>

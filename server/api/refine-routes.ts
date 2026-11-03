@@ -419,10 +419,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     {
       method: 'GET',
       path: `${S}/events`,
-      handler: wrap(async ({ req, params, sse }) => {
+      handler: wrap(async ({ req, params, query, sse }) => {
         const s = await get(params);
         const header = req.headers['last-event-id'];
-        const after = Number(Array.isArray(header) ? header[0] : (header ?? 0)) || 0;
+        // A page that already read the snapshot asks only for what came after it (`?after=`); a reconnect names its last event in the header.
+        const after = Number(Array.isArray(header) ? header[0] : (header ?? query.get('after') ?? 0)) || 0;
         const w = sse();
         let last = after;
         let tail: { close(): void } | null = null;
