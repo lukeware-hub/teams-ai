@@ -43,6 +43,7 @@ import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from 
 import { healRunsOf, type HealView } from './heal.js';
 import { flowIsMermaid } from './sections.js';
 import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
+import { viewerLogin } from '../git/github.js';
 import { DocsStoreError, holdsConflictMarkers, openStore, readStoreText } from '../docs/store.js';
 import { readDocsMarker } from '../docs/project-state.js';
 import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } from '../docs/layout.js';
@@ -402,11 +403,11 @@ export class RefineSession {
     return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? await this.closingSummary() : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
-  /** The repository the backlog step creates: the owner of the project document or the configured one, and the name of the style. */
+  /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
   private async docsTargetOf(docs: Record<DocFile, string>): Promise<RepoTarget | undefined> {
     const style = this.state.architecture?.decision.style;
     if (this.state.docsRepo !== true || !style) return undefined;
-    const owner = githubOwnerOf(docs['project.md']) ?? (await this.deps.docsBind?.configuredOwner());
+    const owner = githubOwnerOf(docs['project.md']) ?? (await this.defaultOwner());
     if (!owner) return undefined;
     try {
       return docsTarget(style, this.deps.draft.projectId, owner);
@@ -414,6 +415,13 @@ export class RefineSession {
       if (err instanceof RangeError) return undefined;
       throw err;
     }
+  }
+
+  /** The owner when the project document names none: the configured owner, else the signed-in account, the same one the bind uses. */
+  private async defaultOwner(): Promise<string | undefined> {
+    const docsBind = this.deps.docsBind;
+    if (!docsBind) return undefined;
+    return (await docsBind.configuredOwner()) ?? (await viewerLogin(this.deps.ws.root, docsBind.exec)) ?? undefined;
   }
 
   /** The rounds the current stage has used count against its limit. */

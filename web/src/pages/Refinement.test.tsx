@@ -694,15 +694,14 @@ describe('the architecture step names what the documentation repository does', (
     expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('the architecture button is always enabled, and names the missing owner on the click for a documentation-repository session with no target', () => {
+  it('the architecture button goes on without a named owner: the server picks the owner, so the click creates the backlog', () => {
     const h = on();
     render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
     const button = screen.getByTestId('architecture-continue') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
-    expect(screen.getByTestId('architecture-note').textContent).toBe('Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.');
-    expect(h.onEnableBacklog).not.toHaveBeenCalled();
-    expect(window.location.search).toContain('etapa=arquitetura');
+    expect(h.onEnableBacklog).toHaveBeenCalled();
+    expect(screen.queryByTestId('architecture-note')).toBeNull();
   });
 
   it('the architecture button asks for a decision on the click when none exists, and does not move', () => {

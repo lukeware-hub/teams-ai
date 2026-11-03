@@ -1224,15 +1224,12 @@ export function RefinementView(p: ViewProps) {
   );
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
-  // Without the owner the repository has no name yet, so the backlog cannot be created.
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
-  const docsTargetMissing = docsRepoNoBacklog && !snap.docsTarget;
   // The architecture step only names the style: its button is always enabled and checks the decision on the click.
   const architectureBusy = evaluating || (st.evaluation != null && st.evaluation.endedAt === null);
   const architectureBlock = (): string | null => (architectureBusy ? 'A arquitetura ainda está sendo decidida: espere ela terminar.'
     : st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
     : snap.architectureStale === true ? 'Os documentos mudaram: decida a arquitetura de novo.'
-    : docsTargetMissing ? 'Defina o dono na seção ## GitHub owner do documento de projeto para ver onde o repositório de documentos será criado.'
     : null);
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">

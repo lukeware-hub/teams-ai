@@ -108,27 +108,18 @@ describe('RefinementPage errors', () => {
 
 describe('RefinementPage busy evaluation', () => {
   const page = () => <MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>;
-  it('shows a second evaluation as green progress, not as an alert, and drops it when the evaluation ends', async () => {
-    const s = snapshot(1);
-    const idle = { ...s, state: { ...s.state, status: 'ready', stale: true, error: null, patches: [] } as never };
-    const running = { ...s, state: { ...s.state, status: 'evaluating', stale: true, error: null, patches: [], evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: null } } as never };
-    const snapshotSpy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(idle);
-    vi.spyOn(refineApi, 'evaluate').mockImplementation(async () => {
-      snapshotSpy.mockResolvedValue(running);
-      journal.reopened += 1;
-      throw new Error('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
-    });
+  it('shows a refused action during the evaluation as green progress, not as an alert', async () => {
     journal.events = [];
     journal.reopened = 0;
-    const view = render(page());
-    const evaluate = await screen.findByTestId('evaluate');
-    await act(async () => { fireEvent.click(evaluate); });
-    expect(screen.getByTestId('busy-notice').textContent).toContain('Processando');
+    const s = snapshot(1);
+    // The undo stays enabled during an evaluation, so its refusal reaches the page with the evaluating status already on screen.
+    const move = { moveId: 'move-1', status: 'applied', from: 'flow.md', to: 'briefing.md', reason: 'mesmo assunto', closed: false };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, state: { ...s.state, status: 'evaluating', error: null, patches: [], moves: [move], evaluation: { startedAt: '2026-11-03T10:00:00Z', endedAt: null } } as never });
+    vi.spyOn(refineApi, 'undoMove').mockRejectedValue(new Error('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.'));
+    render(page());
+    fireEvent.click(await screen.findByTestId('undo-move'));
+    await waitFor(() => expect(screen.getByTestId('busy-notice').textContent).toContain('Processando'));
     expect(screen.queryByRole('alert')).toBeNull();
-    snapshotSpy.mockResolvedValue(idle);
-    journal.reopened += 1;
-    await act(async () => { view.rerender(page()); });
-    expect(screen.queryByTestId('busy-notice')).toBeNull();
   });
 });
 

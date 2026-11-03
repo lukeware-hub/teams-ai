@@ -34,6 +34,8 @@ const MAX_ALIAS = 40;
 const WINDOWS_DEVICE = /^(con|nul|aux|prn|com[1-9]|lpt[1-9])$/;
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 const OWNER_HEADING = '## GitHub owner';
+/** A value that names no owner: a word for none, with or without a list mark or brackets. */
+const NO_OWNER = /^(?:[-*]\s*)?\(?(?:none|nenhum|n\/a|-)\)?$/i;
 
 /** An alias names a spec folder: a slug of at most 40 characters that is not a Windows device name. */
 export function isAlias(value: string): boolean {
@@ -99,7 +101,7 @@ export function githubOwnerOf(projectMd: string): string | null {
     .slice(start + 1, end === -1 ? undefined : end)
     .map((line) => line.trim())
     .find((line) => line !== '');
-  if (value === undefined || /[<>]/.test(value)) return null;
+  if (value === undefined || /[<>]/.test(value) || NO_OWNER.test(value)) return null;
   if (!GITHUB_LOGIN.test(value)) throw new RangeError(`the owner under "${OWNER_HEADING}" must be a GitHub login, got "${value}"`);
   return value;
 }

@@ -130,6 +130,18 @@ describe('the documentation repository is bound only by the Backlog step', () =>
     expect((await readDocsMarker(r.ws))?.target).toEqual({ owner: 'octo', name: 'hello-app' });
   });
 
+  it('the snapshot names the same signed-in owner the bind uses', async () => {
+    const r = await openRig({ owner: undefined, login: 'octo' });
+    const s = await decided(r);
+    expect((await s.snapshot()).docsTarget).toEqual({ owner: 'octo', name: 'hello-app' });
+  });
+
+  it('a placeholder owner in the project document falls back to the signed-in owner, and the snapshot still loads', async () => {
+    const r = await openRig({ owner: undefined, login: 'octo' });
+    const s = await decided(r, 'monolith', { 'project.md': '# Projeto\n\n## GitHub owner\n\n- (none)\n\n## Visão\n\nO hello-app entrega uma saudação ao usuário.\n' });
+    expect((await s.snapshot()).docsTarget).toEqual({ owner: 'octo', name: 'hello-app' });
+  });
+
   it('refuses without a signed-in account, and binds nothing', async () => {
     const r = await openRig({ login: null });
     const s = await decided(r);

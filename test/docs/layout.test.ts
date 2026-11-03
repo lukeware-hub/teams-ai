@@ -130,6 +130,7 @@ describe('GitHub owner of the project document', () => {
   it('is null when the section is empty or still the template', () => {
     expect(githubOwnerOf('## GitHub owner\n\n')).toBeNull();
     expect(githubOwnerOf('## GitHub owner\n\n<optional override of config.json github.owner>\n')).toBeNull();
+    expect(githubOwnerOf('## GitHub owner\n\n- (none)\n')).toBeNull();
   });
 
   it('reads a GitHub login from its section', () => {
