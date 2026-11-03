@@ -1366,7 +1366,7 @@ Escolhas do dono:
 
 ### 26.11.1 Validação automática do specs.md (aprovado pelo dono)
 
-Ao abrir a etapa, o sistema grava `specs.md` a partir do backlog pronto, confirma a gravação lendo o arquivo de volta e pede a análise de PO e SM. Nenhum botão dispara isso. O painel `Lista de verificação` ganha o bloco `specs.md` acima de PO e SM. A análise roda de novo a cada abertura enquanto PO ou SM estiver reprovado ou com falha.
+Acontece na etapa `Backlog`, depois da `Arquitetura`, porque o `specs.md` sai do backlog e o backlog só existe depois da arquitetura. Ao abrir a etapa, o sistema grava `specs.md` a partir do backlog pronto, confirma a gravação lendo o arquivo de volta e pede a análise de PO e SM. Nenhum botão dispara isso. A `Lista de verificação` da etapa Backlog mostra o bloco `specs.md` acima de PO e SM. O `Resumo` não mostra PO, SM nem o `specs.md`. A análise roda de novo a cada abertura da etapa enquanto PO ou SM estiver reprovado ou com falha.
 
 | Elemento | Estados |
 |---|---|

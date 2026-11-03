@@ -407,9 +407,9 @@ export function RefinementView(p: ViewProps) {
   useEffect(() => {
     if (newProject && onStage) setTab(onStage);
   }, [onStage, newProject]);
-  // Each arrival at the final review checks specs.md again; the server starts nothing when both approvals stand.
+  // Each arrival at the backlog checks specs.md again; the server starts nothing when both approvals stand.
   useEffect(() => {
-    if (step === 'review' && backlogOn) void p.onCheckSpecs?.();
+    if (step === 'backlog' && backlogOn) void p.onCheckSpecs?.();
   }, [step, backlogOn]);
   const stageStep = newProject ? stageAction(st) : null;
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
@@ -895,6 +895,22 @@ export function RefinementView(p: ViewProps) {
       </details>
     </section>
   );
+  /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
+  const verificationDetails = (
+    <>
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} />}
+      <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
+        <details data-testid="refinement-checklist-po" className="group">
+          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
+          <Checklist items={st.checklist} role="po" />
+        </details>
+        <details data-testid="refinement-checklist-sm" className="group">
+          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span></summary>
+          <Checklist items={st.checklist} role="sm" />
+        </details>
+      </div>
+    </>
+  );
   /** The verification blocks (usage, checklist, generated files, tasks, secrets); the panel and the final review give it their own box. */
   const qualityBlock = (boxClass: string) => (
     <section data-testid="refinement-quality-block" className={boxClass}>
@@ -928,17 +944,7 @@ export function RefinementView(p: ViewProps) {
           </div>
         </dl>
       </div>
-      {backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} />}
-      <div data-testid="refinement-quality-checklists"className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
-        <details data-testid="refinement-checklist-po" className="group">
-          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
-          <Checklist items={st.checklist} role="po" />
-        </details>
-        <details data-testid="refinement-checklist-sm" className="group">
-          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span></summary>
-          <Checklist items={st.checklist} role="sm" />
-        </details>
-      </div>
+      {step !== 'review' && verificationDetails}
       {!newProject && backlogBlock(null)}
       <h4 data-testid="refinement-quality-generated-title"><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
@@ -954,7 +960,7 @@ export function RefinementView(p: ViewProps) {
       )}
         </>
       )}
-      <LazyDetails key={specFile.name} className={fileBox} summary={<><span data-testid="refinement-spec-file-name">{specFile.name}</span>{specFile.text ? <a data-testid={`download-${specFile.name.replace('.', '-')}`} href={mdDownload(specFile.text)} download={specFile.name} aria-label={`Baixar ${specFile.name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span data-testid="refinement-spec-file-status" className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specFile.text ? <pre data-testid="refinement-spec-file-body" className="whitespace-pre-wrap break-words">{specFile.text}</pre> : <p data-testid="refinement-spec-file-empty" className={fileEmpty}>Será gerado após a avaliação.</p>} />
+      {step !== 'review' && <LazyDetails key={specFile.name} className={fileBox} summary={<><span data-testid="refinement-spec-file-name">{specFile.name}</span>{specFile.text ? <a data-testid={`download-${specFile.name.replace('.', '-')}`} href={mdDownload(specFile.text)} download={specFile.name} aria-label={`Baixar ${specFile.name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span data-testid="refinement-spec-file-status" className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specFile.text ? <pre data-testid="refinement-spec-file-body" className="whitespace-pre-wrap break-words">{specFile.text}</pre> : <p data-testid="refinement-spec-file-empty" className={fileEmpty}>Será gerado após a avaliação.</p>} />}
       {baseDocs.map(({ doc, text }) => (
         <LazyDetails key={doc} className={fileBox} summary={<><span data-testid={`refinement-doc-file-name-${doc}`}>{doc}</span><a data-testid={`download-${doc.replace('.', '-')}`} href={mdDownload(text ?? '')} download={doc} aria-label={`Baixar ${doc}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre data-testid={`refinement-doc-file-body-${doc}`} className="whitespace-pre-wrap break-words">{text}</pre>} />
       ))}
@@ -1192,6 +1198,7 @@ export function RefinementView(p: ViewProps) {
       {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
       {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+      {verificationDetails}
       {backlogBlock(startLine)}
     </div>
   );
