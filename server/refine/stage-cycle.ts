@@ -145,10 +145,11 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       return;
     }
     await propose(review.value.docPatch);
-    // Front asks no questions: only the PO and the SM put one to the owner.
-    const questions: Question[] = role === 'front' ? [] : review.value.questions.map((q, i) => ({
+    // A visual scope gap Front finds goes to the owner through the PO, so it is never lost.
+    const asker = role === 'front' ? 'po' : role;
+    const questions: Question[] = review.value.questions.map((q, i) => ({
       questionId: `${role}-s${cycle}-${i}`,
-      role,
+      role: asker,
       text: q.text,
       blocking: q.blocking,
       relatedAcIds: q.relatedAcIds,
