@@ -46,13 +46,13 @@ export function RepositoryPage() {
   }, [loadDashboard]);
   usePolling(loadDashboard, POLL_MS);
 
-  if (detail === undefined) return <p className="hint" role="status">Carregando o repositório…</p>;
+  if (detail === undefined) return <p data-testid="repository-loading" className="hint" role="status">Carregando o repositório…</p>;
   if (detail === null && failure === 'failed') {
     return (
       <section className={panel} data-testid="repo-error">
-        <h1 className="m-0 text-[1.25rem] font-semibold">Não foi possível carregar o repositório.</h1>
-        <p className="hint">Verifique a conexão com o servidor e tente de novo.</p>
-        <button type="button" className={action.secondary} onClick={() => void loadDetail()}>
+        <h1 data-testid="repository-error-title" className="m-0 text-[1.25rem] font-semibold">Não foi possível carregar o repositório.</h1>
+        <p data-testid="repository-error-hint" className="hint">Verifique a conexão com o servidor e tente de novo.</p>
+        <button data-testid="repository-error-retry" type="button" className={action.secondary} onClick={() => void loadDetail()}>
           Tentar de novo
         </button>
       </section>
@@ -61,8 +61,8 @@ export function RepositoryPage() {
   if (detail === null) {
     return (
       <section className={panel} data-testid="repo-missing">
-        <h1 className="m-0 text-[1.25rem] font-semibold">Repositório não encontrado</h1>
-        <p className="hint">A arquitetura do projeto não nomeia {repoId}.</p>
+        <h1 data-testid="repository-missing-title" className="m-0 text-[1.25rem] font-semibold">Repositório não encontrado</h1>
+        <p data-testid="repository-missing-hint" className="hint">A arquitetura do projeto não nomeia {repoId}.</p>
         <Link to={`/projects/${encodeURIComponent(projectId)}`}>Voltar ao projeto</Link>
       </section>
     );
@@ -70,12 +70,12 @@ export function RepositoryPage() {
 
   return (
     <div className="grid min-w-0 gap-4" data-testid="repo-page">
-      <nav aria-label="Migalhas" className="hint">
-        <Link to="/">Projetos</Link> › <Link to={`/projects/${encodeURIComponent(projectId)}`}>{projectId}</Link> › <span>{detail.name}</span>
+      <nav data-testid="repository-breadcrumb" aria-label="Migalhas" className="hint">
+        <Link to="/">Projetos</Link> › <Link to={`/projects/${encodeURIComponent(projectId)}`}>{projectId}</Link> › <span data-testid="repository-breadcrumb-current">{detail.name}</span>
       </nav>
       <RepoHeader detail={detail} projectId={projectId} deploy={dashboard?.lastDeploy ?? null} />
-      {dashboard === undefined && <p className="hint" role="status">Carregando os indicadores…</p>}
-      {dashboard === null && <p className="hint">sem dados: os indicadores deste repositório não puderam ser lidos.</p>}
+      {dashboard === undefined && <p data-testid="repository-indicators-loading" className="hint" role="status">Carregando os indicadores…</p>}
+      {dashboard === null && <p data-testid="repository-indicators-empty" className="hint">sem dados: os indicadores deste repositório não puderam ser lidos.</p>}
       {dashboard && (
         <>
           <IndicatorCards dashboard={dashboard} />
@@ -85,48 +85,48 @@ export function RepositoryPage() {
           <FailuresBlockers failures={dashboard.failures} blockers={dashboard.blockers} />
         </>
       )}
-      <section className={panel}>
-        <div className={sectionTitle}>
-          <h2 className={sectionHeading}>Integrações</h2>
+      <section data-testid="repository-integrations" className={panel}>
+        <div data-testid="repository-integrations-title" className={sectionTitle}>
+          <h2 data-testid="repository-integrations-heading" className={sectionHeading}>Integrações</h2>
         </div>
         {detail.integrations.length > 0 ? (
-          <ul className="m-0 grid list-none gap-1 p-0 text-[0.875rem]">
+          <ul data-testid="repository-integrations-list" className="m-0 grid list-none gap-1 p-0 text-[0.875rem]">
             {detail.integrations.map((link) => (
-              <li key={link}>{link}</li>
+              <li data-testid="repository-integration-item" key={link}>{link}</li>
             ))}
           </ul>
         ) : (
-          <p className="hint">Nenhuma integração.</p>
+          <p data-testid="repository-integrations-empty" className="hint">Nenhuma integração.</p>
         )}
       </section>
       <details className={panel} data-testid="repo-specs">
-        <summary className={`${sectionTitle} cursor-pointer`}>
-          <h2 className={sectionHeading}>Especificações</h2>
+        <summary data-testid="repository-specs-summary" className={`${sectionTitle} cursor-pointer`}>
+          <h2 data-testid="repository-specs-heading" className={sectionHeading}>Especificações</h2>
         </summary>
         {detail.rows.length === 0 ? (
-          <p className="hint">Nenhuma spec neste repositório.</p>
+          <p data-testid="repository-specs-empty" className="hint">Nenhuma spec neste repositório.</p>
         ) : (
-          <div className="-mx-1 overflow-x-auto">
-            <table className="w-full text-[0.8125rem]">
-              <thead>
-                <tr className="text-left text-ink-soft">
-                  <th scope="col">Spec</th>
-                  <th scope="col">Prioridade</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col">Plano</th>
-                  <th scope="col">Tarefas</th>
-                  <th scope="col">Depende de</th>
+          <div data-testid="repository-specs-scroll" className="-mx-1 overflow-x-auto">
+            <table data-testid="repository-specs-table" className="w-full text-[0.8125rem]">
+              <thead data-testid="repository-specs-head">
+                <tr data-testid="repository-specs-head-row" className="text-left text-ink-soft">
+                  <th data-testid="repository-specs-th-spec" scope="col">Spec</th>
+                  <th data-testid="repository-specs-th-priority" scope="col">Prioridade</th>
+                  <th data-testid="repository-specs-th-state" scope="col">Estado</th>
+                  <th data-testid="repository-specs-th-plan" scope="col">Plano</th>
+                  <th data-testid="repository-specs-th-tasks" scope="col">Tarefas</th>
+                  <th data-testid="repository-specs-th-depends" scope="col">Depende de</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody data-testid="repository-specs-body">
                 {detail.rows.map((row) => (
                   <tr key={row.specId} data-testid={`repo-spec-${row.specId}`}>
-                    <td>{row.title ?? row.specId}</td>
-                    <td>{row.priority ?? 'sem dados'}</td>
-                    <td>{row.blocked ? 'Bloqueada' : row.status}</td>
-                    <td>{row.plan ? 'Sim' : 'Não'}</td>
-                    <td>{`${row.status === 'done' ? row.tasks : 0} de ${row.tasks}`}</td>
-                    <td>{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '-'}</td>
+                    <td data-testid={`repository-spec-title-${row.specId}`}>{row.title ?? row.specId}</td>
+                    <td data-testid={`repository-spec-priority-${row.specId}`}>{row.priority ?? 'sem dados'}</td>
+                    <td data-testid={`repository-spec-state-${row.specId}`}>{row.blocked ? 'Bloqueada' : row.status}</td>
+                    <td data-testid={`repository-spec-plan-${row.specId}`}>{row.plan ? 'Sim' : 'Não'}</td>
+                    <td data-testid={`repository-spec-tasks-${row.specId}`}>{`${row.status === 'done' ? row.tasks : 0} de ${row.tasks}`}</td>
+                    <td data-testid={`repository-spec-depends-${row.specId}`}>{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '-'}</td>
                   </tr>
                 ))}
               </tbody>

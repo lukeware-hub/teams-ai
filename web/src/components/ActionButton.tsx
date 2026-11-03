@@ -26,9 +26,9 @@ export function ActionButton({ busy = false, icon, onClick, disabled, children, 
     result.then(done, done);
   };
   return (
-    <button {...rest} type={type} disabled={disabled || loading} aria-busy={loading || undefined} onClick={run}>
+    <button data-testid="action-button" {...rest} type={type} disabled={disabled || loading} aria-busy={loading || undefined} onClick={run}>
       {children}
-      {loading ? <span className="button-spinner" aria-hidden="true" /> : icon}
+      {loading ? <span data-testid="action-button-spinner" className="button-spinner" aria-hidden="true" /> : icon}
     </button>
   );
 }

@@ -7,7 +7,7 @@ export function MoveNotice({ moves, onUndo, onClose, docName }: { moves: MoveRow
   if (!move || move.closed) return null;
   return (
     <div role="status" data-testid="move-notice" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink">
-      <span className="min-w-0 basis-full min-[640px]:flex-1 min-[640px]:basis-0">Movi um trecho de <b>{docName(move.from)}</b> para <b>{docName(move.to)}</b>. <span className="text-ink-soft">{move.reason}</span></span>
+      <span className="min-w-0 basis-full min-[640px]:flex-1 min-[640px]:basis-0" data-testid="move-notice-text">Movi um trecho de <b data-testid="move-notice-from">{docName(move.from)}</b> para <b data-testid="move-notice-to">{docName(move.to)}</b>. <span className="text-ink-soft" data-testid="move-notice-reason">{move.reason}</span></span>
       <ActionButton className="secondary flex-1 min-[640px]:flex-none" data-testid="undo-move" onClick={() => onUndo(move.moveId)}>Desfazer</ActionButton>
       <ActionButton className="secondary flex-1 min-[640px]:flex-none" data-testid="close-move-notice" onClick={() => onClose(move.moveId)}>Fechar</ActionButton>
     </div>

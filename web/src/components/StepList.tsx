@@ -21,11 +21,11 @@ export function StepList({ steps, loadStep }: { steps: StepRow[]; loadStep: (ste
     setOpen((o) => ({ ...o, [stepId]: art }));
   };
   return (
-    <ul>
+    <ul data-testid="step-list">
       {steps.map((s) => {
         const art = open[s.stepId];
         return (
-          <li key={s.stepId}>
+          <li data-testid={`step-list-item-${s.stepId}`} key={s.stepId}>
             <button className="min-w-[auto]" data-testid={`step-${s.stepId}`} onClick={() => void toggle(s.stepId)}>
               {s.stepId}
             </button>{' '}
@@ -35,7 +35,7 @@ export function StepList({ steps, loadStep }: { steps: StepRow[]; loadStep: (ste
             {s.usage ? ` · ${s.usage.inputTokens + s.usage.outputTokens} tokens` : ''}
             {s.durationMs ? ` · ${formatDuration(s.durationMs)}` : ''}
             {art && art !== 'loading' ? (
-              <pre className="output">
+              <pre data-testid={`step-list-output-${s.stepId}`} className="output">
                 {art.prompt}
                 {'\n---\n'}
                 {JSON.stringify(art.output, null, 2)}

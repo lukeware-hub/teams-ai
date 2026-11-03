@@ -13,7 +13,7 @@ const NAV: ReadonlyArray<{ to: string; label: string; icon: IconName; paths: str
 
 function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
   return (
-    <nav
+    <nav data-testid="app-shell-rail"
       aria-label="Navegação principal"
       className="edge-lit z-10 flex items-center after:hidden gap-2 border-line bg-surface shadow-card max-md:order-last max-md:justify-around max-md:overflow-x-clip max-md:border-t max-md:px-3 max-md:py-2 md:sticky md:top-4 md:flex-col md:justify-self-center md:self-start md:rounded-[2rem] md:border md:px-2.5 md:py-4"
     >
@@ -25,7 +25,7 @@ function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
       >
         <Icon name="grid" size={20} />
       </Link>
-      <span className="h-px w-8 bg-line max-md:hidden" aria-hidden="true" />
+      <span data-testid="app-shell-rail-divider" className="h-px w-8 bg-line max-md:hidden" aria-hidden="true" />
       {NAV.map((item) => (
         <Link
           key={item.to}
@@ -36,10 +36,10 @@ function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
           className="relative grid size-11 place-items-center rounded-tile text-ink-soft no-underline transition-colors hover:bg-surface-muted hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-ink"
         >
           <Icon name={item.icon} size={20} />
-          {item === active ? <span className="absolute top-1/2 -right-1.5 size-1.5 -translate-y-1/2 rounded-full bg-accent-text max-md:hidden" aria-hidden="true" /> : null}
+          {item === active ? <span data-testid={`app-shell-rail-active-${item.icon}`} className="absolute top-1/2 -right-1.5 size-1.5 -translate-y-1/2 rounded-full bg-accent-text max-md:hidden" aria-hidden="true" /> : null}
         </Link>
       ))}
-      <span className="md:mt-6">
+      <span data-testid="app-shell-theme-switch" className="md:mt-6">
         <ThemeSwitch />
       </span>
     </nav>
@@ -72,16 +72,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
   return (
     <SetRail.Provider value={setRail}>
-      <a
+      <a data-testid="app-shell-skip-link"
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-tile focus:bg-surface focus:px-4 focus:py-2 focus:text-ink focus:shadow-pop"
       >
         Pular para o conteúdo
       </a>
-      <div className="flex min-h-dvh flex-col">
-        <div className={`mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 flex-col max-md:contents ${rail ? 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:gap-4 md:px-4 md:pt-4' : 'md:px-4 md:pt-4'}`}>
+      <div data-testid="app-shell-root" className="flex min-h-dvh flex-col">
+        <div data-testid="app-shell-layout" className={`mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 flex-col max-md:contents ${rail ? 'md:grid md:grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] md:gap-4 md:px-4 md:pt-4' : 'md:px-4 md:pt-4'}`}>
           {rail ? <Rail active={active} /> : null}
-          <div id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 focus:outline-none max-md:order-1">
+          <div data-testid="app-shell-content" id="main" ref={content} tabIndex={-1} className="min-h-0 w-full flex-1 focus:outline-none max-md:order-1">
             {children}
           </div>
         </div>

@@ -6,45 +6,45 @@ export function ClosingDialog({ summary, busy, onCancel, onAuthorize }: { summar
   return (
     <Dialog title="Resumo do refinamento" onClose={onCancel}>
       <div className="grid gap-4" data-testid="closing-summary">
-        <ol className="m-0 grid list-none gap-2 p-0" aria-label="Verificações do resumo">
+        <ol className="m-0 grid list-none gap-2 p-0" aria-label="Verificações do resumo" data-testid="closing-checks">
           {summary.checks.map((check) => (
             <li key={check.id} className="flex items-start gap-2 text-[0.875rem]" data-testid={`close-${check.id}`} data-ok={check.ok}>
-              <span aria-hidden="true">{check.ok ? '✓' : '•'}</span>
-              <span>{check.detail}</span>
+              <span aria-hidden="true" data-testid={`closing-check-mark-${check.id}`}>{check.ok ? '✓' : '•'}</span>
+              <span data-testid={`closing-check-detail-${check.id}`}>{check.detail}</span>
             </li>
           ))}
         </ol>
         <table className="w-full text-[0.8125rem]" data-testid="closing-repositories">
-          <thead>
-            <tr className="text-left text-ink-soft">
-              <th scope="col">Repositório</th>
-              <th scope="col">Specs</th>
-              <th scope="col">Planos</th>
-              <th scope="col">Tarefas</th>
+          <thead data-testid="closing-repos-head">
+            <tr className="text-left text-ink-soft" data-testid="closing-repos-head-row">
+              <th scope="col" data-testid="closing-repos-col-name">Repositório</th>
+              <th scope="col" data-testid="closing-repos-col-specs">Specs</th>
+              <th scope="col" data-testid="closing-repos-col-plans">Planos</th>
+              <th scope="col" data-testid="closing-repos-col-tasks">Tarefas</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody data-testid="closing-repos-body">
             {summary.repositories.map((repo) => (
-              <tr key={repo.name}>
-                <td>{repo.name}</td>
-                <td>{repo.specs}</td>
-                <td>{repo.plans}</td>
-                <td>{repo.tasks}</td>
+              <tr key={repo.name} data-testid={`closing-repo-${repo.name}`}>
+                <td data-testid={`closing-repo-name-${repo.name}`}>{repo.name}</td>
+                <td data-testid={`closing-repo-specs-${repo.name}`}>{repo.specs}</td>
+                <td data-testid={`closing-repo-plans-${repo.name}`}>{repo.plans}</td>
+                <td data-testid={`closing-repo-tasks-${repo.name}`}>{repo.tasks}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        <details>
-          <summary>{`Premissas assumidas (${summary.assumptions.length})`}</summary>
-          <ul className="m-0 grid gap-1 pl-5 text-[0.8125rem]">
+        <details data-testid="closing-assumptions">
+          <summary data-testid="closing-assumptions-summary">{`Premissas assumidas (${summary.assumptions.length})`}</summary>
+          <ul className="m-0 grid gap-1 pl-5 text-[0.8125rem]" data-testid="closing-assumptions-list">
             {summary.assumptions.map((assumption, i) => (
-              <li key={i}>{assumption}</li>
+              <li key={i} data-testid={`closing-assumption-${assumption}`}>{assumption}</li>
             ))}
           </ul>
         </details>
-        <p className="m-0 text-[0.8125rem] text-ink-soft">Até duas specs rodam ao mesmo tempo. Reparos e novas tentativas são automáticos; o custo aparece como alerta, sem parar o desenvolvimento.</p>
-        {!summary.ok && <p role="status" className="m-0 text-[0.8125rem] text-ink-soft">Itens reprovados não travam o início: cada um está na lista acima, com o que falta corrigir.</p>}
-        <div className="flex flex-wrap justify-end gap-2">
+        <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="closing-hint">Até duas specs rodam ao mesmo tempo. Reparos e novas tentativas são automáticos; o custo aparece como alerta, sem parar o desenvolvimento.</p>
+        {!summary.ok && <p role="status" className="m-0 text-[0.8125rem] text-ink-soft" data-testid="closing-unapproved-note">Itens reprovados não travam o início: cada um está na lista acima, com o que falta corrigir.</p>}
+        <div className="flex flex-wrap justify-end gap-2" data-testid="closing-actions">
           <button type="button" data-testid="closing-cancel" onClick={onCancel}>Cancelar</button>
           <button type="button" data-testid="closing-authorize" className="primary" disabled={busy} onClick={() => onAuthorize(summary.summaryHash)}>
             Autorizo iniciar o desenvolvimento

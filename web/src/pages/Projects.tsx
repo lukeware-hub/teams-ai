@@ -32,18 +32,18 @@ const HELP = {
 function ProjectsSkeleton() {
   return (
     <Skeleton>
-      <div className={toolbar}>
-        <span className={filter}><Bone size="control" /></span>
+      <div className={toolbar} data-testid="projects-skeleton-toolbar">
+        <span className={filter} data-testid="projects-skeleton-filter"><Bone size="control" /></span>
       </div>
-      <div className={grid}>
+      <div className={grid} data-testid="projects-skeleton-grid">
         {[0, 1, 2].map((i) => (
-          <div className={card} key={i}>
-            <div className={cardBody}>
-              <p className={cardTitle}><Bone size="half" /></p>
-              <p className={cardDesc}><Bone /><Bone /><Bone size="short" /></p>
-              <p className={cardFacts}><Bone size="half" /></p>
+          <div className={card} key={i} data-testid="projects-skeleton-card">
+            <div className={cardBody} data-testid="projects-skeleton-card-body">
+              <p className={cardTitle} data-testid="projects-skeleton-title"><Bone size="half" /></p>
+              <p className={cardDesc} data-testid="projects-skeleton-desc"><Bone /><Bone /><Bone size="short" /></p>
+              <p className={cardFacts} data-testid="projects-skeleton-facts"><Bone size="half" /></p>
             </div>
-            <div className={cardActions}><Bone size="action" /><Bone size="action" /></div>
+            <div className={cardActions} data-testid="projects-skeleton-actions"><Bone size="action" /><Bone size="action" /></div>
           </div>
         ))}
       </div>
@@ -142,14 +142,14 @@ export function ProjectsView(p: {
   };
   const deleteReposDetail = (
     <>
-      <p className="confirm-label">Repositórios no GitHub ({githubRepos.length})</p>
-      <label className="confirm-check">
-        <input type="checkbox" checked={deleteGithub} onChange={(e) => setDeleteGithub(e.target.checked)} />
+      <p className="confirm-label" data-testid="projects-delete-repos-label">Repositórios no GitHub ({githubRepos.length})</p>
+      <label className="confirm-check" data-testid="projects-delete-repos-check">
+        <input type="checkbox" data-testid="projects-delete-repos-checkbox" checked={deleteGithub} onChange={(e) => setDeleteGithub(e.target.checked)} />
         Apagar também no GitHub
       </label>
-      <ul className="confirm-repos">
+      <ul className="confirm-repos" data-testid="projects-delete-repos-list">
         {githubRepos.map((r) => (
-          <li key={r}><code>{r}</code></li>
+          <li key={r} data-testid={`projects-delete-repos-item-${r}`}><code data-testid={`projects-delete-repos-code-${r}`}>{r}</code></li>
         ))}
       </ul>
     </>
@@ -158,37 +158,37 @@ export function ProjectsView(p: {
     <>
       {githubRepos.length === 0 ? null : deleteGithub ? (
         <>
-          <p className="confirm-label">Também serão apagados no GitHub ({githubRepos.length}):</p>
-          <ul className="confirm-repos">
+          <p className="confirm-label" data-testid="projects-delete-confirm-github-label">Também serão apagados no GitHub ({githubRepos.length}):</p>
+          <ul className="confirm-repos" data-testid="projects-delete-confirm-repos-list">
             {githubRepos.map((r) => (
-              <li key={r}><code>{r}</code></li>
+              <li key={r} data-testid={`projects-delete-confirm-repos-item-${r}`}><code data-testid={`projects-delete-confirm-repos-code-${r}`}>{r}</code></li>
             ))}
           </ul>
         </>
       ) : (
-        <p className="confirm-label">Os repositórios no GitHub não serão apagados.</p>
+        <p className="confirm-label" data-testid="projects-delete-confirm-github-off">Os repositórios no GitHub não serão apagados.</p>
       )}
-      <p className="confirm-warning">Depois que a exclusão começar, não tem como cancelar.</p>
-      {deleteDialogError ? <div className="error" role="alert">{deleteDialogError}</div> : null}
-      <label className="confirm-field">
-        <span>Digite <code>{pendingDeleteProject?.projectId}</code> para confirmar</span>
+      <p className="confirm-warning" data-testid="projects-delete-warning">Depois que a exclusão começar, não tem como cancelar.</p>
+      {deleteDialogError ? <div className="error" role="alert" data-testid="projects-delete-dialog-error">{deleteDialogError}</div> : null}
+      <label className="confirm-field" data-testid="projects-delete-name-field">
+        <span data-testid="projects-delete-name-label">Digite <code data-testid="projects-delete-name-code">{pendingDeleteProject?.projectId}</code> para confirmar</span>
         <input data-testid="delete-project-name" value={typedName} onChange={(e) => setTypedName(e.target.value)} autoComplete="off" />
       </label>
     </>
   );
   return (
-    <main>
-      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
-        <div className="min-w-0 flex-[1_1_20rem]">
-          <h1 className="m-0 text-ink">Projetos</h1>
-          <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Crie ou importe projetos, refine especificações e acompanhe as execuções.</p>
+    <main data-testid="projects-main">
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4" data-testid="projects-header">
+        <div className="min-w-0 flex-[1_1_20rem]" data-testid="projects-title-block">
+          <h1 className="m-0 text-ink" data-testid="projects-title">Projetos</h1>
+          <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft" data-testid="projects-subtitle">Crie ou importe projetos, refine especificações e acompanhe as execuções.</p>
         </div>
-        <div className="flex flex-wrap gap-2 max-md:flex-[1_1_100%]">
-          <button type="button" className={`secondary ${toggleOpen}`} aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
+        <div className="flex flex-wrap gap-2 max-md:flex-[1_1_100%]" data-testid="projects-actions">
+          <button type="button" className={`secondary ${toggleOpen}`} data-testid="projects-import-git-button" aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
             Importar do Git
             <Icon name="download" size={16} />
           </button>
-          <button type="button" className={`primary-button ${toggleOpen}`} aria-expanded={panel === 'new'} aria-controls="new-project-panel" onClick={() => toggle('new')}>
+          <button type="button" className={`primary-button ${toggleOpen}`} data-testid="projects-new-button" aria-expanded={panel === 'new'} aria-controls="new-project-panel" onClick={() => toggle('new')}>
             Novo projeto
             <Icon name="plus" size={16} />
           </button>
@@ -196,7 +196,7 @@ export function ProjectsView(p: {
       </header>
       {panel === 'new' ? (
         <form
-          id="new-project-panel"
+          id="new-project-panel" data-testid="projects-new-form"
           className={form}
           aria-labelledby="new-project-title"
           onSubmit={(e) => {
@@ -205,35 +205,35 @@ export function ProjectsView(p: {
             void Promise.resolve(p.onNewProject(newProjectId, newProjectName, newProjectDescription, firstSpecId)).finally(() => setSubmitting(false));
           }}
         >
-          <div>
-            <h2 id="new-project-title">Novo projeto</h2>
-            <p className={formHint}>Defina um nome e um ID em inglês (letras minúsculas, números e hífens), ou peça à IA para sugerir o ID a partir do nome e da descrição. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
+          <div data-testid="projects-new-heading">
+            <h2 id="new-project-title" data-testid="projects-new-title">Novo projeto</h2>
+            <p className={formHint} data-testid="projects-new-hint">Defina um nome e um ID em inglês (letras minúsculas, números e hífens), ou peça à IA para sugerir o ID a partir do nome e da descrição. Se quiser, descreva o projeto com suas palavras: os agentes usam o texto para começar o refinamento e fazer as perguntas.</p>
           </div>
-          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2">
-            <label className={field}><span className={fieldLabel}>ID do projeto</span><input className="w-full min-w-0" data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: order-service" /></label>
-            <label className={field}><span className={fieldLabel}>Nome do projeto</span><input className="w-full min-w-0" data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2" data-testid="projects-new-fields">
+            <label className={field} data-testid="projects-new-id-field"><span className={fieldLabel} data-testid="projects-new-id-label">ID do projeto</span><input className="w-full min-w-0" data-testid="new-project-id" autoFocus value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} placeholder="ex.: order-service" /></label>
+            <label className={field} data-testid="projects-new-name-field"><span className={fieldLabel} data-testid="projects-new-name-label">Nome do projeto</span><input className="w-full min-w-0" data-testid="new-project-name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="ex.: Portal interno" /></label>
           </div>
           {p.onSuggestName ? (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-soft">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-soft" data-testid="projects-suggest-row">
               <ActionButton className="secondary" data-testid="suggest-project-id" busy={suggesting} disabled={newProjectName.trim() === '' && newProjectDescription.trim() === ''} onClick={suggest} icon={<Icon name="lightbulb" size={16} />}>
                 {suggesting ? 'Sugerindo…' : 'Sugerir ID com IA'}
               </ActionButton>
               {firstSpecId ? <span data-testid="first-spec-id">Primeira spec: <code>{firstSpecId}</code></span> : null}
-              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
+              {suggestError ? <span className="error" role="alert" data-testid="projects-suggest-error">{suggestError}</span> : null}
             </div>
           ) : null}
-          <label className={field}>
-            <span className={fieldLabel}>Descrição (opcional)</span>
+          <label className={field} data-testid="projects-description-field">
+            <span className={fieldLabel} data-testid="projects-description-label">Descrição (opcional)</span>
             <textarea className="w-full min-w-0 resize-y" data-testid="new-project-description" rows={5} value={newProjectDescription} onChange={(e) => setNewProjectDescription(e.target.value)} placeholder="O que é, para quem serve, o que precisa fazer e o que fica de fora." />
           </label>
-          <div className="flex justify-end">
+          <div className="flex justify-end" data-testid="projects-new-actions">
             <ActionButton data-testid="new-project" className="primary-button" type="submit" busy={submitting} disabled={newProjectId.trim() === '' || newProjectName.trim() === ''} icon={<Icon name="plus" size={16} />}>Criar projeto</ActionButton>
           </div>
         </form>
       ) : null}
       {panel === 'git' ? (
         <form
-          id="import-project-panel"
+          id="import-project-panel" data-testid="projects-git-form"
           className={form}
           aria-labelledby="import-project-title"
           onSubmit={(e) => {
@@ -242,47 +242,48 @@ export function ProjectsView(p: {
             void Promise.resolve(p.onAdd(repoUrl)).finally(() => setSubmitting(false));
           }}
         >
-          <div>
-            <h2 id="import-project-title">Importar do Git</h2>
-            <p className={formHint}>Cole o link de um repositório que já tenha <code>docs/project.json</code>. O código é baixado e o projeto entra na lista.</p>
+          <div data-testid="projects-git-heading">
+            <h2 id="import-project-title" data-testid="projects-git-title">Importar do Git</h2>
+            <p className={formHint} data-testid="projects-git-hint">Cole o link de um repositório que já tenha <code data-testid="projects-git-code">docs/project.json</code>. O código é baixado e o projeto entra na lista.</p>
           </div>
-          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-            <label className={field}><span className={fieldLabel}>URL do repositório</span><input className="w-full min-w-0" type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
+          <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1fr)_auto]" data-testid="projects-git-fields">
+            <label className={field} data-testid="projects-git-url-field"><span className={fieldLabel} data-testid="projects-git-url-label">URL do repositório</span><input className="w-full min-w-0" data-testid="projects-git-url-input" type="url" autoFocus value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/sua-org/seu-projeto.git" /></label>
             <ActionButton className="primary-button max-md:w-full" type="submit" busy={submitting} disabled={repoUrl.trim() === ''} icon={<Icon name="download" size={16} />}>
               Baixar e adicionar
             </ActionButton>
           </div>
         </form>
       ) : null}
-      {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
+      {p.error ? <p className="error m-0" role="alert" data-testid="projects-error">{p.error}</p> : null}
       {busyIds.map((id) => (
-        <p key={id} className="m-0 text-[0.875rem] text-ink-soft" role="status">O projeto {id} está sendo excluído em background.</p>
+        <p key={id} className="m-0 text-[0.875rem] text-ink-soft" role="status" data-testid={`projects-deleting-${id}`}>O projeto {id} está sendo excluído em background.</p>
       ))}
-      {deleteFailure ? <p className="error m-0" role="alert">{deleteFailure}</p> : null}
+      {deleteFailure ? <p className="error m-0" role="alert" data-testid="projects-delete-failure">{deleteFailure}</p> : null}
       {p.loading ? <ProjectsSkeleton /> : p.projects.length === 0 ? (
-        <div className={emptyState}>
+        <div className={emptyState} data-testid="projects-empty">
           <Icon name="list" size={24} />
-          <p>Seus projetos aparecem aqui.</p>
-          <p>Use <strong>Novo projeto</strong> para começar do zero ou <strong>Importar do Git</strong> para trazer um repositório existente.</p>
+          <p data-testid="projects-empty-title">Seus projetos aparecem aqui.</p>
+          <p data-testid="projects-empty-hint">Use <strong data-testid="projects-empty-new-label">Novo projeto</strong> para começar do zero ou <strong data-testid="projects-empty-import-label">Importar do Git</strong> para trazer um repositório existente.</p>
         </div>
       ) : (
-        <div className={toolbar}>
-          <label className={filter}>
-            <span className="sr-only">Filtrar projetos</span>
+        <div className={toolbar} data-testid="projects-toolbar">
+          <label className={filter} data-testid="projects-filter-field">
+            <span className="sr-only" data-testid="projects-filter-label">Filtrar projetos</span>
             <Icon name="search" size={16} />
-            <input ref={filterRef} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por projeto, nome ou spec" />
+            <input ref={filterRef} data-testid="projects-filter-input" className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por projeto, nome ou spec" />
           </label>
-          <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{q ? `${visible.length} de ${total}` : total}</p>
+          <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite" data-testid="projects-count">{q ? `${visible.length} de ${total}` : total}</p>
         </div>
       )}
       {p.projects.length > 0 && visible.length === 0 ? (
-        <div className={emptyState}>
+        <div className={emptyState} data-testid="projects-no-match">
           <Icon name="search" size={24} />
-          <p>{`Nenhum projeto corresponde a “${query.trim()}”.`}</p>
-          <p>Busque pelo ID do projeto, pelo nome, pela pasta ou por uma spec.</p>
+          <p data-testid="projects-no-match-title">{`Nenhum projeto corresponde a “${query.trim()}”.`}</p>
+          <p data-testid="projects-no-match-hint">Busque pelo ID do projeto, pelo nome, pela pasta ou por uma spec.</p>
           <button
             type="button"
             aria-label="Limpar filtro"
+            data-testid="projects-clear-filter-button"
             onClick={() => {
               setQuery('');
               filterRef.current?.focus();
@@ -293,21 +294,21 @@ export function ProjectsView(p: {
         </div>
       ) : null}
       {visible.length > 0 ? (
-        <div className={grid}>
+        <div className={grid} data-testid="projects-grid">
           {visible.map((pr) => {
             const percent = pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100);
             const busy = busyIds.includes(pr.projectId);
             return (
-              <article className={card} key={pr.projectId}>
-                <div className={cardBody}>
-                  <h2 className={cardTitle}>{pr.name || pr.projectId}</h2>
-                  <p className={cardDesc}>{pr.description || 'Sem descrição.'}</p>
-                  <p className={cardFacts}>
+              <article className={card} key={pr.projectId} data-testid={`projects-card-${pr.projectId}`}>
+                <div className={cardBody} data-testid={`projects-card-body-${pr.projectId}`}>
+                  <h2 className={cardTitle} data-testid={`projects-card-title-${pr.projectId}`}>{pr.name || pr.projectId}</h2>
+                  <p className={cardDesc} data-testid={`projects-card-desc-${pr.projectId}`}>{pr.description || 'Sem descrição.'}</p>
+                  <p className={cardFacts} data-testid={`projects-card-facts-${pr.projectId}`}>
                     {plural(pr.specs.length, 'spec', 'specs')}
                     {percent === null ? null : ` · ${percent}% concluído`}
                   </p>
                 </div>
-                <div className={cardActions}>
+                <div className={cardActions} data-testid={`projects-card-actions-${pr.projectId}`}>
                   <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>
                     Excluir
                     {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
@@ -327,17 +328,17 @@ export function ProjectsView(p: {
         </div>
       ) : null}
       {unregistered.length > 0 ? (
-        <section className={`${panel} gap-3`} aria-labelledby="new-projects-title">
-          <div className={sectionTitle}>
-            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="new-projects-title">Novos projetos em refinamento</h2>
+        <section className={`${panel} gap-3`} aria-labelledby="new-projects-title" data-testid="projects-drafts-section">
+          <div className={sectionTitle} data-testid="projects-drafts-title-row">
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="new-projects-title" data-testid="projects-drafts-title">Novos projetos em refinamento</h2>
             <InfoTip label="Novos projetos em refinamento" text={HELP.newProjects} />
           </div>
-          <ul className={rows}>
+          <ul className={rows} data-testid="projects-drafts-list">
             {unregistered.map((d) => (
-              <li className={row} key={`${d.projectId}/${d.specId}`}>
-                <span className={rowId}>{d.projectId} / {d.specId}</span>
+              <li className={row} key={`${d.projectId}/${d.specId}`} data-testid={`projects-draft-${d.projectId}-${d.specId}`}>
+                <span className={rowId} data-testid={`projects-draft-id-${d.projectId}-${d.specId}`}>{d.projectId} / {d.specId}</span>
                 {chip(d.state)}
-                <span className={`${rowActions} max-lg:flex-col max-lg:[&>*]:w-full max-lg:[&>*]:!ml-0`}>
+                <span className={`${rowActions} max-lg:flex-col max-lg:[&>*]:w-full max-lg:[&>*]:!ml-0`} data-testid={`projects-draft-actions-${d.projectId}-${d.specId}`}>
                   <button type="button" className={action.danger} data-testid={`delete-${d.projectId}-${d.specId}`} aria-label={`Excluir refinamento de ${d.projectId} / ${d.specId}`} onClick={() => setPendingDeleteDraft({ projectId: d.projectId, specId: d.specId })}>
                     Excluir
                     <Icon name="trash" size={14} />
@@ -347,7 +348,7 @@ export function ProjectsView(p: {
                     <Icon name="arrow-right" size={14} />
                   </Link>
                 </span>
-                {p.deleteError?.projectId === d.projectId && p.deleteError.specId === d.specId ? <p className="error" role="alert">{p.deleteError.message}</p> : null}
+                {p.deleteError?.projectId === d.projectId && p.deleteError.specId === d.specId ? <p className="error" role="alert" data-testid={`projects-draft-error-${d.projectId}-${d.specId}`}>{p.deleteError.message}</p> : null}
               </li>
             ))}
           </ul>

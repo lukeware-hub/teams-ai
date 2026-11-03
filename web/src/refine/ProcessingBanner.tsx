@@ -38,9 +38,9 @@ export function ProcessBox({ title, since = null, tone = 'accent', testId, child
   }, [since]);
   return (
     <div className={`flex items-start gap-[0.7rem] rounded-lg border px-[0.8rem] py-[0.7rem] [&_.info-tip]:text-current ${tones[tone]}`} role="status" aria-live="polite" data-testid={testId}>
-      <span className="button-spinner mt-[0.15rem]" aria-hidden="true" />
-      <div className="grid flex-1 gap-[0.15rem]">
-        <b className="text-[0.8125rem]">{title}</b>
+      <span className="button-spinner mt-[0.15rem]" aria-hidden="true" data-testid={`${testId}-spinner`} />
+      <div className="grid flex-1 gap-[0.15rem]" data-testid={`${testId}-body`}>
+        <b className="text-[0.8125rem]" data-testid={`${testId}-title`}>{title}</b>
         {since && <span className="text-[0.75rem] leading-[1.35] tabular-nums" aria-hidden="true" data-testid="evaluation-timer">Tempo: {elapsedText(since, now)}</span>}
         {children}
       </div>
@@ -55,12 +55,12 @@ export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [],
   const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
   return (
     <ProcessBox title={<>{title} <InfoTip text={evaluationInfo} /></>} since={since} tone={jevDown ? 'bad' : 'good'} testId="processing-banner">
-      <span className="text-[0.75rem] leading-[1.35]">Rodada {cycle} · {stage}</span>
+      <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-round">Rodada {cycle} · {stage}</span>
       {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
-      {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]">{processingText(backlog)}</span>}
+      {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-backlog">{processingText(backlog)}</span>}
       {backlog?.detail && (
         <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
-          <span className="button-spinner" aria-hidden="true" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
+          <span className="button-spinner" aria-hidden="true" data-testid="processing-banner-detail-spinner" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
         </span>
       )}
     </ProcessBox>

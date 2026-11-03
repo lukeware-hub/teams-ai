@@ -7,7 +7,7 @@ export function ReshapeNotice({ reshapes, onUndo, onClose, docName }: { reshapes
   if (!reshape || reshape.closed) return null;
   return (
     <div role="status" data-testid="reshape-notice" className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink">
-      <span className="min-w-0 basis-full min-[640px]:flex-1 min-[640px]:basis-0">Reorganizei <b>{docName(reshape.file)}</b> no modelo do documento.</span>
+      <span className="min-w-0 basis-full min-[640px]:flex-1 min-[640px]:basis-0" data-testid="reshape-notice-text">Reorganizei <b data-testid="reshape-notice-file">{docName(reshape.file)}</b> no modelo do documento.</span>
       <ActionButton className="secondary flex-1 min-[640px]:flex-none" data-testid="undo-reshape" onClick={() => onUndo(reshape.reshapeId)}>Desfazer</ActionButton>
       <ActionButton className="secondary flex-1 min-[640px]:flex-none" data-testid="close-reshape-notice" onClick={() => onClose(reshape.reshapeId)}>Fechar</ActionButton>
     </div>

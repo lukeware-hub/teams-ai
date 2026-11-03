@@ -23,7 +23,7 @@ export function Home() {
       .then((s) => setTo(s.allOk ? '/projects' : '/onboarding'))
       .catch(() => setTo('/onboarding'));
   }, []);
-  return to ? <Navigate to={to} replace /> : <main><Loading /></main>;
+  return to ? <Navigate to={to} replace /> : <main data-testid="home-loading"><Loading /></main>;
 }
 
 export function App() {

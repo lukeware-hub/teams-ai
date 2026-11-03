@@ -6,35 +6,35 @@ import { money, panel, responsiveCell, responsiveHead, responsiveRow, responsive
 export function AgentActivity({ agents }: { agents: RoleActivity[] }) {
   return (
     <section className={panel} data-testid="repo-agents">
-      <div className={sectionTitle}>
-        <h2 className={sectionHeading}>Atividade por agente</h2>
+      <div data-testid="agent-activity-title" className={sectionTitle}>
+        <h2 data-testid="agent-activity-heading" className={sectionHeading}>Atividade por agente</h2>
       </div>
       {agents.length === 0 ? (
-        <p className="hint">sem dados: nenhum agente atuou neste repositório.</p>
+        <p data-testid="agent-activity-empty" className="hint">sem dados: nenhum agente atuou neste repositório.</p>
       ) : (
-        <div className={`@container ${responsiveTable} -mx-1 overflow-x-auto`}>
-          <table className="w-full text-[0.8125rem]">
-            <thead className={responsiveHead}>
-              <tr className="text-left text-ink-soft">
-                <th scope="col">Agente</th>
-                <th scope="col">Etapas</th>
-                <th scope="col">Tarefas</th>
-                <th scope="col">Arquivos</th>
-                <th scope="col">Testes</th>
-                <th scope="col">Custo</th>
-                <th scope="col">Última atividade</th>
+        <div data-testid="agent-activity-scroll" className={`@container ${responsiveTable} -mx-1 overflow-x-auto`}>
+          <table data-testid="agent-activity-table" className="w-full text-[0.8125rem]">
+            <thead data-testid="agent-activity-head" className={responsiveHead}>
+              <tr data-testid="agent-activity-head-row" className="text-left text-ink-soft">
+                <th data-testid="agent-activity-th-agent" scope="col">Agente</th>
+                <th data-testid="agent-activity-th-steps" scope="col">Etapas</th>
+                <th data-testid="agent-activity-th-tasks" scope="col">Tarefas</th>
+                <th data-testid="agent-activity-th-files" scope="col">Arquivos</th>
+                <th data-testid="agent-activity-th-tests" scope="col">Testes</th>
+                <th data-testid="agent-activity-th-cost" scope="col">Custo</th>
+                <th data-testid="agent-activity-th-last" scope="col">Última atividade</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody data-testid="agent-activity-body">
               {agents.map((a) => (
                 <tr key={a.role} className={responsiveRow} data-testid={`agent-${a.role}`}>
-                  <th scope="row" className={`${responsiveCell} text-left font-medium`}>{ROLE_LABEL[a.role] ?? a.role}</th>
-                  <td className={responsiveCell} data-label="Etapas">{`${a.steps} (${a.ok} ok, ${a.failed} falha${a.failed === 1 ? '' : 's'})`}</td>
-                  <td className={responsiveCell} data-label="Tarefas">{a.created === null ? '—' : `${a.created} criadas · ${a.started} iniciadas · ${a.finished} concluídas`}</td>
-                  <td className={responsiveCell} data-label="Arquivos">{a.files}</td>
-                  <td className={responsiveCell} data-label="Testes">{a.tests === null ? '—' : `${a.tests.passed} passaram · ${a.tests.failed} falharam`}</td>
-                  <td className={responsiveCell} data-label="Custo">{money(a.costUsd)}</td>
-                  <td className={responsiveCell} data-label="Última atividade">{a.lastAt ? `${a.lastDoing} · ${when(a.lastAt)}` : '—'}</td>
+                  <th data-testid={`agent-activity-role-${a.role}`} scope="row" className={`${responsiveCell} text-left font-medium`}>{ROLE_LABEL[a.role] ?? a.role}</th>
+                  <td data-testid={`agent-activity-steps-${a.role}`} className={responsiveCell} data-label="Etapas">{`${a.steps} (${a.ok} ok, ${a.failed} falha${a.failed === 1 ? '' : 's'})`}</td>
+                  <td data-testid={`agent-activity-tasks-${a.role}`} className={responsiveCell} data-label="Tarefas">{a.created === null ? '—' : `${a.created} criadas · ${a.started} iniciadas · ${a.finished} concluídas`}</td>
+                  <td data-testid={`agent-activity-files-${a.role}`} className={responsiveCell} data-label="Arquivos">{a.files}</td>
+                  <td data-testid={`agent-activity-tests-${a.role}`} className={responsiveCell} data-label="Testes">{a.tests === null ? '—' : `${a.tests.passed} passaram · ${a.tests.failed} falharam`}</td>
+                  <td data-testid={`agent-activity-cost-${a.role}`} className={responsiveCell} data-label="Custo">{money(a.costUsd)}</td>
+                  <td data-testid={`agent-activity-last-${a.role}`} className={responsiveCell} data-label="Última atividade">{a.lastAt ? `${a.lastDoing} · ${when(a.lastAt)}` : '—'}</td>
                 </tr>
               ))}
             </tbody>

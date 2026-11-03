@@ -74,21 +74,21 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
 
   return (
     <section className={panel} data-testid="repo-header">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
-        <span className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
+      <div data-testid="repo-header-title-row" className="flex flex-wrap items-center gap-2">
+        <h1 data-testid="repo-header-name" className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
+        <span data-testid="repo-header-kind" className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
         <span data-testid="repo-status">
           <StatePill label={STATUS_LABEL[detail.status]} tone={STATUS_TONE[detail.status]} />
         </span>
       </div>
-      <p className="hint">{detail.responsibility}</p>
+      <p data-testid="repo-header-responsibility" className="hint">{detail.responsibility}</p>
       <div className="flex flex-wrap items-start gap-3" data-testid="repo-shortcuts">
         {shortcuts.map((s) => (
-          <div key={s.kind} className="grid gap-1">
+          <div data-testid={`repo-header-shortcut-${s.kind}`} key={s.kind} className="grid gap-1">
             {s.href ? (
               <a href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
                 {SHORTCUT_LABEL[s.kind]}
-                <span className="sr-only"> (abre em nova aba)</span>
+                <span data-testid={`repo-header-shortcut-note-${s.kind}`} className="sr-only"> (abre em nova aba)</span>
               </a>
             ) : (
               // aria-disabled keeps the button in the tab order, so the reason it gives can be read where it is.
@@ -97,7 +97,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
               </button>
             )}
             {s.reason && (
-              <span id={`why-${s.kind}`} className="hint text-[0.75rem]">
+              <span data-testid={`repo-header-shortcut-reason-${s.kind}`} id={`why-${s.kind}`} className="hint text-[0.75rem]">
                 {s.reason}
               </span>
             )}
@@ -109,7 +109,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
           </button>
         )}
         {startFailed && (
-          <span role="alert" className="text-[0.75rem] tone-bad rounded px-1">
+          <span data-testid="repo-header-start-error" role="alert" className="text-[0.75rem] tone-bad rounded px-1">
             Não foi possível iniciar o sistema. Tente de novo.
           </span>
         )}

@@ -14,10 +14,10 @@ interface Props {
 /** The steps only show where the owner is: they do not open a document, Continuar and Voltar move between them. */
 export function StageSteps({ views, shown }: Props) {
   return (
-    <ol className="m-0 mb-4 grid list-none grid-cols-2 gap-2 p-0" aria-label="Etapas dos documentos">
+    <ol className="m-0 mb-4 grid list-none grid-cols-2 gap-2 p-0" aria-label="Etapas dos documentos" data-testid="stage-steps-list">
       {views.map((view, index) => (
-        <li key={view.doc} className="flex flex-col gap-1">
-          <span id={`stage-state-${view.doc}`} className="text-[0.75rem] text-ink-soft">{index + 1} · {STATE_LABEL[view.state]}</span>
+        <li key={view.doc} className="flex flex-col gap-1" data-testid={`stage-steps-item-${view.doc}`}>
+          <span id={`stage-state-${view.doc}`} className="text-[0.75rem] text-ink-soft" data-testid={`stage-steps-state-${view.doc}`}>{index + 1} · {STATE_LABEL[view.state]}</span>
           <div
             data-testid={`stage-${view.doc}`}
             data-state={view.state}
@@ -25,9 +25,9 @@ export function StageSteps({ views, shown }: Props) {
             aria-current={view.doc === shown ? 'step' : undefined}
             className="flex w-full flex-col gap-1 rounded-[var(--radius-lg)] border border-line bg-surface-sunken px-3 py-2 text-left"
           >
-            <b className="text-[0.875rem] font-semibold text-ink">{DOC_LABEL[view.doc]}</b>
-            {view.score !== null && <span className="text-[0.8125rem] tabular-nums text-ink-soft">{percentOf(view.score)}%</span>}
-            {view.outdated && <span className="text-[0.75rem] text-warn">desatualizado</span>}
+            <b className="text-[0.875rem] font-semibold text-ink" data-testid={`stage-steps-title-${view.doc}`}>{DOC_LABEL[view.doc]}</b>
+            {view.score !== null && <span className="text-[0.8125rem] tabular-nums text-ink-soft" data-testid={`stage-steps-score-${view.doc}`}>{percentOf(view.score)}%</span>}
+            {view.outdated && <span className="text-[0.75rem] text-warn" data-testid={`stage-steps-outdated-${view.doc}`}>desatualizado</span>}
           </div>
         </li>
       ))}

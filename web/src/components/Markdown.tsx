@@ -7,10 +7,10 @@ const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\))/g;
 
 function inline(text: string): ReactNode[] {
   return text.split(INLINE).map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={i}>{part.slice(1, -1)}</code>;
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code data-testid="markdown-code" key={i}>{part.slice(1, -1)}</code>;
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) return <strong data-testid="markdown-strong" key={i}>{part.slice(2, -2)}</strong>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
-    if (link) return safeHttpUrl(link[2]) ? <a key={i} href={safeHttpUrl(link[2])} target="_blank" rel="noreferrer">{link[1]}</a> : <span key={i}>{link[1]}</span>;
+    if (link) return safeHttpUrl(link[2]) ? <a data-testid="markdown-link" key={i} href={safeHttpUrl(link[2])} target="_blank" rel="noreferrer">{link[1]}</a> : <span data-testid="markdown-link-text" key={i}>{link[1]}</span>;
     return part;
   });
 }
@@ -27,7 +27,7 @@ export function Markdown({ source }: { source: string }) {
       const code: string[] = [];
       for (i++; i < lines.length && !/^```/.test(lines[i]!); i++) code.push(lines[i]!);
       i++;
-      blocks.push(<pre key={blocks.length}><code>{code.join('\n')}</code></pre>);
+      blocks.push(<pre data-testid="markdown-code-block" key={blocks.length}><code data-testid="markdown-code-block-code">{code.join('\n')}</code></pre>);
       continue;
     }
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
@@ -43,12 +43,12 @@ export function Markdown({ source }: { source: string }) {
       const items: string[] = [];
       for (; i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i]!); i++) items.push(lines[i]!.replace(/^\s*([-*]|\d+\.)\s+/, ''));
       const Tag = ordered ? 'ol' : 'ul';
-      blocks.push(<Tag key={blocks.length}>{items.map((item, n) => <li key={n}>{inline(item)}</li>)}</Tag>);
+      blocks.push(<Tag key={blocks.length}>{items.map((item, n) => <li data-testid="markdown-item" key={n}>{inline(item)}</li>)}</Tag>);
       continue;
     }
     const paragraph: string[] = [];
     for (; i < lines.length && lines[i]!.trim() !== '' && !/^(```|#{1,4}\s|\s*([-*]|\d+\.)\s+)/.test(lines[i]!); i++) paragraph.push(lines[i]!);
-    blocks.push(<p key={blocks.length}>{inline(paragraph.join(' '))}</p>);
+    blocks.push(<p data-testid="markdown-paragraph" key={blocks.length}>{inline(paragraph.join(' '))}</p>);
   }
-  return <div className="markdown">{blocks}</div>;
+  return <div data-testid="markdown" className="markdown">{blocks}</div>;
 }

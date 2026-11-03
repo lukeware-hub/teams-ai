@@ -21,17 +21,17 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
   const flags = [...new Set(flagged.map((step) => step.marker))].join(' · ');
   return (
     <>
-      <ol className="onboarding-stepper" aria-label={ariaLabel}>
+      <ol data-testid="stepper" className="onboarding-stepper" aria-label={ariaLabel}>
         {steps.map((step, index) => {
           const body = (
             <>
-              <span className="onboarding-stepper-node" aria-hidden="true">{step.state === 'done' ? <Icon name="check" size={14} /> : index + 1}</span>
-              <span className="onboarding-stepper-label">{step.label}</span>
-              {step.marker && <span className="text-[0.6875rem] font-semibold text-warn max-[720px]:sr-only">{step.marker}</span>}
+              <span data-testid={`stepper-node-${step.key}`} className="onboarding-stepper-node" aria-hidden="true">{step.state === 'done' ? <Icon name="check" size={14} /> : index + 1}</span>
+              <span data-testid={`stepper-label-${step.key}`} className="onboarding-stepper-label">{step.label}</span>
+              {step.marker && <span data-testid={`stepper-marker-${step.key}`} className="text-[0.6875rem] font-semibold text-warn max-[720px]:sr-only">{step.marker}</span>}
             </>
           );
           return (
-            <li key={step.key} className={`onboarding-stepper-item is-${step.state}`} aria-current={step.state === 'active' ? 'step' : undefined}>
+            <li data-testid={`stepper-item-${step.key}`} key={step.key} className={`onboarding-stepper-item is-${step.state}`} aria-current={step.state === 'active' ? 'step' : undefined}>
               {onSelect ? (
                 <button
                   type="button"
@@ -47,7 +47,7 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
           );
         })}
       </ol>
-      {flagged.length > 0 && <p className="m-0 hidden text-[0.8125rem] font-semibold text-warn max-[720px]:block">{flagged.map((step) => step.label).join(', ')}: {flags}.</p>}
+      {flagged.length > 0 && <p data-testid="stepper-flags" className="m-0 hidden text-[0.8125rem] font-semibold text-warn max-[720px]:block">{flagged.map((step) => step.label).join(', ')}: {flags}.</p>}
     </>
   );
 }

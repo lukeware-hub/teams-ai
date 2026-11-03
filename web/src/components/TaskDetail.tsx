@@ -9,29 +9,29 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
   return (
     <div data-testid={`detail-${taskId}`} className="grid gap-5">
       {d.pr || d.lockHeld ? (
-        <p className="m-0 flex flex-wrap gap-x-3">
+        <p className="m-0 flex flex-wrap gap-x-3" data-testid="task-detail-links">
           {d.pr ? (
             safeHttpUrl(d.pr.url) ? (
-              <a href={safeHttpUrl(d.pr.url)} target="_blank" rel="noreferrer">
+              <a href={safeHttpUrl(d.pr.url)} target="_blank" rel="noreferrer" data-testid="task-detail-pr-link">
                 PR #{d.pr.number}
               </a>
             ) : (
-              <span>PR #{d.pr.number}</span>
+              <span data-testid="task-detail-pr-text">PR #{d.pr.number}</span>
             )
           ) : null}
-          {d.lockHeld ? <span className="hint">mantém o bloqueio de mesclagem</span> : null}
+          {d.lockHeld ? <span className="hint" data-testid="task-detail-lock-hint">mantém o bloqueio de mesclagem</span> : null}
         </p>
       ) : null}
-      {d.attempts.length ? null : <p className="hint m-0">Nenhuma tentativa registrada ainda.</p>}
+      {d.attempts.length ? null : <p className="hint m-0" data-testid="task-detail-empty">Nenhuma tentativa registrada ainda.</p>}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
-          <h3>Tentativa {a.attempt}</h3>
+          <h3 data-testid={`task-detail-attempt-title-${a.attempt}`}>Tentativa {a.attempt}</h3>
           <StepList steps={a.steps} loadStep={loadStep} />
           {a.gates.length ? (
-            <p className="gates">
-              <span className="hint">Portões:</span>{' '}
+            <p className="gates" data-testid={`task-detail-gates-${a.attempt}`}>
+              <span className="hint" data-testid={`task-detail-gates-label-${a.attempt}`}>Portões:</span>{' '}
               {a.gates.map((g) => (
-                <span key={g.gate} className={`test test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined}>
+                <span key={g.gate} className={`test test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined} data-testid={`task-detail-gate-${a.attempt}-${g.gate}`}>
                   {g.gate} {g.passed ? 'passou' : 'falhou'}
                   {g.failedTests.length ? ` (${g.failedTests.length})` : ''}
                 </span>
@@ -39,7 +39,7 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
             </p>
           ) : null}
           {a.review ? (
-            <p>
+            <p data-testid={`task-detail-review-${a.attempt}`}>
               Revisão: perfil {a.review.profile}, risco {a.review.risk}
               {a.review.drift ? `, desvio ${a.review.drift}` : ''}
               {a.review.findings.length ? `, ${a.review.findings.length} apontamento(s)` : ', aprovada'}
@@ -47,13 +47,13 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
           ) : null}
           {a.security ? (
             <div data-testid={`security-${a.attempt}`}>
-              <p>
+              <p data-testid={`task-detail-security-summary-${a.attempt}`}>
                 Segurança: {a.security.findings.length ? `${a.security.findings.length} apontamento(s)` : 'aprovada'}
               </p>
               {a.security.findings.length ? (
-                <ul>
+                <ul data-testid={`task-detail-security-findings-${a.attempt}`}>
                   {a.security.findings.map((f, i) => (
-                    <li key={i}>
+                    <li key={i} data-testid={`task-detail-security-finding-${a.attempt}-${f.file}-${f.category}`}>
                       [{f.severity}] {f.file}
                       {f.line === null ? '' : `:${f.line}`} {f.category}: {f.problem}
                     </li>

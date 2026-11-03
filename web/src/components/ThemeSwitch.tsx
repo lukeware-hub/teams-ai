@@ -10,7 +10,7 @@ const OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string; icon: Icon
 export function ThemeSwitch() {
   const [preference, setPreference] = useThemePreference();
   return (
-    <div className="flex gap-1 rounded-tile border border-line bg-surface-sunken p-1 md:flex-col" role="group" aria-label="Tema da interface">
+    <div className="flex gap-1 rounded-tile border border-line bg-surface-sunken p-1 md:flex-col" role="group" aria-label="Tema da interface" data-testid="theme-switch-root">
       {OPTIONS.map((o) => (
         <button
           key={o.value}
@@ -19,6 +19,7 @@ export function ThemeSwitch() {
           aria-label={o.label}
           title={o.label}
           aria-pressed={preference === o.value}
+          data-testid={`theme-switch-option-${o.value}`}
           onClick={() => setPreference(o.value)}
         >
           <Icon name={o.icon} size={16} />

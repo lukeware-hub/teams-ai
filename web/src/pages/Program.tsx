@@ -17,10 +17,10 @@ export function ProgramPage() {
     return refineApi.prioritize(projectId, specId, itemSpecId).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
   };
   return (
-    <main className="flex flex-col gap-5">
-      <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><Link to={`/refine/${projectId}/${specId}`}>{specId}</Link><span>›</span><span>Execução do backlog</span></header>
+    <main className="flex flex-col gap-5" data-testid="program-page">
+      <header className="refine-breadcrumb" data-testid="program-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span data-testid="program-breadcrumb-home-label">Projetos</span></Link><span data-testid="program-breadcrumb-separator-projects">›</span><strong data-testid="program-breadcrumb-project">{projectId}</strong><span data-testid="program-breadcrumb-separator-project">›</span><Link to={`/refine/${projectId}/${specId}`}>{specId}</Link><span data-testid="program-breadcrumb-separator-spec">›</span><span data-testid="program-breadcrumb-current">Execução do backlog</span></header>
       <ProgramStatus program={program} titles={titles} phases={phases} />
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <p className="error" role="alert" data-testid="program-error">{error}</p>}
       {program && <ProgramPanel program={program} titles={titles} onPrioritize={prioritize} />}
       {program && <DecisionTimeline decisions={decisions} unanswered={unanswered} titles={titles} />}
     </main>

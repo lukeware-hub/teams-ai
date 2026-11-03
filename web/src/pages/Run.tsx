@@ -100,16 +100,16 @@ const modelUseLabel = (u: ModelUse) => `${MODEL_NAME[u.model] ?? u.model} · esf
 function UsageList({ title, tip, rows, label, testIdPrefix, details }: { title: string; tip: string; rows: UsageRow[]; label: (key: string) => ReactNode; testIdPrefix?: string; details?: (key: string) => ReactNode }) {
   return (
     <>
-      <div className="mt-[1.1rem] mb-1 flex items-center gap-1">
-        <h3 className="m-0">{title}</h3>
+      <div data-testid="usage-list-heading" className="mt-[1.1rem] mb-1 flex items-center gap-1">
+        <h3 data-testid="usage-list-title" className="m-0">{title}</h3>
         <InfoTip label={title} text={tip} />
       </div>
-      <ul className="m-0 list-none divide-y divide-line p-0">
+      <ul data-testid="usage-list" className="m-0 list-none divide-y divide-line p-0">
         {rows.map(([key, u]) => (
           <li key={key} data-testid={testIdPrefix ? `${testIdPrefix}${key}` : undefined} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-[0.1rem] py-[0.55rem]">
-            <span className="min-w-0 text-[0.875rem] font-semibold text-ink wrap-anywhere">{label(key)}</span>
-            <span className="text-right text-[0.8125rem] text-ink tabular-nums">{money(u.costUsd)}</span>
-            <span className={`${META} text-ink-soft`}>
+            <span data-testid={`usage-list-label-${key}`} className="min-w-0 text-[0.875rem] font-semibold text-ink wrap-anywhere">{label(key)}</span>
+            <span data-testid={`usage-list-cost-${key}`} className="text-right text-[0.8125rem] text-ink tabular-nums">{money(u.costUsd)}</span>
+            <span data-testid={`usage-list-tokens-${key}`} className={`${META} text-ink-soft`}>
               {u.inputTokens} entrada · {u.outputTokens} saída · {steps(u.steps)}
             </span>
             {details?.(key)}
@@ -124,7 +124,7 @@ const roleName = (role: string) =>
   ROLE_LABEL[role] ? (
     <>
       {ROLE_LABEL[role]}
-      <span className="usage-id ml-[0.4rem] font-mono text-[0.75rem] font-normal text-ink-soft">{role}</span>
+      <span data-testid="run-role-id" className="usage-id ml-[0.4rem] font-mono text-[0.75rem] font-normal text-ink-soft">{role}</span>
     </>
   ) : (
     role
@@ -158,33 +158,33 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
     });
   return (
     <section className="card" data-testid="plan-artifact">
-      <div className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
-        <h2>
+      <div data-testid="plan-card-head" className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
+        <h2 data-testid="plan-card-title">
           Plano executável <InfoTip label="Plano executável" text="Como a spec foi dividida em tarefas. Cada tarefa tem um responsável, cumpre critérios de aceite (AC) e altera os arquivos listados. Sai da fase 2." />
         </h2>
-        <span className="hint">
+        <span data-testid="plan-card-count" className="hint">
           {plan.tasks.length} {plan.tasks.length === 1 ? 'tarefa' : 'tarefas'}
         </span>
       </div>
-      <dl className="m-0 mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-x-8 gap-y-3 rounded-lg border border-line bg-surface-sunken px-[0.9rem] py-[0.8rem] max-md:grid-cols-1 [&_code]:rounded-sm [&_code]:bg-surface-muted [&_code]:px-[0.35rem] [&_code]:py-[0.05rem] [&_code]:text-[0.78rem] [&_dd]:m-0 [&_dd]:text-[0.875rem] [&_dd]:text-ink [&_dd]:wrap-anywhere [&_dt]:flex [&_dt]:items-center [&_dt]:gap-[0.4rem] [&_dt]:text-[0.75rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[0.2rem]">
-        <div>
-          <dt>
+      <dl data-testid="plan-card-facts" className="m-0 mb-4 grid grid-cols-[minmax(0,1fr)_auto] gap-x-8 gap-y-3 rounded-lg border border-line bg-surface-sunken px-[0.9rem] py-[0.8rem] max-md:grid-cols-1 [&_code]:rounded-sm [&_code]:bg-surface-muted [&_code]:px-[0.35rem] [&_code]:py-[0.05rem] [&_code]:text-[0.78rem] [&_dd]:m-0 [&_dd]:text-[0.875rem] [&_dd]:text-ink [&_dd]:wrap-anywhere [&_dt]:flex [&_dt]:items-center [&_dt]:gap-[0.4rem] [&_dt]:text-[0.75rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&>div]:grid [&>div]:min-w-0 [&>div]:gap-[0.2rem]">
+        <div data-testid="plan-card-stack">
+          <dt data-testid="plan-card-stack-term">
             <Icon name="code" size={16} />
             Tecnologia
           </dt>
-          <dd>{'services' in plan ? Object.entries(plan.services).map(([name, s]) => `${name}: ${s.stack}`).join(' · ') : plan.stack}</dd>
+          <dd data-testid="plan-card-stack-value">{'services' in plan ? Object.entries(plan.services).map(([name, s]) => `${name}: ${s.stack}`).join(' · ') : plan.stack}</dd>
         </div>
-        <div>
-          <dt>
+        <div data-testid="plan-card-spec">
+          <dt data-testid="plan-card-spec-term">
             <Icon name="file" size={16} />
             Versão da spec <InfoTip label="Versão da spec" text="Identificador da versão da spec usada para gerar este plano. Muda quando a spec muda." />
           </dt>
-          <dd>
-            <code title={plan.specHash}>{plan.specHash.slice(0, 19)}…</code>
+          <dd data-testid="plan-card-spec-value">
+            <code data-testid="plan-card-spec-hash" title={plan.specHash}>{plan.specHash.slice(0, 19)}…</code>
           </dd>
         </div>
       </dl>
-      <ul className={RUN_UI.boxList}>
+      <ul data-testid="plan-card-tasks" className={RUN_UI.boxList}>
         {plan.tasks.map((task) => {
           const open = expanded.has(task.id);
           const paths = open ? task.affectedPaths : task.affectedPaths.slice(0, PATHS_SHOWN);
@@ -192,45 +192,45 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           const owner = ROLE_LABEL[task.owner] ?? task.owner;
           return (
             <li key={task.id} data-testid={`plan-task-${task.id}`} className="grid gap-2 px-[0.9rem] py-[0.8rem]">
-              <div className="flex items-baseline gap-[0.85rem] max-md:flex-wrap">
-                <span className={`min-w-[5.75rem] flex-none text-ink-soft ${TASK_ID}`}>{task.id}</span>
-                <span className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
-                <span className="inline-flex flex-none items-center gap-[0.4rem] [&_.tag]:m-0">
-                  {task.service ? <Tipped text={SERVICE_HELP}><span className="tag" title="Serviço">{task.service}</span></Tipped> : null}
-                  {task.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[task.origin] ?? 'De onde esta tarefa veio.'}><span className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span></Tipped> : null}
+              <div data-testid={`plan-task-head-${task.id}`} className="flex items-baseline gap-[0.85rem] max-md:flex-wrap">
+                <span data-testid={`plan-task-id-${task.id}`} className={`min-w-[5.75rem] flex-none text-ink-soft ${TASK_ID}`}>{task.id}</span>
+                <span data-testid={`plan-task-title-${task.id}`} className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
+                <span data-testid={`plan-task-tags-${task.id}`} className="inline-flex flex-none items-center gap-[0.4rem] [&_.tag]:m-0">
+                  {task.service ? <Tipped text={SERVICE_HELP}><span data-testid={`plan-task-service-${task.id}`} className="tag" title="Serviço">{task.service}</span></Tipped> : null}
+                  {task.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[task.origin] ?? 'De onde esta tarefa veio.'}><span data-testid={`plan-task-origin-${task.id}`} className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span></Tipped> : null}
                   <Tipped text={`Responsável pela tarefa: ${owner}.`}>
-                    <span className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
+                    <span data-testid={`plan-task-owner-${task.id}`} className="owner-chip" title={`Responsável pela tarefa: ${owner}`}>
                       <Icon name={OWNER_ICON[task.owner] ?? 'user'} size={14} />
                       {owner}
                     </span>
                   </Tipped>
                 </span>
               </div>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem] pl-[6.6rem] max-md:pl-0">
-                <span className={FACET_ICON} role="img" aria-label="Critérios de aceite" title="Critérios de aceite que esta tarefa cumpre">
+              <div data-testid={`plan-task-facets-${task.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem] pl-[6.6rem] max-md:pl-0">
+                <span data-testid={`plan-task-criteria-icon-${task.id}`} className={FACET_ICON} role="img" aria-label="Critérios de aceite" title="Critérios de aceite que esta tarefa cumpre">
                   <Icon name="check" size={14} />
                 </span>
-                <span className={FACET_ITEMS}>
-                  {task.criteriaRefs.length ? task.criteriaRefs.map((ac) => <span key={ac} className="rounded-sm bg-accent-soft px-[0.45rem] py-[0.05rem] font-mono text-[0.75rem] font-semibold text-accent-ink">{ac}</span>) : <span className="hint">Sem critério direto</span>}
+                <span data-testid={`plan-task-criteria-${task.id}`} className={FACET_ITEMS}>
+                  {task.criteriaRefs.length ? task.criteriaRefs.map((ac) => <span key={ac} data-testid={`plan-task-criterion-${task.id}-${ac}`} className="rounded-sm bg-accent-soft px-[0.45rem] py-[0.05rem] font-mono text-[0.75rem] font-semibold text-accent-ink">{ac}</span>) : <span data-testid={`plan-task-no-criteria-${task.id}`} className="hint">Sem critério direto</span>}
                 </span>
-                <span className={FACET_ICON} role="img" aria-label="Arquivos alterados" title="Arquivos que esta tarefa cria ou altera">
+                <span data-testid={`plan-task-files-icon-${task.id}`} className={FACET_ICON} role="img" aria-label="Arquivos alterados" title="Arquivos que esta tarefa cria ou altera">
                   <Icon name="file" size={14} />
                 </span>
-                <span className={FACET_ITEMS}>
-                  {paths.map((path) => <code key={path} className={PLAN_PATH}>{path}</code>)}
+                <span data-testid={`plan-task-files-${task.id}`} className={FACET_ITEMS}>
+                  {paths.map((path) => <code key={path} data-testid={`plan-task-path-${task.id}-${path}`} className={PLAN_PATH}>{path}</code>)}
                   {hidden > 0 ? (
-                    <button type="button" className="min-w-[auto] h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
+                    <button type="button" data-testid={`plan-task-more-${task.id}`} className="min-w-[auto] h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
                       {open ? 'Mostrar menos' : `+${hidden}`}
                     </button>
                   ) : null}
                 </span>
                 {task.dependsOn.length ? (
                   <>
-                    <span className={FACET_ICON} role="img" aria-label="Depende de" title="Só começa depois que estas tarefas forem mescladas">
+                    <span data-testid={`plan-task-depends-icon-${task.id}`} className={FACET_ICON} role="img" aria-label="Depende de" title="Só começa depois que estas tarefas forem mescladas">
                       <Icon name="clock" size={14} />
                     </span>
-                    <span className={FACET_ITEMS}>
-                      {task.dependsOn.map((id) => <code key={id} className={PLAN_PATH}>{id}</code>)}
+                    <span data-testid={`plan-task-depends-${task.id}`} className={FACET_ITEMS}>
+                      {task.dependsOn.map((id) => <code key={id} data-testid={`plan-task-dependency-${task.id}-${id}`} className={PLAN_PATH}>{id}</code>)}
                     </span>
                   </>
                 ) : null}
@@ -239,9 +239,9 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           );
         })}
       </ul>
-      <details className="mt-[0.9rem]">
-        <summary>Ver plan.json</summary>
-        <pre className={RUN_UI.raw}>{JSON.stringify(plan, null, 2)}</pre>
+      <details data-testid="plan-card-json" className="mt-[0.9rem]">
+        <summary data-testid="plan-card-json-summary">Ver plan.json</summary>
+        <pre data-testid="plan-card-json-text" className={RUN_UI.raw}>{JSON.stringify(plan, null, 2)}</pre>
       </details>
     </section>
   );
@@ -259,66 +259,66 @@ function EvidenceCard({ criteria, rows, links }: { criteria: RunDetail['acceptan
   const covered = rows.filter((r) => r.tests.length > 0 && r.tests.every((t) => t.status === 'passed')).length;
   return (
     <section className="card" data-testid="evidence">
-      <div className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
-        <h2>
+      <div data-testid="evidence-head" className={`mb-[0.9rem] ${RUN_UI.cardTitle}`}>
+        <h2 data-testid="evidence-title">
           Evidências <InfoTip label="Evidências" text="Cada critério de aceite (AC) deve ter ao menos um teste automatizado passando. Aqui estão os testes ligados a cada critério, com o resultado da última rodada de cada um." />
         </h2>
-        <span className="hint">
+        <span data-testid="evidence-count" className="hint">
           {covered} de {rows.length} {rows.length === 1 ? 'critério coberto' : 'critérios cobertos'}
         </span>
       </div>
-      <ul className={RUN_UI.boxList}>
+      <ul data-testid="evidence-rows" className={RUN_UI.boxList}>
         {rows.map((row) => {
           const criterion = criteria.find((c) => c.id === row.acId);
           const failed = row.tests.some((t) => t.status !== 'passed');
           const state = !row.tests.length ? { tone: 'neutral', icon: 'clock' as IconName, label: 'Sem teste ainda' } : failed ? { tone: 'bad', icon: 'close' as IconName, label: 'Há teste falhando' } : { tone: 'good', icon: 'check' as IconName, label: 'Coberto' };
           return (
             <li key={row.acId} data-testid={`evidence-${row.acId}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-[0.9rem] py-[0.85rem]">
-              <span className={`grid size-6 flex-none place-items-center rounded-full tone-${state.tone}`} role="img" aria-label={state.label} title={state.label}>
+              <span data-testid={`evidence-state-${row.acId}`} className={`grid size-6 flex-none place-items-center rounded-full tone-${state.tone}`} role="img" aria-label={state.label} title={state.label}>
                 <Icon name={state.icon} size={14} />
               </span>
-              <div className="grid min-w-0 gap-[0.4rem] [&_p]:m-0">
-                <p className="flex min-h-6 items-center gap-2 [&_.tag]:m-0">
-                  <span className={TASK_ID}>{row.acId}</span>
-                  {criterion?.smoke ? <Tipped text="Também roda como teste rápido depois do deploy."><span className="tag" title="Também roda como teste rápido depois do deploy">smoke</span></Tipped> : null}
+              <div data-testid={`evidence-body-${row.acId}`} className="grid min-w-0 gap-[0.4rem] [&_p]:m-0">
+                <p data-testid={`evidence-ac-${row.acId}`} className="flex min-h-6 items-center gap-2 [&_.tag]:m-0">
+                  <span data-testid={`evidence-ac-id-${row.acId}`} className={TASK_ID}>{row.acId}</span>
+                  {criterion?.smoke ? <Tipped text="Também roda como teste rápido depois do deploy."><span data-testid={`evidence-smoke-${row.acId}`} className="tag" title="Também roda como teste rápido depois do deploy">smoke</span></Tipped> : null}
                 </p>
                 {criterion ? (
-                  <p className="text-[0.875rem] leading-normal text-ink-soft wrap-anywhere [&_b]:font-semibold [&_b]:text-ink">
-                    <b>Dado</b> {criterion.given} <b>quando</b> {criterion.when} <b>então</b> {criterion.then}
+                  <p data-testid={`evidence-criterion-${row.acId}`} className="text-[0.875rem] leading-normal text-ink-soft wrap-anywhere [&_b]:font-semibold [&_b]:text-ink">
+                    <b data-testid={`evidence-given-${row.acId}`}>Dado</b> {criterion.given} <b data-testid={`evidence-when-${row.acId}`}>quando</b> {criterion.when} <b data-testid={`evidence-then-${row.acId}`}>então</b> {criterion.then}
                   </p>
                 ) : null}
                 {row.tests.length ? (
-                  <ul className="m-0 mt-[0.15rem] grid list-none gap-[0.4rem] p-0">
+                  <ul data-testid={`evidence-tests-${row.acId}`} className="m-0 mt-[0.15rem] grid list-none gap-[0.4rem] p-0">
                     {row.tests.map((x) => {
                       const result = TEST_RESULT[x.status] ?? { label: x.status, tone: 'warn', icon: 'info' as IconName };
                       const link = links?.[x.id];
                       const href = safeHttpUrl(link?.url);
                       const place = href && link ? `${link.path}:${link.line}` : null;
                       return (
-                        <li key={x.id} title={place ? `${x.id}\n${place}` : x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
+                        <li key={x.id} data-testid={`evidence-test-${x.id}`} title={place ? `${x.id}\n${place}` : x.id} className="flex flex-wrap items-center gap-x-[0.6rem] gap-y-1">
                           <Tipped text={result.help ?? 'O teste não rodou ou o resultado não é conhecido.'}>
-                            <span className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
+                            <span data-testid={`evidence-test-status-${x.id}`} className={`status-pill gap-[0.3rem] px-2 py-[0.05rem] text-[0.75rem] before:hidden tone-${result.tone}`}>
                               <Icon name={result.icon} size={12} />
                               {result.label}
                             </span>
                           </Tipped>
                           {href && place ? (
-                            <a className={TEST_LINK} href={href} target="_blank" rel="noreferrer" title={place} aria-label={`Abrir ${testName(x.id)} no GitHub (${place})`}>
+                            <a data-testid={`evidence-test-link-${x.id}`} className={TEST_LINK} href={href} target="_blank" rel="noreferrer" title={place} aria-label={`Abrir ${testName(x.id)} no GitHub (${place})`}>
                               {testName(x.id)}
-                              <span className={TEST_LINK_ICON}>
+                              <span data-testid={`evidence-test-link-icon-${x.id}`} className={TEST_LINK_ICON}>
                                 <Icon name="external" size={12} />
                               </span>
                             </a>
                           ) : (
-                            <span className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
+                            <span data-testid={`evidence-test-name-${x.id}`} className="min-w-0 text-[0.875rem] text-ink wrap-anywhere">{testName(x.id)}</span>
                           )}
-                          <span className="hint">{x.taskId === 'main' ? 'na main' : `tarefa ${x.taskId}`}</span>
+                          <span data-testid={`evidence-test-task-${x.id}`} className="hint">{x.taskId === 'main' ? 'na main' : `tarefa ${x.taskId}`}</span>
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p className="hint">Ainda sem cobertura: nenhum teste liga a este critério.</p>
+                  <p data-testid={`evidence-uncovered-${row.acId}`} className="hint">Ainda sem cobertura: nenhum teste liga a este critério.</p>
                 )}
               </div>
             </li>
@@ -342,13 +342,13 @@ const ownerChip = (owner: StopOwner, testId?: string) => (
 /** Label/value rows of a failure dialog; a null row is skipped. */
 function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
   return (
-    <dl className={FACT_ROWS}>
+    <dl data-testid="facts" className={FACT_ROWS}>
       {rows
         .filter((row): row is [string, ReactNode] => row !== null)
         .map(([term, value]) => (
-          <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
+          <div key={term} data-testid={`facts-row-${term}`}>
+            <dt data-testid={`facts-term-${term}`}>{term}</dt>
+            <dd data-testid={`facts-value-${term}`}>{value}</dd>
           </div>
         ))}
     </dl>
@@ -359,15 +359,15 @@ function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
 function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; taskIds: string[] }; onSelect: (taskId: string, opener: HTMLElement) => void; onDetail: (reason: string, opener: HTMLElement) => void }) {
   return (
     <li data-testid="cause-group" className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)_auto] items-center gap-[0.85rem] px-[0.9rem] py-[0.6rem] max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2">
-      <span className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
+      <span data-testid="cause-row-tasks" className="flex max-w-64 min-w-0 flex-wrap gap-x-3 gap-y-1">
         {group.taskIds.map((id) => (
-          <button key={id} type="button" className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={(e) => onSelect(id, e.currentTarget)}>
+          <button key={id} type="button" data-testid={`cause-row-task-${id}`} className={`min-w-[auto] ${TASK_ID_BUTTON}`} onClick={(e) => onSelect(id, e.currentTarget)}>
             {id}
           </button>
         ))}
       </span>
-      <span className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{blockExplanation(group.reason).title}</span>
-      <button type="button" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${group.taskIds.join(', ')}`} onClick={(e) => onDetail(group.reason, e.currentTarget)}>
+      <span data-testid="cause-row-title" className="min-w-0 line-clamp-2 text-ink max-md:col-span-full max-md:row-start-2 max-md:wrap-anywhere">{blockExplanation(group.reason).title}</span>
+      <button type="button" data-testid="cause-row-detail" className={`${DETAIL_BUTTON} max-md:col-start-2 max-md:row-start-1`} aria-label={`Ver detalhe do bloqueio de ${group.taskIds.join(', ')}`} onClick={(e) => onDetail(group.reason, e.currentTarget)}>
         Ver detalhe
         <Icon name="chevron-right" size={14} />
       </button>
@@ -379,26 +379,26 @@ function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; task
 function BlockReason({ block }: { block: BlockExplanation }) {
   const count = block.findings.length;
   return (
-    <div className="grid gap-5">
+    <div data-testid="block-reason" className="grid gap-5">
       {block.problem.length || count ? (
-        <section>
-          <h3 className={SECTION_TITLE}>O problema</h3>
+        <section data-testid="block-reason-problem">
+          <h3 data-testid="block-reason-problem-title" className={SECTION_TITLE}>O problema</h3>
           {block.problem.map((text, i) => (
-            <p key={i} className="m-0 mb-2">
+            <p key={i} data-testid={`block-reason-problem-${i}`} className="m-0 mb-2">
               {text}
             </p>
           ))}
           {count ? (
             <>
-              <p className="m-0 mb-2">A revisão apontou {count === 1 ? '1 ponto' : `${count} pontos`} para corrigir:</p>
-              <ol className="m-0 grid list-decimal gap-3 pl-5">
+              <p data-testid="block-reason-findings-count" className="m-0 mb-2">A revisão apontou {count === 1 ? '1 ponto' : `${count} pontos`} para corrigir:</p>
+              <ol data-testid="block-reason-findings" className="m-0 grid list-decimal gap-3 pl-5">
                 {block.findings.map((f, i) => (
-                  <li key={i}>
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[0.8125rem] wrap-anywhere">{f.where}</span>
-                      <span className="rounded-pill bg-surface-muted px-2 py-0.5 text-[0.75rem] text-ink-soft">{f.severity}</span>
+                  <li key={i} data-testid={`block-reason-finding-${f.where}`}>
+                    <span data-testid={`block-reason-finding-row-${f.where}`} className="flex flex-wrap items-center gap-2">
+                      <span data-testid={`block-reason-finding-where-${f.where}`} className="font-mono text-[0.8125rem] wrap-anywhere">{f.where}</span>
+                      <span data-testid={`block-reason-finding-severity-${f.where}`} className="rounded-pill bg-surface-muted px-2 py-0.5 text-[0.75rem] text-ink-soft">{f.severity}</span>
                     </span>
-                    <span className="mt-1 block">{f.problem}</span>
+                    <span data-testid={`block-reason-finding-problem-${f.where}`} className="mt-1 block">{f.problem}</span>
                   </li>
                 ))}
               </ol>
@@ -406,23 +406,23 @@ function BlockReason({ block }: { block: BlockExplanation }) {
           ) : null}
         </section>
       ) : null}
-      <section className="flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-ink [&_svg]:flex-none [&_svg]:text-accent-text">
+      <section data-testid="block-reason-solution" className="flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-ink [&_svg]:flex-none [&_svg]:text-accent-text">
         <Icon name="lightbulb" size={20} />
-        <div className="grid min-w-0 gap-2">
-          <h3 className="m-0 text-[0.9375rem] font-semibold text-accent-text">Solução</h3>
+        <div data-testid="block-reason-solution-body" className="grid min-w-0 gap-2">
+          <h3 data-testid="block-reason-solution-title" className="m-0 text-[0.9375rem] font-semibold text-accent-text">Solução</h3>
           {count ? (
-            <ol className="m-0 grid list-decimal gap-2 pl-5">
+            <ol data-testid="block-reason-solution-steps" className="m-0 grid list-decimal gap-2 pl-5">
               {block.findings.map((f, i) => (
-                <li key={i}>{f.fix ?? 'Veja o detalhe técnico.'}</li>
+                <li key={i} data-testid={`block-reason-solution-step-${f.where}`}>{f.fix ?? 'Veja o detalhe técnico.'}</li>
               ))}
             </ol>
           ) : null}
-          <p className="m-0">{block.next}</p>
+          <p data-testid="block-reason-next" className="m-0">{block.next}</p>
         </div>
       </section>
-      <details>
-        <summary className="cursor-pointer text-[0.8125rem] font-semibold text-accent-text">Ver detalhe técnico</summary>
-        <pre className={`mt-2 ${RUN_UI.raw}`}>{block.raw}</pre>
+      <details data-testid="block-reason-raw">
+        <summary data-testid="block-reason-raw-summary" className="cursor-pointer text-[0.8125rem] font-semibold text-accent-text">Ver detalhe técnico</summary>
+        <pre data-testid="block-reason-raw-text" className={`mt-2 ${RUN_UI.raw}`}>{block.raw}</pre>
       </details>
     </div>
   );
@@ -433,18 +433,18 @@ const ACTIVITY_TONE: Record<string, string> = { bad: 'text-warn', good: 'text-go
 /** Plain-language events, oldest first, each with its time and link. */
 function ActivityList({ items }: { items: ActivityItem[] }) {
   return (
-    <ol className="m-0 grid list-none gap-[0.4rem] p-0">
+    <ol data-testid="activity-list" className="m-0 grid list-none gap-[0.4rem] p-0">
       {items.map((item, i) => (
-        <li key={i} className={`grid grid-cols-[3rem_minmax(0,1fr)] gap-2 text-[0.8125rem] leading-[1.45] wrap-anywhere ${ACTIVITY_TONE[item.tone ?? ''] ?? ''}`}>
-          <time dateTime={item.at} className="text-ink-soft tabular-nums">
+        <li key={i} data-testid={`activity-list-item-${i}`} className={`grid grid-cols-[3rem_minmax(0,1fr)] gap-2 text-[0.8125rem] leading-[1.45] wrap-anywhere ${ACTIVITY_TONE[item.tone ?? ''] ?? ''}`}>
+          <time dateTime={item.at} data-testid={`activity-list-time-${i}`} className="text-ink-soft tabular-nums">
             {hhmm(item.at)}
           </time>
-          <span>
+          <span data-testid={`activity-list-text-${i}`}>
             {item.text}
             {safeHttpUrl(item.url ?? '') ? (
               <>
                 {' '}
-                <a href={safeHttpUrl(item.url ?? '')} target="_blank" rel="noreferrer" aria-label={`Abrir: ${item.text}`}>
+                <a href={safeHttpUrl(item.url ?? '')} data-testid={`activity-list-link-${i}`} target="_blank" rel="noreferrer" aria-label={`Abrir: ${item.text}`}>
                   <Icon name="external" size={14} />
                 </a>
               </>
@@ -483,28 +483,28 @@ function NowCard({ activity, now }: { activity: ReturnType<typeof currentActivit
   const { running, last } = activity;
   return (
     <section className="card" data-testid="now">
-      <div className={RUN_UI.panelHead}>
-        <h2>Agora</h2>
+      <div data-testid="now-card-head" className={RUN_UI.panelHead}>
+        <h2 data-testid="now-card-title">Agora</h2>
         <InfoTip label="Agora" text={TIP.now} />
       </div>
       {running.length ? (
-        <ul className="m-0 grid list-none gap-[0.6rem] p-0 text-[0.875rem] leading-[1.45]">
+        <ul data-testid="now-card-steps" className="m-0 grid list-none gap-[0.6rem] p-0 text-[0.875rem] leading-[1.45]">
           {running.map((s) => (
             <li key={s.stepId} data-testid="now-step">
-              <strong>{ROLE_LABEL[s.role] ?? s.role}</strong> {stepDoing(s.kind)}
+              <strong data-testid={`now-card-role-${s.stepId}`}>{ROLE_LABEL[s.role] ?? s.role}</strong> {stepDoing(s.kind)}
               {s.taskId ? ` a tarefa ${s.taskId}` : ''}
-              <span className="block text-[0.75rem] text-ink-soft tabular-nums">
+              <span data-testid={`now-card-time-${s.stepId}`} className="block text-[0.75rem] text-ink-soft tabular-nums">
                 {s.model ? `${MODEL_NAME[s.model] ?? s.model} · ` : ''}há {formatDuration(now - Date.parse(s.startedAt))}
               </span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className={`hint ${RUN_UI.asideNote}`}>Nenhum agente trabalhando neste momento.</p>
+        <p data-testid="now-card-empty" className={`hint ${RUN_UI.asideNote}`}>Nenhum agente trabalhando neste momento.</p>
       )}
       {last ? (
         <p className="mt-3 mb-0 border-t border-line pt-3 text-[0.8125rem] leading-[1.45]" data-testid="now-last">
-          <span className="hint">Último acontecimento, às {hhmm(last.at)}:</span> {last.text}
+          <span data-testid="now-card-last-time" className="hint">Último acontecimento, às {hhmm(last.at)}:</span> {last.text}
         </p>
       ) : null}
     </section>
@@ -552,15 +552,15 @@ function DecisionForm({ decisions, busy, error, actions, onSubmit }: { decisions
   return (
     <div className="grid gap-3" data-testid="decision-form">
       {decisions.map((d) => (
-        <div key={d.taskId} className="grid gap-1">
+        <div key={d.taskId} data-testid={`decision-form-item-${d.taskId}`} className="grid gap-1">
           <p className="m-0" data-testid="decision-question">{d.question}</p>
           <OptionGroup options={[...d.options, { label: OTHER_ANSWER, detail: 'Escreva a sua decisão abaixo.' }]} value={picks[d.taskId] ?? ''} onChange={(label) => setPicks({ ...picks, [d.taskId]: label })} disabled={busy} />
           {picks[d.taskId] === OTHER_ANSWER ? (
-            <textarea className="mt-3 min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" aria-label={`Sua decisão sobre ${d.taskId}`} value={texts[d.taskId] ?? ''} onChange={(e) => setTexts({ ...texts, [d.taskId]: e.target.value })} disabled={busy} />
+            <textarea data-testid="decision-form-text" className="mt-3 min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" aria-label={`Sua decisão sobre ${d.taskId}`} value={texts[d.taskId] ?? ''} onChange={(e) => setTexts({ ...texts, [d.taskId]: e.target.value })} disabled={busy} />
           ) : null}
         </div>
       ))}
-      <div className={OUTCOME_ACTIONS}>
+      <div data-testid="decision-form-actions" className={OUTCOME_ACTIONS}>
         <ActionButton className="primary-button" data-testid="decide" busy={busy} disabled={!ready || busy} onClick={() => onSubmit(decisions.map((d) => ({ taskId: d.taskId, answer: answerOf(d) })))} icon={<Icon name="send" size={16} />}>Decidir e continuar</ActionButton>
         {actions}
       </div>
@@ -670,8 +670,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   if (opened?.kind === 'outcome' && stop) {
     detailDialog = (
       <Dialog title="Detalhe técnico" onClose={closeDetail} returnFocus={opened.opener}>
-        <p className="m-0 text-[0.875rem] text-ink-soft">{stop.what} O texto abaixo é o motivo como o orquestrador o registrou.</p>
-        <pre className={RUN_UI.raw}>{stop.raw}</pre>
+        <p data-testid="run-outcome-detail-text" className="m-0 text-[0.875rem] text-ink-soft">{stop.what} O texto abaixo é o motivo como o orquestrador o registrou.</p>
+        <pre data-testid="run-outcome-detail-raw" className={RUN_UI.raw}>{stop.raw}</pre>
       </Dialog>
     );
   }
@@ -686,7 +686,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
       <Dialog title={failed ? `${phaseTitle(openedPhase.phase)} falhou` : phaseTitle(openedPhase.phase)} onClose={closeDetail} returnFocus={opened.opener}>
         <Facts
           rows={[
-            ['Situação', <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>],
+            ['Situação', <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span data-testid="run-phase-dialog-status" className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>],
             ['Início', hhmm(openedPhase.startedAt)],
             openedPhase.endedAt ? ['Duração', formatDuration(Date.parse(openedPhase.endedAt) - Date.parse(openedPhase.startedAt))] : null,
             openedPhase.attempt > 1 ? ['Tentativa', `${openedPhase.attempt}ª`] : null,
@@ -697,25 +697,25 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         />
         {problems.length ? (
           <section data-testid="phase-problems">
-            <h3 className={SECTION_TITLE}>Problemas</h3>
+            <h3 data-testid="run-phase-problems-title" className={SECTION_TITLE}>Problemas</h3>
             <ActivityList items={problems} />
           </section>
         ) : null}
         <section data-testid="phase-timeline">
-          <h3 className={SECTION_TITLE}>O que foi feito</h3>
-          {items.length ? <ActivityList items={items} /> : <p className="hint">Nenhum acontecimento registrado nesta fase ainda.</p>}
-          {openedPhase.phase === 3 ? <p className="hint">O trabalho de cada tarefa fica no card Tarefas: clique numa tarefa para ver as etapas dela.</p> : null}
+          <h3 data-testid="run-phase-timeline-title" className={SECTION_TITLE}>O que foi feito</h3>
+          {items.length ? <ActivityList items={items} /> : <p data-testid="run-phase-timeline-empty" className="hint">Nenhum acontecimento registrado nesta fase ainda.</p>}
+          {openedPhase.phase === 3 ? <p data-testid="run-phase-timeline-hint" className="hint">O trabalho de cada tarefa fica no card Tarefas: clique numa tarefa para ver as etapas dela.</p> : null}
         </section>
         {agentSteps.length ? (
-          <section>
-            <h3 className={SECTION_TITLE}>Etapas dos agentes</h3>
+          <section data-testid="run-phase-agents">
+            <h3 data-testid="run-phase-agents-title" className={SECTION_TITLE}>Etapas dos agentes</h3>
             <StepList steps={agentSteps} loadStep={loadStep} />
           </section>
         ) : null}
         {openedPhase.reason ? (
-          <section>
-            <h3 className={SECTION_TITLE}>Texto técnico</h3>
-            <pre className={RUN_UI.raw}>{openedPhase.reason}</pre>
+          <section data-testid="run-phase-raw">
+            <h3 data-testid="run-phase-raw-title" className={SECTION_TITLE}>Texto técnico</h3>
+            <pre data-testid="run-phase-raw-text" className={RUN_UI.raw}>{openedPhase.reason}</pre>
           </section>
         ) : null}
       </Dialog>
@@ -750,30 +750,30 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // Only an older server sends no repoUrl, and then a merged PR URL names the repository; null means no GitHub address is known.
   const repoUrl = detail.repoUrl === undefined ? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null : detail.repoUrl;
   return (
-    <main className={RUN_UI.page}>
-      <nav className="refine-breadcrumb" aria-label="Navegação">
+    <main data-testid="run-main" className={RUN_UI.page}>
+      <nav data-testid="run-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
-          <span>Projetos</span>
+          <span data-testid="run-breadcrumb-home-label">Projetos</span>
         </Link>
-        <span aria-hidden="true">›</span>
+        <span data-testid="run-breadcrumb-sep-projects" aria-hidden="true">›</span>
         <Link to={`/projects/${detail.projectId}`}>{detail.projectId}</Link>
-        <span aria-hidden="true">›</span>
-        <span>{detail.specId}</span>
-        <span aria-hidden="true">›</span>
-        <strong>{runLabel(detail.runId)}</strong>
+        <span data-testid="run-breadcrumb-sep-project" aria-hidden="true">›</span>
+        <span data-testid="run-breadcrumb-spec">{detail.specId}</span>
+        <span data-testid="run-breadcrumb-sep-spec" aria-hidden="true">›</span>
+        <strong data-testid="run-breadcrumb-run">{runLabel(detail.runId)}</strong>
       </nav>
-      <header className={RUN_UI.head}>
-        <div className="min-w-0">
-          <h1 className={RUN_UI.title}>{detail.runId}</h1>
-          <div className={RUN_UI.meta}>
+      <header data-testid="run-header" className={RUN_UI.head}>
+        <div data-testid="run-header-main" className="min-w-0">
+          <h1 data-testid="run-title" className={RUN_UI.title}>{detail.runId}</h1>
+          <div data-testid="run-meta" className={RUN_UI.meta}>
             <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>
               <span data-testid="status" className={`status-pill tone-${statusTone(status)}`}>
                 {statusLabel(status)}
                 {ended ? ' (encerrada)' : ''}
               </span>
             </Tipped>
-            <span className="hint">
+            <span data-testid="run-project-spec" className="hint">
               {detail.projectId} / {detail.specId}
             </span>
             {until ? <span data-testid="paused-until" className="hint">pausada até {hhmm(until)}</span> : null}
@@ -782,7 +782,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             {sendBack ? <span data-testid="blocked-hint" className="hint">Enviar reinicia só as tarefas bloqueadas; o que já foi mesclado fica</span> : null}
           </div>
         </div>
-        <div className={RUN_UI.actions}>
+        <div data-testid="run-actions" className={RUN_UI.actions}>
           {resumeAction && !detail.locked && (RESUMABLE.has(status) || sendBack) ? (
             <ActionButton className={`primary-button ${RUN_UI.action}`} data-testid="resume" busy={resumeAction.busy} onClick={resumeAction.onResume} icon={<Icon name="play" size={16} />}>
               {resumeAction.busy ? (sendBack ? 'Enviando…' : 'Retomando…') : sendBack ? 'Enviar para o agente corrigir' : 'Retomar'}
@@ -820,9 +820,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         ) : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
-          <div className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">
+          <div data-testid="run-progress" className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">
             <div
-              className="run-progress-bar flex h-1.5 flex-1 gap-[2px] overflow-hidden rounded-full bg-surface-muted [&>.seg-active]:bg-accent [&>.seg-blocked]:bg-warn [&>.seg-merged]:bg-good [&>span]:h-full [&>span]:flex-none"
+              data-testid="run-progress-bar" className="run-progress-bar flex h-1.5 flex-1 gap-[2px] overflow-hidden rounded-full bg-surface-muted [&>.seg-active]:bg-accent [&>.seg-blocked]:bg-warn [&>.seg-merged]:bg-good [&>span]:h-full [&>span]:flex-none"
               role="progressbar"
               aria-label="Tarefas mescladas"
               aria-valuemin={0}
@@ -830,12 +830,12 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               aria-valuenow={doneTasks}
               aria-valuetext={`${doneTasks} de ${totalTasks} mescladas, ${tally.active} em andamento, ${tally.blocked} bloqueadas${tally.interrupted ? `, ${tally.interrupted} interrompidas` : ''}`}
             >
-              {tally.merged ? <span className="seg-merged" style={{ flexBasis: `${(tally.merged / totalTasks) * 100}%` }} /> : null}
-              {tally.active ? <span className="seg-active" style={{ flexBasis: `${(tally.active / totalTasks) * 100}%` }} /> : null}
-              {tally.blocked ? <span className="seg-blocked" style={{ flexBasis: `${(tally.blocked / totalTasks) * 100}%` }} /> : null}
+              {tally.merged ? <span data-testid="run-progress-merged" className="seg-merged" style={{ flexBasis: `${(tally.merged / totalTasks) * 100}%` }} /> : null}
+              {tally.active ? <span data-testid="run-progress-active" className="seg-active" style={{ flexBasis: `${(tally.active / totalTasks) * 100}%` }} /> : null}
+              {tally.blocked ? <span data-testid="run-progress-blocked" className="seg-blocked" style={{ flexBasis: `${(tally.blocked / totalTasks) * 100}%` }} /> : null}
             </div>
-            <p className="m-0 flex flex-wrap text-[0.8125rem] whitespace-nowrap text-ink-soft tabular-nums max-md:whitespace-normal [&_.info-tip]:ml-1 [&>span+span]:before:mx-2 [&>span+span]:before:text-ink-faint [&>span+span]:before:content-['·']">
-              <span>
+            <p data-testid="run-progress-facts" className="m-0 flex flex-wrap text-[0.8125rem] whitespace-nowrap text-ink-soft tabular-nums max-md:whitespace-normal [&_.info-tip]:ml-1 [&>span+span]:before:mx-2 [&>span+span]:before:text-ink-faint [&>span+span]:before:content-['·']">
+              <span data-testid="run-progress-tasks">
                 <span data-testid="task-progress">
                   {doneTasks} de {totalTasks} tarefas mescladas
                 </span>
@@ -861,11 +861,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   {runningLine(doing.running, clock)}
                 </span>
               ) : null}
-              <span>
+              <span data-testid="run-progress-steps">
                 {steps(t.total.steps)}
                 <InfoTip label="Etapas" text={TIP.steps} />
               </span>
-              <span>
+              <span data-testid="run-progress-cost">
                 {money(t.total.costUsd)}
                 <InfoTip label="Custo estimado" text={TIP.cost} />
               </span>
@@ -880,18 +880,18 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             id: 'tasks',
             label: 'Tarefas',
             content: (
-              <div className={RUN_UI.column}>
+              <div data-testid="run-tasks-column" className={RUN_UI.column}>
                 {stop ? (
                   <section className={RUN_UI.banner} data-testid="outcome-banner" aria-labelledby="run-outcome-title">
-                    <h2 id="run-outcome-title" className={RUN_UI.bannerTitle}>
+                    <h2 id="run-outcome-title" data-testid="run-outcome-title" className={RUN_UI.bannerTitle}>
                       <Icon name="alert" size={18} />
                       {stop.what}
                     </h2>
-                    <dl className={RUN_UI.bannerRows}>
-                      <div>
-                        <dt>Por quê</dt>
-                        <dd>
-                          <strong>{stop.title}</strong>
+                    <dl data-testid="run-outcome-rows" className={RUN_UI.bannerRows}>
+                      <div data-testid="run-outcome-why">
+                        <dt data-testid="run-outcome-why-term">Por quê</dt>
+                        <dd data-testid="run-outcome-why-value">
+                          <strong data-testid="run-outcome-reason">{stop.title}</strong>
                           {stop.raw ? (
                             <button type="button" className={DETAIL_BUTTON} data-testid="outcome-detail" onClick={openDetail({ kind: 'outcome' })}>
                               Ver detalhe técnico
@@ -901,27 +901,27 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         </dd>
                       </div>
                       {before ? (
-                        <div>
-                          <dt>Antes disso</dt>
+                        <div data-testid="run-outcome-before">
+                          <dt data-testid="run-outcome-before-term">Antes disso</dt>
                           <dd data-testid="outcome-before">{before}</dd>
                         </div>
                       ) : null}
                       {stop.rollback ? (
-                        <div>
-                          <dt>Estado</dt>
+                        <div data-testid="run-outcome-rollback">
+                          <dt data-testid="run-outcome-rollback-term">Estado</dt>
                           <dd data-testid="outcome-rollback">{stop.rollback}</dd>
                         </div>
                       ) : null}
-                      <div>
-                        <dt>
+                      <div data-testid="run-outcome-owner">
+                        <dt data-testid="run-outcome-owner-term">
                           Quem resolve
                           <InfoTip label="Quem resolve" text={TIP.owner} />
                         </dt>
-                        <dd>{ownerChip(pendingDecisions.length ? 'Você' : stop.owner, 'outcome-owner')}</dd>
+                        <dd data-testid="run-outcome-owner-value">{ownerChip(pendingDecisions.length ? 'Você' : stop.owner, 'outcome-owner')}</dd>
                       </div>
-                      <div>
-                        <dt>Próximo passo</dt>
-                        <dd>
+                      <div data-testid="run-outcome-next">
+                        <dt data-testid="run-outcome-next-term">Próximo passo</dt>
+                        <dd data-testid="run-outcome-next-value">
                           {(() => {
                             const actions = (
                               <>
@@ -931,7 +931,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                   </ActionButton>
                                 ) : null}
                                 {reprocessAction && !detail.locked && !autonomous ? (
-                                  <span className="flex min-w-0 flex-1 items-center gap-[0.35rem]">
+                                  <span data-testid="run-outcome-reprocess" className="flex min-w-0 flex-1 items-center gap-[0.35rem]">
                                     <ActionButton className={`${redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} flex-1`} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                       {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
                                     </ActionButton>
@@ -951,7 +951,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                             ) : (
                               <>
                                 <p data-testid="outcome-hint">{stop.hint}</p>
-                                <div className={OUTCOME_ACTIONS}>{actions}</div>
+                                <div data-testid="run-outcome-actions" className={OUTCOME_ACTIONS}>{actions}</div>
                               </>
                             );
                           })()}
@@ -964,8 +964,8 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 ) : null}
                 {causeGroups.length ? (
                   <section className="card" data-testid="block-cause">
-                    <div className={RUN_UI.panelHead}>
-                      <h2>Tarefas bloqueadas</h2>
+                    <div data-testid="run-block-cause-head" className={RUN_UI.panelHead}>
+                      <h2 data-testid="run-block-cause-title">Tarefas bloqueadas</h2>
                       <InfoTip label="Tarefas bloqueadas" text={TIP.blocked} />
                     </div>
                     {!stop && stopAction && STOPPABLE.has(status) ? (
@@ -973,7 +973,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         {autonomous ? 'A run continua com as outras tarefas. Veja o motivo em cada uma.' : 'A run continua com as outras tarefas. Veja o motivo em cada uma; se nenhuma vai se resolver sozinha, pare a execução para liberar o reprocessamento.'}
                       </p>
                     ) : null}
-                    <ul className={RUN_UI.boxList}>
+                    <ul data-testid="run-block-cause-list" className={RUN_UI.boxList}>
                       {causeGroups.map((g) => (
                         <CauseRow key={g.reason} group={g} onSelect={(taskId, opener) => setOpened({ kind: 'task', taskId, opener })} onDetail={(reason, opener) => setOpened({ kind: 'cause', reason, opener })} />
                       ))}
@@ -983,9 +983,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 ) : null}
                 <section className="card" data-testid="readme">
                   {/* The title keeps its width; the path and the button wrap below it on narrow screens. */}
-                  <header className="flex-wrap gap-3">
-                    <h2 className="basis-auto">README do projeto</h2>
-                    <span className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
+                  <header data-testid="run-readme-head" className="flex-wrap gap-3">
+                    <h2 data-testid="run-readme-title" className="basis-auto">README do projeto</h2>
+                    <span data-testid="run-readme-path" className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
                     {readmeAction && !detail.locked ? (
                       <ActionButton className="secondary h-10 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
                         {readmeAction.busy ? 'O sm está escrevendo…' : detail.readme ? 'Reescrever com o sm' : 'Gerar README com o sm'}
@@ -1001,30 +1001,30 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     </p>
                   )}
                 </section>
-                {error ? <p className="error m-0">{error}</p> : null}
-                <section className="card">
-                  <h2>Tarefas</h2>
-                  {groups.length === 0 ? <p className="hint">Nenhuma tarefa planejada ainda.</p> : null}
+                {error ? <p data-testid="run-error" className="error m-0">{error}</p> : null}
+                <section data-testid="run-tasks" className="card">
+                  <h2 data-testid="run-tasks-title">Tarefas</h2>
+                  {groups.length === 0 ? <p data-testid="run-tasks-empty" className="hint">Nenhuma tarefa planejada ainda.</p> : null}
                   {groups.map(([s, ids], i) => (
                     <div key={s} data-testid={`group-${s}`}>
                       {/* Tasks: a fixed id column so every title starts on the same guide. */}
-                      <h3 className={`mb-2 flex items-center gap-2 ${i ? 'mt-5' : 'mt-1'}`}>
-                        {statusLabel(s)} <span className="min-w-5 rounded-full bg-surface-muted px-[0.35rem] text-center text-[0.6875rem] tracking-normal text-ink-soft tabular-nums">{ids.length}</span>
+                      <h3 data-testid={`run-group-title-${s}`} className={`mb-2 flex items-center gap-2 ${i ? 'mt-5' : 'mt-1'}`}>
+                        {statusLabel(s)} <span data-testid={`run-group-count-${s}`} className="min-w-5 rounded-full bg-surface-muted px-[0.35rem] text-center text-[0.6875rem] tracking-normal text-ink-soft tabular-nums">{ids.length}</span>
                       </h3>
-                      <ul className={RUN_UI.boxList}>
+                      <ul data-testid={`run-group-tasks-${s}`} className={RUN_UI.boxList}>
                         {ids.map((id) => {
                           const tk = state.tasks.get(id)!;
                           return (
-                            <li key={id} className="flex flex-wrap items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken">
+                            <li key={id} data-testid={`run-task-row-${id}`} className="flex flex-wrap items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken">
                               <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={openDetail({ kind: 'task', taskId: id })}>
                                 {id}
                               </button>
-                              <span className="min-w-0 flex-[1_1_16rem] leading-[1.45] text-ink">{tk.def.title}</span>
-                              {tk.def.service ? <Tipped text={SERVICE_HELP}><span className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
-                              <span className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
+                              <span data-testid={`run-task-title-${id}`} className="min-w-0 flex-[1_1_16rem] leading-[1.45] text-ink">{tk.def.title}</span>
+                              {tk.def.service ? <Tipped text={SERVICE_HELP}><span data-testid={`run-task-service-${id}`} className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
+                              <span data-testid={`run-task-meta-${id}`} className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
                                 {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
-                                {tk.replanned ? <Tipped text="O plano desta tarefa foi refeito durante a execução."><span className="tag">replanejada</span></Tipped> : null}
-                                {tk.def.origin && tk.def.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[tk.def.origin] ?? 'De onde esta tarefa veio.'}><span className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span></Tipped> : null}
+                                {tk.replanned ? <Tipped text="O plano desta tarefa foi refeito durante a execução."><span data-testid={`run-task-replanned-${id}`} className="tag">replanejada</span></Tipped> : null}
+                                {tk.def.origin && tk.def.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[tk.def.origin] ?? 'De onde esta tarefa veio.'}><span data-testid={`run-task-origin-${id}`} className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span></Tipped> : null}
                               </span>
                             </li>
                           );
@@ -1042,15 +1042,15 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
             id: 'phases',
             label: 'Fases e consumo',
             content: (
-              <aside className={RUN_UI.aside}>
+              <aside data-testid="run-phases-aside" className={RUN_UI.aside}>
                 {status === 'running' || status === 'draining' || status.startsWith('paused') ? <NowCard activity={doing} now={clock} /> : null}
-                <section className="card">
-                  <div className={RUN_UI.panelHead}>
-                    <h2>Fases</h2>
+                <section data-testid="run-phases" className="card">
+                  <div data-testid="run-phases-head" className={RUN_UI.panelHead}>
+                    <h2 data-testid="run-phases-title">Fases</h2>
                     <InfoTip label="Fases" text={TIP.phases} />
                   </div>
                   {phaseList.length ? (
-                    <ol className="m-0 grid list-none divide-y divide-line p-0">
+                    <ol data-testid="run-phases-list" className="m-0 grid list-none divide-y divide-line p-0">
                       {phaseList.map((p) => {
                         const [label, tone] = phaseState(p, status, blockedTasks);
                         const problems = problemItems(activity.get(p.phase)?.items ?? []).length;
@@ -1061,11 +1061,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         return (
                           <li key={p.phase} data-testid="phase" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[0.35rem] py-[0.6rem] first:pt-0 last:pb-0">
                             {/* The phase name opens its detail: a text button, underlined on hover. */}
-                            <button type="button" className="phase-name h-auto min-w-0 border-0 bg-transparent p-0 text-left text-[0.875rem] leading-[1.4] font-semibold text-ink tabular-nums hover:bg-transparent hover:text-accent-text hover:underline" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
+                            <button type="button" data-testid={`run-phase-name-${p.phase}`} className="phase-name h-auto min-w-0 border-0 bg-transparent p-0 text-left text-[0.875rem] leading-[1.4] font-semibold text-ink tabular-nums hover:bg-transparent hover:text-accent-text hover:underline" aria-label={`Ver o que aconteceu em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
                               {phaseTitle(p.phase)}
                             </button>{' '}
-                            <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>
-                            {p.attempt > 1 ? <span className={`${META} text-ink-soft`}>{p.attempt}ª tentativa</span> : null}
+                            <Tipped text={PHASE_HELP[label] ?? STATUS_HELP.unknown!}><span data-testid={`run-phase-status-${p.phase}`} className={tone ? `status-pill tone-${tone}` : 'status-pill'}>{label}</span></Tipped>
+                            {p.attempt > 1 ? <span data-testid={`run-phase-attempt-${p.phase}`} className={`${META} text-ink-soft`}>{p.attempt}ª tentativa</span> : null}
                             {problems && p.result !== 'failed' ? (
                               <span className={`${META} text-warn`} data-testid="phase-problems-count">
                                 {problems === 1 ? '1 problema registrado' : `${problems} problemas registrados`}
@@ -1077,11 +1077,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                               </span>
                             ) : null}
                             {p.result === 'failed' ? (
-                              <div className="col-span-full grid min-w-0 justify-items-start gap-2">
-                                <p className="m-0 text-[0.8125rem] leading-[1.45] text-ink">
-                                  <strong>O que fazer:</strong> {explainPhase(p, autonomous).hint}
+                              <div data-testid={`run-phase-failure-${p.phase}`} className="col-span-full grid min-w-0 justify-items-start gap-2">
+                                <p data-testid={`run-phase-hint-${p.phase}`} className="m-0 text-[0.8125rem] leading-[1.45] text-ink">
+                                  <strong data-testid={`run-phase-hint-label-${p.phase}`}>O que fazer:</strong> {explainPhase(p, autonomous).hint}
                                 </p>
-                                <button type="button" className={DETAIL_BUTTON} aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
+                                <button type="button" data-testid={`run-phase-detail-${p.phase}`} className={DETAIL_BUTTON} aria-label={`Ver detalhe da falha em ${phaseTitle(p.phase)}`} onClick={openDetail({ kind: 'phase', phase: p.phase })}>
                                   Ver detalhe
                                   <Icon name="chevron-right" size={14} />
                                 </button>
@@ -1092,66 +1092,66 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                       })}
                     </ol>
                   ) : (
-                    <p className={`hint ${RUN_UI.asideNote}`}>Nenhuma fase iniciada ainda.</p>
+                    <p data-testid="run-phases-empty" className={`hint ${RUN_UI.asideNote}`}>Nenhuma fase iniciada ainda.</p>
                   )}
                 </section>
                 {prs.length ? (
-                  <section className="card">
-                    <h2>Pull requests mesclados</h2>
-                    <ul className="m-0 flex list-none flex-wrap gap-[0.6rem] p-0">
+                  <section data-testid="run-prs" className="card">
+                    <h2 data-testid="run-prs-title">Pull requests mesclados</h2>
+                    <ul data-testid="run-prs-list" className="m-0 flex list-none flex-wrap gap-[0.6rem] p-0">
                       {prs.map((p) => (
-                        <li key={p.taskId} className="flex items-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
-                          <span className="font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
+                        <li key={p.taskId} data-testid={`run-pr-${p.taskId}`} className="flex items-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
+                          <span data-testid={`run-pr-task-${p.taskId}`} className="font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
                           {safeHttpUrl(p.url) ? (
-                            <a href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
+                            <a data-testid={`run-pr-link-${p.taskId}`} href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
                               PR #{p.number}
                               <Icon name="external" size={14} />
                             </a>
                           ) : (
-                            <span>PR #{p.number}</span>
+                            <span data-testid={`run-pr-plain-${p.taskId}`}>PR #{p.number}</span>
                           )}
                         </li>
                       ))}
                     </ul>
                   </section>
                 ) : null}
-                <section className="card">
-                  <h2>Consumo dos modelos</h2>
+                <section data-testid="run-usage" className="card">
+                  <h2 data-testid="run-usage-title">Consumo dos modelos</h2>
                   <dl className={RUN_UI.totals} data-testid="tokens-total">
-                    <div>
-                      <dt>
+                    <div data-testid="run-usage-cost">
+                      <dt data-testid="run-usage-cost-term">
                         Custo estimado
                         <InfoTip label="Custo estimado" text={TIP.cost} />
                       </dt>
-                      <dd className="font-[650]">{money(t.total.costUsd)}</dd>
+                      <dd data-testid="run-usage-cost-value" className="font-[650]">{money(t.total.costUsd)}</dd>
                     </div>
-                    <div>
-                      <dt>
+                    <div data-testid="run-usage-input">
+                      <dt data-testid="run-usage-input-term">
                         Tokens de entrada
                         <InfoTip label="Tokens de entrada" text={TIP.input} />
                       </dt>
-                      <dd>{t.total.inputTokens}</dd>
+                      <dd data-testid="run-usage-input-value">{t.total.inputTokens}</dd>
                     </div>
-                    <div>
-                      <dt>
+                    <div data-testid="run-usage-cache">
+                      <dt data-testid="run-usage-cache-term">
                         Contexto em cache
                         <InfoTip label="Contexto em cache" text={TIP.cache} />
                       </dt>
-                      <dd>{t.total.cacheReadTokens + t.total.cacheWriteTokens}</dd>
+                      <dd data-testid="run-usage-cache-value">{t.total.cacheReadTokens + t.total.cacheWriteTokens}</dd>
                     </div>
-                    <div>
-                      <dt>
+                    <div data-testid="run-usage-output">
+                      <dt data-testid="run-usage-output-term">
                         Tokens de saída
                         <InfoTip label="Tokens de saída" text={TIP.output} />
                       </dt>
-                      <dd>{t.total.outputTokens}</dd>
+                      <dd data-testid="run-usage-output-value">{t.total.outputTokens}</dd>
                     </div>
-                    <div>
-                      <dt>
+                    <div data-testid="run-usage-steps">
+                      <dt data-testid="run-usage-steps-term">
                         Etapas
                         <InfoTip label="Etapas" text={TIP.steps} />
                       </dt>
-                      <dd>{t.total.steps}</dd>
+                      <dd data-testid="run-usage-steps-value">{t.total.steps}</dd>
                     </div>
                   </dl>
                   {Object.keys(t.byRole).length ? (
@@ -1342,13 +1342,13 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const testLinks = useTestLinks(runId, events, ended);
   if (loadError)
     return (
-      <main>
-        <p className="error">{loadError}</p>
+      <main data-testid="run-screen-error">
+        <p data-testid="run-screen-load-error" className="error">{loadError}</p>
       </main>
     );
   if (!detail || !runId)
     return (
-      <main>
+      <main data-testid="run-screen-loading">
         <Loading />
       </main>
     );

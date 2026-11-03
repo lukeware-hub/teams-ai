@@ -44,27 +44,27 @@ export function SecretCard({ name, title, item, onSaved }: { name: 'GITHUB_TOKEN
   const copy = COPY[name];
   return (
     <ItemCard title={title} item={item} variant="login" subtitle={copy.subtitle} info={copy.info} icon={name === 'GITHUB_TOKEN' ? 'github' : 'user'} illustration={name === 'GITHUB_TOKEN' ? '/onboarding-github-token.png' : '/onboarding-openrouter.png'} benefits={copy.benefits} panel={copy.panel}>
-      <form
+      <form data-testid="secret-card-form"
         className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] @max-[40rem]:grid-cols-[minmax(0,1fr)]"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <label className="grid min-w-0 gap-[0.38rem] text-[0.8125rem] font-semibold text-ink-soft">
-          <span>{item?.secret?.set ? copy.replace : copy.field}</span>
-          <input className="w-full min-w-0" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
+        <label data-testid="secret-card-field" className="grid min-w-0 gap-[0.38rem] text-[0.8125rem] font-semibold text-ink-soft">
+          <span data-testid="secret-card-field-label">{item?.secret?.set ? copy.replace : copy.field}</span>
+          <input data-testid="secret-card-input" className="w-full min-w-0" type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Cole o valor aqui…" autoComplete="off" />
         </label>
         <ActionButton type="submit" className="primary-button @max-[40rem]:w-full" busy={busy} disabled={value.trim() === ''} icon={<Icon name="check" size={16} />}>
           {busy ? 'Verificando…' : 'Salvar e continuar'}
         </ActionButton>
       </form>
       {name === 'GITHUB_TOKEN' ? (
-        <p>
-          <a href={GITHUB_TOKEN_URL} target="_blank" rel="noreferrer">Criar o token já com as permissões certas (repo e workflow)</a>
+        <p data-testid="secret-card-link-paragraph">
+          <a data-testid="secret-card-token-link" href={GITHUB_TOKEN_URL} target="_blank" rel="noreferrer">Criar o token já com as permissões certas (repo e workflow)</a>
         </p>
       ) : null}
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p data-testid="secret-card-error" className="error">{error}</p> : null}
     </ItemCard>
   );
 }

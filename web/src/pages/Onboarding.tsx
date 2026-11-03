@@ -85,14 +85,14 @@ export function Onboarding({ includeLicense = false, onLicensed, onLeave }: { in
       case 3: return <LoginCard cli="claude" title="Login do Claude" item={item('claude')} onDone={onLoginDone} />;
       case 4: return <SecretCard name="OPENROUTER_API_KEY" title="Chave do OpenRouter (Jev)" item={item('openrouterKey')} onSaved={patch('openrouterKey')} />;
       default: return (
-        <section className="grid grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)] items-center justify-items-start gap-x-10 gap-y-3 @max-2xl:grid-cols-[minmax(0,1fr)]" aria-labelledby="welcome-title">
-          <span className="relative grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true"><Icon name="check" size={28} />{sawIncomplete ? <span className="confetti"><i /><i /><i /><i /><i /></span> : null}</span>
-          <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']">Configuração concluída</p>
-          <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]">Tudo pronto para começar</h2>
-          <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
-          {onLeave ? <button type="button" className={DONE_CLASS} onClick={onLeave}>Ir para projetos<Icon name="arrow-right" size={16} /></button> : <Link className={DONE_CLASS} to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>}
-          <div className="onboarding-panel col-start-2 row-[1/span_5] w-full @max-2xl:hidden" aria-hidden="true">
-            <img className="onboarding-panel-art" src="/onboarding-complete.png" alt="" />
+        <section className="grid grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)] items-center justify-items-start gap-x-10 gap-y-3 @max-2xl:grid-cols-[minmax(0,1fr)]" aria-labelledby="welcome-title" data-testid="onboarding-welcome">
+          <span className="relative grid size-14 place-items-center rounded-tile bg-good-soft text-good" aria-hidden="true" data-testid="onboarding-welcome-badge"><Icon name="check" size={28} />{sawIncomplete ? <span className="confetti" data-testid="onboarding-welcome-confetti"><i data-testid="onboarding-welcome-confetti-piece-1" /><i data-testid="onboarding-welcome-confetti-piece-2" /><i data-testid="onboarding-welcome-confetti-piece-3" /><i data-testid="onboarding-welcome-confetti-piece-4" /><i data-testid="onboarding-welcome-confetti-piece-5" /></span> : null}</span>
+          <p className="m-0 inline-flex items-center gap-1.5 rounded-full bg-good-soft px-[0.65rem] py-[0.2rem] text-[0.8125rem] font-semibold text-good before:size-[0.45rem] before:rounded-full before:bg-current before:content-['']" data-testid="onboarding-welcome-status">Configuração concluída</p>
+          <h2 id="welcome-title" className="mx-0 mt-1 mb-0 text-[1.75rem] leading-[1.2] tracking-[-0.025em]" data-testid="onboarding-welcome-title">Tudo pronto para começar</h2>
+          <p className="m-0 max-w-[60ch] text-[0.9375rem] leading-[1.55] text-ink-soft" data-testid="onboarding-welcome-text">O Teams AI está conectado às suas ferramentas e pronto para ajudar a organizar projetos, executar tarefas e acompanhar o trabalho da equipe. Para começar, abra Projetos e use Nova spec ou Novo projeto.</p>
+          {onLeave ? <button type="button" className={DONE_CLASS} onClick={onLeave} data-testid="onboarding-welcome-leave">Ir para projetos<Icon name="arrow-right" size={16} /></button> : <Link className={DONE_CLASS} to="/projects">Ir para projetos<Icon name="arrow-right" size={16} /></Link>}
+          <div className="onboarding-panel col-start-2 row-[1/span_5] w-full @max-2xl:hidden" aria-hidden="true" data-testid="onboarding-welcome-panel">
+            <img className="onboarding-panel-art" src="/onboarding-complete.png" alt="" data-testid="onboarding-welcome-art" />
           </div>
         </section>
       );

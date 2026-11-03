@@ -14,6 +14,7 @@ export function Workspace({ panels, columns, groupClass = '' }: { panels: Worksp
       role="tabpanel"
       id={`${base}-panel-${p.id}`}
       aria-labelledby={`${base}-tab-${p.id}`}
+      data-testid={`workspace-panel-${p.id}`}
       className={`min-h-0 min-w-0 lg:-m-1 lg:block lg:overflow-y-auto lg:p-1 ${active === p.id ? '' : 'max-lg:hidden'}`}
     >
       {p.content}
@@ -27,8 +28,8 @@ export function Workspace({ panels, columns, groupClass = '' }: { panels: Worksp
     return acc;
   }, []);
   return (
-    <div className="flex min-h-0 flex-col gap-3 lg:flex-1">
-      <div role="tablist" aria-label="Painéis" className="flex gap-1 rounded-tile border border-line bg-surface-sunken p-1 lg:hidden">
+    <div className="flex min-h-0 flex-col gap-3 lg:flex-1" data-testid="workspace-root">
+      <div role="tablist" aria-label="Painéis" className="flex gap-1 rounded-tile border border-line bg-surface-sunken p-1 lg:hidden" data-testid="workspace-tabs">
         {panels.map((p) => (
           <button
             key={p.id}
@@ -37,6 +38,7 @@ export function Workspace({ panels, columns, groupClass = '' }: { panels: Worksp
             id={`${base}-tab-${p.id}`}
             aria-controls={`${base}-panel-${p.id}`}
             aria-selected={active === p.id}
+            data-testid={`workspace-tab-${p.id}`}
             onClick={() => setActive(p.id)}
             className="h-9 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[5px] pointer-coarse:after:content-[''] min-w-0 flex-1 truncate rounded-md border-transparent bg-transparent px-2 text-ink-soft aria-selected:border-line-strong aria-selected:bg-surface aria-selected:text-ink aria-selected:shadow-button"
           >
@@ -44,10 +46,10 @@ export function Workspace({ panels, columns, groupClass = '' }: { panels: Worksp
           </button>
         ))}
       </div>
-      <div className={`grid min-h-0 gap-4 lg:flex-1 ${columns}`}>
+      <div className={`grid min-h-0 gap-4 lg:flex-1 ${columns}`} data-testid="workspace-columns">
         {groups.map((g) =>
           g.name ? (
-            <div key={g.name} className={groupClass}>
+            <div key={g.name} className={groupClass} data-testid={`workspace-group-${g.name}`}>
               {g.items.map(section)}
             </div>
           ) : (

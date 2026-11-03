@@ -24,7 +24,7 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
   };
   return (
     <ItemCard title="Organização do GitHub" item={item} variant="login" subtitle="Escolha onde o Teams AI deve trabalhar." info="Organização do GitHub onde o Teams AI cria e atualiza os repositórios dos seus projetos." icon="github" illustration="/onboarding-github-organization.png" benefits={GH_OWNER.benefits} panel={GH_OWNER.panel}>
-      <form
+      <form data-testid="owner-card-form"
         className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-[0.7rem] max-md:grid-cols-1"
         onSubmit={(e) => {
           e.preventDefault();
@@ -32,16 +32,16 @@ export function OwnerCard({ organizations, initialOwner, loading, loadError, ite
         }}
       >
         <Select aria-label="Organização do GitHub" value={owner} onChange={(e) => setOwner(e.target.value)} disabled={loading || organizations.length === 0}>
-          <option value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
-          {organizations.map((organization) => <option key={organization} value={organization}>{organization}</option>)}
+          <option data-testid="owner-card-placeholder-option" value="">{loading ? 'Carregando organizações…' : organizations.length === 0 ? 'Nenhuma organização encontrada' : 'Selecione uma organização'}</option>
+          {organizations.map((organization) => <option data-testid={`owner-card-option-${organization}`} key={organization} value={organization}>{organization}</option>)}
         </Select>
         <ActionButton type="submit" className="primary-button max-md:w-full" busy={saving} disabled={loading || owner.trim() === ''} icon={<Icon name="check" size={16} />}>
           Salvar e continuar
         </ActionButton>
       </form>
-      {loadError ? <p className="error">{loadError}</p> : null}
-      {!loading && !loadError && organizations.length === 0 ? <p className="error">Nenhuma organização foi encontrada para esta conta do GitHub.</p> : null}
-      {error ? <p className="error">{error}</p> : null}
+      {loadError ? <p data-testid="owner-card-error" className="error">{loadError}</p> : null}
+      {!loading && !loadError && organizations.length === 0 ? <p data-testid="owner-card-empty-error" className="error">Nenhuma organização foi encontrada para esta conta do GitHub.</p> : null}
+      {error ? <p data-testid="owner-card-save-error" className="error">{error}</p> : null}
     </ItemCard>
   );
 }

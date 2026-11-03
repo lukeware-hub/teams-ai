@@ -120,8 +120,8 @@ const MemoSpecTree = memo(SpecTree);
 function LazyDetails({ className, summary, body }: { className: string; summary: ReactNode; body: () => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <details className={className} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>{summary}</summary>
+    <details data-testid="refinement-lazy-details" className={className} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary data-testid="refinement-lazy-details-summary">{summary}</summary>
       {open && body()}
     </details>
   );
@@ -166,7 +166,7 @@ export function JevActions() {
       .catch(() => setCheck({ checking: false, ok: false, detail: 'Não foi possível validar a conexão agora.' }));
   };
   return (
-    <span className="mt-2 flex flex-wrap items-center gap-x-[0.8rem] gap-y-[0.3rem]">
+    <span data-testid="refinement-jev-actions" className="mt-2 flex flex-wrap items-center gap-x-[0.8rem] gap-y-[0.3rem]">
       <ActionButton className="rounded-md border-current bg-transparent px-[0.6rem] py-[0.2rem] text-[0.75rem] font-semibold text-current disabled:cursor-default disabled:opacity-60" data-testid="jev-validate" busy={check.checking} onClick={validate} icon={<Icon name="check" size={14} />}>{check.checking ? 'Validando…' : 'Validar conexão'}</ActionButton>
       <Link className="font-semibold text-current underline" to="/settings">Informar nova chave</Link>
       {check.ok !== undefined && <span data-testid="jev-validate-result">{check.ok ? 'Conexão com o OpenRouter funcionando. Clique em Reavaliar.' : `Falha na conexão: ${check.detail ?? 'chave inválida.'}`}</span>}
@@ -252,12 +252,12 @@ export interface ViewProps {
 function Divergences({ items }: { items: Divergence[] }) {
   const place = (s: DivergenceSide) => `${docName(s.file)}${s.heading ? ` › ${s.heading}` : ''}`;
   return (
-    <ul className="m-0 mt-[0.35rem] list-none space-y-[0.45rem] p-0 text-ink-soft">
+    <ul data-testid="refinement-divergence-list" className="m-0 mt-[0.35rem] list-none space-y-[0.45rem] p-0 text-ink-soft">
       {items.map((d, n) => (
-        <li key={n}>
-          <span className="block text-ink">{d.fact}</span>
-          <span className="block">{`Onde: ${place(d.a)} — “${d.a.quote}” × ${place(d.b)} — “${d.b.quote}”`}</span>
-          <span className="block">{`Como corrigir: ${d.fix || 'corrija o trecho divergente nos documentos e reavalie.'}`}</span>
+        <li data-testid="refinement-divergence-item" key={n}>
+          <span data-testid="refinement-divergence-fact" className="block text-ink">{d.fact}</span>
+          <span data-testid="refinement-divergence-where" className="block">{`Onde: ${place(d.a)} — “${d.a.quote}” × ${place(d.b)} — “${d.b.quote}”`}</span>
+          <span data-testid="refinement-divergence-fix" className="block">{`Como corrigir: ${d.fix || 'corrija o trecho divergente nos documentos e reavalie.'}`}</span>
         </li>
       ))}
     </ul>
@@ -266,13 +266,13 @@ function Divergences({ items }: { items: Divergence[] }) {
 
 function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' }) {
   const own = items.filter((i) => i.role === role);
-  if (own.length === 0) return <p className={fileEmpty}>Preenchida na primeira avaliação.</p>;
+  if (own.length === 0) return <p data-testid="refinement-checklist-empty" className={fileEmpty}>Preenchida na primeira avaliação.</p>;
   return (
-    <ul className="m-0 list-none rounded-lg border border-line bg-surface py-[0.55rem] pr-3 pl-[1.1rem] text-[0.8rem] leading-[1.45] text-justify">
+    <ul data-testid="refinement-checklist-list" className="m-0 list-none rounded-lg border border-line bg-surface py-[0.55rem] pr-3 pl-[1.1rem] text-[0.8rem] leading-[1.45] text-justify">
       {own.map((i) => (
-        <li key={i.id} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 py-[0.4rem] text-[0.8125rem] text-ink">
-          <span className={`grid h-5 place-items-center ${i.passed ? 'text-good' : 'text-warn'}`} role="img" aria-label={i.passed ? 'Atendido' : 'Não atendido'}><Icon name={i.passed ? 'check' : 'close'} size={16} /></span>
-          <div>{checkLabel[i.id] ?? i.id.slice(3)}<small className="mx-0 mt-[0.15rem] mb-0 block leading-[1.35] text-ink-soft">{checkDetail(i.detail)}</small>{i.divergences?.length ? <Divergences items={i.divergences} /> : null}</div>
+        <li data-testid={`refinement-checklist-item-${i.id}`} key={i.id} className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 py-[0.4rem] text-[0.8125rem] text-ink">
+          <span data-testid={`refinement-checklist-status-${i.id}`} className={`grid h-5 place-items-center ${i.passed ? 'text-good' : 'text-warn'}`} role="img" aria-label={i.passed ? 'Atendido' : 'Não atendido'}><Icon name={i.passed ? 'check' : 'close'} size={16} /></span>
+          <div data-testid={`refinement-checklist-body-${i.id}`}>{checkLabel[i.id] ?? i.id.slice(3)}<small data-testid={`refinement-checklist-detail-${i.id}`} className="mx-0 mt-[0.15rem] mb-0 block leading-[1.35] text-ink-soft">{checkDetail(i.detail)}</small>{i.divergences?.length ? <Divergences items={i.divergences} /> : null}</div>
         </li>
       ))}
     </ul>
@@ -283,20 +283,20 @@ function Checklist({ items, role }: { items: ChecklistItem[]; role: 'po' | 'sm' 
 function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: DroppedQuestionRow[]; locked: boolean; onReask: (id: string) => unknown; compact?: boolean }) {
   return (
     <details open className="group rounded-lg border border-line bg-surface px-4 py-3" data-testid="dropped-repeats">
-      <summary className="flex cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-        <span className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+      <summary data-testid="refinement-dropped-repeats-summary" className="flex cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+        <span data-testid="refinement-dropped-repeats-chevron" className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
         Perguntas repetidas que não foram feitas de novo ({rows.length})
       </summary>
-      <ul className="m-0 mt-3 grid list-none gap-3 p-0">
+      <ul data-testid="refinement-dropped-repeats-list" className="m-0 mt-3 grid list-none gap-3 p-0">
         {rows.map((r) => (
-          <li key={r.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
-            <p className="m-0 text-[0.875rem] text-ink-soft">{r.text}</p>
+          <li data-testid={`refinement-dropped-repeat-${r.questionId}`} key={r.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
+            <p data-testid={`refinement-dropped-repeat-text-${r.questionId}`} className="m-0 text-[0.875rem] text-ink-soft">{r.text}</p>
             {compact ? (
-              <small className="text-[0.75rem] text-ink-soft">{r.matchedAnswer === null ? 'Repete uma pergunta que você ignorou.' : `Resolvida com "${r.matchedAnswer}"`}</small>
+              <small data-testid={`refinement-dropped-repeat-note-${r.questionId}`} className="text-[0.75rem] text-ink-soft">{r.matchedAnswer === null ? 'Repete uma pergunta que você ignorou.' : `Resolvida com "${r.matchedAnswer}"`}</small>
             ) : (
               <>
-                <p className="m-0 text-[0.8125rem] text-ink-soft">Antes: {r.matchedText}</p>
-                <p className="m-0 text-[0.875rem] font-semibold text-ink">{r.matchedAnswer === null ? 'Você ignorou esta pergunta.' : `Você respondeu: ${r.matchedAnswer}`}</p>
+                <p data-testid={`refinement-dropped-repeat-before-${r.questionId}`} className="m-0 text-[0.8125rem] text-ink-soft">Antes: {r.matchedText}</p>
+                <p data-testid={`refinement-dropped-repeat-answer-${r.questionId}`} className="m-0 text-[0.875rem] font-semibold text-ink">{r.matchedAnswer === null ? 'Você ignorou esta pergunta.' : `Você respondeu: ${r.matchedAnswer}`}</p>
               </>
             )}
             <button type="button" className="secondary h-10 w-fit px-3 text-[0.8125rem]" data-testid={`reask-${r.questionId}`} disabled={locked} onClick={() => onReask(r.questionId)}>Perguntar de novo</button>
@@ -425,9 +425,9 @@ export function RefinementView(p: ViewProps) {
   // The start would open with a current preparation, so the preparation is the next step.
   const waitsForSpeckit = !canStart && canStartRun({ ...st, speckit: { status: 'done', stale: false }, questions: [] }, busy);
   const backlogStageHeading = (
-    <header className="grid gap-1">
-      <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
-      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e outro agente monta o plano de implementação de cada uma, com testes primeiro. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
+    <header data-testid="refinement-backlog-heading" className="grid gap-1">
+      <h2 data-testid="refinement-backlog-title" ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
+      <p data-testid="refinement-backlog-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e outro agente monta o plano de implementação de cada uma, com testes primeiro. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
     </header>
   );
   // A wizard project and a backlog list markdown files only: specs.md, written by the evaluation, and the five documents.
@@ -560,8 +560,9 @@ export function RefinementView(p: ViewProps) {
     });
   };
   const tabButton = (f: DocFile) => (
-    <span key={f} className="inline-flex items-center">
+    <span data-testid={`refinement-tab-${f}`} key={f} className="inline-flex items-center">
       <button
+        data-testid={`refinement-tab-button-${f}`}
         className={`min-w-[auto] h-auto min-h-11 rounded-none border-0 border-b-2 bg-transparent px-3 py-[0.55rem] whitespace-nowrap transition-none hover:enabled:bg-surface-sunken hover:enabled:text-ink ${tab === f ? 'border-accent text-accent-text' : 'border-transparent text-ink-soft'}`}
         onClick={() => setTab(f)}
       >
@@ -574,8 +575,8 @@ export function RefinementView(p: ViewProps) {
   /** Asked until the owner answers: a stage session sends no document to the Jev before. */
   const confidentialAsk = st.stages === true && st.confidential === undefined ? (
     <div className={notice} data-testid="confidential-ask">
-      <p className="m-0">Este projeto é confidencial? Sem resposta, nenhum documento vai ao Jev.</p>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <p data-testid="refinement-confidential-question" className="m-0">Este projeto é confidencial? Sem resposta, nenhum documento vai ao Jev.</p>
+      <div data-testid="refinement-confidential-actions" className="mt-2 flex flex-wrap gap-2">
         <button type="button" data-testid="confidential-yes" onClick={() => p.onConfidential?.(true)}>Sim, é confidencial</button>
         <button type="button" data-testid="confidential-no" onClick={() => p.onConfidential?.(false)}>Não é confidencial</button>
       </div>
@@ -598,12 +599,12 @@ export function RefinementView(p: ViewProps) {
   /** The first failing check of a stage: what the disabled Continuar names. Null when the stage can continue. */
   const stageBlock = (file: DocFile): StageCheck | null => firstFailing(stageLines(file));
   const docsPanel = (
-    <section className={panelCard}>
-      <div className={panelHeading}>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`${headingTile} text-[color:var(--tile-accent-ink)] [background:var(--tile-accent)]`}><Icon name="file" size={26} /></span>
-          <div><span className={eyebrow}>Área de trabalho</span>
-          <h2 className={panelTitle}>{docsTitle}</h2>
+    <section data-testid="refinement-docs-panel" className={panelCard}>
+      <div data-testid="refinement-docs-panel-heading" className={panelHeading}>
+        <div data-testid="refinement-docs-panel-title-row" className="flex min-w-0 items-center gap-3">
+          <span data-testid="refinement-docs-panel-tile" className={`${headingTile} text-[color:var(--tile-accent-ink)] [background:var(--tile-accent)]`}><Icon name="file" size={26} /></span>
+          <div data-testid="refinement-docs-panel-title-group"><span data-testid="refinement-docs-panel-eyebrow" className={eyebrow}>Área de trabalho</span>
+          <h2 data-testid="refinement-docs-panel-title" className={panelTitle}>{docsTitle}</h2>
           </div>
         </div>
       </div>
@@ -613,25 +614,25 @@ export function RefinementView(p: ViewProps) {
           <StageSteps views={stageViews(st)} shown={tab} />
         </>
       ) : existing ? (
-        <div className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
+        <div data-testid="refinement-docs-tabs-existing" className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
           <div className="flex flex-wrap items-center" data-testid="docs-group-spec">
-            <span className={tabGroupLabel}>Spec</span>
+            <span data-testid="refinement-docs-group-spec-label" className={tabGroupLabel}>Spec</span>
             {tabButton('briefing.md')}
           </div>
           <div className="flex flex-wrap items-center" data-testid="docs-group-project">
-            <span className={tabGroupLabel}>Contexto do projeto · muda só com sua aprovação</span>
+            <span data-testid="refinement-docs-group-project-label" className={tabGroupLabel}>Contexto do projeto · muda só com sua aprovação</span>
             {(['flow.md', 'project.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
           </div>
         </div>
       ) : (
-        <div className="mb-4 flex flex-wrap border-b border-line" role="tablist" aria-label="Documentos do projeto">
+        <div data-testid="refinement-docs-tabs-new" className="mb-4 flex flex-wrap border-b border-line" role="tablist" aria-label="Documentos do projeto">
           {(['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] as DocFile[]).map(tabButton)}
         </div>
       )}
       <p data-testid="doc-impact" className="hint">{backlogOn && tab === 'briefing.md' ? briefingImpact : docImpact[tab]}</p>
-      <div className="grid gap-2">
+      <div data-testid="refinement-docs-editor" className="grid gap-2">
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
-        <div className="flex flex-col gap-2">
+        <div data-testid="refinement-docs-actions" className="flex flex-col gap-2">
           {tab !== 'flow.md' && p.onSuggestDoc && (
             <ActionButton data-testid="suggest" className="h-10 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
@@ -639,7 +640,7 @@ export function RefinementView(p: ViewProps) {
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
             <>
-            <button type="button" className="h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+            <button type="button" data-testid="refinement-docs-attach-image" className="h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
               <Icon name="file" size={16} />
             </button>
@@ -648,7 +649,7 @@ export function RefinementView(p: ViewProps) {
           )}
           {newProject && (
             <>
-              <button type="button" className="h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
+              <button type="button" data-testid="refinement-docs-attach-file" className="h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
                 Anexar arquivo
                 <Icon name="file" size={16} />
               </button>
@@ -656,9 +657,9 @@ export function RefinementView(p: ViewProps) {
             </>
           )}
           {newProject && tab === 'design.md' && (
-            <button type="button" className="h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+            <button type="button" data-testid="refinement-docs-not-applicable" className="h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
           )}
-          <button type="button" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
+          <button type="button" data-testid="refinement-docs-copy" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
             <Icon name="copy" size={16} />
           </button>
@@ -705,9 +706,9 @@ export function RefinementView(p: ViewProps) {
           A lista de verificação está desatualizada: houve mudanças depois da última avaliação.
         </p>
       )}
-      {jevAdvisory && <p className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
-        <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
+      {jevAdvisory && <p data-testid="refinement-jev-advisory" className={notice}>O Jev é obrigatório no refinamento: ele valida os documentos e decide pontos da avaliação, e seus apontamentos são considerados por Claude, PO e SM. <InfoTip text={jevInfo} /></p>}
+      <div data-testid="refinement-docs-footer" className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-3">
+        <span data-testid="refinement-docs-autosave-note" className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
       </div>
       {askDialog}
     </section>
@@ -721,39 +722,39 @@ export function RefinementView(p: ViewProps) {
   );
   const reevaluateDialog = askRe ? (
     <ConfirmDialog title="Reavaliar sem mudanças" confirmLabel="Reavaliar mesmo assim" tone="accent" icon="refresh" confirmTestId="reevaluate-confirm" onConfirm={() => { setAskRe(false); void p.onEvaluate(); }} onCancel={() => setAskRe(false)}>
-      <p>Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
+      <p data-testid="refinement-reevaluate-text">Nada mudou desde a última avaliação. Reavaliar gasta de novo as chamadas dos agentes (cerca de US$ 0,7) e pode dar um veredito diferente sobre os mesmos documentos.</p>
     </ConfirmDialog>
   ) : null;
   /** One pending question with its options, answer box and actions; `remaining` counts the open ones, this included. */
   const questionCard = (current: QuestionRow, remaining: number) => (
-        <div className="rounded-lg border border-line bg-surface-sunken p-4">
-          <div className="flex flex-wrap items-center gap-[0.35rem]">
+        <div data-testid="refinement-question-card" className="rounded-lg border border-line bg-surface-sunken p-4">
+          <div data-testid="refinement-question-badges" className="flex flex-wrap items-center gap-[0.35rem]">
             {current.origin === 'speckit'
-              ? <><span className={neutralBadge}>PLANO</span><InfoTip text="Pergunta da preparação dos planos de cada item do backlog." /></>
-              : <><span className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
-            {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span className="tag ml-0">Obrigatória</span></Tipped>}
+              ? <><span data-testid="refinement-question-plan-badge" className={neutralBadge}>PLANO</span><InfoTip text="Pergunta da preparação dos planos de cada item do backlog." /></>
+              : <><span data-testid="refinement-question-role-badge" className={badge(current.role)}>{current.role.toUpperCase()}</span><InfoTip text={roleInfo[current.role]} /></>}
+            {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span data-testid="refinement-question-blocking-tag" className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
-          {current.origin === 'speckit' && current.itemKey && <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {itemTitles.get(current.itemKey) ?? current.itemKey}</p>}
-          {current.origin === 'speckit' && current.context && <p className="m-0 leading-normal text-ink-soft">{current.context}</p>}
-          <p className="m-0">{questionText(current.text)}</p>
+          {current.origin === 'speckit' && current.itemKey && <p data-testid="refinement-question-item-title" className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {itemTitles.get(current.itemKey) ?? current.itemKey}</p>}
+          {current.origin === 'speckit' && current.context && <p data-testid="refinement-question-context" className="m-0 leading-normal text-ink-soft">{current.context}</p>}
+          <p data-testid="refinement-question-text" className="m-0">{questionText(current.text)}</p>
           {current.origin === 'speckit' && (current.distinctFrom ?? []).length > 0 && (
             <div className="grid gap-[0.3rem] rounded-lg border border-line bg-surface px-4 py-3" data-testid="distinct-from">
-              <p className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Por que não é a mesma pergunta</p>
+              <p data-testid="refinement-distinct-title" className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Por que não é a mesma pergunta</p>
               {(current.distinctFrom ?? []).map((d) => {
                 const earlier = st.questions.find((q) => q.questionId === d.questionId);
                 return (
-                  <div key={d.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
-                    <p className="m-0 text-[0.8125rem] text-ink-soft">Antes: {earlier?.text ?? d.questionId}</p>
-                    <p className="m-0 text-[0.875rem] font-semibold text-ink">{earlier?.status === 'skipped' ? 'Você ignorou esta pergunta.' : `Você respondeu: ${earlier?.answer ?? ''}`}</p>
-                    <p className="m-0 text-[0.8125rem] text-ink-soft">Diferença: {d.difference}</p>
+                  <div data-testid={`refinement-distinct-item-${d.questionId}`} key={d.questionId} className="grid gap-[0.3rem] border-t border-line pt-3">
+                    <p data-testid={`refinement-distinct-before-${d.questionId}`} className="m-0 text-[0.8125rem] text-ink-soft">Antes: {earlier?.text ?? d.questionId}</p>
+                    <p data-testid={`refinement-distinct-answer-${d.questionId}`} className="m-0 text-[0.875rem] font-semibold text-ink">{earlier?.status === 'skipped' ? 'Você ignorou esta pergunta.' : `Você respondeu: ${earlier?.answer ?? ''}`}</p>
+                    <p data-testid={`refinement-distinct-difference-${d.questionId}`} className="m-0 text-[0.8125rem] text-ink-soft">Diferença: {d.difference}</p>
                   </div>
                 );
               })}
             </div>
           )}
-          {current.blocking && <p className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
+          {current.blocking && <p data-testid="refinement-question-blocking-note" className="m-0 text-[0.8125rem] text-warn">{current.origin === 'speckit' ? 'Bloqueia o início do desenvolvimento até você responder.' : (st.reprocessedStages ?? []).includes(current.file ?? '') ? 'Pode pular: Continuar avança sem resposta.' : 'Bloqueia o avanço até você responder.'}</p>}
           {current.relatedAcIds.length > 0 && (
-            <small className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
+            <small data-testid="refinement-question-criteria" className="question-criteria block leading-[1.6] text-ink-soft [&_.info-tip]:ml-[0.15rem]">
               Critérios de aceite:{' '}
               {current.relatedAcIds.map((id, i) => {
                 const criterion = criteria.find((c) => c.id === id);
@@ -764,17 +765,17 @@ export function RefinementView(p: ViewProps) {
           {current.options && current.options.length > 0 && (
             <OptionGroup lead="Escolha uma opção ou escreva a sua resposta abaixo." options={current.options} value={answer} onChange={setAnswer} disabled={locked} />
           )}
-          <label className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor="refinement-answer">Sua resposta</label>
+          <label data-testid="refinement-question-answer-label" className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor="refinement-answer">Sua resposta</label>
           <textarea id="refinement-answer" data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
           {/* A long label wraps under its text, so the checkbox and the tip sit on the first line. */}
-          {current.origin !== 'speckit' && <div className="mt-3 mb-4 flex items-start gap-[0.35rem] text-[0.8125rem] leading-5 text-ink-soft [&_.info-tip]:mt-[0.1rem]">
-            <label className="inline-flex cursor-pointer items-start gap-2">
+          {current.origin !== 'speckit' && <div data-testid="refinement-question-docs-row" className="mt-3 mb-4 flex items-start gap-[0.35rem] text-[0.8125rem] leading-5 text-ink-soft [&_.info-tip]:mt-[0.1rem]">
+            <label data-testid="refinement-question-docs-label" className="inline-flex cursor-pointer items-start gap-2">
               <input type="checkbox" className="m-0 mt-0.5 size-4 flex-none cursor-pointer" data-testid="docs-answered" checked={docsAnswered} onChange={(e) => setDocsAnswered(e.target.checked)} />
               Os documentos já respondiam esta pergunta
             </label>
             <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
           </div>}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div data-testid="refinement-question-actions" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <ActionButton
               className="primary"
               data-testid={`answer-${current.questionId}`}
@@ -795,20 +796,20 @@ export function RefinementView(p: ViewProps) {
               </ActionButton>
             )}
           </div>
-          <small className="mt-2 block text-ink-soft">{remaining === 1 ? 'Esta é a última pergunta em aberto.' : remaining === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${remaining - 1} perguntas depois desta.`}</small>
+          <small data-testid="refinement-question-remaining" className="mt-2 block text-ink-soft">{remaining === 1 ? 'Esta é a última pergunta em aberto.' : remaining === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${remaining - 1} perguntas depois desta.`}</small>
         </div>
   );
   /** One pending suggestion with its diff, reason box and the two decisions. */
   const patchCard = (x: PatchRow, i: number) => (
-          <div key={x.patchId} className="mt-4 rounded-lg border border-line bg-surface p-[0.85rem]">
-            <div className="flex flex-wrap items-center gap-[0.45rem] text-[0.82rem] text-ink">
-              <span className={badge(x.role)}>{x.role === 'front' ? 'FRONT' : x.role.toUpperCase()}</span>
-              <b>{isApproval(x) ? 'Aprovação de ajuste' : `Sugestão para ${docName(x.file)}`}</b>
+          <div data-testid={`refinement-patch-${x.patchId}`} key={x.patchId} className="mt-4 rounded-lg border border-line bg-surface p-[0.85rem]">
+            <div data-testid={`refinement-patch-header-${x.patchId}`} className="flex flex-wrap items-center gap-[0.45rem] text-[0.82rem] text-ink">
+              <span data-testid={`refinement-patch-role-${x.patchId}`} className={badge(x.role)}>{x.role === 'front' ? 'FRONT' : x.role.toUpperCase()}</span>
+              <b data-testid={`refinement-patch-title-${x.patchId}`}>{isApproval(x) ? 'Aprovação de ajuste' : `Sugestão para ${docName(x.file)}`}</b>
               {i === 0 ? <InfoTip text={patchInfo} /> : null}
-              <span className="flex-[1_1_100%] leading-[1.4] text-ink-soft">{x.reason}</span>
+              <span data-testid={`refinement-patch-reason-${x.patchId}`} className="flex-[1_1_100%] leading-[1.4] text-ink-soft">{x.reason}</span>
             </div>
-            <pre className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
-            <div className="grid grid-cols-2 items-center gap-2">
+            <pre data-testid={`refinement-patch-diff-${x.patchId}`} className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
+            <div data-testid={`refinement-patch-actions-${x.patchId}`} className="grid grid-cols-2 items-center gap-2">
             <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onAccept(x.patchId))} icon={<Icon name="check" size={16} />}>
               Aceitar
             </ActionButton>
@@ -827,19 +828,19 @@ export function RefinementView(p: ViewProps) {
           </div>
   );
   const reviewPanel = (
-    <section className={panelCard}>
-      <div className={panelHeading}>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`${headingTile} text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]`}><Icon name="clipboard" size={26} /></span>
-          <div><span className={eyebrow}>Refinamento</span>
-          <h2 className={panelTitle}>Área de revisão</h2>
+    <section data-testid="refinement-review-panel" className={panelCard}>
+      <div data-testid="refinement-review-panel-heading" className={panelHeading}>
+        <div data-testid="refinement-review-panel-title-row" className="flex min-w-0 items-center gap-3">
+          <span data-testid="refinement-review-panel-tile" className={`${headingTile} text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]`}><Icon name="clipboard" size={26} /></span>
+          <div data-testid="refinement-review-panel-title-group"><span data-testid="refinement-review-panel-eyebrow" className={eyebrow}>Refinamento</span>
+          <h2 data-testid="refinement-review-panel-title" className={panelTitle}>Área de revisão</h2>
           </div>
         </div>
         <Tipped text="Quantas perguntas dos agentes e sugestões de documento ainda esperam a sua decisão.">
-          <span className={`count-pill ${openCount > 0 ? 'tone-warn' : 'tone-good'}`}>{openCount === 1 ? '1 pendência em aberto' : `${openCount} pendências em aberto`}</span>
+          <span data-testid="refinement-review-open-count" className={`count-pill ${openCount > 0 ? 'tone-warn' : 'tone-good'}`}>{openCount === 1 ? '1 pendência em aberto' : `${openCount} pendências em aberto`}</span>
         </Tipped>
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div data-testid="refinement-review-actions" className="mb-4 flex flex-wrap items-center gap-3">
         {newProject && !p.hideStart && startButton}
         {showEvaluate && (
         <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
@@ -851,32 +852,32 @@ export function RefinementView(p: ViewProps) {
       {/* The plans box and its button sit right before the start, as on the screen that prepares a new project's development. */}
       {!newProject && <div className="mb-4 grid gap-3" data-testid="speckit-block">{speckitStatus}{prepareButton}</div>}
       {!newProject && !p.hideStart && startButton}
-      {nextStep !== null && <p className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span><b>Próximo passo:</b> {nextStep}{optional}</span></p>}
+      {nextStep !== null && <p data-testid="refinement-review-next-step" className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span data-testid="refinement-review-next-step-text"><b data-testid="refinement-review-next-step-label">Próximo passo:</b> {nextStep}{optional}</span></p>}
       {evaluating ? null : current ? questionCard(current, pending.length) : (
-        <p className={muted}>Nenhuma pergunta em aberto.</p>
+        <p data-testid="refinement-review-no-questions" className={muted}>Nenhuma pergunta em aberto.</p>
       )}
       {(evaluating ? [] : st.patches).filter((x) => x.status === 'pending').map(patchCard)}
       {st.discarded.map((d, i) => (
-        <p key={i} className={notice}>
+        <p data-testid="refinement-discarded-notice" key={i} className={notice}>
           Uma sugestão do {d.role.toUpperCase()} para {docName(d.file)} não pôde ser aplicada e foi descartada ({d.reason}).
         </p>
       ))}
-      <details className="group mt-5" open>
-      <summary className="mx-0 mb-[0.7rem] flex cursor-pointer list-none items-center gap-[0.55rem] text-[0.8rem] tracking-[0.06em] text-ink uppercase [&>svg]:text-ink-soft [&::-webkit-details-marker]:hidden"><Icon name="clock" size={20} /><span className="flex-1">Histórico · {st.questions.filter((q) => q.status !== 'pending').length + st.patches.filter((x) => x.status !== 'pending').length}</span><span className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={18} /></span></summary>
-      <ul className="m-0 list-none rounded-lg border border-line bg-surface px-4 py-[0.8rem] text-[0.8rem] leading-normal text-justify text-ink-soft empty:grid empty:min-h-[3.3rem] empty:place-items-center empty:before:text-ink-soft empty:before:content-['Nenhum_registro_no_momento.'] [&>li+li]:mt-[0.6rem] [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-[0.6rem]">
+      <details data-testid="refinement-history" className="group mt-5" open>
+      <summary data-testid="refinement-history-summary" className="mx-0 mb-[0.7rem] flex cursor-pointer list-none items-center gap-[0.55rem] text-[0.8rem] tracking-[0.06em] text-ink uppercase [&>svg]:text-ink-soft [&::-webkit-details-marker]:hidden"><Icon name="clock" size={20} /><span data-testid="refinement-history-count" className="flex-1">Histórico · {st.questions.filter((q) => q.status !== 'pending').length + st.patches.filter((x) => x.status !== 'pending').length}</span><span data-testid="refinement-history-chevron" className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={18} /></span></summary>
+      <ul data-testid="refinement-history-list" className="m-0 list-none rounded-lg border border-line bg-surface px-4 py-[0.8rem] text-[0.8rem] leading-normal text-justify text-ink-soft empty:grid empty:min-h-[3.3rem] empty:place-items-center empty:before:text-ink-soft empty:before:content-['Nenhum_registro_no_momento.'] [&>li+li]:mt-[0.6rem] [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-[0.6rem]">
         {[...st.questions]
           .filter((q) => q.status !== 'pending')
           .reverse()
           .map((q) => (
-            <li key={q.questionId}>
-              <span className={badge(q.role)}>{q.role.toUpperCase()}</span> {questionText(q.text)} → {q.status === 'skipped' ? <i>ignorada</i> : q.answer}{q.answeredBy ? <i> (suposição do {q.answeredBy.toUpperCase()}, tirada dos documentos)</i> : null}
+            <li data-testid={`refinement-history-question-${q.questionId}`} key={q.questionId}>
+              <span data-testid={`refinement-history-question-role-${q.questionId}`} className={badge(q.role)}>{q.role.toUpperCase()}</span> {questionText(q.text)} → {q.status === 'skipped' ? <i data-testid={`refinement-history-question-skipped-${q.questionId}`}>ignorada</i> : q.answer}{q.answeredBy ? <i data-testid={`refinement-history-question-assumed-${q.questionId}`}> (suposição do {q.answeredBy.toUpperCase()}, tirada dos documentos)</i> : null}
             </li>
           ))}
         {[...st.patches]
           .filter((x) => x.status !== 'pending')
           .reverse()
           .map((x) => (
-            <li key={x.patchId}>
+            <li data-testid={`refinement-history-patch-${x.patchId}`} key={x.patchId}>
               {isApproval(x) ? 'Aprovação de ajuste' : `Sugestão para ${docName(x.file)}`} ({x.reason}) → {x.status === 'accepted' ? 'aceita' : x.status === 'rejected' ? 'rejeitada' : 'descartada'}
               {x.decision ? `: ${x.decision}` : ''}
             </li>
@@ -887,89 +888,89 @@ export function RefinementView(p: ViewProps) {
   );
   /** The verification blocks (usage, checklist, generated files, tasks, secrets); the panel and the final review give it their own box. */
   const qualityBlock = (boxClass: string) => (
-    <section className={boxClass}>
-      <div className={panelHeading}>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`${headingTile} text-[color:var(--tile-good-ink)] [background:var(--tile-good)]`}><Icon name="shield" size={26} /></span>
-          <div><span className={eyebrow}>Controle de qualidade</span>
-          <h2 className={panelTitle}>Lista de verificação</h2>
+    <section data-testid="refinement-quality-block" className={boxClass}>
+      <div data-testid="refinement-quality-heading" className={panelHeading}>
+        <div data-testid="refinement-quality-title-row" className="flex min-w-0 items-center gap-3">
+          <span data-testid="refinement-quality-tile" className={`${headingTile} text-[color:var(--tile-good-ink)] [background:var(--tile-good)]`}><Icon name="shield" size={26} /></span>
+          <div data-testid="refinement-quality-title-group"><span data-testid="refinement-quality-eyebrow" className={eyebrow}>Controle de qualidade</span>
+          <h2 data-testid="refinement-quality-title" className={panelTitle}>Lista de verificação</h2>
           </div>
         </div>
-        <span className={`status-dot ${listState.tone}`}>{listState.label}</span>
+        <span data-testid="refinement-quality-status" className={`status-dot ${listState.tone}`}>{listState.label}</span>
       </div>
-      <div className="mb-4 rounded-lg border border-line bg-surface px-[0.9rem] py-3">
-        <p className="m-0 mb-[0.45rem] text-[0.8125rem] font-semibold text-ink">Consumo de IA no refinamento</p>
-        <dl className="m-0 grid gap-[0.3rem] [&_dd]:m-0 [&_dd]:text-[0.875rem] [&_dd]:font-semibold [&_dd]:text-ink [&_dd]:tabular-nums [&_dt]:inline-flex [&_dt]:items-center [&_dt]:gap-[0.3rem] [&_dt]:text-[0.8125rem] [&_dt]:text-ink-soft [&>div]:flex [&>div]:items-center [&>div]:justify-between [&>div]:gap-4">
-          <div>
-            <dt>Chamadas<InfoTip text="Quantas vezes um agente de IA foi acionado neste refinamento, somando todas as rodadas de avaliação." /></dt>
-            <dd>{snap.tokens.steps}</dd>
+      <div data-testid="refinement-usage" className="mb-4 rounded-lg border border-line bg-surface px-[0.9rem] py-3">
+        <p data-testid="refinement-usage-title" className="m-0 mb-[0.45rem] text-[0.8125rem] font-semibold text-ink">Consumo de IA no refinamento</p>
+        <dl data-testid="refinement-usage-list" className="m-0 grid gap-[0.3rem] [&_dd]:m-0 [&_dd]:text-[0.875rem] [&_dd]:font-semibold [&_dd]:text-ink [&_dd]:tabular-nums [&_dt]:inline-flex [&_dt]:items-center [&_dt]:gap-[0.3rem] [&_dt]:text-[0.8125rem] [&_dt]:text-ink-soft [&>div]:flex [&>div]:items-center [&>div]:justify-between [&>div]:gap-4">
+          <div data-testid="refinement-usage-calls">
+            <dt data-testid="refinement-usage-calls-label">Chamadas<InfoTip text="Quantas vezes um agente de IA foi acionado neste refinamento, somando todas as rodadas de avaliação." /></dt>
+            <dd data-testid="refinement-usage-calls-value">{snap.tokens.steps}</dd>
           </div>
-          <div>
-            <dt>Tokens<InfoTip text={`Volume de texto processado pelos modelos de IA: ${snap.tokens.inputTokens} tokens lidos e ${snap.tokens.outputTokens} escritos. O custo cresce com o número de tokens.`} /></dt>
-            <dd>{snap.tokens.inputTokens + snap.tokens.outputTokens}</dd>
+          <div data-testid="refinement-usage-tokens">
+            <dt data-testid="refinement-usage-tokens-label">Tokens<InfoTip text={`Volume de texto processado pelos modelos de IA: ${snap.tokens.inputTokens} tokens lidos e ${snap.tokens.outputTokens} escritos. O custo cresce com o número de tokens.`} /></dt>
+            <dd data-testid="refinement-usage-tokens-value">{snap.tokens.inputTokens + snap.tokens.outputTokens}</dd>
           </div>
-          <div>
-            <dt>Custo estimado<InfoTip text="Estimativa em dólares das chamadas aos modelos de IA neste refinamento, calculada pelos preços de API." /></dt>
-            <dd>US$ {snap.tokens.costUsd.toFixed(2)}</dd>
+          <div data-testid="refinement-usage-cost">
+            <dt data-testid="refinement-usage-cost-label">Custo estimado<InfoTip text="Estimativa em dólares das chamadas aos modelos de IA neste refinamento, calculada pelos preços de API." /></dt>
+            <dd data-testid="refinement-usage-cost-value">US$ {snap.tokens.costUsd.toFixed(2)}</dd>
           </div>
-          <div>
-            <dt>Última avaliação<InfoTip text="Quanto a última avaliação levou, do clique em Avaliar ou Reavaliar até ela terminar." /></dt>
+          <div data-testid="refinement-usage-last-evaluation">
+            <dt data-testid="refinement-usage-last-evaluation-label">Última avaliação<InfoTip text="Quanto a última avaliação levou, do clique em Avaliar ou Reavaliar até ela terminar." /></dt>
             <dd data-testid="last-evaluation">{lastEvaluationText(snap.state.evaluation)}</dd>
           </div>
         </dl>
       </div>
-      <div className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
-        <details className="group">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span className="flex-1">Produto (PO)</span></summary>
+      <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
+        <details data-testid="refinement-checklist-po" className="group">
+          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
           <Checklist items={st.checklist} role="po" />
         </details>
-        <details className="group">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span className="flex-1">Técnico (SM)</span></summary>
+        <details data-testid="refinement-checklist-sm" className="group">
+          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span></summary>
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
       {!newProject && backlogBlock(null)}
-      <h4><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
+      <h4 data-testid="refinement-quality-generated-title"><Icon name="file" size={20} />Arquivos gerados<InfoTip text={mdFiles ? "Os cinco documentos e o specs.md, que o Claude gera a cada avaliação. O plano de cada item parte desses seis arquivos." : "Os cinco documentos e o spec.md, a demanda que o Claude deriva a cada avaliação, com critérios de aceite e tarefas."} /></h4>
       {legacyFiles && (
         <>
-      {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong>{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
+      {st.derived?.spec && <p data-testid="spec-type">Tipo da demanda: <strong data-testid="refinement-spec-type-value">{typeLabel[st.derived.spec.type] ?? st.derived.spec.type}</strong></p>}
       {st.derived?.spec.type === 'bug' && st.derived.spec.bug && (
         <div data-testid="bug-details" className={`grid gap-[0.2rem] ${notice}`}>
-          <strong>Detalhes do bug</strong>
-          <span>Comportamento atual: {st.derived.spec.bug.actual}</span>
-          <span>Comportamento esperado: {st.derived.spec.bug.expected}</span>
-          <span>Como reproduzir: {st.derived.spec.bug.reproduction}</span>
+          <strong data-testid="refinement-bug-details-title">Detalhes do bug</strong>
+          <span data-testid="refinement-bug-actual">Comportamento atual: {st.derived.spec.bug.actual}</span>
+          <span data-testid="refinement-bug-expected">Comportamento esperado: {st.derived.spec.bug.expected}</span>
+          <span data-testid="refinement-bug-reproduction">Como reproduzir: {st.derived.spec.bug.reproduction}</span>
         </div>
       )}
         </>
       )}
-      <LazyDetails key={specFile.name} className={fileBox} summary={<><span>{specFile.name}</span>{specFile.text ? <a data-testid={`download-${specFile.name.replace('.', '-')}`} href={mdDownload(specFile.text)} download={specFile.name} aria-label={`Baixar ${specFile.name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specFile.text ? <pre className="whitespace-pre-wrap break-words">{specFile.text}</pre> : <p className={fileEmpty}>Será gerado após a avaliação.</p>} />
+      <LazyDetails key={specFile.name} className={fileBox} summary={<><span data-testid="refinement-spec-file-name">{specFile.name}</span>{specFile.text ? <a data-testid={`download-${specFile.name.replace('.', '-')}`} href={mdDownload(specFile.text)} download={specFile.name} aria-label={`Baixar ${specFile.name}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a> : <span data-testid="refinement-spec-file-status" className={fileStatus}>Aguardando avaliação</span>}</>} body={() => specFile.text ? <pre data-testid="refinement-spec-file-body" className="whitespace-pre-wrap break-words">{specFile.text}</pre> : <p data-testid="refinement-spec-file-empty" className={fileEmpty}>Será gerado após a avaliação.</p>} />
       {baseDocs.map(({ doc, text }) => (
-        <LazyDetails key={doc} className={fileBox} summary={<><span>{doc}</span><a data-testid={`download-${doc.replace('.', '-')}`} href={mdDownload(text ?? '')} download={doc} aria-label={`Baixar ${doc}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre className="whitespace-pre-wrap break-words">{text}</pre>} />
+        <LazyDetails key={doc} className={fileBox} summary={<><span data-testid={`refinement-doc-file-name-${doc}`}>{doc}</span><a data-testid={`download-${doc.replace('.', '-')}`} href={mdDownload(text ?? '')} download={doc} aria-label={`Baixar ${doc}`} onClick={(e) => e.stopPropagation()}>Baixar<Icon name="download" size={16} /></a></>} body={() => <pre data-testid={`refinement-doc-file-body-${doc}`} className="whitespace-pre-wrap break-words">{text}</pre>} />
       ))}
       {legacyFiles && (
         <>
-      <h4><Icon name="list" size={20} />Tarefas<InfoTip text="Tarefas descritas no briefing, extraídas a cada avaliação. Na execução, o SM as usa para montar o plano de trabalho." /></h4>
-      <ul className="m-0">
+      <h4 data-testid="refinement-tasks-title"><Icon name="list" size={20} />Tarefas<InfoTip text="Tarefas descritas no briefing, extraídas a cada avaliação. Na execução, o SM as usa para montar o plano de trabalho." /></h4>
+      <ul data-testid="refinement-tasks-list" className="m-0">
         {(st.derived?.spec.tasks ?? []).map((t, i) => (
-          <li key={i}>
-            <b>{t.title}</b>: {t.description}
+          <li data-testid="refinement-task-item" key={i}>
+            <b data-testid="refinement-task-title">{t.title}</b>: {t.description}
           </li>
         ))}
       </ul>
-      {(st.derived?.spec.tasks ?? []).length === 0 && <div className="grid place-items-center gap-[0.35rem] rounded-lg border border-line bg-surface-sunken px-[0.8rem] py-[1.4rem] text-center text-ink-soft [&_svg]:text-ink-faint"><Icon name="clipboard" size={26} /><strong className="text-[0.85rem] text-ink">Nenhuma tarefa gerada ainda.</strong><span className="text-[0.78rem]">As tarefas aparecerão aqui após a avaliação.</span></div>}
+      {(st.derived?.spec.tasks ?? []).length === 0 && <div data-testid="refinement-tasks-empty" className="grid place-items-center gap-[0.35rem] rounded-lg border border-line bg-surface-sunken px-[0.8rem] py-[1.4rem] text-center text-ink-soft [&_svg]:text-ink-faint"><Icon name="clipboard" size={26} /><strong data-testid="refinement-tasks-empty-title" className="text-[0.85rem] text-ink">Nenhuma tarefa gerada ainda.</strong><span data-testid="refinement-tasks-empty-text" className="text-[0.78rem]">As tarefas aparecerão aqui após a avaliação.</span></div>}
         </>
       )}
-      <div className="mt-5 flex items-center justify-between gap-3"><h4 className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" className="secondary h-10 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}>Adicionar segredo<Icon name="plus" size={16} /></button></div>
-      <ul className="m-0 grid list-none gap-3 p-0">
+      <div data-testid="refinement-secrets-heading" className="mt-5 flex items-center justify-between gap-3"><h4 data-testid="refinement-secrets-title" className="m-0!"><Icon name="lock" size={20} />Segredos<InfoTip text="Chaves e senhas de serviços externos que o projeto usa, como a URL de um banco de dados. Ficam salvas neste computador e o valor nunca volta a ser exibido." /></h4><button type="button" data-testid="refinement-secrets-add" className="secondary h-10 px-[0.7rem] text-[0.78rem]" onClick={() => setNewSecrets((rows) => [...rows, { id: Date.now(), name: '', value: '' }])}>Adicionar segredo<Icon name="plus" size={16} /></button></div>
+      <ul data-testid="refinement-secrets-list" className="m-0 grid list-none gap-3 p-0">
         {snap.secrets.map((s) => (
-          <li key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
+          <li data-testid={`refinement-secret-${s.name}`} key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
             {/* A hint made only of asterisks is a mask, not a hint: it tells the user nothing. */}
-            <div className="flex min-w-0 items-center gap-[0.45rem]"><code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code><InfoTip label={s.name} text={secretTip(s)} />{s.hint && /[^*]/.test(s.hint) && <small className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
-            <div className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><ActionButton className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { const value = secretValues[s.name]!; setSecretValues({ ...secretValues, [s.name]: '' }); return p.onSecret(s.name, value); }} icon={<Icon name="check" size={14} />}>Salvar</ActionButton></div>
+            <div data-testid={`refinement-secret-header-${s.name}`} className="flex min-w-0 items-center gap-[0.45rem]"><code data-testid={`refinement-secret-name-${s.name}`} className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code><InfoTip label={s.name} text={secretTip(s)} />{s.hint && /[^*]/.test(s.hint) && <small data-testid={`refinement-secret-hint-${s.name}`} className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span data-testid={`refinement-secret-status-${s.name}`} className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
+            <div data-testid={`refinement-secret-entry-${s.name}`} className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><ActionButton className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { const value = secretValues[s.name]!; setSecretValues({ ...secretValues, [s.name]: '' }); return p.onSecret(s.name, value); }} icon={<Icon name="check" size={14} />}>Salvar</ActionButton></div>
           </li>
         ))}
-        {newSecrets.map((s) => <li key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
+        {newSecrets.map((s) => <li data-testid={`refinement-new-secret-${s.id}`} key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div data-testid={`refinement-new-secret-title-${s.id}`} className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div data-testid={`refinement-new-secret-entry-${s.id}`} className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input data-testid={`refinement-new-secret-name-${s.id}`} className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input data-testid={`refinement-new-secret-value-${s.id}`} type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button data-testid={`refinement-new-secret-save-${s.id}`} className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
       </ul>
     </section>
   );
@@ -1007,16 +1008,16 @@ export function RefinementView(p: ViewProps) {
     const jevBlocked = stageSession && st.confidential === undefined;
     const checks = stageLines(file);
     return (
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
-          <header className="grid gap-1">
-            <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa {DOC_STAGES.indexOf(file) + 1} de {DOC_STAGES.length}</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">{docLabel[file]}</h2>
+      <div data-testid="refinement-stage-layout" className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div data-testid="refinement-stage-main" className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-3">
+          <header data-testid="refinement-stage-heading" className="grid gap-1">
+            <p data-testid="refinement-stage-eyebrow" className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa {DOC_STAGES.indexOf(file) + 1} de {DOC_STAGES.length}</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none" data-testid="refinement-stage-title">{docLabel[file]}</h2>
             <p data-testid="doc-impact" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">{backlogOn && file === 'briefing.md' ? briefingImpact : docImpact[file]}</p>
           </header>
           {confidentialAsk}
           <div className="grid grid-cols-1 gap-2 *:w-full @3xl:flex @3xl:flex-wrap @3xl:items-center @3xl:*:w-auto" data-testid="editor-actions">
-            <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
+            <button type="button" data-testid="refinement-stage-attach-file" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={() => docFileInput.current?.click()}>
               Anexar arquivo
               <Icon name="file" size={16} />
             </button>
@@ -1028,7 +1029,7 @@ export function RefinementView(p: ViewProps) {
             )}
             {file === 'design.md' && p.onDesignFromImages && (
               <>
-                <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+                <button type="button" data-testid="refinement-stage-attach-image" className="secondary h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
                   Anexar imagem
                   <Icon name="file" size={16} />
                 </button>
@@ -1036,9 +1037,9 @@ export function RefinementView(p: ViewProps) {
               </>
             )}
             {file === 'design.md' && (
-              <button type="button" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+              <button type="button" data-testid="refinement-stage-not-applicable" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
             )}
-            <button type="button" className="secondary h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[file] ?? '')}>
+            <button type="button" data-testid="refinement-stage-copy" className="secondary h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[file] ?? '')}>
               Copiar
               <Icon name="copy" size={16} />
             </button>
@@ -1054,22 +1055,22 @@ export function RefinementView(p: ViewProps) {
               if (!locked && docs[file] !== snap.docs[file]) p.onSaveDoc(file, docs[file] ?? '');
             }}
           />
-          <span className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
+          <span data-testid="refinement-stage-autosave-note" className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
         </div>
-        <aside className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="m-0 text-[1rem] font-semibold text-ink">Revisão da etapa</h3>
-            <span className={`count-pill ${count > 0 ? 'tone-warn' : 'tone-good'}`}>{count === 1 ? '1 pendência' : `${count} pendências`}</span>
+        <aside data-testid="refinement-stage-review" className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
+          <div data-testid="refinement-stage-review-heading" className="flex flex-wrap items-center justify-between gap-3">
+            <h3 data-testid="refinement-stage-review-title" className="m-0 text-[1rem] font-semibold text-ink">Revisão da etapa</h3>
+            <span data-testid="refinement-stage-count" className={`count-pill ${count > 0 ? 'tone-warn' : 'tone-good'}`}>{count === 1 ? '1 pendência' : `${count} pendências`}</span>
           </div>
-          {locked && <p className="m-0 text-[0.8125rem] text-ink-soft" role="status">Avaliação em andamento.</p>}
+          {locked && <p data-testid="refinement-stage-locked" className="m-0 text-[0.8125rem] text-ink-soft" role="status">Avaliação em andamento.</p>}
           <DocScoreInset label={docLabel[file]} doc={score}>
             {confidentialProject ? (
-              <p className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
+              <p data-testid="refinement-stage-confidential" className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
             ) : (
               <>
-                {!score && <p className={`m-0 ${muted}`}>Sem nota do Jev ainda.</p>}
-                {score && scoreOutdated && <p className={`m-0 ${muted}`}>Nota anterior à última edição.</p>}
-                {jevBlocked && <p className={`m-0 ${muted}`}>Responda se o projeto é confidencial para usar o Jev.</p>}
+                {!score && <p data-testid="refinement-stage-no-score" className={`m-0 ${muted}`}>Sem nota do Jev ainda.</p>}
+                {score && scoreOutdated && <p data-testid="refinement-stage-score-outdated" className={`m-0 ${muted}`}>Nota anterior à última edição.</p>}
+                {jevBlocked && <p data-testid="refinement-stage-jev-blocked" className={`m-0 ${muted}`}>Responda se o projeto é confidencial para usar o Jev.</p>}
                 <ActionButton data-testid="score-doc" className="secondary h-10 w-full" disabled={locked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
                   Validar com o Jev
                 </ActionButton>
@@ -1082,7 +1083,7 @@ export function RefinementView(p: ViewProps) {
               {checks.map((check) => (
                 <li key={check.id} className="flex items-start gap-2 text-[0.8125rem] text-ink-soft" data-testid={`check-${check.id}`} data-ok={check.ok}>
                   <Icon name={check.ok ? 'check' : 'info'} size={16} />
-                  <span>
+                  <span data-testid={`refinement-stage-check-text-${check.id}`}>
                     {check.id === 'graphed' ? graphLabel({ graphed: check.ok, graphing: st.graphing === file }, null) : check.label}
                     {!check.ok && check.hint ? ` — ${check.hint}` : ''}
                   </span>
@@ -1093,8 +1094,8 @@ export function RefinementView(p: ViewProps) {
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
           {!locked && questions[0] && questionCard(questions[0], questions.length)}
           {!locked && patches.map(patchCard)}
-          {discarded.map((d, i) => <p key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
-          {count === 0 && !locked && <p className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
+          {discarded.map((d, i) => <p data-testid="refinement-stage-discarded" key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
+          {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
           {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={locked} onReask={(id) => p.onReask?.(id)} />}
         </aside>
       </div>
@@ -1106,30 +1107,30 @@ export function RefinementView(p: ViewProps) {
     const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5">
-          <header className="grid gap-1">
-            <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
-            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Resumo</h2>
-            <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
+      <div data-testid="refinement-final-layout" className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div data-testid="refinement-final-main" className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-5">
+          <header data-testid="refinement-final-heading" className="grid gap-1">
+            <p data-testid="refinement-final-eyebrow" className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft uppercase">Etapa final</p>
+            <h2 ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none" data-testid="refinement-final-title">Resumo</h2>
+            <p data-testid="refinement-final-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Veja as notas, as pendências e o que foi verificado. Para mudar algo, volte à etapa do documento.</p>
           </header>
           <div className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5" data-testid="final-scores">
-            <p className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
+            <p data-testid="refinement-final-scores-title" className="m-0 text-[0.8125rem] text-ink-soft">Notas do Jev</p>
             {DOC_STAGES.map((file) => {
               const score = st.readiness?.docs?.[file];
               return (
-                <div key={file} className="grid gap-0.5 border-t border-line pt-2 first-of-type:border-0 first-of-type:pt-0">
-                  <p className="m-0 flex flex-wrap items-baseline gap-2 text-[0.875rem] text-ink">
-                    <b>{docLabel[file]}</b>
-                    <span className="tabular-nums">{score ? `${percentOf(score.score)}%` : 'sem nota'}</span>
-                    {score && outdatedDocs.includes(file) && <span className="text-[0.75rem] text-warn">desatualizada</span>}
+                <div data-testid={`refinement-final-score-${file}`} key={file} className="grid gap-0.5 border-t border-line pt-2 first-of-type:border-0 first-of-type:pt-0">
+                  <p data-testid={`refinement-final-score-line-${file}`} className="m-0 flex flex-wrap items-baseline gap-2 text-[0.875rem] text-ink">
+                    <b data-testid={`refinement-final-score-name-${file}`}>{docLabel[file]}</b>
+                    <span data-testid={`refinement-final-score-value-${file}`} className="tabular-nums">{score ? `${percentOf(score.score)}%` : 'sem nota'}</span>
+                    {score && outdatedDocs.includes(file) && <span data-testid={`refinement-final-score-outdated-${file}`} className="text-[0.75rem] text-warn">desatualizada</span>}
                   </p>
                   {score && <ScoreChecks doc={score} />}
                 </div>
               );
             })}
             {confidentialProject ? (
-              <p className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
+              <p data-testid="refinement-final-confidential" className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
             ) : needsScore && (
               <ActionButton data-testid="score-all" className="secondary h-10 w-full" disabled={locked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
                 Validar com o Jev
@@ -1137,20 +1138,20 @@ export function RefinementView(p: ViewProps) {
             )}
           </div>
           <div className="grid gap-3" data-testid="final-graph">
-            <h3 className="m-0 text-[1rem] font-semibold text-ink">Graphify</h3>
+            <h3 data-testid="refinement-final-graph-title" className="m-0 text-[1rem] font-semibold text-ink">Graphify</h3>
             {DOC_STAGES.map((file) => {
               const inGraph = (st.graphed ?? []).includes(file);
               return (
                 <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
-                  <span>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
+                  <span data-testid={`refinement-final-graph-status-${file}`}>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
                   {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onAddToGraph?.(file)}>Adicionar ao Graphify</button>}
                 </div>
               );
             })}
           </div>
           <div className="grid gap-3" data-testid="final-pending">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
+            <div data-testid="refinement-final-pending-heading" className="flex flex-wrap items-center justify-between gap-3">
+              <h3 data-testid="refinement-final-pending-title" className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
               {byDoc.length > 0 && (
                 <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
                   {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
@@ -1165,10 +1166,10 @@ export function RefinementView(p: ViewProps) {
             ))}
             {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
-            {byDoc.length === 0 && unfiled.length === 0 && <p className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
+            {byDoc.length === 0 && unfiled.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
         </div>
-        <div className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start ${qualityStyles}`)}</div>
+        <div data-testid="refinement-final-quality" className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start ${qualityStyles}`)}</div>
       </div>
     );
   };
@@ -1219,15 +1220,15 @@ export function RefinementView(p: ViewProps) {
       {docsNoticeTarget && (
         <div role="status" data-testid="architecture-docs-notice" className="flex gap-3 rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink">
           <Icon name="file" size={16} />
-          <div className="grid min-w-0 gap-1">
-            <b className="text-[0.875rem] font-semibold">Documentos</b>
-            <span className="break-words">{`Cria o repositório privado ${docsNoticeTarget.owner}/${docsNoticeTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
+          <div data-testid="refinement-architecture-notice-text" className="grid min-w-0 gap-1">
+            <b data-testid="refinement-architecture-notice-title" className="text-[0.875rem] font-semibold">Documentos</b>
+            <span data-testid="refinement-architecture-notice-body" className="break-words">{`Cria o repositório privado ${docsNoticeTarget.owner}/${docsNoticeTarget.name} e publica os documentos. Apagar o projeto aqui não apaga o repositório.`}</span>
           </div>
         </div>
       )}
-      <header className="grid gap-1">
-        <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
-        <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
+      <header data-testid="refinement-architecture-heading" className="grid gap-1">
+        <h2 data-testid="refinement-architecture-title" className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
+        <p data-testid="refinement-architecture-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
       <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
@@ -1416,8 +1417,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   }, [events, snap]);
   const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
   if (!snap) return (
-    <main>
-      {error ? <p className="error">{error}</p> : <Loading />}
+    <main data-testid="refinement-loading">
+      {error ? <p data-testid="refinement-loading-error" className="error">{error}</p> : <Loading />}
     </main>
   );
   // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
@@ -1445,8 +1446,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // The banner offers the start once the score is ready, so the review panel does not repeat it.
   const bannerStarts = scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
-    <main className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <header className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span>Projetos</span></Link><span>›</span><strong>{projectId}</strong><span>›</span><span>{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
+    <main data-testid="refinement-main" className="flex flex-col gap-4 lg:h-full lg:min-h-0">
+      <header data-testid="refinement-breadcrumb" className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span data-testid="refinement-breadcrumb-home-label">Projetos</span></Link><span data-testid="refinement-breadcrumb-sep-1">›</span><strong data-testid="refinement-breadcrumb-project">{projectId}</strong><span data-testid="refinement-breadcrumb-sep-2">›</span><span data-testid="refinement-breadcrumb-spec">{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
       {closingOpen && snap.closing && (
         <ClosingDialog summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
@@ -1458,13 +1459,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {snap.state.status === 'evaluating' && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
       {busyNotice && snap.state.status === 'evaluating' && (
         <ProcessBox title="Processando" since={snap.state.evaluation?.startedAt ?? null} tone="good" testId="busy-notice">
-          <span className="text-[0.75rem] leading-[1.35]">Já existe uma avaliação em andamento. Aguarde o fim dela para avaliar de novo.</span>
+          <span data-testid="refinement-busy-notice-text" className="text-[0.75rem] leading-[1.35]">Já existe uma avaliação em andamento. Aguarde o fim dela para avaliar de novo.</span>
         </ProcessBox>
       )}
       {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
       {(error || snap.state.status === 'error') && (
-        <div className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">
-          <p>{errorText(error ?? snap.state.error)}</p>
+        <div data-testid="refinement-error" className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">
+          <p data-testid="refinement-error-text">{errorText(error ?? snap.state.error)}</p>
           {(error ?? snap.state.error)?.startsWith('Jev indisponível') && <JevActions />}
         </div>
       )}

@@ -54,7 +54,7 @@ export const responsiveCell = '@max-[44rem]:flex @max-[44rem]:h-auto @max-[44rem
 
 export const chip = (status: string) => (
   <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>
-    <span className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>
+    <span data-testid={`project-shared-chip-${status}`} className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>
   </Tipped>
 );
 

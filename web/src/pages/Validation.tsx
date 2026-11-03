@@ -41,7 +41,7 @@ function ResultChip({ status }: { status: string }) {
   const r = RESULT[status];
   return (
     <Tipped text={r?.help ?? 'Resultado informado pelo teste.'}>
-      <span className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>
+      <span data-testid={`validation-result-${status}`} className={`status-chip ${r?.tone ?? ''}`}>{r?.label ?? status}</span>
     </Tipped>
   );
 }
@@ -60,23 +60,23 @@ function SmokeTable({ smoke }: { smoke: Smoke[] }) {
   return (
     <>
       <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
-      <div className="@container overflow-x-auto">
-        <table className={`${TABLE} ${responsiveTable} @min-[32rem]:min-w-[32rem] table-fixed`}>
-          <colgroup><col className="w-[11rem]" /><col /><col className="w-[10rem]" /></colgroup>
-          <thead className={responsiveHead}>
-            <tr>
+      <div data-testid="validation-smoke-table-wrap" className="@container overflow-x-auto">
+        <table data-testid="validation-smoke-table" className={`${TABLE} ${responsiveTable} @min-[32rem]:min-w-[32rem] table-fixed`}>
+          <colgroup data-testid="validation-smoke-colgroup"><col data-testid="validation-smoke-col-criterion" className="w-[11rem]" /><col data-testid="validation-smoke-col-test" /><col data-testid="validation-smoke-col-result" className="w-[10rem]" /></colgroup>
+          <thead data-testid="validation-smoke-head" className={responsiveHead}>
+            <tr data-testid="validation-smoke-head-row">
               <SortHeader view={view} column="criterion" tip={<InfoTip text={`${CRITERION_HELP} Entre parênteses, o serviço que o testa.`} />}>Critério</SortHeader>
               <SortHeader view={view} column="test" tip={<InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." />}>Teste rápido</SortHeader>
               <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
-          <tbody className="@max-[44rem]:block">
-            {view.rows.length === 0 ? <tr><td colSpan={3} className="text-ink-soft">Nenhum teste corresponde ao filtro.</td></tr> : null}
+          <tbody data-testid="validation-smoke-body" className="@max-[44rem]:block">
+            {view.rows.length === 0 ? <tr data-testid="validation-smoke-empty-row"><td data-testid="validation-smoke-empty-cell" colSpan={3} className="text-ink-soft">Nenhum teste corresponde ao filtro.</td></tr> : null}
             {view.rows.map((s) => (
               <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status} ${responsiveRow}`}>
-                <td className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{s.acId}{s.service ? ` (${s.service})` : ''}</td>
-                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Teste rápido">{s.testId ?? '—'}</td>
-                <td className={responsiveCell} data-label="Resultado"><ResultChip status={s.status} /></td>
+                <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-criterion`} className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{s.acId}{s.service ? ` (${s.service})` : ''}</td>
+                <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-test`} className={`${TD_MONO} ${responsiveCell}`} data-label="Teste rápido">{s.testId ?? '—'}</td>
+                <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-result`} className={responsiveCell} data-label="Resultado"><ResultChip status={s.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -95,11 +95,11 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
   return (
     <>
       <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
-      <div className="@container overflow-x-auto">
-        <table className={`${TABLE} ${responsiveTable} @min-[44rem]:min-w-[44rem] table-fixed`}>
-          <colgroup><col className="w-[8rem]" /><col className="w-[8rem]" /><col /><col className="w-[8.5rem]" /><col className="w-[9rem]" /></colgroup>
-          <thead className={responsiveHead}>
-            <tr>
+      <div data-testid="validation-evidence-table-wrap" className="@container overflow-x-auto">
+        <table data-testid="validation-evidence-table" className={`${TABLE} ${responsiveTable} @min-[44rem]:min-w-[44rem] table-fixed`}>
+          <colgroup data-testid="validation-evidence-colgroup"><col data-testid="validation-evidence-col-criterion" className="w-[8rem]" /><col data-testid="validation-evidence-col-tasks" className="w-[8rem]" /><col data-testid="validation-evidence-col-tests" /><col data-testid="validation-evidence-col-e2e" className="w-[8.5rem]" /><col data-testid="validation-evidence-col-result" className="w-[9rem]" /></colgroup>
+          <thead data-testid="validation-evidence-table-head" className={responsiveHead}>
+            <tr data-testid="validation-evidence-table-head-row">
               <SortHeader view={view} column="criterion" tip={<InfoTip text={CRITERION_HELP} />}>Critério</SortHeader>
               <SortHeader view={view} column="tasks" tip={<InfoTip text="As tarefas dos agentes que implementaram o critério." />}>Tarefas</SortHeader>
               <SortHeader view={view} column="tests" tip={<InfoTip text="Os testes automáticos que comprovam o critério." />}>Testes</SortHeader>
@@ -107,15 +107,15 @@ function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
               <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
-          <tbody className="@max-[44rem]:block">
-            {view.rows.length === 0 ? <tr><td colSpan={5} className="text-ink-soft">Nenhuma evidência corresponde ao filtro.</td></tr> : null}
+          <tbody data-testid="validation-evidence-body" className="@max-[44rem]:block">
+            {view.rows.length === 0 ? <tr data-testid="validation-evidence-empty-row"><td data-testid="validation-evidence-empty-cell" colSpan={5} className="text-ink-soft">Nenhuma evidência corresponde ao filtro.</td></tr> : null}
             {view.rows.map((r) => (
               <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status} ${responsiveRow}`}>
-                <td className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{r.criterion}</td>
-                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Tarefas">{r.tasks.join(', ')}</td>
-                <td className={`${TD_MONO} ${responsiveCell}`} data-label="Testes">{r.tests.join(', ') || '—'}</td>
+                <td data-testid={`evidence-${r.criterion}-criterion`} className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{r.criterion}</td>
+                <td data-testid={`evidence-${r.criterion}-tasks`} className={`${TD_MONO} ${responsiveCell}`} data-label="Tarefas">{r.tasks.join(', ')}</td>
+                <td data-testid={`evidence-${r.criterion}-tests`} className={`${TD_MONO} ${responsiveCell}`} data-label="Testes">{r.tests.join(', ') || '—'}</td>
                 <td className={responsiveCell} data-label="Teste E2E" data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
-                <td className={responsiveCell} data-label="Resultado"><ResultChip status={r.status} /></td>
+                <td data-testid={`evidence-${r.criterion}-result`} className={responsiveCell} data-label="Resultado"><ResultChip status={r.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -142,7 +142,7 @@ const SEVERITY: Record<string, { label: string; tone: string; help: string }> = 
 function Rich({ text }: { text: string }) {
   const parts = text.split(/`([^`]+)`/);
   if (parts.length === 1) return <>{text}</>;
-  return <>{parts.map((p, i) => (i % 2 ? <code key={i}>{p}</code> : p))}</>;
+  return <>{parts.map((p, i) => (i % 2 ? <code key={i} data-testid={`validation-code-${p}`}>{p}</code> : p))}</>;
 }
 /** A service's state: still checking, answering or not. */
 function StatePill({ checking, online, testId }: { checking: boolean; online: boolean; testId?: string }) {
@@ -183,12 +183,12 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
   const checking = status === null;
   const online = status?.online === true;
   return (
-    <div className={SERVICE.controls}>
-      <div className={SERVICE.status}>
+    <div data-testid="validation-service-controls" className={SERVICE.controls}>
+      <div data-testid="validation-service-status" className={SERVICE.status}>
         <StatePill checking={checking} online={online} testId="service-online" />
         {recheckButton(checking, onRecheck)}
       </div>
-      <div className={SERVICE.actions}>
+      <div data-testid="validation-service-actions" className={SERVICE.actions}>
         {online && links.appUrl && (status?.ui === true || service.kind === 'front') ? openLink(links.appUrl, 'open-app', 'Abrir aplicação', true) : null}
         {online && links.docsUrl && status?.docs === true ? openLink(links.docsUrl, 'open-docs', 'Abrir Swagger', false) : null}
         {!checking && !online ? startButton(starting, canStart, onStart, ['Subir serviço', 'Subindo o serviço…']) : null}
@@ -206,7 +206,7 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
 /** A mobile run's build: the file the owner downloads and installs. No service runs, so there is no port and no status. */
 function ArtifactDownload({ runId, artifact }: { runId: string; artifact: string }) {
   return (
-    <div className={SERVICE.controls}>
+    <div data-testid="validation-artifact-controls" className={SERVICE.controls}>
       <a data-testid="download-artifact" className="primary" href={runApi.artifactUrl(runId)} download={artifact}>Baixar {artifact}</a>
     </div>
   );
@@ -218,23 +218,23 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
   const entryOf = (service: string) => status?.services?.find((s) => s.service === service);
   const onlineOf = (service: string) => entryOf(service)?.online === true;
   return (
-    <div className={SERVICE.controls}>
-      <ul className="m-0 grid list-none gap-2 p-0">
+    <div data-testid="validation-service-list" className={SERVICE.controls}>
+      <ul data-testid="validation-service-list-items" className="m-0 grid list-none gap-2 p-0">
         {services.map((s) => {
           const links = serviceLinks(s, window.location.hostname);
           return (
             <li key={s.service} data-testid={`service-${s.service}`} className="flex flex-wrap items-center gap-3">
-              <strong>{s.service}</strong>
+              <strong data-testid={`validation-service-name-${s.service}`}>{s.service}</strong>
               <StatePill checking={checking} online={onlineOf(s.service)} />
               {onlineOf(s.service) && links.appUrl && (entryOf(s.service)?.ui === true || s.kind === 'front') ? openLink(links.appUrl, `open-app-${s.service}`, 'Abrir aplicação', false, `Abrir aplicação (${s.service})`) : null}
               {onlineOf(s.service) && links.docsUrl && entryOf(s.service)?.docs === true ? openLink(links.docsUrl, `open-${s.service}`, 'Abrir Swagger', false, `Abrir Swagger (${s.service})`) : null}
-              {!links.appUrl ? <span className="hint">porta fora da faixa publicada ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to})</span> : null}
+              {!links.appUrl ? <span data-testid={`validation-service-port-${s.service}`} className="hint">porta fora da faixa publicada ({PUBLISHED_PORTS.from} a {PUBLISHED_PORTS.to})</span> : null}
             </li>
           );
         })}
       </ul>
-      <div className={SERVICE.status}>{recheckButton(checking, onRecheck)}</div>
-      <div className={SERVICE.actions}>
+      <div data-testid="validation-service-list-status" className={SERVICE.status}>{recheckButton(checking, onRecheck)}</div>
+      <div data-testid="validation-service-list-actions" className={SERVICE.actions}>
         {!checking && services.some((s) => !onlineOf(s.service)) ? startButton(starting, canStart, onStart, ['Subir serviços', 'Subindo os serviços…']) : null}
       </div>
     </div>
@@ -297,13 +297,13 @@ function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept, autonom
   const why = gapCauseLabel(gap.cause, autonomous);
   return (
     <li data-testid="gap-row" className="flex flex-col gap-1.5">
-      <strong className="text-[0.875rem]">{gap.doc} › {gap.heading}</strong>
-      <span className="text-[0.875rem]"><Rich text={gap.missing} /></span>
-      {gap.evidence.length ? <span className="hint">Encontrado em {gap.evidence.join(', ')}</span> : null}
-      {why ? <span className="hint"><strong>{why.title}.</strong> {why.hint}</span> : null}
+      <strong data-testid={`validation-gap-title-${gap.doc}-${gap.heading}`} className="text-[0.875rem]">{gap.doc} › {gap.heading}</strong>
+      <span data-testid={`validation-gap-missing-${gap.doc}-${gap.heading}`} className="text-[0.875rem]"><Rich text={gap.missing} /></span>
+      {gap.evidence.length ? <span data-testid={`validation-gap-evidence-${gap.doc}-${gap.heading}`} className="hint">Encontrado em {gap.evidence.join(', ')}</span> : null}
+      {why ? <span data-testid={`validation-gap-cause-${gap.doc}-${gap.heading}`} className="hint"><strong data-testid={`validation-gap-cause-title-${gap.doc}-${gap.heading}`}>{why.title}.</strong> {why.hint}</span> : null}
       {decision ? <span data-testid="gap-accepted" className="hint">Aceito fora de escopo: {decision.note}</span> : null}
       {!decision && !locked ? (
-        <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onAccept(gap, note.trim()); }}>
+        <form data-testid={`validation-gap-form-${gap.doc}-${gap.heading}`} className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (note.trim()) void onAccept(gap, note.trim()); }}>
           <input className="min-w-0 flex-1 px-[0.8rem] py-[0.5rem] text-[0.875rem]" aria-label="Motivo para aceitar o trecho" data-testid="gap-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Por que fica de fora?" />
           <ActionButton type="submit" className="secondary" data-testid="gap-accept" disabled={note.trim() === ''} icon={<Icon name="check" size={16} />}>Aceitar como fora de escopo</ActionButton>
         </form>
@@ -317,8 +317,8 @@ function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept, aut
   const open = 'items' in gaps ? gaps.items.filter((g) => g.status !== 'delivered') : [];
   return (
     <section className="card" data-testid="gaps">
-      <div className={RUN_UI.panelHead}>
-        <h2>Cobertura dos documentos</h2>
+      <div data-testid="validation-gaps-head" className={RUN_UI.panelHead}>
+        <h2 data-testid="validation-gaps-title">Cobertura dos documentos</h2>
         <InfoTip text="Cada trecho dos documentos desta spec, conferido contra o código na main. Aceitar um trecho só registra a decisão: a entrega não muda." />
       </div>
       {'unavailable' in gaps ? (
@@ -332,7 +332,7 @@ function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept, aut
                 <GapRow key={`${gap.doc} › ${gap.heading}`} gap={gap} decision={decisions.find((d) => d.doc === gap.doc && d.heading === gap.heading)} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} autonomous={autonomous} />
               ))}
             </ul>
-          ) : <p className="hint m-0">Nenhum trecho em aberto.</p>}
+          ) : <p data-testid="validation-gaps-empty" className="hint m-0">Nenhum trecho em aberto.</p>}
         </>
       )}
     </section>
@@ -363,33 +363,33 @@ export function ValidationView({ detail, specStatus, actionError = null, service
   const before = stop ? stopBefore(detail.status, blocked) : null;
   const raw = stop && !causes.some((c) => c.reason === stop.raw) ? stop.raw : '';
   return (
-    <main className={`${RUN_UI.page} ${CODE}`}>
-      <nav className="refine-breadcrumb" aria-label="Navegação">
+    <main data-testid="validation-main" className={`${RUN_UI.page} ${CODE}`}>
+      <nav data-testid="validation-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
-          <span>Projetos</span>
+          <span data-testid="validation-breadcrumb-home">Projetos</span>
         </Link>
-        <span aria-hidden="true">›</span>
-        <strong>{detail.projectId}</strong>
-        <span aria-hidden="true">›</span>
+        <span data-testid="validation-breadcrumb-sep-projects" aria-hidden="true">›</span>
+        <strong data-testid="validation-breadcrumb-project">{detail.projectId}</strong>
+        <span data-testid="validation-breadcrumb-sep-project" aria-hidden="true">›</span>
         <Link to={`/runs/${detail.runId}`}>{detail.runId}</Link>
-        <span aria-hidden="true">›</span>
-        <span>Validação</span>
+        <span data-testid="validation-breadcrumb-sep-run" aria-hidden="true">›</span>
+        <span data-testid="validation-breadcrumb-current">Validação</span>
       </nav>
-      <header className={RUN_UI.head}>
-        <div className="min-w-0">
-          <h1 className={RUN_UI.title}>Validação</h1>
-          <div className={RUN_UI.meta}>
+      <header data-testid="validation-header" className={RUN_UI.head}>
+        <div data-testid="validation-header-title" className="min-w-0">
+          <h1 data-testid="validation-title" className={RUN_UI.title}>Validação</h1>
+          <div data-testid="validation-meta" className={RUN_UI.meta}>
             <Tipped text={STATUS_HELP[report && specStatus ? specStatus : detail.status] ?? STATUS_HELP.unknown!}>
-              <span className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(report && specStatus ? specStatus : detail.status)}</span>
+              <span data-testid="validation-status" className={`status-pill tone-${enabled ? 'neutral' : specStatus === 'done' ? 'good' : 'warn'}`}>{statusLabel(report && specStatus ? specStatus : detail.status)}</span>
             </Tipped>
-            <span className="hint">
+            <span data-testid="validation-run-ids" className="hint">
               {detail.runId} / {detail.specId}
             </span>
           </div>
-          <p className="mt-3 mb-0 max-w-[60ch] text-[0.875rem] text-ink-soft">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
+          <p data-testid="validation-subtitle" className="mt-3 mb-0 max-w-[60ch] text-[0.875rem] text-ink-soft">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
         </div>
-        <div className={RUN_UI.actions}>
+        <div data-testid="validation-actions" className={RUN_UI.actions}>
           <Link className={`link-button ${RUN_UI.action}`} to={`/runs/${detail.runId}`}>
             Execução
             <Icon name="arrow-left" size={16} />
@@ -403,49 +403,49 @@ export function ValidationView({ detail, specStatus, actionError = null, service
             id: 'checks',
             label: 'Serviço e roteiro',
             content: (
-              <div className={RUN_UI.column}>
+              <div data-testid="validation-checks-column" className={RUN_UI.column}>
                 {stop ? (
                   <section className={RUN_UI.banner} data-testid="validation-stop" aria-labelledby="validation-stop-title">
-                    <h2 id="validation-stop-title" className={RUN_UI.bannerTitle}>
+                    <h2 id="validation-stop-title" data-testid="validation-stop-heading" className={RUN_UI.bannerTitle}>
                       <Icon name="alert" size={18} />
                       {stop.what}
                     </h2>
-                    <dl className={RUN_UI.bannerRows}>
-                      <div>
-                        <dt>Por quê</dt>
-                        <dd><strong>{stop.title}</strong></dd>
+                    <dl data-testid="validation-stop-rows" className={RUN_UI.bannerRows}>
+                      <div data-testid="validation-stop-why">
+                        <dt data-testid="validation-stop-why-term">Por quê</dt>
+                        <dd data-testid="validation-stop-why-detail"><strong data-testid="validation-stop-why-strong">{stop.title}</strong></dd>
                       </div>
                       {before ? (
-                        <div>
-                          <dt>Antes disso</dt>
-                          <dd>{before}</dd>
+                        <div data-testid="validation-stop-before">
+                          <dt data-testid="validation-stop-before-term">Antes disso</dt>
+                          <dd data-testid="validation-stop-before-detail">{before}</dd>
                         </div>
                       ) : null}
                       {causes.map((c) => (
                         <div key={c.taskId} data-testid={`stop-cause-${c.taskId}`}>
-                          <dt>{c.taskId}</dt>
-                          <dd><p><Rich text={explainBlockReason(c.reason)} /></p></dd>
+                          <dt data-testid={`validation-stop-cause-term-${c.taskId}`}>{c.taskId}</dt>
+                          <dd data-testid={`validation-stop-cause-detail-${c.taskId}`}><p data-testid={`validation-stop-cause-text-${c.taskId}`}><Rich text={explainBlockReason(c.reason)} /></p></dd>
                         </div>
                       ))}
                       {raw ? (
-                        <div>
-                          <dt>Detalhe técnico</dt>
-                          <dd><pre className={RUN_UI.raw}>{raw}</pre></dd>
+                        <div data-testid="validation-stop-raw">
+                          <dt data-testid="validation-stop-raw-term">Detalhe técnico</dt>
+                          <dd data-testid="validation-stop-raw-detail"><pre data-testid="validation-stop-raw-text" className={RUN_UI.raw}>{raw}</pre></dd>
                         </div>
                       ) : null}
-                      <div>
-                        <dt>Próximo passo</dt>
-                        <dd>{stop.hint}</dd>
+                      <div data-testid="validation-stop-next">
+                        <dt data-testid="validation-stop-next-term">Próximo passo</dt>
+                        <dd data-testid="validation-stop-next-detail">{stop.hint}</dd>
                       </div>
                     </dl>
                   </section>
                 ) : null}
-                {!report ? <p className="hint m-0">Ainda não há relatório: a execução está na fase {detail.phase} ({statusLabel(detail.status)}).</p> : null}
+                {!report ? <p data-testid="validation-no-report" className="hint m-0">Ainda não há relatório: a execução está na fase {detail.phase} ({statusLabel(detail.status)}).</p> : null}
                 {report ? (
                   <>
-                    <section className="card">
-                      <div className={RUN_UI.panelHead}>
-                        <h2>{report.services ? 'Serviços publicados' : report.service?.kind === 'mobile' ? 'Aplicativo gerado' : 'Serviço publicado'}</h2>
+                    <section data-testid="validation-service-card" className="card">
+                      <div data-testid="validation-service-head" className={RUN_UI.panelHead}>
+                        <h2 data-testid="validation-service-title">{report.services ? 'Serviços publicados' : report.service?.kind === 'mobile' ? 'Aplicativo gerado' : 'Serviço publicado'}</h2>
                       </div>
                       {report.service ? (
                         <>
@@ -464,30 +464,30 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                         </p>
                       )}
                     </section>
-                    <section className="card">
-                      <div className={`mb-[0.85rem] ${RUN_UI.cardTitle}`}>
-                        <div className={RUN_UI.headRow}>
-                          <h2>Roteiro de teste manual</h2>
+                    <section data-testid="validation-script-card" className="card">
+                      <div data-testid="validation-script-head" className={`mb-[0.85rem] ${RUN_UI.cardTitle}`}>
+                        <div data-testid="validation-script-head-row" className={RUN_UI.headRow}>
+                          <h2 data-testid="validation-script-title">Roteiro de teste manual</h2>
                           <InfoTip text="Passos sugeridos para você conferir cada critério de aceite no serviço publicado. As marcações ficam salvas só neste navegador." />
                         </div>
-                        {steps.length ? <span className="hint">{stepsDone} de {steps.length} {steps.length === 1 ? 'passo conferido' : 'passos conferidos'}</span> : null}
+                        {steps.length ? <span data-testid="validation-script-count" className="hint">{stepsDone} de {steps.length} {steps.length === 1 ? 'passo conferido' : 'passos conferidos'}</span> : null}
                       </div>
-                      {report.exploratoryScript.length === 0 ? <p className="hint">Nenhum passo sugerido.</p> : null}
+                      {report.exploratoryScript.length === 0 ? <p data-testid="validation-script-empty" className="hint">Nenhum passo sugerido.</p> : null}
                       {report.exploratoryScript.map((block) => {
                         const criterion = detail.acceptanceCriteria.find((c) => c.id === block.acId);
                         return (
-                          <div key={block.acId}>
+                          <div data-testid={`validation-script-block-${block.acId}`} key={block.acId}>
                             {/* Manual script: one bordered list per criterion, a real checkbox on every row. */}
-                            <h3 className={`mb-1 font-mono text-[0.8125rem] tracking-normal text-accent-text normal-case mt-5`}>{block.acId}</h3>
-                            {criterion ? <p className="hint mt-0 mb-[0.6rem] leading-normal">{criterionText(criterion)}</p> : null}
-                            <ul className={RUN_UI.boxList}>
+                            <h3 data-testid={`validation-script-block-title-${block.acId}`} className={`mb-1 font-mono text-[0.8125rem] tracking-normal text-accent-text normal-case mt-5`}>{block.acId}</h3>
+                            {criterion ? <p data-testid={`validation-script-block-criterion-${block.acId}`} className="hint mt-0 mb-[0.6rem] leading-normal">{criterionText(criterion)}</p> : null}
+                            <ul data-testid={`validation-script-steps-${block.acId}`} className={RUN_UI.boxList}>
                               {block.steps.map((s, i) => {
                                 const id = `${block.acId}-${i}`;
                                 return (
-                                  <li key={id}>
-                                    <label className="flex cursor-pointer items-start gap-3 px-[0.9rem] py-[0.7rem] leading-normal text-ink hover:bg-surface-sunken">
+                                  <li data-testid={`validation-script-step-${id}`} key={id}>
+                                    <label data-testid={`validation-script-step-label-${id}`} className="flex cursor-pointer items-start gap-3 px-[0.9rem] py-[0.7rem] leading-normal text-ink hover:bg-surface-sunken">
                                       <input type="checkbox" className="m-0 mt-[0.2rem] size-[1.05rem] min-w-0 flex-none cursor-pointer p-0" data-testid={`step-${id}`} checked={Boolean(checks[id])} onChange={() => toggle(id)} />
-                                      <span className={`min-w-0 text-[0.875rem] wrap-anywhere ${checks[id] ? 'text-ink-soft' : ''}`}><Rich text={s} /></span>
+                                      <span data-testid={`validation-script-step-text-${id}`} className={`min-w-0 text-[0.875rem] wrap-anywhere ${checks[id] ? 'text-ink-soft' : ''}`}><Rich text={s} /></span>
                                     </label>
                                   </li>
                                 );
@@ -497,10 +497,10 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                         );
                       })}
                     </section>
-                    <section className="card">
-                      <div className={`mb-[0.85rem] ${RUN_UI.cardTitle}`}>
-                        <div className={RUN_UI.headRow}>
-                          <h2>Evidências por critério</h2>
+                    <section data-testid="validation-evidence-card" className="card">
+                      <div data-testid="validation-evidence-card-head" className={`mb-[0.85rem] ${RUN_UI.cardTitle}`}>
+                        <div data-testid="validation-evidence-card-head-row" className={RUN_UI.headRow}>
+                          <h2 data-testid="validation-evidence-card-title">Evidências por critério</h2>
                           <InfoTip text="Para cada critério de aceite: as tarefas que o implementaram e os testes automáticos que comprovam que ele funciona." />
                         </div>
                       </div>
@@ -510,33 +510,33 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                       <GapsCard gaps={report.gaps} decisions={detail.gapDecisions ?? []} locked={detail.locked ?? false} canReport={enabled} onPrefill={setText} autonomous={detail.agentsDecide === true} onAccept={(gap, note) => onAcceptGap({ doc: gap.doc, heading: gap.heading, note })} />
                     ) : null}
                     {report.securityFindings?.length ? (
-                      <section className="card">
-                        <div className={RUN_UI.panelHead}>
-                          <h2>Segurança</h2>
+                      <section data-testid="validation-security-card" className="card">
+                        <div data-testid="validation-security-head" className={RUN_UI.panelHead}>
+                          <h2 data-testid="validation-security-title">Segurança</h2>
                         </div>
                         <ul className={FINDINGS} data-testid="security-findings">
                           {report.securityFindings.map((f, i) => (
                             <li key={i} data-testid={`security-${i}`}>
-                              <Tipped text={SEVERITY[f.severity]?.help ?? 'Gravidade informada pelo agente de segurança.'}><span className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span></Tipped>{' '}
-                              {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span className="hint">Correção sugerida: {f.fix}</span>
+                              <Tipped text={SEVERITY[f.severity]?.help ?? 'Gravidade informada pelo agente de segurança.'}><span data-testid={`validation-security-severity-${f.file}-${f.line ?? 'none'}`} className={`status-chip ${SEVERITY[f.severity]?.tone ?? ''}`}>{SEVERITY[f.severity]?.label ?? f.severity}</span></Tipped>{' '}
+                              {f.taskId ? `${f.taskId} · ` : ''}{f.file}{f.line === null ? '' : `:${f.line}`} · {f.category}: {f.problem} <span data-testid={`validation-security-fix-${f.file}-${f.line ?? 'none'}`} className="hint">Correção sugerida: {f.fix}</span>
                             </li>
                           ))}
                         </ul>
                       </section>
                     ) : null}
-                    <section className="card">
-                      <div className={RUN_UI.panelHead}>
-                        <h2>Suposições dos agentes</h2>
+                    <section data-testid="validation-assumptions-card" className="card">
+                      <div data-testid="validation-assumptions-head" className={RUN_UI.panelHead}>
+                        <h2 data-testid="validation-assumptions-title">Suposições dos agentes</h2>
                         <InfoTip text="Decisões que os agentes tomaram sozinhos quando a especificação não deixava claro. Se alguma estiver errada, relate um problema." />
                       </div>
-                      <ul className={FINDINGS} data-testid="assumptions">{report.assumptions.length ? report.assumptions.map((a, i) => <li key={i}><Rich text={a} /></li>) : <li className="hint">Nenhuma suposição registrada.</li>}</ul>
+                      <ul className={FINDINGS} data-testid="assumptions">{report.assumptions.length ? report.assumptions.map((a, i) => <li key={i} data-testid={`validation-assumption-${i}`}><Rich text={a} /></li>) : <li data-testid="validation-assumption-empty" className="hint">Nenhuma suposição registrada.</li>}</ul>
                     </section>
-                    <section className="card">
-                      <div className={RUN_UI.panelHead}>
-                        <h2>Tarefas bloqueadas</h2>
+                    <section data-testid="validation-blocked-card" className="card">
+                      <div data-testid="validation-blocked-head" className={RUN_UI.panelHead}>
+                        <h2 data-testid="validation-blocked-title">Tarefas bloqueadas</h2>
                         <InfoTip text="Tarefas que os agentes não conseguiram concluir, com o motivo. Os critérios ligados a elas aparecem como bloqueados nas evidências." />
                       </div>
-                      <ul className={FINDINGS}>{report.blocked.length ? report.blocked.map((b) => <li key={b.taskId} data-testid={`blocked-${b.taskId}`}><strong className="font-mono text-[0.8125rem] text-accent-text">{b.taskId}</strong>: <Rich text={b.reason} /></li>) : <li className="hint">Nenhuma tarefa bloqueada.</li>}</ul>
+                      <ul data-testid="validation-blocked-list" className={FINDINGS}>{report.blocked.length ? report.blocked.map((b) => <li key={b.taskId} data-testid={`blocked-${b.taskId}`}><strong data-testid={`validation-blocked-id-${b.taskId}`} className="font-mono text-[0.8125rem] text-accent-text">{b.taskId}</strong>: <Rich text={b.reason} /></li>) : <li data-testid="validation-blocked-empty" className="hint">Nenhuma tarefa bloqueada.</li>}</ul>
                     </section>
                   </>
                 ) : null}
@@ -547,16 +547,16 @@ export function ValidationView({ detail, specStatus, actionError = null, service
             id: 'decision',
             label: 'Sua decisão',
             content: (
-              <aside className={RUN_UI.aside}>
-                <section className="card">
-                  <div className={RUN_UI.panelHead}>
-                    <h2>Sua decisão</h2>
+              <aside data-testid="validation-decision-aside" className={RUN_UI.aside}>
+                <section data-testid="validation-decision-card" className="card">
+                  <div data-testid="validation-decision-head" className={RUN_UI.panelHead}>
+                    <h2 data-testid="validation-decision-title">Sua decisão</h2>
                     <InfoTip text="Concluir finaliza a entrega e marca a especificação como concluída. Relatar problema reabre o refinamento com o seu relato, para os agentes corrigirem." />
                   </div>
                   {completing ? <p data-testid="completing-note" className={`hint ${RUN_UI.asideNote}`}>Concluindo a especificação. Acompanhe em <Link to={`/runs/${completing}`}>{completing}</Link>.</p> : note ? <p data-testid="actions-note" className={`hint ${RUN_UI.asideNote}`}>{note}</p> : null}
                   {actionError ? <p data-testid="action-error" className={`error ${RUN_UI.asideNote}`}>{actionError}</p> : null}
                   <textarea className="m-0 mt-1 mb-[0.9rem] w-full resize-y px-[0.8rem] py-[0.65rem] text-[0.875rem] leading-normal disabled:cursor-not-allowed disabled:bg-surface-muted" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
-                  <div className="grid gap-2 [&_button]:w-full">
+                  <div data-testid="validation-decision-actions" className="grid gap-2 [&_button]:w-full">
                     <ActionButton className="primary-button" data-testid="complete-spec" busy={!!completing} disabled={!enabled} onClick={onComplete} icon={<Icon name="check" size={16} />}>
                       {completing ? 'Concluindo…' : 'Concluir especificação'}
                     </ActionButton>
@@ -566,19 +566,19 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                   </div>
                 </section>
                 {report ? (
-                  <section className="card">
-                    <div className={RUN_UI.panelHead}>
-                      <h2>Resumo</h2>
+                  <section data-testid="validation-summary-card" className="card">
+                    <div data-testid="validation-summary-head" className={RUN_UI.panelHead}>
+                      <h2 data-testid="validation-summary-title">Resumo</h2>
                     </div>
-                    <p className="mt-0 mb-[0.9rem] max-h-64 overflow-auto text-[0.875rem] leading-[1.55] text-ink"><Rich text={report.summary} /></p>
-                    <dl className={RUN_UI.totals}>
-                      <div>
-                        <dt>Custo estimado <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." /></dt>
-                        <dd className="font-[650]">US$ {report.tokens.total.costUsd.toFixed(2)}</dd>
+                    <p data-testid="validation-summary-text" className="mt-0 mb-[0.9rem] max-h-64 overflow-auto text-[0.875rem] leading-[1.55] text-ink"><Rich text={report.summary} /></p>
+                    <dl data-testid="validation-totals" className={RUN_UI.totals}>
+                      <div data-testid="validation-totals-cost">
+                        <dt data-testid="validation-totals-cost-term">Custo estimado <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." /></dt>
+                        <dd data-testid="validation-totals-cost-value" className="font-[650]">US$ {report.tokens.total.costUsd.toFixed(2)}</dd>
                       </div>
-                      <div>
-                        <dt>Tokens <InfoTip text="Volume de texto processado pelos modelos de IA: entrada é o que eles leram, saída é o que escreveram. O custo cresce com os tokens." /></dt>
-                        <dd>{report.tokens.total.inputTokens} de entrada, {report.tokens.total.outputTokens} de saída</dd>
+                      <div data-testid="validation-totals-tokens">
+                        <dt data-testid="validation-totals-tokens-term">Tokens <InfoTip text="Volume de texto processado pelos modelos de IA: entrada é o que eles leram, saída é o que escreveram. O custo cresce com os tokens." /></dt>
+                        <dd data-testid="validation-totals-tokens-value">{report.tokens.total.inputTokens} de entrada, {report.tokens.total.outputTokens} de saída</dd>
                       </div>
                     </dl>
                   </section>
@@ -598,7 +598,7 @@ const isLive = (status: string) => ['running', 'draining'].includes(status) || s
 export function ValidationPage() {
   const { runId } = useParams<{ runId: string }>();
   // Keyed by run: moving to another run remounts, so the previous run's detail, errors, poll and late answers cannot leak into it.
-  return runId ? <ValidationRun key={runId} runId={runId} /> : <main><Loading /></main>;
+  return runId ? <ValidationRun key={runId} runId={runId} /> : <main data-testid="validation-page-loading"><Loading /></main>;
 }
 
 function ValidationRun({ runId }: { runId: string }) {
@@ -667,8 +667,8 @@ function ValidationRun({ runId }: { runId: string }) {
     }, 4000);
     return () => clearInterval(timer);
   }, [deployRun]);
-  if (error) return <main><p className="error">{error}</p></main>;
-  if (!detail) return <main><Loading /></main>;
+  if (error) return <main data-testid="validation-run-error"><p data-testid="validation-run-error-text" className="error">{error}</p></main>;
+  if (!detail) return <main data-testid="validation-run-loading"><Loading /></main>;
   return (
     <ValidationView
       detail={detail}

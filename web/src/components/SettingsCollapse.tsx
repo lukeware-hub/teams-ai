@@ -10,20 +10,20 @@ export function SettingsCollapse({ title, item, meta, children }: { title: strin
     setOpen(e.currentTarget.open);
   };
   return (
-    <details className={`settings-collapse${status ? ` card-${status}` : item === null ? ' card-checking' : ''}`} onToggle={onToggle}>
-      <summary className="settings-collapse-summary">
+    <details data-testid="settings-collapse" className={`settings-collapse${status ? ` card-${status}` : item === null ? ' card-checking' : ''}`} onToggle={onToggle}>
+      <summary data-testid="settings-collapse-summary" className="settings-collapse-summary">
         <Icon name="chevron-right" size={16} />
-        <span className="settings-collapse-title">{title}</span>
+        <span data-testid="settings-collapse-title" className="settings-collapse-title">{title}</span>
         {statusLabel !== null ? (
-          <span className={`status-chip${status === 'todo' ? ' tone-warn' : ''}`}>
+          <span data-testid="settings-collapse-status" className={`status-chip${status === 'todo' ? ' tone-warn' : ''}`}>
             {status === 'todo' ? <Icon name="clock" size={12} /> : null}
             {statusLabel}
           </span>
         ) : meta ? (
-          <span className="settings-collapse-meta">{meta}</span>
+          <span data-testid="settings-collapse-meta" className="settings-collapse-meta">{meta}</span>
         ) : null}
       </summary>
-      {open ? <div className="settings-collapse-body">{children}</div> : null}
+      {open ? <div data-testid="settings-collapse-body" className="settings-collapse-body">{children}</div> : null}
     </details>
   );
 }

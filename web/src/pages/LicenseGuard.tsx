@@ -42,12 +42,12 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [view?.state]);
-  if (view === null) return <main><Loading /></main>;
+  if (view === null) return <main data-testid="license-guard-loading"><Loading /></main>;
   if (view.state === 'unavailable' && register) {
     return (
-      <main className="mx-auto grid w-full max-w-xl gap-3">
+      <main data-testid="license-guard-register" className="mx-auto grid w-full max-w-xl gap-3">
         <LicenseCard onSaved={() => { setRegister(false); void api.license().then(setView).catch(() => setView({ state: 'unavailable' })); }} />
-        <button type="button" className="primary-button w-fit" onClick={() => setRegister(false)}>Voltar</button>
+        <button data-testid="license-guard-register-back" type="button" className="primary-button w-fit" onClick={() => setRegister(false)}>Voltar</button>
       </main>
     );
   }
@@ -63,17 +63,17 @@ export function LicenseGuard({ children }: { children: ReactNode }) {
 export function LicenseRevoked({ email, phone }: { email: string; phone: string }) {
   useHideRail();
   return (
-    <main className="min-h-full place-content-center">
-      <section className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
-        <span className="confirm-icon mb-0" aria-hidden="true">
+    <main data-testid="license-revoked" className="min-h-full place-content-center">
+      <section data-testid="license-revoked-card" className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
+        <span data-testid="license-revoked-icon" className="confirm-icon mb-0" aria-hidden="true">
           <Icon name="lock" size={22} />
         </span>
-        <h1 className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Acesso desativado</h1>
-        <p className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Seu acesso foi desativado. Entre em contato com a administração da Lukeware por e-mail ou telefone para solicitar a reativação.</p>
+        <h1 data-testid="license-revoked-title" className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Acesso desativado</h1>
+        <p data-testid="license-revoked-text" className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Seu acesso foi desativado. Entre em contato com a administração da Lukeware por e-mail ou telefone para solicitar a reativação.</p>
         {email || phone ? (
-          <div className="grid gap-1">
-            {email ? <a className={contactLink} href={`mailto:${email}`}>{email}</a> : null}
-            {phone ? <a className={contactLink} href={`tel:${phone.replace(/\s/g, '')}`}>{phone}</a> : null}
+          <div data-testid="license-revoked-contacts" className="grid gap-1">
+            {email ? <a data-testid="license-revoked-email" className={contactLink} href={`mailto:${email}`}>{email}</a> : null}
+            {phone ? <a data-testid="license-revoked-phone" className={contactLink} href={`tel:${phone.replace(/\s/g, '')}`}>{phone}</a> : null}
           </div>
         ) : null}
       </section>
@@ -84,13 +84,13 @@ export function LicenseRevoked({ email, phone }: { email: string; phone: string 
 export function LicenseOtherMachine() {
   useHideRail();
   return (
-    <main className="min-h-full place-content-center">
-      <section className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
-        <span className="confirm-icon mb-0" aria-hidden="true">
+    <main data-testid="license-other-machine" className="min-h-full place-content-center">
+      <section data-testid="license-other-machine-card" className="card grid w-full max-w-md justify-items-center gap-3 justify-self-center text-center">
+        <span data-testid="license-other-machine-icon" className="confirm-icon mb-0" aria-hidden="true">
           <Icon name="lock" size={22} />
         </span>
-        <h1 className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Licença de outro computador</h1>
-        <p className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Esta chave está vinculada ao computador que a registrou. Outro computador não pode usá-la.</p>
+        <h1 data-testid="license-other-machine-title" className="m-0 text-[1.125rem] leading-[1.3] font-[650] tracking-[-0.01em] text-balance text-ink">Licença de outro computador</h1>
+        <p data-testid="license-other-machine-text" className="m-0 max-w-[42ch] text-[0.875rem] leading-[1.55] text-balance text-ink-soft">Esta chave está vinculada ao computador que a registrou. Outro computador não pode usá-la.</p>
       </section>
     </main>
   );
@@ -99,13 +99,13 @@ export function LicenseOtherMachine() {
 export function LicenseUnavailable({ onRetry, onRegister }: { onRetry: () => void; onRegister: () => void }) {
   useHideRail();
   return (
-    <main className="min-h-full place-content-center">
-      <section className="card grid w-full max-w-md justify-self-center gap-3">
-        <h1>Licença indisponível</h1>
-        <p className="m-0 text-ink-soft">Não foi possível confirmar sua licença. O Teams AI volta a funcionar quando o serviço de licenças responder.</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button type="button" className="primary-button w-full" onClick={onRetry}>Tentar de novo</button>
-          <button type="button" className="secondary w-full" onClick={onRegister}>Registrar licença</button>
+    <main data-testid="license-unavailable" className="min-h-full place-content-center">
+      <section data-testid="license-unavailable-card" className="card grid w-full max-w-md justify-self-center gap-3">
+        <h1 data-testid="license-unavailable-title">Licença indisponível</h1>
+        <p data-testid="license-unavailable-text" className="m-0 text-ink-soft">Não foi possível confirmar sua licença. O Teams AI volta a funcionar quando o serviço de licenças responder.</p>
+        <div data-testid="license-unavailable-actions" className="grid gap-2 sm:grid-cols-2">
+          <button data-testid="license-unavailable-retry" type="button" className="primary-button w-full" onClick={onRetry}>Tentar de novo</button>
+          <button data-testid="license-unavailable-register" type="button" className="secondary w-full" onClick={onRegister}>Registrar licença</button>
         </div>
       </section>
     </main>

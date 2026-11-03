@@ -60,7 +60,7 @@ export function usageLine(u: ChatUsage): string {
 
 function Correction({ projectId, correction }: { projectId: string; correction: ChatCorrection }) {
   return (
-    <p className={notice}>
+    <p data-testid="chat-correction" className={notice}>
       {correction.specId ? (
         <>Abri uma spec de correção, “{correction.title}”. <Link to={`/refine/${projectId}/${correction.specId}`}>Abrir para revisar e iniciar</Link>.</>
       ) : (
@@ -71,10 +71,10 @@ function Correction({ projectId, correction }: { projectId: string; correction: 
 }
 
 function Message({ projectId, message }: { projectId: string; message: ChatMessage }) {
-  if (message.role === 'user') return <p className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{message.text}</p>;
+  if (message.role === 'user') return <p data-testid="chat-message-user" className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{message.text}</p>;
   return (
-    <div className="grid justify-items-start gap-2">
-      <div className={`${bubble} border border-line bg-surface text-ink text-justify`}><Markdown source={message.text} /></div>
+    <div data-testid="chat-message" className="grid justify-items-start gap-2">
+      <div data-testid="chat-message-answer" className={`${bubble} border border-line bg-surface text-ink text-justify`}><Markdown source={message.text} /></div>
       {message.usage ? <p className="m-0 flex items-center gap-1 text-[0.75rem] text-ink-soft tabular-nums" data-testid="usage">{usageLine(message.usage)}<InfoTip text={USAGE_HELP} /></p> : null}
       {message.correction ? <Correction projectId={projectId} correction={message.correction} /> : null}
     </div>
@@ -167,55 +167,55 @@ export function ChatPage() {
     setConfirmClear(false);
   };
 
-  if (projects === null) return <main><Loading /></main>;
+  if (projects === null) return <main data-testid="chat-page-loading"><Loading /></main>;
   const project = projects.find((p) => p.projectId === projectId);
   // The questions of the chosen project, newest first, each text once.
   const questions = [...new Set((messages ?? []).filter((m) => m.role === 'user').map((m) => m.text).reverse())];
   return (
-    <main>
-      <nav className="refine-breadcrumb" aria-label="Navegação">
+    <main data-testid="chat-page">
+      <nav data-testid="chat-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/" aria-label="Início">
           <Icon name="home" size={16} />
-          <span>Início</span>
+          <span data-testid="chat-breadcrumb-home-label">Início</span>
         </Link>
-        <span aria-hidden="true">›</span>
-        <strong>Chat de dúvidas</strong>
+        <span data-testid="chat-breadcrumb-separator" aria-hidden="true">›</span>
+        <strong data-testid="chat-breadcrumb-current">Chat de dúvidas</strong>
       </nav>
-      <header className="min-w-0">
-        <h1 className="m-0 text-ink">Chat de dúvidas</h1>
-        <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Pergunte em palavras simples o que está sendo feito em cada projeto.</p>
+      <header data-testid="chat-header" className="min-w-0">
+        <h1 data-testid="chat-title" className="m-0 text-ink">Chat de dúvidas</h1>
+        <p data-testid="chat-subtitle" className="mt-1 mb-0 text-[0.9375rem] text-ink-soft">Pergunte em palavras simples o que está sendo feito em cada projeto.</p>
       </header>
       {projects.length === 0 ? (
-        <div className={emptyState}>
+        <div data-testid="chat-empty-projects" className={emptyState}>
           <Icon name="folder" size={24} />
-          <p>Nenhum projeto para perguntar ainda.</p>
-          <p>Crie ou importe um projeto em Projetos e volte aqui.</p>
+          <p data-testid="chat-empty-projects-text">Nenhum projeto para perguntar ainda.</p>
+          <p data-testid="chat-empty-projects-hint">Crie ou importe um projeto em Projetos e volte aqui.</p>
         </div>
       ) : (
-        <section className={panelCard} aria-label="Conversa">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className={headingTile}><Icon name="chat" size={26} /></span>
-              <div className="min-w-0">
-                <span className={eyebrow}>Dúvidas sobre o projeto <InfoTip text={HELP} /></span>
-                <h2 className={`${panelTitle} wrap-anywhere`}>{project?.name ?? projectId}</h2>
+        <section data-testid="chat-panel" className={panelCard} aria-label="Conversa">
+          <div data-testid="chat-panel-toolbar" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            <div data-testid="chat-panel-project" className="flex min-w-0 items-center gap-3">
+              <span data-testid="chat-panel-icon" className={headingTile}><Icon name="chat" size={26} /></span>
+              <div data-testid="chat-panel-title-block" className="min-w-0">
+                <span data-testid="chat-panel-eyebrow" className={eyebrow}>Dúvidas sobre o projeto <InfoTip text={HELP} /></span>
+                <h2 data-testid="chat-panel-project-name" className={`${panelTitle} wrap-anywhere`}>{project?.name ?? projectId}</h2>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 max-md:w-full">
+            <div data-testid="chat-panel-actions" className="flex flex-wrap items-center gap-2 max-md:w-full">
               <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => { setProjectId(e.target.value); setRecall(null); }}>
-                {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.name}</option>)}
+                {projects.map((p) => <option data-testid={`chat-project-option-${p.projectId}`} key={p.projectId} value={p.projectId}>{p.name}</option>)}
               </Select>
-              <button type="button" className="secondary" disabled={!projectId} onClick={() => navigate(`/projects/${projectId}?novaSpec=1`)}>
+              <button data-testid="chat-new-spec" type="button" className="secondary" disabled={!projectId} onClick={() => navigate(`/projects/${projectId}?novaSpec=1`)}>
                 Nova spec
                 <Icon name="plus" size={16} />
               </button>
-              <button type="button" className="secondary" disabled={asking === null && !messages?.length} onClick={() => setConfirmClear(true)}>
+              <button data-testid="chat-clear-conversation" type="button" className="secondary" disabled={asking === null && !messages?.length} onClick={() => setConfirmClear(true)}>
                 Limpar conversa
                 <Icon name="trash" size={16} />
               </button>
             </div>
           </div>
-          <div className="grid max-h-[min(32rem,calc(100dvh-30rem))] min-h-48 content-start gap-3 overflow-y-auto rounded-lg border border-line bg-surface-sunken p-4" aria-live="polite" aria-busy={messages === null || asking !== null}>
+          <div data-testid="chat-messages" className="grid max-h-[min(32rem,calc(100dvh-30rem))] min-h-48 content-start gap-3 overflow-y-auto rounded-lg border border-line bg-surface-sunken p-4" aria-live="polite" aria-busy={messages === null || asking !== null}>
             {messages === null ? (
               <Skeleton>
                 <Bone size="half" />
@@ -224,25 +224,25 @@ export function ChatPage() {
               </Skeleton>
             ) : null}
             {messages?.length === 0 && !asking ? (
-              <div className={`${emptyState} border-0 bg-transparent`}>
+              <div data-testid="chat-empty" className={`${emptyState} border-0 bg-transparent`}>
                 <Icon name="chat" size={24} />
-                <p>Nenhuma pergunta feita ainda.</p>
-                <p>Escreva abaixo ou comece por um destes exemplos.</p>
-                {EXAMPLES.map((q) => <button key={q} type="button" className="secondary" onClick={() => setDraft(q)}>{q}</button>)}
+                <p data-testid="chat-empty-text">Nenhuma pergunta feita ainda.</p>
+                <p data-testid="chat-empty-hint">Escreva abaixo ou comece por um destes exemplos.</p>
+                {EXAMPLES.map((q) => <button data-testid="chat-example" key={q} type="button" className="secondary" onClick={() => setDraft(q)}>{q}</button>)}
               </div>
             ) : null}
             {messages?.map((m, i) => <Message key={`${m.at}-${i}`} projectId={projectId} message={m} />)}
             {asking ? (
               <>
-                <p className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{asking}</p>
-                <p className={`${bubble} m-0 text-ink-soft`}>Respondendo… pode levar alguns instantes.</p>
+                <p data-testid="chat-pending-question" className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{asking}</p>
+                <p data-testid="chat-pending-status" className={`${bubble} m-0 text-ink-soft`}>Respondendo… pode levar alguns instantes.</p>
               </>
             ) : null}
-            <span id="chat-end" />
+            <span data-testid="chat-scroll-anchor" id="chat-end" />
           </div>
-          <div className="grid gap-1.5">
-            <label htmlFor="chat-question" className={fieldLabel}>Sua pergunta</label>
-            <div className="flex items-end gap-3 max-md:flex-wrap">
+          <div data-testid="chat-composer" className="grid gap-1.5">
+            <label data-testid="chat-question-label" htmlFor="chat-question" className={fieldLabel}>Sua pergunta</label>
+            <div data-testid="chat-composer-row" className="flex items-end gap-3 max-md:flex-wrap">
               <textarea
                 id="chat-question"
                 className="min-h-[var(--control-height)] w-full min-w-0 flex-1 resize-y px-4 py-3 text-[0.9375rem] leading-[1.5]"
@@ -260,7 +260,7 @@ export function ChatPage() {
               </ActionButton>
             </div>
           </div>
-          <p className="m-0 flex items-center gap-1.5 border-t border-line pt-4 text-[0.8125rem] text-ink-soft">
+          <p data-testid="chat-hint" className="m-0 flex items-center gap-1.5 border-t border-line pt-4 text-[0.8125rem] text-ink-soft">
             <Icon name="info" size={16} />
             As conversas ficam salvas neste computador. Enter envia a pergunta, Shift+Enter quebra a linha e a seta para cima traz as perguntas anteriores.
           </p>
@@ -268,10 +268,10 @@ export function ChatPage() {
       )}
       {problem ? (
         <Dialog title={problem.title} onClose={() => setProblem(null)}>
-          <p className={`m-0 text-[0.9375rem] ${problem.unexpected ? 'text-bad' : 'text-ink'}`}>{problem.message}</p>
-          {problem.retry ? <p className="mt-2 mb-0 text-[0.8125rem] text-ink-soft">Sua pergunta não foi respondida. Tentar de novo envia ela outra vez.</p> : null}
+          <p data-testid="chat-problem-message" className={`m-0 text-[0.9375rem] ${problem.unexpected ? 'text-bad' : 'text-ink'}`}>{problem.message}</p>
+          {problem.retry ? <p data-testid="chat-problem-retry-note" className="mt-2 mb-0 text-[0.8125rem] text-ink-soft">Sua pergunta não foi respondida. Tentar de novo envia ela outra vez.</p> : null}
           {problem.retry ? (
-            <div className="mt-4 flex justify-end">
+            <div data-testid="chat-problem-actions" className="mt-4 flex justify-end">
               <ActionButton className="primary-button" onClick={() => { const again = problem.retry; setProblem(null); return again?.(); }} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton>
             </div>
           ) : null}
@@ -279,7 +279,7 @@ export function ChatPage() {
       ) : null}
       {confirmClear ? (
         <ConfirmDialog title="Limpar conversa" subject={project?.name} confirmLabel="Limpar" onConfirm={clear} onCancel={() => setConfirmClear(false)}>
-          <p>As mensagens deste projeto serão apagadas. As specs de correção que o chat já abriu continuam existindo.{asking !== null ? " A resposta que está sendo preparada será cancelada." : ""}</p>
+          <p data-testid="chat-clear-note">As mensagens deste projeto serão apagadas. As specs de correção que o chat já abriu continuam existindo.{asking !== null ? " A resposta que está sendo preparada será cancelada." : ""}</p>
         </ConfirmDialog>
       ) : null}
     </main>

@@ -9,7 +9,7 @@ export function OnboardingGate({ children, completeTo = '/settings' }: { childre
   useEffect(() => {
     void api.status().then((s) => setAllOk(s.allOk)).catch(() => setAllOk(false));
   }, []);
-  if (allOk === null) return <main><Loading /></main>;
+  if (allOk === null) return <main data-testid="onboarding-gate-loading"><Loading /></main>;
   if (allOk) return <Navigate to={completeTo} replace />;
   return children;
 }
@@ -20,5 +20,5 @@ export function StatusRedirect() {
   useEffect(() => {
     void api.status().then((s) => setTo(s.allOk ? '/settings' : '/onboarding')).catch(() => setTo('/onboarding'));
   }, []);
-  return to ? <Navigate to={to} replace /> : <main><Loading /></main>;
+  return to ? <Navigate to={to} replace /> : <main data-testid="status-redirect-loading"><Loading /></main>;
 }

@@ -18,14 +18,14 @@ export function IndicatorCards({ dashboard }: { dashboard: RepoDashboard }) {
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7" data-testid="repo-cards">
       {cards.map((card) => (
         <div key={card.id} className={`card grid content-start gap-1 p-3${card.id === 'cost' ? ' col-span-2 md:col-span-1' : ''}`} data-testid={`card-${card.id}`}>
-          <span className="hint">{card.label}</span>
-          <strong className="text-[1.125rem] tabular-nums">{card.value}</strong>
+          <span data-testid={`indicator-label-${card.id}`} className="hint">{card.label}</span>
+          <strong data-testid={`indicator-value-${card.id}`} className="text-[1.125rem] tabular-nums">{card.value}</strong>
           {card.id === 'progress' && c.progress !== null && (
-            <div className="h-1.5 overflow-hidden rounded-full bg-accent-line" role="progressbar" aria-label="Progresso geral" aria-valuemin={0} aria-valuemax={100} aria-valuenow={c.progress}>
-              <div className="h-full rounded-full bg-accent" style={{ width: `${c.progress}%` }} />
+            <div data-testid="indicator-progress-meter" className="h-1.5 overflow-hidden rounded-full bg-accent-line" role="progressbar" aria-label="Progresso geral" aria-valuemin={0} aria-valuemax={100} aria-valuenow={c.progress}>
+              <div data-testid="indicator-progress-fill" className="h-full rounded-full bg-accent" style={{ width: `${c.progress}%` }} />
             </div>
           )}
-          <span className="hint text-[0.75rem]">{card.detail}</span>
+          <span data-testid={`indicator-detail-${card.id}`} className="hint text-[0.75rem]">{card.detail}</span>
         </div>
       ))}
     </div>

@@ -15,6 +15,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
   return (
     <button
       type="button"
+      data-testid="info-tip-button"
       className="info-tip"
       aria-label={label ? `${label}: ${text}` : text}
       onMouseEnter={(e) => show(e.currentTarget)}
@@ -25,7 +26,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
     >
       <Icon name="info" size={14} />
       {at ? (
-        <span className="info-tip-bubble" role="tooltip" aria-hidden="true" style={{ left: at.x, top: at.y }}>
+        <span data-testid="info-tip-bubble" className="info-tip-bubble" role="tooltip" aria-hidden="true" style={{ left: at.x, top: at.y }}>
           {text}
         </span>
       ) : null}
@@ -36,7 +37,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
 /** A flag with its explanation beside it. */
 export function Tipped({ text, children }: { text: string; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 justify-self-start">
+    <span data-testid="tipped-wrapper" className="inline-flex items-center gap-1 justify-self-start">
       {children}
       <InfoTip text={text} />
     </span>

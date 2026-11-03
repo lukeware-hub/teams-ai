@@ -46,12 +46,12 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
   return (
     <section className="flex flex-col gap-4 rounded-tile border border-line bg-surface p-5 shadow-card" aria-label="Nota do Jev" data-testid="readiness-banner">
       <div className="flex flex-wrap items-start gap-3.5">
-        <span className={`grid size-12 shrink-0 place-items-center rounded-tile border ${CHIP[view.tone]}`}>
+        <span className={`grid size-12 shrink-0 place-items-center rounded-tile border ${CHIP[view.tone]}`} data-testid="readiness-banner-icon">
           <Icon name="info" size={20} />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft">Avaliação dos documentos</p>
-          <h2 className="m-0 mt-0.5 text-[1.125rem] font-semibold leading-[1.3] tracking-[-0.01em] text-ink">{view.title}</h2>
+        <div className="min-w-0 flex-1" data-testid="readiness-banner-heading">
+          <p className="m-0 text-[0.75rem] font-semibold tracking-[0.07em] text-ink-soft" data-testid="readiness-banner-eyebrow">Avaliação dos documentos</p>
+          <h2 className="m-0 mt-0.5 text-[1.125rem] font-semibold leading-[1.3] tracking-[-0.01em] text-ink" data-testid="readiness-banner-title">{view.title}</h2>
         </div>
         {percent !== null && (
           <span className={`inline-flex h-7 items-center rounded-md border px-2.5 text-[0.8125rem] font-semibold tabular-nums ${CHIP[view.tone]}`} data-testid="readiness-score">
@@ -59,16 +59,16 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
           </span>
         )}
       </div>
-      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">{view.detail}</p>
+      <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft" data-testid="readiness-banner-detail">{view.detail}</p>
       {docs && (
         <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-5" data-testid="readiness-docs">
           {(Object.keys(DOC_LABEL) as DocFile[]).flatMap((file) => (docs[file] ? [{ file, doc: docs[file] }] : [])).map(({ file, doc }) => (
-            <li key={file} className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-surface-sunken px-3 py-2.5">
-              <span className="text-[0.8125rem] text-ink-soft">{DOC_LABEL[file]}</span>
-              <b className="text-[0.9375rem] font-semibold tabular-nums text-ink">{percentOf(doc.score)}%</b>
+            <li key={file} className="flex flex-col gap-1 rounded-[var(--radius-lg)] bg-surface-sunken px-3 py-2.5" data-testid={`readiness-banner-doc-${file}`}>
+              <span className="text-[0.8125rem] text-ink-soft" data-testid={`readiness-banner-doc-label-${file}`}>{DOC_LABEL[file]}</span>
+              <b className="text-[0.9375rem] font-semibold tabular-nums text-ink" data-testid={`readiness-banner-doc-score-${file}`}>{percentOf(doc.score)}%</b>
               <ul className="m-0 flex list-none flex-col gap-0.5 p-0 text-[0.75rem] tabular-nums" data-testid={`readiness-checks-${file}`}>
                 {SCORE_CHECKS.map((id: ScoreCheck) => (
-                  <li key={id} className="text-ink-soft">
+                  <li key={id} className="text-ink-soft" data-testid={`readiness-banner-check-${file}-${id}`}>
                     {CHECK_LABEL[id]} {percentOf(doc.checks[id])}%
                   </li>
                 ))}
@@ -77,7 +77,7 @@ export function ReadinessBanner({ readiness, canStart, startState, onScore, onSt
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" data-testid="readiness-banner-actions">
         {verdict !== 'skipped' && !complete && (
           <ActionButton className="secondary" onClick={onScore} icon={<Icon name="check" size={16} />}>
             Avaliar com o Jev

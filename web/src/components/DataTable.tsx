@@ -51,14 +51,14 @@ type View = ReturnType<typeof useTableView<unknown>>;
 export function SortHeader({ view, column, className, tip, children }: { view: Pick<View, 'sort' | 'toggleSort'>; column: string; className?: string; tip?: ReactNode; children: ReactNode }) {
   const active = view.sort?.key === column ? view.sort.direction : null;
   return (
-    <th scope="col" className={`whitespace-nowrap ${className ?? ''}`} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
-      <button
+    <th data-testid={`sort-header-${column}`} scope="col" className={`whitespace-nowrap ${className ?? ''}`} aria-sort={active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : undefined}>
+      <button data-testid={`sort-header-button-${column}`}
         type="button"
         className="min-w-[auto] inline-flex h-auto min-h-0 items-center gap-1 border-0 bg-transparent p-0 font-[inherit] text-[inherit] tracking-[inherit] uppercase hover:not-disabled:bg-transparent hover:not-disabled:text-ink"
         onClick={() => view.toggleSort(column)}
       >
         {children}
-        <span className={active ? 'text-accent-text' : 'text-ink-faint'}>
+        <span data-testid={`sort-header-icon-${column}`} className={active ? 'text-accent-text' : 'text-ink-faint'}>
           <Icon name={active === 'asc' ? 'sort-up' : active === 'desc' ? 'sort-down' : 'sort'} size={14} />
         </span>
       </button>
@@ -71,23 +71,23 @@ export function SortHeader({ view, column, className, tip, children }: { view: P
 export function TableFilters({ view, subject, placeholder, facetName }: { view: View; subject: string; placeholder: string; facetName: string }) {
   const search = useRef<HTMLInputElement>(null);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <label className="relative block min-w-0 flex-[0_1_20rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint">
-        <span className="sr-only">Filtrar {subject}</span>
+    <div data-testid="table-filters" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <label data-testid="table-filters-search" className="relative block min-w-0 flex-[0_1_20rem] max-md:basis-full [&_svg]:pointer-events-none [&_svg]:absolute [&_svg]:top-1/2 [&_svg]:left-3 [&_svg]:-translate-y-1/2 [&_svg]:text-ink-faint">
+        <span data-testid="table-filters-search-label" className="sr-only">Filtrar {subject}</span>
         <Icon name="search" size={16} />
-        <input ref={search} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder} />
+        <input data-testid="table-filters-search-input" ref={search} className="w-full min-w-0 appearance-none pl-[2.375rem]" type="search" value={view.query} onChange={(e) => view.setQuery(e.target.value)} placeholder={placeholder} />
       </label>
       {view.options.length > 1 ? (
-        <label className="block min-w-0 flex-none max-md:basis-full">
-          <span className="sr-only">{facetName}</span>
+        <label data-testid="table-filters-facet" className="block min-w-0 flex-none max-md:basis-full">
+          <span data-testid="table-filters-facet-label" className="sr-only">{facetName}</span>
           <Select wrapperClassName="md:w-48" value={view.facet} onChange={(e) => view.setFacet(e.target.value)}>
-            <option value="">{facetName}: todos</option>
-            {view.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <option data-testid="table-filters-facet-all" value="">{facetName}: todos</option>
+            {view.options.map((o) => <option data-testid={`table-filters-facet-option-${o.value}`} key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
         </label>
       ) : null}
       {view.filtered ? (
-        <button
+        <button data-testid="table-filters-clear"
           type="button"
           aria-label="Limpar filtros"
           className="min-w-[auto] w-[var(--control-height)] flex-none px-0"
@@ -99,7 +99,7 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
           <Icon name="close" size={16} />
         </button>
       ) : null}
-      <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{view.filtered ? `${view.rows.length} de ${view.total}` : ''}</p>
+      <p data-testid="table-filters-count" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{view.filtered ? `${view.rows.length} de ${view.total}` : ''}</p>
     </div>
   );
 }
@@ -139,19 +139,19 @@ type Pages = ReturnType<typeof usePagination<unknown>>;
 export function Pagination({ view }: { view: Pages }) {
   if (view.total <= PAGE_SIZES[0]!) return null;
   return (
-    <nav className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-label="Paginação">
-      <label className="flex items-center gap-2 text-[0.8125rem] text-ink-soft">
-        <span>Itens por página</span>
+    <nav data-testid="pagination" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-label="Paginação">
+      <label data-testid="pagination-size" className="flex items-center gap-2 text-[0.8125rem] text-ink-soft">
+        <span data-testid="pagination-size-label">Itens por página</span>
         <Select wrapperClassName="w-20" value={view.size} onChange={(e) => view.setSize(Number(e.target.value))}>
-          {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+          {PAGE_SIZES.map((n) => <option data-testid={`pagination-size-option-${n}`} key={n} value={n}>{n}</option>)}
         </Select>
       </label>
-      <div className="flex items-center gap-3">
-        <p className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.total}`}</p>
-        <button type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === 1} onClick={() => view.setPage(view.page - 1)}>
+      <div data-testid="pagination-controls" className="flex items-center gap-3">
+        <p data-testid="pagination-range" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.total}`}</p>
+        <button data-testid="pagination-previous" type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === 1} onClick={() => view.setPage(view.page - 1)}>
           <Icon name="arrow-left" size={16} />
         </button>
-        <button type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === view.pages} onClick={() => view.setPage(view.page + 1)}>
+        <button data-testid="pagination-next" type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page === view.pages} onClick={() => view.setPage(view.page + 1)}>
           <Icon name="arrow-right" size={16} />
         </button>
       </div>

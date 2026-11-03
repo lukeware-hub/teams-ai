@@ -64,28 +64,28 @@ function summary(limits: UsageLimit[], now: Date): string | null {
 function LimitRow({ row, now }: { row: UsageLimit; now: Date }) {
   const name = NAMES[row.kind] ?? row.label ?? 'Limite';
   return (
-    <li className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-3 last:border-b-0 max-md:grid-cols-1">
-      <div className="min-w-0">
-        <p className="m-0 text-[0.9375rem] text-ink">{name}</p>
+    <li data-testid={`claude-usage-limit-${row.kind}`} className="grid grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-b border-line py-3 last:border-b-0 max-md:grid-cols-1">
+      <div data-testid={`claude-usage-limit-text-${row.kind}`} className="min-w-0">
+        <p data-testid={`claude-usage-limit-name-${row.kind}`} className="m-0 text-[0.9375rem] text-ink">{name}</p>
         {captions(row, now).map((line) => (
-          <p key={line} className="m-0 text-[0.8125rem] text-ink-soft">{line}</p>
+          <p data-testid={`claude-usage-limit-caption-${row.kind}`} key={line} className="m-0 text-[0.8125rem] text-ink-soft">{line}</p>
         ))}
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.percent}>
-        <span className={`block size-full origin-left rounded-full transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)] ${FILL[row.severity]}`} style={{ transform: `scaleX(${row.percent / 100})` }} />
+      <div data-testid={`claude-usage-limit-meter-${row.kind}`} className="h-1.5 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={row.percent}>
+        <span data-testid={`claude-usage-limit-fill-${row.kind}`} className={`block size-full origin-left rounded-full transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)] ${FILL[row.severity]}`} style={{ transform: `scaleX(${row.percent / 100})` }} />
       </div>
-      <span className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{row.percent}% usado</span>
+      <span data-testid={`claude-usage-limit-percent-${row.kind}`} className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{row.percent}% usado</span>
     </li>
   );
 }
 
 function UsageBody({ usage, now }: { usage: ClaudeUsage; now: Date }) {
-  if (!usage.available) return <p className="m-0 text-[0.875rem] text-ink-soft">{REASONS[usage.reason]}</p>;
+  if (!usage.available) return <p data-testid="claude-usage-unavailable" className="m-0 text-[0.875rem] text-ink-soft">{REASONS[usage.reason]}</p>;
   const text = summary(usage.limits, now);
   return (
     <>
-      {text ? <p className="m-0 text-[0.9375rem] text-ink">{text}</p> : null}
-      <ul className="m-0 grid list-none p-0">
+      {text ? <p data-testid="claude-usage-summary" className="m-0 text-[0.9375rem] text-ink">{text}</p> : null}
+      <ul data-testid="claude-usage-limits" className="m-0 grid list-none p-0">
         {usage.limits.map((row) => <LimitRow key={`${row.kind}-${row.label}`} row={row} now={now} />)}
       </ul>
     </>
@@ -145,17 +145,17 @@ export function ClaudeUsagePanel() {
   }, []);
   const now = new Date();
   return (
-    <section className={`${panel} gap-3`} aria-labelledby="usage-title">
-      <div className={sectionTitle}>
-        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso</h2>
-        {usage?.available ? <span className="text-[0.8125rem] text-ink-soft">{usage.plan}</span> : null}
+    <section data-testid="claude-usage-panel" className={`${panel} gap-3`} aria-labelledby="usage-title">
+      <div data-testid="claude-usage-title-row" className={sectionTitle}>
+        <h2 data-testid="claude-usage-heading" className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso</h2>
+        {usage?.available ? <span data-testid="claude-usage-plan" className="text-[0.8125rem] text-ink-soft">{usage.plan}</span> : null}
         <InfoTip label="Seu uso" text={HELP} />
       </div>
-      {usage ? <UsageBody usage={usage} now={now} /> : failed ? <p className="error">{REASONS.failed}</p> : <Loading />}
+      {usage ? <UsageBody usage={usage} now={now} /> : failed ? <p data-testid="claude-usage-error" className="error">{REASONS.failed}</p> : <Loading />}
       {jev !== null && (
         <p className="m-0 flex items-baseline justify-between gap-3 border-t border-line pt-3 text-[0.9375rem] text-ink" data-testid="jev-cost">
-          <span>Custo Jev <span className="text-[0.8125rem] text-ink-soft">· total desde sempre</span></span>
-          <b className="font-semibold tabular-nums">{usd(jev)}</b>
+          <span data-testid="claude-usage-jev-label">Custo Jev <span data-testid="claude-usage-jev-note" className="text-[0.8125rem] text-ink-soft">· total desde sempre</span></span>
+          <b data-testid="claude-usage-jev-cost" className="font-semibold tabular-nums">{usd(jev)}</b>
         </p>
       )}
     </section>

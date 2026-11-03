@@ -45,7 +45,7 @@ export function Dialog({ title, onClose, returnFocus, children }: { title: strin
     };
   }, []);
   return (
-    <div
+    <div data-testid="dialog-backdrop"
       className="dialog-backdrop"
       onMouseDown={(e) => {
         pressedBackdrop.current = e.target === e.currentTarget;
@@ -54,15 +54,15 @@ export function Dialog({ title, onClose, returnFocus, children }: { title: strin
         if (pressedBackdrop.current && e.target === e.currentTarget) close.current();
       }}
     >
-      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className="dialog-header">
-          <h2 id={titleId}>{title}</h2>
-          <button ref={closeButton} type="button" className="dialog-close" aria-label="Fechar" onClick={() => close.current()}>
+      <div data-testid="dialog" ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div data-testid="dialog-header" className="dialog-header">
+          <h2 data-testid="dialog-title" id={titleId}>{title}</h2>
+          <button data-testid="dialog-close" ref={closeButton} type="button" className="dialog-close" aria-label="Fechar" onClick={() => close.current()}>
             <Icon name="close" size={16} />
           </button>
         </div>
         {/* Focusable so the keyboard can scroll a long body. */}
-        <div className="dialog-body" tabIndex={0}>
+        <div data-testid="dialog-body" className="dialog-body" tabIndex={0}>
           {children}
         </div>
       </div>

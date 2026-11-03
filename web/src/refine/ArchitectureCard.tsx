@@ -21,45 +21,45 @@ export function ArchitectureCard({ architecture, error, issues = [], busy, locke
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-testid="architecture-card-header">
         <Icon name="code" size={18} />
-        <h3 className="m-0 text-[1rem] font-semibold">Arquitetura</h3>
+        <h3 className="m-0 text-[1rem] font-semibold" data-testid="architecture-card-title">Arquitetura</h3>
         {decision && <span className="count-pill" data-testid="architecture-style">{decision.style === 'monolith' ? 'Monólito' : 'Microsserviços'}</span>}
       </div>
       {!decision && !busy && <p className="hint" data-testid="architecture-empty">Nenhuma arquitetura decidida ainda: decida-a a partir dos cinco documentos.</p>}
       {busy && (
         <ProcessBox title="Decidindo a arquitetura" since={startedAt ?? null} testId="architecture-progress">
-          <span className="text-[0.75rem] leading-[1.35]">Lendo os cinco documentos do grafo e decidindo o estilo e os repositórios. Ao terminar, a decisão aparece aqui.</span>
+          <span className="text-[0.75rem] leading-[1.35]" data-testid="architecture-card-progress-text">Lendo os cinco documentos do grafo e decidindo o estilo e os repositórios. Ao terminar, a decisão aparece aqui.</span>
         </ProcessBox>
       )}
-      {error && <p className="text-warn" role="alert">{error}</p>}
+      {error && <p className="text-warn" role="alert" data-testid="architecture-card-error">{error}</p>}
       {error && issues.length > 0 && (
         <div className="grid gap-1 text-[0.8125rem]" data-testid="architecture-issues">
-          <span className="font-semibold">O que ainda não fecha:</span>
-          <ul className="m-0 grid list-disc gap-1 pl-5 text-ink-soft">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-          <span className="text-ink-soft">Corrija o que falta nos documentos e decida a arquitetura de novo.</span>
+          <span className="font-semibold" data-testid="architecture-card-issues-title">O que ainda não fecha:</span>
+          <ul className="m-0 grid list-disc gap-1 pl-5 text-ink-soft" data-testid="architecture-card-issues-list">{issues.map((issue) => <li key={issue} data-testid={`architecture-card-issue-${issue}`}>{issue}</li>)}</ul>
+          <span className="text-ink-soft" data-testid="architecture-card-issues-hint">Corrija o que falta nos documentos e decida a arquitetura de novo.</span>
         </div>
       )}
       {decision && (
         <>
-          <p className="m-0 text-[0.875rem]">{decision.rationale}</p>
-          <ul className="m-0 grid list-none gap-2 p-0" aria-label="Repositórios da arquitetura">
+          <p className="m-0 text-[0.875rem]" data-testid="architecture-card-rationale">{decision.rationale}</p>
+          <ul className="m-0 grid list-none gap-2 p-0" aria-label="Repositórios da arquitetura" data-testid="architecture-card-repos">
             {decision.repositories.map((repo) => (
               <li key={repo.name} className="grid gap-1 text-[0.8125rem]" data-testid={`architecture-repo-${repo.name}`}>
-                <span><strong>{repo.name}</strong> <span className="count-pill">{kindLabel(repo.name, decision.style)}</span></span>
-                <span className="text-ink-soft">{repo.responsibility}</span>
-                <span className="text-ink-soft">{`Evidência (${repo.evidence.doc}): "${repo.evidence.quote}"`}</span>
+                <span data-testid={`architecture-card-repo-heading-${repo.name}`}><strong data-testid={`architecture-card-repo-name-${repo.name}`}>{repo.name}</strong> <span className="count-pill" data-testid={`architecture-card-repo-kind-${repo.name}`}>{kindLabel(repo.name, decision.style)}</span></span>
+                <span className="text-ink-soft" data-testid={`architecture-card-repo-responsibility-${repo.name}`}>{repo.responsibility}</span>
+                <span className="text-ink-soft" data-testid={`architecture-card-repo-evidence-${repo.name}`}>{`Evidência (${repo.evidence.doc}): "${repo.evidence.quote}"`}</span>
               </li>
             ))}
           </ul>
           {decision.integrations.length > 0 && (
-            <ul className="m-0 grid list-none gap-1 p-0 text-[0.8125rem]" aria-label="Integrações da arquitetura">
-              {decision.integrations.map((link) => <li key={`${link.consumer}-${link.provider}`}>{`${link.consumer} → ${link.provider} · ${link.contract}`}</li>)}
+            <ul className="m-0 grid list-none gap-1 p-0 text-[0.8125rem]" aria-label="Integrações da arquitetura" data-testid="architecture-card-integrations">
+              {decision.integrations.map((link) => <li key={`${link.consumer}-${link.provider}`} data-testid={`architecture-card-integration-${link.consumer}-${link.provider}`}>{`${link.consumer} → ${link.provider} · ${link.contract}`}</li>)}
             </ul>
           )}
         </>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" data-testid="architecture-card-actions">
         <ActionButton data-testid="architecture-decide" className={decision ? 'secondary' : 'primary'} disabled={busy || locked} title={locked ? 'O desenvolvimento já começou: a arquitetura não muda mais.' : undefined} onClick={onDecide} icon={<Icon name="refresh" size={16} />}>
           {decision ? 'Redefinir' : 'Decidir a arquitetura'}
         </ActionButton>

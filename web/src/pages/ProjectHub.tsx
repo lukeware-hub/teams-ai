@@ -43,40 +43,40 @@ const SPEC_GROUPS: ReadonlyArray<{ title: string; statuses: readonly string[] }>
 /** The hub before its data arrives: the real breadcrumb, then the header, the four counters and the specs panel as placeholders. */
 function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
   return (
-    <main>
-      <nav className="refine-breadcrumb" aria-label="Navegação">
+    <main data-testid="project-hub-skeleton">
+      <nav data-testid="project-hub-skeleton-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
-          <span>Projetos</span>
+          <span data-testid="project-hub-skeleton-breadcrumb-home">Projetos</span>
         </Link>
-        <span aria-hidden="true">›</span>
-        <strong>{projectId}</strong>
+        <span data-testid="project-hub-skeleton-breadcrumb-separator" aria-hidden="true">›</span>
+        <strong data-testid="project-hub-skeleton-breadcrumb-project">{projectId}</strong>
       </nav>
-      {error ? <p className="error m-0" role="alert">{error}</p> : (
+      {error ? <p data-testid="project-hub-skeleton-error" className="error m-0" role="alert">{error}</p> : (
         <Skeleton>
-          <div className={header}>
-            <div className="min-w-0 flex-1">
-              <h1 className={title}><Bone size="half" /></h1>
-              <p className={desc}><Bone /><Bone /><Bone size="short" /></p>
-              <code className={dir}><Bone size="half" /></code>
+          <div data-testid="project-hub-skeleton-header" className={header}>
+            <div data-testid="project-hub-skeleton-header-title" className="min-w-0 flex-1">
+              <h1 data-testid="project-hub-skeleton-title" className={title}><Bone size="half" /></h1>
+              <p data-testid="project-hub-skeleton-desc" className={desc}><Bone /><Bone /><Bone size="short" /></p>
+              <code data-testid="project-hub-skeleton-dir" className={dir}><Bone size="half" /></code>
             </div>
           </div>
-          <div className={stats}>
+          <div data-testid="project-hub-skeleton-stats" className={stats}>
             {[0, 1, 2, 3].map((i) => (
-              <div className={`${stat} border-line bg-surface-sunken`} key={i}>
-                <span className={`${statValue} text-ink`}><Bone size="tiny" /></span>
-                <span className={statLabel}><Bone size="half" /></span>
+              <div data-testid="project-hub-skeleton-stat" className={`${stat} border-line bg-surface-sunken`} key={i}>
+                <span data-testid="project-hub-skeleton-stat-value" className={`${statValue} text-ink`}><Bone size="tiny" /></span>
+                <span data-testid="project-hub-skeleton-stat-label" className={statLabel}><Bone size="half" /></span>
               </div>
             ))}
           </div>
-          <div className={panel}>
-            <div className={section}>
-              <div className={sectionHead}>
-                <h3 className={sectionTitle}><Bone size="tiny" /></h3>
+          <div data-testid="project-hub-skeleton-panel" className={panel}>
+            <div data-testid="project-hub-skeleton-section" className={section}>
+              <div data-testid="project-hub-skeleton-section-head" className={sectionHead}>
+                <h3 data-testid="project-hub-skeleton-section-title" className={sectionTitle}><Bone size="tiny" /></h3>
                 <Bone size="action" />
               </div>
-              <div className={row}><Bone size="short" /></div>
-              <div className={row}><Bone size="half" /></div>
+              <div data-testid="project-hub-skeleton-row-short" className={row}><Bone size="short" /></div>
+              <div data-testid="project-hub-skeleton-row-half" className={row}><Bone size="half" /></div>
             </div>
           </div>
         </Skeleton>
@@ -187,16 +187,16 @@ export function ProjectHubView(p: {
   const lastRunOf = (specId: string) => p.runs.find((r) => r.specId === specId && r.kind === 'run')?.runId ?? p.runs.find((r) => r.specId === specId && r.kind === 'deploy')?.runId ?? '';
   if (p.notFound) {
     return (
-      <main>
-        <div className={emptyState}>
+      <main data-testid="project-hub-not-found">
+        <div data-testid="project-hub-not-found-state" className={emptyState}>
           <Icon name="search" size={24} />
-          <p>Esse projeto não foi encontrado.</p>
+          <p data-testid="project-hub-not-found-text">Esse projeto não foi encontrado.</p>
           <Link className="link-button" to="/projects">Voltar para Projetos<Icon name="arrow-left" size={16} /></Link>
         </div>
       </main>
     );
   }
-  if (!p.project) return <main />;
+  if (!p.project) return <main data-testid="project-hub-empty" />;
   const pr = p.project;
   const refineSpec = p.backlogs?.find((id) => id === `${pr.projectId}-001`);
   const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
@@ -206,26 +206,26 @@ export function ProjectHubView(p: {
   const activeRuns = p.runs.filter((r) => ACTIVE.has(r.status));
   const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
-    <main>
-      <nav className="refine-breadcrumb" aria-label="Navegação">
+    <main data-testid="project-hub-main">
+      <nav data-testid="project-hub-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
         <Link to="/projects" aria-label="Voltar para projetos">
           <Icon name="home" size={16} />
-          <span>Projetos</span>
+          <span data-testid="project-hub-breadcrumb-home">Projetos</span>
         </Link>
-        <span aria-hidden="true">›</span>
-        <strong>{pr.projectId}</strong>
+        <span data-testid="project-hub-breadcrumb-separator" aria-hidden="true">›</span>
+        <strong data-testid="project-hub-breadcrumb-project">{pr.projectId}</strong>
       </nav>
-      <header className={header}>
-        <div className="min-w-0">
-          <h1 className={title}>{pr.name || pr.projectId}</h1>
-          <p className={desc}>{pr.description}</p>
-          <code className={dir}>{pr.dir}</code>
+      <header data-testid="project-hub-header" className={header}>
+        <div data-testid="project-hub-header-title" className="min-w-0">
+          <h1 data-testid="project-hub-title" className={title}>{pr.name || pr.projectId}</h1>
+          <p data-testid="project-hub-desc" className={desc}>{pr.description}</p>
+          <code data-testid="project-hub-dir" className={dir}>{pr.dir}</code>
         </div>
-        <div className="grid flex-none justify-items-end gap-3">
+        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3">
           {percent === null ? null : (
-            <div className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
-              <div className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
-              <span className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
+            <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
+              <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
+              <span data-testid="project-hub-progress-value" className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
           {pr.repoUrl ? (
@@ -236,62 +236,62 @@ export function ProjectHubView(p: {
           ) : null}
         </div>
       </header>
-      <div className={stats}>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{pr.specs.length}</span>
-          <span className={statLabel}>{plural(pr.specs.length, 'spec', 'specs')}</span>
+      <div data-testid="project-hub-stats" className={stats}>
+        <div data-testid="project-hub-stat-specs" className={`${stat} border-line bg-surface shadow-card`}>
+          <span data-testid="project-hub-stat-specs-value" className={`${statValue} text-ink`}>{pr.specs.length}</span>
+          <span data-testid="project-hub-stat-specs-label" className={statLabel}>{plural(pr.specs.length, 'spec', 'specs')}</span>
         </div>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{agentRuns}</span>
-          <span className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
+        <div data-testid="project-hub-stat-runs" className={`${stat} border-line bg-surface shadow-card`}>
+          <span data-testid="project-hub-stat-runs-value" className={`${statValue} text-ink`}>{agentRuns}</span>
+          <span data-testid="project-hub-stat-runs-label" className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
         </div>
-        <div className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
-          <span className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
-          <span className={statLabel}>em andamento</span>
+        <div data-testid="project-hub-stat-active" className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
+          <span data-testid="project-hub-stat-active-value" className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
+          <span data-testid="project-hub-stat-active-label" className={statLabel}>em andamento</span>
         </div>
-        <div className={`${stat} border-line bg-surface shadow-card`}>
-          <span className={`${statValue} text-ink`}>{money(totalCost)}</span>
-          <span className={statLabel}>custo total</span>
+        <div data-testid="project-hub-stat-cost" className={`${stat} border-line bg-surface shadow-card`}>
+          <span data-testid="project-hub-stat-cost-value" className={`${statValue} text-ink`}>{money(totalCost)}</span>
+          <span data-testid="project-hub-stat-cost-label" className={statLabel}>custo total</span>
         </div>
       </div>
       {(p.backlogs ?? []).map((specId) => <BacklogBanner key={specId} projectId={pr.projectId} specId={specId} />)}
-      <section className={`${panel} @container`}>
-        <div className={section}>
-          <div className={sectionTitle}>
-            <span className={sectionIcon}><Icon name="code" size={14} /></span>
-            <h2 className={sectionHeading}>Execuções</h2>
+      <section data-testid="project-hub-runs-card" className={`${panel} @container`}>
+        <div data-testid="project-hub-runs-section" className={section}>
+          <div data-testid="project-hub-runs-title-row" className={sectionTitle}>
+            <span data-testid="project-hub-runs-icon" className={sectionIcon}><Icon name="code" size={14} /></span>
+            <h2 data-testid="project-hub-runs-title" className={sectionHeading}>Execuções</h2>
           </div>
           {p.runs.length === 0 ? (
-            <p className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
+            <p data-testid="project-hub-runs-empty" className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
           ) : (
             <>
               <TableFilters view={runsView} subject="execuções" placeholder="Filtrar por execução ou spec" facetName="Status" />
-              <div className="@container relative -mx-[0.6rem] @max-[44rem]:mx-0 min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap @max-[44rem]:[&_td]:h-auto @max-[44rem]:[&_td]:whitespace-normal">
-                <table className={`m-0 ${responsiveTable} @min-[60rem]:min-w-[60rem] table-fixed`} id={`runs-${pr.projectId}`}>
-                  <colgroup><col className="w-[13%]" /><col className="w-[20%]" /><col className="w-[14%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[10%]" /><col className="w-[15%]" /></colgroup>
-                  <thead className={responsiveHead}>
-                    <tr>
+              <div data-testid="project-hub-runs-table-wrap" className="@container relative -mx-[0.6rem] @max-[44rem]:mx-0 min-w-0 overflow-x-auto [&_td]:h-12 [&_td]:py-2 [&_td]:align-middle [&_td]:whitespace-nowrap [&_th]:align-middle [&_th]:whitespace-nowrap @max-[44rem]:[&_td]:h-auto @max-[44rem]:[&_td]:whitespace-normal">
+                <table data-testid="project-hub-runs-table" className={`m-0 ${responsiveTable} @min-[60rem]:min-w-[60rem] table-fixed`} id={`runs-${pr.projectId}`}>
+                  <colgroup data-testid="project-hub-runs-colgroup"><col data-testid="project-hub-runs-col-run" className="w-[13%]" /><col data-testid="project-hub-runs-col-spec" className="w-[20%]" /><col data-testid="project-hub-runs-col-when" className="w-[14%]" /><col data-testid="project-hub-runs-col-status" className="w-[17%]" /><col data-testid="project-hub-runs-col-tokens" className="w-[11%]" /><col data-testid="project-hub-runs-col-cost" className="w-[10%]" /><col data-testid="project-hub-runs-col-actions" className="w-[15%]" /></colgroup>
+                  <thead data-testid="project-hub-runs-head" className={responsiveHead}>
+                    <tr data-testid="project-hub-runs-head-row">
                       <SortHeader view={runsView} column="run" tip={<InfoTip text={HELP.runName} />}>Execução</SortHeader>
                       <SortHeader view={runsView} column="spec" tip={<InfoTip text={HELP.runSpec} />}>Spec</SortHeader>
                       <SortHeader view={runsView} column="at" tip={<InfoTip text={HELP.runAt} />}>Quando</SortHeader>
                       <SortHeader view={runsView} column="status" tip={<InfoTip text={HELP.runStatus} />}>Status</SortHeader>
                       <SortHeader view={runsView} column="tokens" className="num" tip={<InfoTip text={HELP.tokens} />}>Tokens</SortHeader>
                       <SortHeader view={runsView} column="cost" className="num" tip={<InfoTip text={HELP.cost} />}>Custo</SortHeader>
-                      <th scope="col"><span className="sr-only">Ações</span></th>
+                      <th data-testid="project-hub-runs-actions-header" scope="col"><span data-testid="project-hub-runs-actions-label" className="sr-only">Ações</span></th>
                     </tr>
                   </thead>
-                  <tbody className="@max-[44rem]:block">
-                    {runsView.rows.length === 0 ? <tr><td colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
+                  <tbody data-testid="project-hub-runs-tbody" className="@max-[44rem]:block">
+                    {runsView.rows.length === 0 ? <tr data-testid="project-hub-runs-empty-row"><td data-testid="project-hub-runs-empty-cell" colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
                     {(showAll ? runsView.rows : runsView.rows.slice(0, RECENT_RUNS)).map((r) => (
-                      <tr key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
-                        <td className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
-                        <td className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
-                        <td className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
-                        <td className={responsiveCell} data-label="Status">{chip(r.status)}</td>
-                        <td className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
-                        <td className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
-                        <td className={responsiveCell}>
-                          <span className="flex flex-wrap justify-end gap-2">
+                      <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
+                        <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
+                        <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
+                        <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
+                        <td data-testid={`project-hub-run-status-${r.runId}`} className={responsiveCell} data-label="Status">{chip(r.status)}</td>
+                        <td data-testid={`project-hub-run-tokens-${r.runId}`} className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
+                        <td data-testid={`project-hub-run-cost-${r.runId}`} className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
+                        <td data-testid={`project-hub-run-actions-${r.runId}`} className={responsiveCell}>
+                          <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2">
                             {r.locked ? (
                               <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
@@ -316,7 +316,7 @@ export function ProjectHubView(p: {
                 </table>
               </div>
               {runsView.rows.length > RECENT_RUNS ? (
-                <button type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[6px] pointer-coarse:after:content-['']" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
+                <button data-testid="project-hub-runs-toggle" type="button" className="min-w-[auto] inline-flex h-8 items-center gap-1.5 justify-self-start border-0 bg-transparent p-0 text-[0.8125rem] text-ink-soft hover:not-disabled:text-ink hover:not-disabled:underline hover:not-disabled:underline-offset-3 aria-expanded:[&_svg]:rotate-180 relative pointer-coarse:after:absolute pointer-coarse:after:-inset-[6px] pointer-coarse:after:content-['']" aria-expanded={showAll} aria-controls={`runs-${pr.projectId}`} onClick={() => setShowAll(!showAll)}>
                   {showAll ? 'Mostrar menos' : `Mostrar todas (${runsView.rows.length})`}
                   <Icon name="chevron" size={14} />
                 </button>
@@ -327,13 +327,13 @@ export function ProjectHubView(p: {
       </section>
       {allConcluded && p.apps ? (
         <section className={panel} data-testid="project-apps">
-          <div className={section}>
-            <div className={sectionHead}>
-              <div className={sectionTitle}>
-                <span className={sectionIcon}><Icon name="external" size={14} /></span>
-                <h2 className={sectionHeading}>Aplicação no ar</h2>
+          <div data-testid="project-hub-apps-section" className={section}>
+            <div data-testid="project-hub-apps-head" className={sectionHead}>
+              <div data-testid="project-hub-apps-title-row" className={sectionTitle}>
+                <span data-testid="project-hub-apps-icon" className={sectionIcon}><Icon name="external" size={14} /></span>
+                <h2 data-testid="project-hub-apps-title" className={sectionHeading}>Aplicação no ar</h2>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div data-testid="project-hub-apps-links" className="flex flex-wrap gap-2">
                 {p.apps.web ? <a className="primary-button" data-testid="open-web-ui" href={p.apps.web} target="_blank" rel="noreferrer">Abrir Web UI<Icon name="external" size={16} /></a> : null}
                 {p.apps.swagger ? <a className="link-button" data-testid="open-swagger" href={p.apps.swagger} target="_blank" rel="noreferrer">Abrir Swagger<Icon name="external" size={16} /></a> : null}
               </div>
@@ -342,7 +342,7 @@ export function ProjectHubView(p: {
               <p className="hint m-0" data-testid="apps-up-no-links">A aplicação responde, mas não tem Swagger nem interface web para abrir. Nenhum deploy novo foi iniciado.</p>
             )}
             {p.apps.web || p.apps.swagger || p.apps.online ? null : (
-              <div className="flex flex-wrap items-center gap-3">
+              <div data-testid="project-hub-apps-offline-actions" className="flex flex-wrap items-center gap-3">
                 <p className="hint m-0" data-testid="apps-offline">A aplicação não está no ar.</p>
                 {p.onStartApp ? <button type="button" className="primary-button" data-testid="start-app" disabled={activeRuns.length > 0} onClick={p.onStartApp}>{activeRuns.length > 0 ? 'Subindo a aplicação…' : 'Iniciar aplicação'}</button> : null}
               </div>
@@ -352,26 +352,26 @@ export function ProjectHubView(p: {
       ) : null}
       {(p.repositories?.length ?? 0) > 0 ? <RepositoriesPanel projectId={pr.projectId} repositories={p.repositories ?? []} /> : pr.services?.length ? (
         <section className={panel} data-testid="project-services">
-          <div className={section}>
-            <div className={sectionHead}>
-              <div className={sectionTitle}>
-                <span className={sectionIcon}><Icon name="code" size={14} /></span>
-                <h2 className={sectionHeading}>Serviços</h2>
+          <div data-testid="project-hub-services-section" className={section}>
+            <div data-testid="project-hub-services-head" className={sectionHead}>
+              <div data-testid="project-hub-services-title-row" className={sectionTitle}>
+                <span data-testid="project-hub-services-icon" className={sectionIcon}><Icon name="code" size={14} /></span>
+                <h2 data-testid="project-hub-services-title" className={sectionHeading}>Serviços</h2>
                 <InfoTip label="Serviços" text={HELP.services} />
               </div>
             </div>
-            <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
+            <ul data-testid="project-hub-services-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
               {pr.services.map((s) => (
                 <li className="min-w-0" key={s.name} data-testid={`project-service-${s.name}`}>
                   {s.repoUrl ? (
-                    <a className="link-button w-full min-w-0 justify-between" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
-                      <span className="wrap-anywhere">{s.name}</span>
+                    <a data-testid={`project-hub-service-link-${s.name}`} className="link-button w-full min-w-0 justify-between" href={s.repoUrl} target="_blank" rel="noreferrer" aria-label={`Abrir ${s.name} no GitHub`}>
+                      <span data-testid={`project-hub-service-name-${s.name}`} className="wrap-anywhere">{s.name}</span>
                       <Icon name="external" size={16} />
                     </a>
                   ) : (
-                    <span className="flex w-full min-w-0 flex-col rounded-md border border-line px-3 py-2">
-                      <strong className="wrap-anywhere">{s.name}</strong>
-                      <span className="hint">Repositório ainda não criado</span>
+                    <span data-testid={`project-hub-service-pending-${s.name}`} className="flex w-full min-w-0 flex-col rounded-md border border-line px-3 py-2">
+                      <strong data-testid={`project-hub-service-pending-name-${s.name}`} className="wrap-anywhere">{s.name}</strong>
+                      <span data-testid={`project-hub-service-pending-hint-${s.name}`} className="hint">Repositório ainda não criado</span>
                     </span>
                   )}
                 </li>
@@ -381,29 +381,29 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
-      {p.error ? <p className="error m-0" role="alert">{p.error}</p> : null}
+      {p.error ? <p data-testid="project-hub-error" className="error m-0" role="alert">{p.error}</p> : null}
       {p.docs?.length ? (
         <section className={panel} data-testid="project-docs">
-          <div className={section}>
-            <div className={sectionHead}>
-              <div className={sectionTitle}>
-                <span className={sectionIcon}><Icon name="download" size={14} /></span>
-                <h2 className={sectionHeading}>Documentos</h2>
+          <div data-testid="project-hub-docs-section" className={section}>
+            <div data-testid="project-hub-docs-head" className={sectionHead}>
+              <div data-testid="project-hub-docs-title-row" className={sectionTitle}>
+                <span data-testid="project-hub-docs-icon" className={sectionIcon}><Icon name="download" size={14} /></span>
+                <h2 data-testid="project-hub-docs-title" className={sectionHeading}>Documentos</h2>
               </div>
             </div>
-            <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+            <ul data-testid="project-hub-docs-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {p.docs.map((d) => (
                 <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2" key={d.file} data-testid={`project-doc-${d.file}`}>
                   {refineSpec ? (
                     <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${refineSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
-                      <span className="wrap-anywhere">{d.file}</span>
+                      <span data-testid={`project-hub-doc-name-${d.file}`} className="wrap-anywhere">{d.file}</span>
                       <Icon name="arrow-right" size={16} />
                     </Link>
                   ) : (
-                    <strong className="wrap-anywhere min-w-0 flex-1">{d.file}</strong>
+                    <strong data-testid={`project-hub-doc-label-${d.file}`} className="wrap-anywhere min-w-0 flex-1">{d.file}</strong>
                   )}
                   {d.text === null ? (
-                    <span className="hint">Ainda não publicado</span>
+                    <span data-testid={`project-hub-doc-pending-${d.file}`} className="hint">Ainda não publicado</span>
                   ) : (
                     <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
                       <Icon name="download" size={16} />
@@ -416,11 +416,11 @@ export function ProjectHubView(p: {
         </section>
       ) : null}
       <section className={panel} data-testid="project-specs">
-        <div className={section}>
-          <div className={sectionHead}>
-            <div className={sectionTitle}>
-              <span className={sectionIcon}><Icon name="list" size={14} /></span>
-              <h2 className={sectionHeading}>Especificações</h2>
+        <div data-testid="project-hub-specs-section" className={section}>
+          <div data-testid="project-hub-specs-head" className={sectionHead}>
+            <div data-testid="project-hub-specs-title-row" className={sectionTitle}>
+              <span data-testid="project-hub-specs-icon" className={sectionIcon}><Icon name="list" size={14} /></span>
+              <h2 data-testid="project-hub-specs-title" className={sectionHeading}>Especificações</h2>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
             {creating ? null : (
@@ -432,6 +432,7 @@ export function ProjectHubView(p: {
           </div>
           {creating ? (
             <form
+              data-testid="project-hub-new-spec-form"
               className="mt-3 flex flex-col flex-nowrap items-stretch gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -439,16 +440,16 @@ export function ProjectHubView(p: {
                 void Promise.resolve(p.onNewSpec(specDraft.trim(), specDescription)).finally(() => setSubmitting(false));
               }}
             >
-              <label className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
+              <label data-testid="project-hub-new-spec-description-label" className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
               <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
               {idShown ? (
                 <>
-                  <label className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
+                  <label data-testid="project-hub-new-spec-id-label" className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
                   <input className="w-full max-w-[24rem] min-w-0" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
                 </>
               ) : null}
-              {suggestError ? <span className="error" role="alert">{suggestError}</span> : null}
-              <div className="flex flex-wrap justify-end gap-2">
+              {suggestError ? <span data-testid="project-hub-new-spec-error" className="error" role="alert">{suggestError}</span> : null}
+              <div data-testid="project-hub-new-spec-actions" className="flex flex-wrap justify-end gap-2">
                 <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
                 {idShown ? (
                   <ActionButton key="new-spec" type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
@@ -464,8 +465,8 @@ export function ProjectHubView(p: {
             creating ? null : (
               <div className={emptyState} data-testid="no-specs">
                 <Icon name="list" size={24} />
-                <p>Este projeto ainda não tem specs.</p>
-                <p>Uma spec descreve uma entrega. O caminho é: descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado.</p>
+                <p data-testid="project-hub-no-specs-text">Este projeto ainda não tem specs.</p>
+                <p data-testid="project-hub-no-specs-steps">Uma spec descreve uma entrega. O caminho é: descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado.</p>
                 <button type="button" className={action.primary} data-testid="empty-new-spec" onClick={() => setCreating(true)}>
                   Nova spec
                   <Icon name="plus" size={14} />
@@ -473,16 +474,16 @@ export function ProjectHubView(p: {
               </div>
             )
           ) : specsView.rows.length === 0 ? (
-            <p className={empty}>Nenhuma spec corresponde ao filtro.</p>
+            <p data-testid="project-hub-specs-empty" className={empty}>Nenhuma spec corresponde ao filtro.</p>
           ) : (
-            <ul className={rows}>
+            <ul data-testid="project-hub-specs-list" className={rows}>
               {groupedSpecs.flatMap((g) => [
-                <li role="presentation" key={g.title} className={groupHeading}>{g.title}</li>,
+                <li data-testid={`project-hub-specs-group-${g.title}`} role="presentation" key={g.title} className={groupHeading}>{g.title}</li>,
                 ...g.rows.map((s) => (
-                <li className={row} key={s.specId}>
-                  <span className={rowId}>{s.specId}</span>
+                <li data-testid={`project-hub-spec-${s.specId}`} className={row} key={s.specId}>
+                  <span data-testid={`project-hub-spec-id-${s.specId}`} className={rowId}>{s.specId}</span>
                   {chip(shownStatus(s))}
-                  <span className={rowActions}>
+                  <span data-testid={`project-hub-spec-actions-${s.specId}`} className={rowActions}>
                     {CONTINUABLE.has(s.status) ? (
                       <ActionButton className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)} icon={<Icon name="arrow-right" size={14} />}>
                         Continuar spec
@@ -518,7 +519,7 @@ export function ProjectHubView(p: {
                         </Link>
                       ) : null
                     ) : s.status === 'planned' ? (
-                      <span className="text-ink-soft">Inicia com o programa do backlog</span>
+                      <span data-testid={`project-hub-spec-planned-${s.specId}`} className="text-ink-soft">Inicia com o programa do backlog</span>
                     ) : (
                       <ActionButton key="start" className={action.primary} data-testid={`start-${s.specId}`} aria-label={`Iniciar execução de ${s.specId}`} onClick={() => p.onStart(s.specId)} icon={<Icon name="play" size={14} />}>
                         Iniciar execução
@@ -534,19 +535,19 @@ export function ProjectHubView(p: {
         </div>
       </section>
       {p.drafts.length > 0 ? (
-        <section className={panel}>
-          <div className={section}>
-            <div className={sectionTitle}>
-              <span className={sectionIcon}><Icon name="file" size={14} /></span>
-              <h2 className={sectionHeading}>Refinamentos em andamento</h2>
+        <section className={panel} data-testid="project-hub-drafts-card">
+          <div data-testid="project-hub-drafts-section" className={section}>
+            <div data-testid="project-hub-drafts-title-row" className={sectionTitle}>
+              <span data-testid="project-hub-drafts-icon" className={sectionIcon}><Icon name="file" size={14} /></span>
+              <h2 data-testid="project-hub-drafts-title" className={sectionHeading}>Refinamentos em andamento</h2>
               <InfoTip label="Refinamentos em andamento" text={HELP.drafts} />
             </div>
-            <ul className={rows}>
+            <ul data-testid="project-hub-drafts-list" className={rows}>
               {p.drafts.map((d) => (
-                <li className={row} key={d.specId}>
-                  <span className={rowId}>{d.specId}</span>
+                <li data-testid={`project-hub-draft-${d.specId}`} className={row} key={d.specId}>
+                  <span data-testid={`project-hub-draft-id-${d.specId}`} className={rowId}>{d.specId}</span>
                   {chip(d.state)}
-                  <span className={rowActions}>
+                  <span data-testid={`project-hub-draft-actions-${d.specId}`} className={rowActions}>
                     <button type="button" className={action.danger} data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
                       Excluir
                       <Icon name="trash" size={14} />
@@ -556,7 +557,7 @@ export function ProjectHubView(p: {
                       <Icon name="arrow-right" size={14} />
                     </Link>
                   </span>
-                  {p.deleteError && pendingDelete === null ? <p className="error" role="alert">{p.deleteError}</p> : null}
+                  {p.deleteError && pendingDelete === null ? <p data-testid={`project-hub-draft-error-${d.specId}`} className="error" role="alert">{p.deleteError}</p> : null}
                 </li>
               ))}
             </ul>

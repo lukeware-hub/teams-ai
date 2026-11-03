@@ -45,8 +45,8 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
     if (!onEnable) return null;
     return (
       <div className="my-4 grid gap-3 rounded-lg border border-line bg-surface-sunken p-4" data-testid="backlog-off">
-        <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Backlog<InfoTip text={HELP} /></h3>
-        <p className="text-[0.8125rem] text-ink-soft">Quebre os documentos em specs organizadas e priorizadas, em vez de uma spec só.</p>
+        <h3 className="section-title m-0 flex items-center gap-2" data-testid="backlog-off-title"><Icon name="list" size={20} />Backlog<InfoTip text={HELP} /></h3>
+        <p className="text-[0.8125rem] text-ink-soft" data-testid="backlog-off-hint">Quebre os documentos em specs organizadas e priorizadas, em vez de uma spec só.</p>
         <ActionButton className="secondary" data-testid="enable-backlog" disabled={locked} onClick={onEnable} icon={<Icon name="list" size={16} />}>Quebrar em backlog</ActionButton>
       </div>
     );
@@ -61,32 +61,32 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
     : epics;
   return (
     <div className="my-4 grid gap-1" data-testid="backlog-on">
-      <h3 className="section-title m-0 mb-2 flex items-center gap-2"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} ${backlog.items.length === 1 ? 'spec' : 'specs'} em ${byRepository ? groups.length + (groups.length === 1 ? ' repositório' : ' repositórios') : epics.length + (epics.length === 1 ? ' épico' : ' épicos')}` : ''}<InfoTip text={HELP} /></h3>
-      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
+      <h3 className="section-title m-0 mb-2 flex items-center gap-2" data-testid="backlog-on-title"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} ${backlog.items.length === 1 ? 'spec' : 'specs'} em ${byRepository ? groups.length + (groups.length === 1 ? ' repositório' : ' repositórios') : epics.length + (epics.length === 1 ? ' épico' : ' épicos')}` : ''}<InfoTip text={HELP} /></h3>
+      {backlog.items.length === 0 && !evaluating && <p className="text-[0.8125rem] text-ink-soft" data-testid="backlog-empty">{mandatory ? 'O esboço do backlog aparece aqui quando os documentos ficarem prontos.' :'O backlog aparece depois da próxima avaliação. Clique em Avaliar.'}</p>}
       {groups.map((epic) => (
         <details key={epic.key} className="group grid open:gap-[0.4rem]" data-testid={`${byRepository ? 'repo' : 'epic'}-${epic.key}`}>
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden">
-            <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
-            <span className="min-w-0 flex-1 font-semibold wrap-anywhere">{epic.title}</span>
-            <span className="count-pill">{epic.items.length}</span>
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden" data-testid={`backlog-group-summary-${epic.key}`}>
+            <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90" data-testid={`backlog-group-chevron-${epic.key}`}><Icon name="chevron-right" size={16} /></span>
+            <span className="min-w-0 flex-1 font-semibold wrap-anywhere" data-testid={`backlog-group-title-${epic.key}`}>{epic.title}</span>
+            <span className="count-pill" data-testid={`backlog-group-count-${epic.key}`}>{epic.items.length}</span>
           </summary>
-          <ol className="m-0 grid list-none gap-[0.4rem] p-0">
+          <ol className="m-0 grid list-none gap-[0.4rem] p-0" data-testid={`backlog-group-list-${epic.key}`}>
             {epic.items.map((i) => (
               <li key={i.key} className="rounded-md border border-line bg-surface" data-testid={`item-${i.key}`}>
-                <details>
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-[0.65rem] py-2 [&::-webkit-details-marker]:hidden">
-                    <span className={`${bkChip} ${bkTone[i.priority]}`}>{i.priority}</span>
-                    <b className="min-w-[10rem] flex-[1_1_10rem] font-semibold wrap-anywhere">{i.title}</b>
-                    {backlog.detail && <span className={`${bkChip} ${STATUS_TONE[itemStatus(backlog, i.key)]}`}>{itemStatus(backlog, i.key)}</span>}
-                    {byRepository && <span className={bkMeta}>{epicTitle.get(i.epic) ?? i.epic}</span>}
-                    <span className={bkMeta}>#{i.rank} · {SIZE[i.size]}</span>
+                <details data-testid={`backlog-item-details-${i.key}`}>
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-[0.65rem] py-2 [&::-webkit-details-marker]:hidden" data-testid={`backlog-item-summary-${i.key}`}>
+                    <span className={`${bkChip} ${bkTone[i.priority]}`} data-testid={`backlog-item-priority-${i.key}`}>{i.priority}</span>
+                    <b className="min-w-[10rem] flex-[1_1_10rem] font-semibold wrap-anywhere" data-testid={`backlog-item-title-${i.key}`}>{i.title}</b>
+                    {backlog.detail && <span className={`${bkChip} ${STATUS_TONE[itemStatus(backlog, i.key)]}`} data-testid={`backlog-item-status-${i.key}`}>{itemStatus(backlog, i.key)}</span>}
+                    {byRepository && <span className={bkMeta} data-testid={`backlog-item-epic-${i.key}`}>{epicTitle.get(i.epic) ?? i.epic}</span>}
+                    <span className={bkMeta} data-testid={`backlog-item-meta-${i.key}`}>#{i.rank} · {SIZE[i.size]}</span>
                   </summary>
-                  <div className="grid gap-[0.35rem] px-[0.65rem] pb-[0.65rem] text-[0.8125rem] text-ink-soft [&_p]:m-0">
-                    <p>{i.scope}</p>
-                    <p>Por quê: {i.rationale}</p>
-                    {i.dependsOn.length > 0 && <p>Depende de: {i.dependsOn.map((d) => titles.get(d) ?? d).join(', ')}</p>}
-                    <p>Origem: {i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}</p>
-                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue, n) => <p key={n} className="text-warn">Problema: {issue}</p>)}
+                  <div className="grid gap-[0.35rem] px-[0.65rem] pb-[0.65rem] text-[0.8125rem] text-ink-soft [&_p]:m-0" data-testid={`backlog-item-body-${i.key}`}>
+                    <p data-testid={`backlog-item-scope-${i.key}`}>{i.scope}</p>
+                    <p data-testid={`backlog-item-rationale-${i.key}`}>Por quê: {i.rationale}</p>
+                    {i.dependsOn.length > 0 && <p data-testid={`backlog-item-depends-${i.key}`}>Depende de: {i.dependsOn.map((d) => titles.get(d) ?? d).join(', ')}</p>}
+                    <p data-testid={`backlog-item-sources-${i.key}`}>Origem: {i.sources.map((s) => `${s.doc} › ${s.heading}`).join('; ')}</p>
+                    {[...(backlog.specs?.[i.key]?.issues ?? []), ...(backlog.preplans?.[i.key]?.issues ?? [])].map((issue, n) => <p key={n} className="text-warn" data-testid={`backlog-item-issue-${i.key}-${issue}`}>Problema: {issue}</p>)}
                   </div>
                 </details>
               </li>

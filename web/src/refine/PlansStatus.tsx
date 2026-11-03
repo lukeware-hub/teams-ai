@@ -55,7 +55,7 @@ type Props = { speckit: Speckit; titles: Map<string, string>; plan?: readonly Co
 /** Where the plan preparation stands, with the feature folders it made so far. `plan` is every step in order. */
 export function PlansStatus(props: Props) {
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2" data-testid="plans-status-wrapper">
       <Status {...props} />
     </div>
   );
@@ -68,11 +68,11 @@ function Status({ speckit, titles, plan = [], waiting = false, startable = false
     return (
       <div role="alert" className={`${line} text-warn`} data-testid="speckit-failed">
         <Icon name="alert" size={20} />
-        <div className="grid min-w-0 gap-1">
-          <span>{speckit.error ?? 'A preparação falhou.'}</span>
+        <div className="grid min-w-0 gap-1" data-testid="plans-status-failed-body">
+          <span data-testid="plans-status-failed-message">{speckit.error ?? 'A preparação falhou.'}</span>
           {speckit.detail && (
-            <details className="text-ink-soft">
-              <summary className="w-fit cursor-pointer text-[0.75rem]">Detalhe técnico</summary>
+            <details className="text-ink-soft" data-testid="plans-status-failed-details">
+              <summary className="w-fit cursor-pointer text-[0.75rem]" data-testid="plans-status-failed-summary">Detalhe técnico</summary>
               <pre className="m-0 max-h-48 overflow-auto text-[0.75rem] whitespace-pre-wrap wrap-anywhere" data-testid="speckit-failed-detail">{speckit.detail}</pre>
             </details>
           )}
@@ -88,21 +88,21 @@ function Status({ speckit, titles, plan = [], waiting = false, startable = false
     const summary = `${done} de ${total} etapas concluídas · ${running} em andamento${reused > 0 ? ` · ${reused} ${reused === 1 ? 'reaproveitada' : 'reaproveitadas'}` : ''}`;
     return (
       <ProcessBox title="Preparação dos planos em andamento" since={speckit.startedAt} testId="speckit-running">
-        <span className="text-[0.75rem] leading-[1.35]">{summary}</span>
-        <div role="progressbar" aria-label="Preparação dos planos" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line">
-          <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
+        <span className="text-[0.75rem] leading-[1.35]" data-testid="plans-status-summary">{summary}</span>
+        <div role="progressbar" aria-label="Preparação dos planos" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line" data-testid="plans-status-progress">
+          <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" data-testid="plans-status-progress-bar" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
         </div>
         <details className="group" data-testid="speckit-log">
-          <summary className="flex cursor-pointer list-none items-center gap-[0.35rem] text-[0.75rem] font-semibold [&::-webkit-details-marker]:hidden">
-            <span className="transition-transform group-open:rotate-90"><Icon name="chevron-right" size={14} /></span>
+          <summary className="flex cursor-pointer list-none items-center gap-[0.35rem] text-[0.75rem] font-semibold [&::-webkit-details-marker]:hidden" data-testid="plans-status-log-summary">
+            <span className="transition-transform group-open:rotate-90" data-testid="plans-status-log-chevron"><Icon name="chevron-right" size={14} /></span>
             Ver as {total} etapas
           </summary>
           <ol className="m-0 mt-[0.35rem] grid max-h-96 list-none gap-1 overflow-y-auto p-0 text-[0.75rem] leading-[1.35]" data-testid="speckit-steps">
             {rowsOf(speckit, plan).map(({ step, state }, i) => (
-              <li key={i} data-state={state} className={`flex items-center gap-2 ${state === 'pending' ? 'text-ink-soft' : ''}`}>
-                <span className="grid size-4 flex-none place-items-center">{rowIcon[state]}</span>
-                <span className="min-w-0 flex-1">{commandName(step, titles)}</span>
-                <span className="flex-none tabular-nums">{state === 'running' ? 'em andamento' : state === 'done' ? doneLabel(step) : ''}</span>
+              <li key={i} data-testid={`plans-status-step-${stepKey(step.command, step.itemKey)}`} data-state={state} className={`flex items-center gap-2 ${state === 'pending' ? 'text-ink-soft' : ''}`}>
+                <span className="grid size-4 flex-none place-items-center" data-testid={`plans-status-step-icon-${stepKey(step.command, step.itemKey)}`}>{rowIcon[state]}</span>
+                <span className="min-w-0 flex-1" data-testid={`plans-status-step-name-${stepKey(step.command, step.itemKey)}`}>{commandName(step, titles)}</span>
+                <span className="flex-none tabular-nums" data-testid={`plans-status-step-time-${stepKey(step.command, step.itemKey)}`}>{state === 'running' ? 'em andamento' : state === 'done' ? doneLabel(step) : ''}</span>
               </li>
             ))}
           </ol>
@@ -112,6 +112,6 @@ function Status({ speckit, titles, plan = [], waiting = false, startable = false
   }
   // A stale preparation is named under the coverage, by the start reason, not here.
   if (speckit.stale) return null;
-  if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span>Responda à pergunta dos planos abaixo para poder iniciar o desenvolvimento.</span></p>;
-  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span>{startable ? 'Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.' : 'Tudo preparado: um plano de implementação por item.'}</span></p>;
+  if (waiting) return <p className={`${line} text-warn`} data-testid="speckit-waiting"><Icon name="alert" size={20} /><span data-testid="plans-status-waiting-text">Responda à pergunta dos planos abaixo para poder iniciar o desenvolvimento.</span></p>;
+  return <p className={`${line} text-good`} data-testid="speckit-done"><Icon name="check" size={20} /><span data-testid="plans-status-done-text">{startable ? 'Tudo preparado: um plano de implementação por item. Pode iniciar o desenvolvimento.' : 'Tudo preparado: um plano de implementação por item.'}</span></p>;
 }

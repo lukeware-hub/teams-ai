@@ -47,7 +47,7 @@ export function ConfirmDialog({ title, subject, confirmLabel, tone = 'danger', i
     };
   }, []);
   return (
-    <div
+    <div data-testid="confirm-dialog-backdrop"
       className="dialog-backdrop"
       onMouseDown={(e) => {
         pressedBackdrop.current = e.target === e.currentTarget;
@@ -56,15 +56,15 @@ export function ConfirmDialog({ title, subject, confirmLabel, tone = 'danger', i
         if (pressedBackdrop.current && e.target === e.currentTarget) cancel.current();
       }}
     >
-      <div ref={box} className="confirm" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
-        <span className={`confirm-icon${tone === 'accent' ? ' is-accent' : ''}`} aria-hidden="true">
+      <div data-testid="confirm-dialog" ref={box} className="confirm" role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+        <span data-testid="confirm-dialog-icon" className={`confirm-icon${tone === 'accent' ? ' is-accent' : ''}`} aria-hidden="true">
           <Icon name={icon} size={22} />
         </span>
-        <h2 id={titleId}>{title}</h2>
-        {subject ? <code className="confirm-subject">{subject}</code> : null}
-        <p>{children as ReactNode}</p>
-        {detail ? <div className="confirm-detail">{detail}</div> : null}
-        <div className="confirm-actions">
+        <h2 data-testid="confirm-dialog-title" id={titleId}>{title}</h2>
+        {subject ? <code data-testid="confirm-dialog-subject" className="confirm-subject">{subject}</code> : null}
+        <p data-testid="confirm-dialog-body">{children as ReactNode}</p>
+        {detail ? <div data-testid="confirm-dialog-detail" className="confirm-detail">{detail}</div> : null}
+        <div data-testid="confirm-dialog-actions" className="confirm-actions">
           <button ref={cancelButton} type="button" className="confirm-cancel" data-testid="delete-cancel" aria-label="Cancelar" onClick={() => cancel.current()}>
             <Icon name="close" size={16} />
           </button>
