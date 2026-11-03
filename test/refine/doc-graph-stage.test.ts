@@ -77,6 +77,22 @@ describe('document graph in the stages', () => {
     await s.close();
   });
 
+  it('an extraction cut by a restart ends as failed, so the stage does not wait forever', async () => {
+    const never = () => new Promise<void>(() => undefined);
+    const s = await RefineSession.create({ ...deps(), extractDocs: never }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO))];
+    void s.evaluateStage('flow.md');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(s.state.graphing).toBe('flow.md');
+    // The crash: the process is gone, so its lock goes with it.
+    await fs.rm(`${draft().events}.lock`, { force: true });
+    const reopened = await RefineSession.open({ ...deps(), extractDocs });
+    expect(reopened.state.graphing).toBeNull();
+    expect(reopened.state.graphError).toMatchObject({ file: 'flow.md' });
+    await reopened.close();
+  });
+
   it('a failed review does not put the document in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);

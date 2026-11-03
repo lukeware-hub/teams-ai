@@ -279,6 +279,8 @@ export class RefineSession {
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
     // A plan preparation cut by a restart is failed too; the owner runs it again.
     if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.', kind: 'interrupted' });
+    // A graph extraction cut by a restart is failed, so the stage does not wait forever; Continuar tries again.
+    if (journal.state.graphing) await journal.fact(RefineEvent.DocGraphFailed, { file: journal.state.graphing, reason: 'A extração foi interrompida quando o servidor reiniciou.' });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
     // A continued spec carries its JSON from main before any cycle has derived one.
