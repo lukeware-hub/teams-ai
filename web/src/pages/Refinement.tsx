@@ -63,6 +63,8 @@ const errorText = (text: string | null) => text
   .replaceAll('internal error', 'erro interno')
   .replace(/\b(documents_consistent|flow_covers_scope|validation_aligned|persistence_aligned|responses_aligned|health_aligned)\b/g, (id) => jevCheckLabel[id] ?? id) ?? null;
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
+/** The pause after the last keystroke before a stage document is saved on its own. */
+const AUTOSAVE_MS = 1500;
 const isBusyError = (e: Error) => e.message.startsWith('Já tem uma avaliação em andamento');
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 
@@ -206,7 +208,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
 export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
-  onSaveDoc(file: DocFile, text: string): void;
+  onSaveDoc(file: DocFile, text: string): void | Promise<unknown>;
   /** "Sugerir": the agent's version of a document written from flow.md, or null when it failed. */
   onSuggestDoc?(file: Exclude<DocFile, 'flow.md'>): Promise<string | null>;
   /** "Anexar imagem": the agent's design.md adjusted from template images (base64), or null when it failed. */
@@ -403,6 +405,13 @@ export function RefinementView(p: ViewProps) {
   const staleFrom = st.staleBy?.[tab] as DocFile | undefined;
   const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
   const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
+  // The text typed on a stage screen is saved a moment after the owner stops typing, so a pause or a closed tab loses nothing.
+  const typed = isDocStep(step) ? docs[step] : undefined;
+  useEffect(() => {
+    if (!newProject || !isDocStep(step) || locked || typed === undefined || typed === snap.docs[step]) return;
+    const timer = setTimeout(() => void p.onSaveDoc(step, typed), AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [typed, step, locked, newProject, snap.docs]);
   // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
   // The view follows only an owner who is on the stage that just ended: one reading another document stays there.
   const stageBefore = useRef(onStage);
@@ -1340,6 +1349,8 @@ export function RefinementView(p: ViewProps) {
         className="primary"
         disabled={locked || continueBlock !== null}
         onClick={async () => {
+          // The text typed last is saved before the server reads the document.
+          if (isDocStep(step) && !locked && docs[step] !== snap.docs[step]) await p.onSaveDoc(step, docs[step] ?? '');
           // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
           const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
           if (stageSession && (!doneStages.includes(step) || notGraphed)) {

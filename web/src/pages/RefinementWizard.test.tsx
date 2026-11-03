@@ -540,3 +540,18 @@ describe('the final review', () => {
     expect(handlers.onEnableBacklog).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('saving what the owner typed', () => {
+  it('saves the text on its own a moment after typing stops', async () => {
+    vi.useFakeTimers();
+    try {
+      const handlers = show(base());
+      fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo novo' } });
+      expect(handlers.onSaveDoc).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1600);
+      expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo novo');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
