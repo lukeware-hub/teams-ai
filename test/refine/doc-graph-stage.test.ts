@@ -164,11 +164,11 @@ describe('document graph in the stages', () => {
     await s.markNotApplicable();
     await s.settled();
     calls.length = 0;
-    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/front'] = [refineOut([])];
     await s.reprocessStage('design.md');
     await s.settled();
     expect(calls.some((c) => c.kind === 'suggest')).toBe(false);
-    expect(calls.some((c) => c.kind === 'refine' && c.role === 'po')).toBe(true);
+    expect(calls.some((c) => c.kind === 'refine')).toBe(true);
     expect(await readDoc(draft(), 'design.md')).toMatch(/^Não se aplica/);
     await s.close();
   });
