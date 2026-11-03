@@ -393,17 +393,17 @@ export function ProjectHubView(p: {
             </div>
             <ul className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {p.docs.map((d) => (
-                <li className="flex min-w-0 gap-2" key={d.file} data-testid={`project-doc-${d.file}`}>
+                <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2" key={d.file} data-testid={`project-doc-${d.file}`}>
                   {refineSpec ? (
                     <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${refineSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
                       <span className="wrap-anywhere">{d.file}</span>
                       <Icon name="arrow-right" size={16} />
                     </Link>
                   ) : (
-                    <strong className="wrap-anywhere min-w-0 flex-1 self-center">{d.file}</strong>
+                    <strong className="wrap-anywhere min-w-0 flex-1">{d.file}</strong>
                   )}
                   {d.text === null ? (
-                    <span className="hint self-center">Ainda não publicado</span>
+                    <span className="hint">Ainda não publicado</span>
                   ) : (
                     <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
                       <Icon name="download" size={16} />
