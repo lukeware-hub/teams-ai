@@ -387,17 +387,28 @@ describe('the final review', () => {
     expect(scores).toContain('briefing.mdsem nota');
   });
 
-  it('hides the pending items until the owner shows them, opens the stage from there, and keeps the general questions in place', () => {
+  it('hides the pending items until the owner shows them, opens the stage from there, and sends the general questions to the backlog step', () => {
     open('?etapa=revisao');
     show(reviewSnap());
     expect(screen.queryByTestId('pending-project.md')).toBeNull();
-    expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
+    // The questions of the PO and the SM are answered in the backlog step, not on the summary.
+    expect(screen.queryByTestId('answer-po-c1-0')).toBeNull();
+    expect(screen.getByTestId('pending-questions-backlog').textContent).toContain('Backlog');
     fireEvent.click(screen.getByTestId('pending-toggle'));
     expect(screen.getByTestId('pending-toggle').textContent).toBe('Ocultar pendências');
     expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
     fireEvent.click(screen.getByTestId('pending-project.md'));
     expect(window.location.search).toContain('etapa=project.md');
     expect(screen.getByTestId('doc-project.md')).toBeTruthy();
+  });
+
+  it('shows the general questions of the PO and the SM on the backlog step, and sends the answer', () => {
+    open('?etapa=backlog');
+    const handlers = show(reviewSnap());
+    expect(screen.getByTestId('round-questions-intro')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('answer'), { target: { value: '8080' } });
+    fireEvent.click(screen.getByTestId('answer-po-c1-0'));
+    expect(handlers.onAnswer).toHaveBeenCalledWith('po-c1-0', '8080', false);
   });
 
   it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {

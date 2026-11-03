@@ -1229,7 +1229,12 @@ export function RefinementView(p: ViewProps) {
                 <Icon name="arrow-right" size={16} />
               </button>
             ))}
-            {!locked && unfiled[0] && questionCard(unfiled[0], unfiled.length)}
+            {unfiled.length > 0 && (
+              <button type="button" className="link-button justify-self-start" data-testid="pending-questions-backlog" onClick={() => goTo('backlog')}>
+                {unfiled.length === 1 ? '1 pergunta do PO ou do SM espera você no Backlog' : `${unfiled.length} perguntas do PO e do SM esperam você no Backlog`}
+                <Icon name="arrow-right" size={16} />
+              </button>
+            )}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
@@ -1244,6 +1249,12 @@ export function RefinementView(p: ViewProps) {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {resolveBlock}
+      {!locked && unfiledQuestions(st).length > 0 && (
+        <div data-testid="round-questions" className="grid gap-3">
+          <p data-testid="round-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">Todas as perguntas do PO e do SM que esperam você ficam aqui, nesta etapa.</p>
+          {unfiledQuestions(st).map((q, i, all) => <Fragment key={q.questionId}>{questionCard(q, all.length - i)}</Fragment>)}
+        </div>
+      )}
       {backlogOn && speckitStatus}
       {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
       {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
