@@ -226,6 +226,18 @@ export function programEntries(draftId: string, backlog: BacklogState, onMain: R
 }
 
 /** Cycles one click may spend: the documents, the backlog outline, the detail, and one more for what the detail left open. */
+/** Whether a finding names a backlog item by its key, not as a piece of a longer key. */
+export function namesItem(text: string, key: string): boolean {
+  for (let at = text.indexOf(key); at !== -1; at = text.indexOf(key, at + 1)) {
+    const before = text[at - 1];
+    const after = text[at + key.length];
+    if (!/[\w-]/.test(before ?? ' ') && !/[\w-]/.test(after ?? ' ')) return true;
+  }
+  return false;
+}
+
+/** The automatic repairs of a rejected specs.md before the owner is asked. */
+const MAX_SPECS_REPAIRS = 2;
 const MAX_CHAIN_CYCLES = 4;
 
 /** What the architecture pack asks the graph for: the system's repositories and the links between them. */
@@ -1073,12 +1085,43 @@ export class RefineSession {
     const specs = this.specsOf();
     if (!specs || this.specsSettled(specs.hash)) return null;
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedSpecs(ctl, specs).finally(() => {
+    const run = this.specsRounds(ctl, specs).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
     this.running = run;
     return run;
+  }
+
+  /** The check of specs.md, and when a reviewer rejects it, up to MAX_SPECS_REPAIRS rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
+  private async specsRounds(ctl: AbortController, first: { text: string; hash: string }): Promise<void> {
+    let specs = first;
+    for (;;) {
+      await this.timedSpecs(ctl, specs);
+      const feedback = ctl.signal.aborted || (this.state.specsRepairs ?? 0) >= MAX_SPECS_REPAIRS ? null : this.specsFeedbackOf(specs.hash);
+      if (!feedback) return;
+      await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
+      await this.timedChain(ctl);
+      const next = this.specsOf();
+      if (!next || this.specsSettled(next.hash)) return;
+      specs = next;
+    }
+  }
+
+  /** What the reviewers rejected in this specs.md text, by backlog item; a finding that names no item goes to every item. Null when nothing was rejected. */
+  private specsFeedbackOf(hash: string): Record<string, string[]> | null {
+    const keys = (this.state.backlog?.items ?? []).map((i) => i.key);
+    const findings = SPECS_REVIEWERS.flatMap((role) => {
+      const review = this.state.specsReview?.[role];
+      return review?.specsHash === hash && review.verdict === 'rejected' ? review.findings.map((text) => ({ role, text })) : [];
+    });
+    if (findings.length === 0) return null;
+    const out: Record<string, string[]> = {};
+    for (const { role, text } of findings) {
+      const named = keys.filter((key) => namesItem(text, key));
+      for (const key of named.length > 0 ? named : keys) (out[key] ??= []).push(`${role.toUpperCase()} (review of specs.md): ${text}`);
+    }
+    return out;
   }
 
   /** Writes specs.md and reads it back, then PO and SM check it; a failure is journaled for each reviewer, never thrown. */

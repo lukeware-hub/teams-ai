@@ -26,7 +26,10 @@ export function specsBlockReason(status: string, hash: string | undefined, revie
 const stamp = (at: string): string => new Date(at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 /** The specs.md check in the verification panel: the file, what PO and SM said of it, and when. */
-export function SpecsCheck({ specsMd, reviews, busy, onRetry }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void }) {
+/** The automatic repairs a rejected specs.md gets before the owner is asked; the same number the server uses. */
+export const SPECS_REPAIRS = 2;
+
+export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0 }: { specsMd: { hash: string } | null | undefined; reviews: Reviews; busy: boolean; onRetry?: () => void; repairs?: number }) {
   const hash = specsMd?.hash;
   const bothFailed = reviews.po?.verdict === 'failed' && reviews.sm?.verdict === 'failed';
   const fileStatus = hash !== undefined ? 'Gerado' : busy ? 'Gerando' : bothFailed ? 'Falhou' : 'Aguardando o backlog';
@@ -57,6 +60,8 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry }: { specsMd: { has
           );
         })}
       </ul>
+      {busy && repairs > 0 && <p data-testid="specs-check-repairing" className="m-0 mt-[0.6rem] text-ink-soft">Os agentes estão corrigindo o que os revisores apontaram (tentativa {repairs} de {SPECS_REPAIRS}).</p>}
+      {!busy && repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected') && <p data-testid="specs-check-gave-up" className="m-0 mt-[0.6rem] text-warn">Os agentes já tentaram corrigir {SPECS_REPAIRS} vezes. Os pontos acima pedem uma decisão sua ou uma mudança nos documentos.</p>}
       {!busy && onRetry && (hash === undefined || current.some((c) => c.review?.verdict === 'failed')) && (
         <button type="button" data-testid="specs-check-retry" className="secondary mt-[0.6rem] h-10 px-[0.8rem]" onClick={onRetry}>Tentar de novo</button>
       )}

@@ -211,6 +211,10 @@ export interface RefineState {
   specsMd?: { hash: string; bytes: number } | null;
   /** The PO's and the SM's last verdict on specs.md; each names the hash of the text it read. */
   specsReview?: Partial<Record<'po' | 'sm', SpecsVerdict>>;
+  /** What the reviewers rejected in specs.md, by backlog item (`*` for every item): the agents fix it when they detail the item again. */
+  specsFeedback?: Record<string, string[]>;
+  /** The automatic repairs of specs.md since it was last approved. */
+  specsRepairs?: number;
   /** The summary the owner authorized the development on, by its hash; absent until that authorization. */
   authorization?: { summaryHash: string } | null;
   /** The last architecture decision failed, with the reason in plain words; cleared by the next success. */
@@ -472,6 +476,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         ...s.specsReview,
         [String(d.role)]: { specsHash: String(d.specsHash), verdict: d.verdict as SpecsVerdict['verdict'], findings: (d.findings as string[]) ?? [], reason: (d.reason as string | null) ?? null, at: e.at ?? null },
       };
+      // Once both approved the same text, the repairs start over for the next rejection.
+      if (s.specsReview.po?.verdict === 'approved' && s.specsReview.sm?.verdict === 'approved' && s.specsReview.po.specsHash === s.specsReview.sm.specsHash) {
+        s.specsRepairs = 0;
+        delete s.specsFeedback;
+      }
+      break;
+    case RefineEvent.SpecsFeedback:
+      s.specsFeedback = d.feedback as Record<string, string[]>;
+      s.specsRepairs = (s.specsRepairs ?? 0) + 1;
       break;
     case RefineEvent.EvaluationStarted:
       s.evaluation = { startedAt: e.at ?? '', endedAt: null };
@@ -653,6 +666,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.backlog) {
         const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
+        // The item was detailed again with what the reviewers said: that feedback is spent.
+        if (s.specsFeedback && row.preplan) delete s.specsFeedback[String(d.key)];
       }
       markSpeckitStale(s);
       break;

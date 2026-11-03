@@ -163,6 +163,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     entry: (value: T, key: string) => E | undefined,
     accept: (item: Item, entry: E | undefined, review: boolean) => Promise<Verdict>,
     fail: (item: Item, issues: string[]) => Promise<void>,
+    seed: (batch: readonly Item[]) => Record<string, string[]> = () => ({}),
   ): Promise<void> => {
     const outcome = (out: StepOutcome<T>, item: Item, review: boolean): Promise<Verdict> => {
       if (out.ok) return accept(item, entry(out.value, item.key), review);
@@ -171,7 +172,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     };
     await Promise.all(batches(todo).map(async (batch) => {
       try {
-        const out = await run(batch, {});
+        const out = await run(batch, seed(batch));
         if (!out) return;
         // A batch that gave no answer fails each item once: a retry alone would fail the same way, and a stop is reported by the cycle.
         if (!out.ok && out.failure !== 'schema') {
@@ -271,8 +272,11 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     kind: 'spec', role: 'po', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
     pack: fitPackBudget(specPack({ specHash: hash, principles: deps.principles(), docs, batch, all: items, previous: Object.fromEntries(batch.map((i) => [i.key, previous.get(i.key)])), rejection, adjusts: Object.fromEntries(batch.map((i) => [i.key, adjustsOf(i)])), graphContext, repositories: Object.fromEntries(batch.map((i) => [i.key, repositoryContextOf(deps.journal.state, i.repository)])) })),
   }, ctx) as Promise<StepOutcome<SpecDetailOutput>>);
-  const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null));
-  await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec);
+  // What the reviewers rejected in specs.md: an item named there is detailed again, and its agents are told what was wrong.
+  const feedback = journal.state.specsFeedback ?? {};
+  const feedbackOf = (batch: readonly Item[]): Record<string, string[]> => Object.fromEntries(batch.filter((i) => feedback[i.key]?.length).map((i) => [i.key, feedback[i.key]!]));
+  const specTodo = items.filter((i) => !kept.has(i.key) && (!specs[i.key] || specs[i.key]!.inputHash !== specHash.get(i.key) || specs[i.key]!.spec === null || feedback[i.key]?.length));
+  await runBatches(specTodo, runSpecs, (v: SpecDetailOutput, key) => v.specs.find((s) => s.key === key), acceptSpec, failSpec, feedbackOf);
   const haltSpecs = haltedResult();
   if (haltSpecs) return haltSpecs;
 
@@ -306,8 +310,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     kind: 'preplan', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
     pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
-  const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null));
-  await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan);
+  const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null || feedback[i.key]?.length));
+  await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan, feedbackOf);
   const haltPreplans = haltedResult();
   if (haltPreplans) return haltPreplans;
 

@@ -29,3 +29,13 @@ describe('stage review context of the earlier documents', () => {
     expect(text).not.toContain('FIM-PAGAMENTO');
   });
 });
+
+describe('namesItem', () => {
+  it('finds an item key written whole, and not one that is part of a longer key', async () => {
+    const { namesItem } = await import('../../server/refine/session.js');
+    expect(namesItem('Item hello-world-greet-user, AC-006: o critério', 'hello-world-greet-user')).toBe(true);
+    expect(namesItem('Itens a e b: hello-world-swagger-docs', 'hello-world')).toBe(false);
+    expect(namesItem('specs.md › base: ok', 'base')).toBe(true);
+    expect(namesItem('baseline sem item', 'base')).toBe(false);
+  });
+});

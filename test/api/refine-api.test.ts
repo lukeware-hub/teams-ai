@@ -892,32 +892,65 @@ describe('refine api', () => {
 
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs.md`;
     const reviewsBefore = calls.filter((c) => c.kind === 'specs-review').length;
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }];
+    // PO rejects the first text; the agents detail the item again with that, the text comes out the same, and only the PO checks it again.
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }, { verdict: 'approved', findings: [] }];
     script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
+    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
     await settle();
     const written = await fs.readFile(file, 'utf8');
     expect(written).toContain('## base: Base');
-    const first = (await snapshot()).state;
-    expect(first.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
-    expect(first.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }, sm: { verdict: 'approved' } });
-    expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(2);
-    // The file and both checks ran inside an open evaluation, which has ended now.
-    expect(first.evaluation?.endedAt).toBeTruthy();
-
-    // The rejected PO runs again on the next visit; the approved SM does not.
-    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
-    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
-    await settle();
+    const done = await snapshot();
+    expect(done.state.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
+    // The rejection went back to the agents on its own: the PO checked the text twice, the SM once.
     const reviews = calls.filter((c) => c.kind === 'specs-review');
     expect(reviews.length - reviewsBefore).toBe(3);
     expect(reviews.at(-1)).toMatchObject({ role: 'po' });
-    expect((await snapshot()).state.specsReview).toMatchObject({ po: { verdict: 'approved' }, sm: { verdict: 'approved' } });
-    expect((await snapshot()).specsApproved).toBe(true);
+    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'approved' }, sm: { verdict: 'approved' } });
+    expect(done.specsApproved).toBe(true);
+    expect(done.state.specsRepairs).toBe(0);
+    // The file and the checks ran inside an open evaluation, which has ended now.
+    expect(done.state.evaluation?.endedAt).toBeTruthy();
 
     // Both approved for this text: a visit starts nothing.
     expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false });
     expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(3);
+  });
+
+  it('a specs.md the reviewers keep rejecting is repaired twice by the agents, then left to the owner with the findings', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
+    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const before = calls.filter((c) => c.kind === 'specs-review').length;
+    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
+    script['specs-review/po'] = [rejected, rejected, rejected];
+    script['specs-review/sm'] = [rejected, rejected, rejected];
+    for (const role of ['po', 'sm']) script[`refine/${role}`] = [{ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }, { checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }];
+    script['spec/po'] = [spec, spec];
+    script['preplan/sm'] = [preplan, preplan];
+    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
+    await settle();
+    const done = await snapshot();
+    expect(calls.filter((c) => c.kind === 'specs-review').length - before).toBe(6);
+    expect(done.state.specsRepairs).toBe(2);
+    expect(done.specsApproved).toBe(false);
+    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }, sm: { verdict: 'rejected' } });
+    // The agents were told which item the reviewers named.
+    expect(calls.filter((c) => c.kind === 'spec').at(-1)?.prompt).toContain('O item base cita uma seção vazia');
   });
 
   it('two concurrent start requests spawn exactly one run', async () => {

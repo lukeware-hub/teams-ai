@@ -27,3 +27,23 @@ describe('the specs.md card', () => {
     expect(screen.queryByTestId('specs-check-retry')).toBeNull();
   });
 });
+
+describe('the specs.md card while the agents repair it', () => {
+  const rejected = { specsHash: 'h', verdict: 'rejected' as const, findings: ['x'], reason: null, at: null };
+
+  it('says the agents are correcting it, with the attempt', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy repairs={1} />);
+    expect(screen.getByTestId('specs-check-repairing').textContent).toContain('tentativa 1 de 2');
+  });
+
+  it('says the agents gave up after the last attempt, and leaves the findings to the owner', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={2} />);
+    expect(screen.getByTestId('specs-check-gave-up').textContent).toContain('2 vezes');
+  });
+
+  it('says nothing about repairs when none ran', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} />);
+    expect(screen.queryByTestId('specs-check-gave-up')).toBeNull();
+    expect(screen.queryByTestId('specs-check-repairing')).toBeNull();
+  });
+});

@@ -555,6 +555,8 @@ export interface RefineState {
   specsMd?: { hash: string; bytes: number } | null;
   /** The PO's and the SM's last verdict on specs.md; each names the hash of the text it read. */
   specsReview?: Partial<Record<'po' | 'sm', SpecsVerdictView>>;
+  /** The automatic repairs of specs.md since it was last approved. */
+  specsRepairs?: number;
   /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
   architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
