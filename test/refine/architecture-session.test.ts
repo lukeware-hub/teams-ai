@@ -151,12 +151,14 @@ describe('architecture decision of a repository session', () => {
     await s.settled();
     expect(s.state.questions.filter((q) => q.origin === 'architecture' && q.status === 'pending')).toEqual([]);
     expect(s.state.questions.find((q) => q.origin === 'architecture' && q.status === 'answered')?.answer).toBe('Sim');
+    // Recording the answer changes the briefing, so the enable decides the architecture once more on it.
+    script['architecture/sm'] = [MICROSERVICES];
     await s.enableBacklog();
     expect(s.state.backlog?.enabled).toBe(true);
     await s.close();
   });
 
-  it('marks the architecture stale after an edit, and the backlog waits for a new decision once the document is graphed again', async () => {
+  it('decides the architecture again on the edited documents when the owner enables the backlog', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await completeStages(s);
     script['architecture/sm'] = [MICROSERVICES];
@@ -168,7 +170,10 @@ describe('architecture decision of a repository session', () => {
     await s.evaluateStage('flow.md');
     await s.settled();
     expect(s.state.graphed).toContain('flow.md');
-    await expect(s.enableBacklog()).rejects.toThrow('Os documentos mudaram depois da arquitetura: decida a arquitetura de novo.');
+    script['architecture/sm'] = [MONOLITH];
+    await s.enableBacklog();
+    expect((await s.snapshot()).architectureStale).toBe(false);
+    expect(s.state.backlog?.enabled).toBe(true);
     await s.close();
   });
 

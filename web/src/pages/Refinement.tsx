@@ -1231,7 +1231,6 @@ export function RefinementView(p: ViewProps) {
   const architectureBusy = evaluating || (st.evaluation != null && st.evaluation.endedAt === null);
   const architectureBlock = (): string | null => (architectureBusy ? 'A arquitetura ainda está sendo decidida: espere ela terminar.'
     : st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
-    : snap.architectureStale === true ? 'Os documentos mudaram: decida a arquitetura de novo.'
     : null);
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
@@ -1248,7 +1247,7 @@ export function RefinementView(p: ViewProps) {
         <h2 className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} stale={snap.architectureStale === true} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (

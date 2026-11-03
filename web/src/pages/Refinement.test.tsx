@@ -728,11 +728,6 @@ describe('the architecture step names what the documentation repository does', (
     expect(window.location.search).toContain('etapa=backlog');
   });
 
-  it('the architecture card says the decision is stale when the documents changed after it', () => {
-    render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...on()} /></MemoryRouter>);
-    expect(screen.getByTestId('architecture-stale').textContent).toBe('Os documentos mudaram depois desta decisão: use Redefinir para decidir de novo.');
-  });
-
   it('the backlog summary names the architecture gap, and its action opens the architecture step', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
@@ -758,14 +753,12 @@ describe('the architecture step names what the documentation repository does', (
     expect(h.onEnableBacklog).not.toHaveBeenCalled();
   });
 
-  it('the architecture button blocks on the click when the documents changed since the decision, and does not move', () => {
+  it('the architecture button goes on when the documents changed since the decision, because the server decides again', () => {
     const h = on();
-    render(<MemoryRouter><RefinementView snap={architectureStep({}, { architectureStale: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
-    expect(screen.getByTestId('architecture-stale')).toBeTruthy();
+    render(<MemoryRouter><RefinementView snap={architectureStep({}, { docsRepo: true, architectureStale: true })} busy={false} events={[]} {...h} /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('architecture-continue'));
-    expect(screen.getByTestId('architecture-note').textContent).toBe('Os documentos mudaram: decida a arquitetura de novo.');
-    expect(window.location.search).toContain('etapa=arquitetura');
-    expect(h.onEnableBacklog).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('architecture-note')).toBeNull();
+    expect(h.onEnableBacklog).toHaveBeenCalled();
   });
 
   it('the architecture button only moves to the backlog step for a legacy session', () => {

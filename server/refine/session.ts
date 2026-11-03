@@ -857,21 +857,39 @@ export class RefineSession {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
     this.guardGraphed();
+    // Plan 90: the owner's answers reach the brief first, so the architecture is decided on the documents the backlog is made of.
+    await this.recordOwnerAnswers();
+    // A decision made on documents that have changed is taken again on the documents as they are.
+    if (await this.isArchitectureStale()) await this.redecideArchitecture();
     const why = await this.architectureProblem();
     if (why) throw new ConflictError(why);
     if (bindRepo && this.state.docsRepo === true) await this.bindDocsRepo();
-    // Plan 90: the owner's earlier answers go into the brief before the move, which carries them, so a crash loses none.
-    const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
-    if (answered.length > 0) {
-      const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!, q.subject), await readDoc(this.deps.draft, 'briefing.md'));
-      await writeDoc(this.deps.draft, 'briefing.md', after);
-      await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
-    }
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await moveBriefingToProject(this.deps.draft);
+  }
+
+  /** Plan 90: the owner's answers not yet in the brief go into it as decisions, so the brief carries them into the move. */
+  private async recordOwnerAnswers(): Promise<void> {
+    const answered = this.state.questions.filter((q) => q.status === 'answered' && q.answer && !q.answeredBy);
+    if (answered.length === 0) return;
+    const after = answered.reduce((doc, q) => recordDecision(doc, q.text, q.answer!, q.subject), await readDoc(this.deps.draft, 'briefing.md'));
+    await writeDoc(this.deps.draft, 'briefing.md', after);
+    await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
+  }
+
+  /** Whether the architecture was decided on documents that have changed since. */
+  private async isArchitectureStale(): Promise<boolean> {
+    return this.state.architecture != null && this.state.architecture.docsHash !== docsHashOf(await this.docsNow());
+  }
+
+  /** Decides the architecture again on the documents as they are; a failed decision is the reason the backlog cannot start. */
+  private async redecideArchitecture(): Promise<void> {
+    await this.decideArchitecture();
+    await this.settled();
+    if (this.state.architectureError) throw new ConflictError(this.state.architectureError);
   }
 
   /** "Preparar planos": the constitution, and a spec, plan and tasks for each item of the detailed backlog, or for the single spec. */

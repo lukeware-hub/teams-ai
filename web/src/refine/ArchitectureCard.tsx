@@ -17,7 +17,7 @@ export function kindLabel(name: string, style: ArchitectureView['style']): strin
  * offers the one primary action. A decision that broke a rule lists each rule still open, so the owner corrects the documents
  * before deciding again.
  */
-export function ArchitectureCard({ architecture, error, issues = [], busy, locked = false, stale = false, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; busy: boolean; locked?: boolean; stale?: boolean; startedAt?: string | null; onDecide: () => void }) {
+export function ArchitectureCard({ architecture, error, issues = [], busy, locked = false, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; busy: boolean; locked?: boolean; startedAt?: string | null; onDecide: () => void }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
@@ -59,7 +59,6 @@ export function ArchitectureCard({ architecture, error, issues = [], busy, locke
           )}
         </>
       )}
-      {decision && stale && <p role="status" data-testid="architecture-stale" className="m-0 text-[0.8125rem] text-warn">Os documentos mudaram depois desta decisão: use Redefinir para decidir de novo.</p>}
       <div className="flex flex-wrap gap-2">
         <ActionButton data-testid="architecture-decide" className={decision ? 'secondary' : 'primary'} disabled={busy || locked} title={locked ? 'O desenvolvimento já começou: a arquitetura não muda mais.' : undefined} onClick={onDecide} icon={<Icon name="refresh" size={16} />}>
           {decision ? 'Redefinir' : 'Decidir a arquitetura'}
