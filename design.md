@@ -1229,6 +1229,18 @@ Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`,
 
 Quando algum item tem repositório, o passo `Backlog` agrupa as linhas pelo repositório, e não pelo épico. Cada grupo é um título com o nome do repositório, o chip do tipo e a contagem de itens. Dentro dele, cada spec mostra o épico como etiqueta, a prioridade, as marcas de spec, plano e tarefas, e a dependência. `Cobertura` continua e ganha a contagem por repositório. A linha de planos e tarefas é a existente (`n de m etapas`). O botão primário `Iniciar desenvolvimento` abre o diálogo de resumo. A etapa só gera specs, planos e tarefas: não valida os arquivos e não mostra aviso de documento mudado no topo. O motivo que impede iniciar aparece logo abaixo de `Cobertura`. Não há alerta de itens reprovados: os agentes resolvem sozinhos os que podem resolver, uma vez por resumo, ao abrir o backlog detalhado. Eles aceitam os ajustes seguros dos documentos, reavaliam, decidem a arquitetura de novo quando ela está velha e preparam os planos e tarefas que faltam. O rodapé fica só com os botões. Quando `Preparar de novo` reaproveita todos os planos, porque nada mudou, a etapa diz `Os planos já estavam atuais; nada foi refeito.` logo abaixo do estado dos planos.
 
+### 26.8.1 Cobertura: chips que abrem a lista
+
+Os chips de `Cobertura` são botões. Cada um mostra a lista do que conta, logo abaixo da linha de chips, e a árvore por épico continua abaixo do painel. Um clique abre o painel daquele chip; clicar no mesmo chip de novo fecha; clicar em outro troca a lista. O chip aberto tem a borda de destaque e `aria-pressed` verdadeiro. Sem chip escolhido, o painel não aparece.
+
+- `seções`: o título de cada seção do `flow.md` e a quantidade de itens que a cobrem.
+- `spec`: o código da spec, o título do item e o épico.
+- `critério`: o código do critério com o texto dado, quando e então, e as tarefas que o cobrem.
+- `tarefa`: o código da tarefa, o título e o critério que ela cobre.
+- `lacunas`: não abre painel. As lacunas continuam em vermelho logo abaixo, como hoje.
+
+No celular, o painel ocupa a largura toda e os chips quebram em linhas. Usa só os tokens e componentes da tela de refinamento, sem cor nova.
+
 ### 26.9 Diálogo de resumo do refinamento
 
 É o `Dialog` existente, com título `Resumo do refinamento`. Traz:
