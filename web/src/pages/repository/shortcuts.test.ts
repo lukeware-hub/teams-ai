@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { LastDeploy, ServiceStatus } from '../../api.js';
-import { isOffline, shortcutsOf } from './shortcuts.js';
+import { isOffline, shortcutsOf, systemHrefOf } from './shortcuts.js';
 
 const HOST = 'localhost';
-const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', kind: null, docsPath: '/docs', services: null, ...over });
+const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', kind: null, docsPath: '/docs', healthcheckPath: null, services: null, ...over });
 const probe = (over: Partial<ServiceStatus> = {}): ServiceStatus => ({ online: true, status: 200, ui: true, docs: true, checkedAt: '2026-11-01T10:00:00.000Z', ...over });
 
 describe('the buttons of a repository, by its kind', () => {
@@ -59,7 +59,7 @@ describe('a button that cannot open yet', () => {
 
 describe('the address a browser opens', () => {
   it('takes the address of the repository\'s own service when the deploy has several', () => {
-    const multi = deploy({ url: null, docsPath: null, services: [{ service: 'shop-api', url: 'http://localhost:3002', docsPath: '/swagger' }] });
+    const multi = deploy({ url: null, docsPath: null, services: [{ service: 'shop-api', url: 'http://localhost:3002', docsPath: '/swagger', healthcheckPath: null }] });
     const answers = probe({ services: [{ service: 'shop-api', online: true, status: 200, ui: false, docs: true }] });
     expect(shortcutsOf('api', 'shop-api', multi, answers, HOST)).toEqual([{ kind: 'swagger', href: 'http://localhost:3002/swagger', reason: null }]);
   });
@@ -86,5 +86,17 @@ describe('a system that is down', () => {
     expect(isOffline(deploy(), probe())).toBe(false);
     expect(isOffline(deploy(), null)).toBe(false);
     expect(isOffline(null, probe({ online: false }))).toBe(false);
+  });
+});
+
+describe('the address that opens the running system', () => {
+  it('opens the published port at the health path when the system is up', () => {
+    const api = deploy({ url: 'http://localhost:20045', kind: 'api', docsPath: null, healthcheckPath: '/greeting' });
+    expect(systemHrefOf('greeting-route', api, probe({ ui: false, docs: false }), HOST)).toBe('http://localhost:20045/greeting');
+  });
+
+  it('gives no address while the system is down', () => {
+    const api = deploy({ url: 'http://localhost:20045', kind: 'api', docsPath: null, healthcheckPath: '/greeting' });
+    expect(systemHrefOf('greeting-route', api, probe({ online: false }), HOST)).toBeNull();
   });
 });

@@ -37,7 +37,7 @@ const dashboard = (over: Partial<RepoDashboard> = {}): RepoDashboard => ({
   files: { total: 0, list: [] },
   tests: { passed: 4, failed: 1, failures: { total: 0, list: [] } },
   retries: { attempts: 1, infra: 0, flaky: 0, replanned: 0, fixes: 0, reopened: 0 },
-  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', kind: 'api', docsPath: '/docs', services: null },
+  lastDeploy: { runId: 'shop-api-cart-1', specId: 'cart', url: 'http://localhost:3001', kind: 'api', docsPath: '/docs', healthcheckPath: null, services: null },
   ...over,
 });
 

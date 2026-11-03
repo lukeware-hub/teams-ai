@@ -37,7 +37,7 @@ function Group({ state, specs, tasks }: { state: SpecState; specs: DashboardSpec
             <span data-testid={`delivery-spec-progress-${spec.specId}`} className="hint">{`${spec.delivered} de ${spec.total} tarefas`}</span>
             {spec.validationRunId && (
               // The summary toggles the spec; the link only opens the validation page.
-              <Link data-testid={`delivery-validate-${spec.specId}`} className="link-button" to={`/runs/${encodeURIComponent(spec.validationRunId)}/validation`} onClick={(e) => e.stopPropagation()}>
+              <Link data-testid={`delivery-validate-${spec.specId}`} className="link-button ml-auto" to={`/runs/${encodeURIComponent(spec.validationRunId)}/validation`} onClick={(e) => e.stopPropagation()}>
                 Validar entrega
               </Link>
             )}

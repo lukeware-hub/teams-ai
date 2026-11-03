@@ -5,7 +5,7 @@ import { usePolling } from '../../usePolling.js';
 import { action, panel } from '../project-shared.js';
 import { KIND_LABEL } from './labels.js';
 import { StatePill } from './StatePill.js';
-import { isOffline, shortcutsOf } from './shortcuts.js';
+import { isOffline, shortcutsOf, systemHrefOf } from './shortcuts.js';
 
 const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
   blocked: 'Bloqueado',
@@ -59,6 +59,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   usePolling(checkProbe, PROBE_MS);
 
   const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed);
+  const systemHref = systemHrefOf(detail.name, deploy, probe, window.location.hostname);
   const start = () => {
     if (!deploy) return;
     setStarting(true);
@@ -103,6 +104,12 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
             )}
           </div>
         ))}
+        {systemHref && (
+          <a href={systemHref} target="_blank" rel="noreferrer" className={action.secondary} data-testid="shortcut-system">
+            Abrir sistema
+            <span className="sr-only"> (abre em nova aba)</span>
+          </a>
+        )}
         {deploy && probe && (
           <span data-testid="repo-service-status" className={`status-pill tone-${probe.online ? 'good' : 'bad'}`}>{probe.online ? 'Sistema no ar' : 'Sistema fora do ar'}</span>
         )}

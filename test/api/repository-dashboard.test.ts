@@ -164,7 +164,7 @@ describe('activity from the journals', () => {
     const second = run('r2', 'cart', 2, 'done', [ev('r2', 'DEPLOY_VERIFIED', { url: 'http://localhost:3002', docsPath: '/docs' })]);
     const inp = input({ specs: [spec('cart')], runs: [second, first] });
     const d = buildDashboard(inp);
-    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', kind: null, docsPath: '/docs', services: null });
+    expect(d.lastDeploy).toEqual({ runId: 'r2', specId: 'cart', url: 'http://localhost:3002', kind: null, docsPath: '/docs', healthcheckPath: null, services: null });
   });
 
   it('gives the kind the plan declared for the last deploy', () => {

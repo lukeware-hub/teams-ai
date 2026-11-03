@@ -147,7 +147,9 @@ export interface LastDeploy {
   /** What the plan declared the service is: api, front or mobile; null for a deploy from before the plan declared it. */
   kind: string | null;
   docsPath: string | null;
-  services: Array<{ service: string; url: string | null; docsPath: string | null }> | null;
+  /** The path the platform checks to tell the service is up, as the plan declared it; null when none. */
+  healthcheckPath: string | null;
+  services: Array<{ service: string; url: string | null; docsPath: string | null; healthcheckPath: string | null }> | null;
 }
 
 export interface RepoDashboard {
@@ -422,8 +424,8 @@ function analyze(input: DashboardInput): { dashboard: RepoDashboard; lists: Dash
       if (e.type === 'FIX_TASKS_PLANNED') retries.fixes += Array.isArray(d.tasks) ? d.tasks.length : 0;
       if (e.type === 'RUN_REOPENED') retries.reopened += 1;
       if (e.type === 'DEPLOY_VERIFIED') {
-        const services = Array.isArray(d.services) ? (d.services as Array<Record<string, unknown>>).map((s) => ({ service: String(s.service), url: str(s.url), docsPath: str(s.docsPath) })) : null;
-        lastDeploy = { runId: run.runId, specId: run.specId, url: str(d.url), kind: str(d.kind), docsPath: str(d.docsPath), services };
+        const services = Array.isArray(d.services) ? (d.services as Array<Record<string, unknown>>).map((s) => ({ service: String(s.service), url: str(s.url), docsPath: str(s.docsPath), healthcheckPath: str(s.healthcheckPath) })) : null;
+        lastDeploy = { runId: run.runId, specId: run.specId, url: str(d.url), kind: str(d.kind), docsPath: str(d.docsPath), healthcheckPath: str(d.healthcheckPath), services };
       }
       if (e.type === 'STEP_STARTED') started.set(String(d.stepId), { role: String(d.role), kind: String(d.kind), taskId: str(d.taskId) });
       if (e.type === 'STEP_FINISHED') {

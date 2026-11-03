@@ -26,10 +26,10 @@ export const TASK_STATE: Record<TaskState, { label: string; tone: string }> = {
 export const RUN_KIND_LABEL: Record<string, string> = { run: 'Execução', complete: 'Conclusão', readme: 'README', deploy: 'Deploy' };
 
 /** The address of the repository's own service, or of the one service of a single-service deploy. */
-export function addressOf(repo: string, deploy: LastDeploy): { url: string | null; docsPath: string | null; service: string | null } {
+export function addressOf(repo: string, deploy: LastDeploy): { url: string | null; docsPath: string | null; healthcheckPath: string | null; service: string | null } {
   const own = deploy.services?.find((s) => s.service === repo) ?? null;
-  if (own) return { url: own.url, docsPath: own.docsPath, service: own.service };
-  return { url: deploy.url, docsPath: deploy.docsPath, service: null };
+  if (own) return { url: own.url, docsPath: own.docsPath, healthcheckPath: own.healthcheckPath, service: own.service };
+  return { url: deploy.url, docsPath: deploy.docsPath, healthcheckPath: deploy.healthcheckPath, service: null };
 }
 
 /** The live answer for the address: the service's own entry when the deploy has several services. */

@@ -39,3 +39,12 @@ function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | n
 export function isOffline(deploy: LastDeploy | null, probe: ServiceStatus | null): boolean {
   return deploy !== null && probe !== null && !probe.online;
 }
+
+/** The address that opens the running system: its health path, so an API answers with a page; null while the system is down or its port is not published. */
+export function systemHrefOf(repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): string | null {
+  if (!deploy || !probe?.online) return null;
+  const address = addressOf(repo, deploy);
+  if (!address.url) return null;
+  const { appUrl } = serviceLinks({ url: address.url, kind: 'api' }, hostname);
+  return appUrl ? `${appUrl}${address.healthcheckPath ?? ''}` : null;
+}
