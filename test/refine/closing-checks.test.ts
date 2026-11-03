@@ -57,6 +57,13 @@ function greenState(): RefineState {
 const failing = (state: RefineState, architectureCurrent = true) => closingChecks(state, architectureCurrent).filter((c) => !c.ok).map((c) => c.id);
 
 describe('closing checks of a repository session', () => {
+  it('says that an empty backlog has no items, not that the architecture and the specs are in place', () => {
+    const state = { ...greenState(), backlog: { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {} } } as never;
+    const checks = closingChecks(state, true);
+    expect(checks.find((c) => c.id === 'architecture')).toMatchObject({ ok: false, detail: 'o backlog ainda não tem itens' });
+    expect(checks.find((c) => c.id === 'specs')).toMatchObject({ ok: false, detail: 'o backlog ainda não tem itens' });
+  });
+
   it('says in plain words which item fails and which documents to review for it', () => {
     const divergence = { fact: 'porta', a: { file: 'docs/project.md', heading: null, quote: 'x' }, b: { file: 'stack.md', heading: null, quote: 'y' }, fix: 'z' };
     const state = {

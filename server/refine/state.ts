@@ -342,8 +342,8 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
   const failing = s.checklist.filter((c) => !c.passed);
   return [
     { id: 'documents', ok: open.length === 0, detail: open.length === 0 ? 'os cinco documentos estão concluídos e no grafo' : `faltam: ${open.join(', ')}` },
-    { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
-    { id: 'specs', ok: noSpec.length === 0 && gaps.length === 0 && keys.length > 0, detail: noSpec.length > 0 ? `sem spec validada: ${noSpec.join(', ')}` : gaps.length > 0 ? `critérios sem item: ${gaps.join(', ')}` : 'cada item tem a sua spec validada' },
+    { id: 'architecture', ok: architectureCurrent && unknown.length === 0 && keys.length > 0, detail: !architectureCurrent ? 'a arquitetura não está decidida sobre os documentos atuais' : keys.length === 0 ? 'o backlog ainda não tem itens' : unknown.length > 0 ? `itens sem repositório da arquitetura: ${unknown.join(', ')}` : 'cada item tem um repositório da arquitetura' },
+    { id: 'specs', ok: noSpec.length === 0 && gaps.length === 0 && keys.length > 0, detail: noSpec.length > 0 ? `sem spec validada: ${noSpec.join(', ')}` : gaps.length > 0 ? `critérios sem item: ${gaps.join(', ')}` : keys.length === 0 ? 'o backlog ainda não tem itens' : 'cada item tem a sua spec validada' },
     { id: 'plans', ok: noPlan.length === 0, detail: noPlan.length === 0 ? 'cada item tem o seu plano' : `sem plano: ${noPlan.join(', ')}` },
     { id: 'tasks', ok: noTasks.length === 0, detail: noTasks.length === 0 ? 'cada item tem a sua lista de tarefas' : `sem lista de tarefas: ${noTasks.join(', ')}` },
     { id: 'dependencies', ok: dangling.length === 0, detail: dangling.length === 0 ? 'todas as dependências existem' : `dependência inexistente: ${dangling.join(', ')}` },

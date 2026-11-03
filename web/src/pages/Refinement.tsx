@@ -1195,7 +1195,8 @@ export function RefinementView(p: ViewProps) {
   // The closing checks only alert: the start stays open, and each unmet check says what to fix, with its divergences.
   const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
   const failingChecklist = st.checklist.filter((c) => !c.passed);
-  const closingRows = closingFailing.flatMap((check) => (check.id === 'architecture'
+  const architectureNeedsDecision = snap.architectureStale === true || st.architecture == null;
+  const closingRows = closingFailing.flatMap((check) => (check.id === 'architecture' && architectureNeedsDecision
     ? [<li key={check.id}>{check.detail}. <button type="button" className="link-button" data-testid="closing-architecture" onClick={() => goTo('architecture')}>Decidir a arquitetura de novo</button></li>]
     : check.id === 'questions' && failingChecklist.length > 0
     ? failingChecklist.map((item) => (
