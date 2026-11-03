@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextStep, prevStep, stepsOf, wizardNodes, WIZARD_STEPS } from './wizard.js';
 
-const base = { stages: true, doneStages: [] as string[], outdatedDocs: [] as string[], staleBy: {}, reviewClosed: false };
+const base = { stages: true, doneStages: [] as string[], outdatedDocs: [] as string[], staleBy: {}, reviewClosed: false, questions: [], patches: [] };
 
 describe('architecture step of a repository session', () => {
   it('puts the architecture between the review and the backlog only in a repository session', () => {

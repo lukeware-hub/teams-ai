@@ -6,6 +6,8 @@ export interface StepperStep {
   state: 'done' | 'active' | 'todo';
   /** A short flag under the label, such as that the document changed after its review. */
   marker?: string;
+  /** What the step waits for, in few words, such as an open item count or the owner's decision. */
+  badge?: string;
 }
 
 interface Props {
@@ -28,6 +30,7 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
               <span data-testid={`stepper-node-${step.key}`} className="onboarding-stepper-node" aria-hidden="true">{step.state === 'done' ? <Icon name="check" size={14} /> : index + 1}</span>
               <span data-testid={`stepper-label-${step.key}`} className="onboarding-stepper-label">{step.label}</span>
               {step.marker && <span data-testid={`stepper-marker-${step.key}`} className="text-[0.6875rem] font-semibold text-warn max-[720px]:sr-only">{step.marker}</span>}
+              {step.badge && <span data-testid={`stepper-badge-${step.key}`} className="text-[0.6875rem] font-semibold text-ink-soft max-[720px]:sr-only">{step.badge}</span>}
             </>
           );
           return (
@@ -36,7 +39,7 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
                 <button
                   type="button"
                   data-testid={`step-${step.key}`}
-                  aria-label={step.marker ? `${step.label}, ${step.marker}` : step.label}
+                  aria-label={[step.label, step.marker, step.badge].filter(Boolean).join(', ')}
                   className="grid h-auto min-h-11 w-full min-w-0 justify-items-center gap-[0.45rem] rounded-md border-0 bg-transparent p-0 shadow-none"
                   onClick={() => onSelect(step.key)}
                 >

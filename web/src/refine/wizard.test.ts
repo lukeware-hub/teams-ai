@@ -60,9 +60,19 @@ describe('wizardNodes', () => {
 
   it('flags a finished document that left the graph, or one that changed after an earlier document, and never the Jev score', () => {
     const nodes = wizardNodes(state({ doneStages: ['flow.md', 'stack.md'], graphed: ['flow.md'], outdatedDocs: ['flow.md'], staleBy: { 'design.md': 'flow.md' } }), 'flow.md');
-    expect(nodes.find((n) => n.key === 'stack.md')!.marker).toBe('desatualizado');
-    expect(nodes.find((n) => n.key === 'design.md')!.marker).toBe('desatualizado');
+    expect(nodes.find((n) => n.key === 'stack.md')!.marker).toBe('fora do Graphify');
+    expect(nodes.find((n) => n.key === 'design.md')!.marker).toBe('flow.md mudou');
     expect(nodes.find((n) => n.key === 'flow.md')!.marker).toBeUndefined();
+  });
+
+  it('says what a step waits for: the owner, the open items, or the agents', () => {
+    const waiting = wizardNodes(state({ doneStages: ['flow.md'], questions: [question('q1', { file: 'project.md', blocking: true })] }), 'project.md');
+    expect(waiting.find((n) => n.key === 'project.md')!.badge).toBe('sua decisão');
+    const open = wizardNodes(state({ doneStages: ['flow.md'], questions: [question('q1', { file: 'project.md' })], patches: [patch('p1', 'project.md')] }), 'project.md');
+    expect(open.find((n) => n.key === 'project.md')!.badge).toBe('2 pendências');
+    const running = wizardNodes(state({ doneStages: ['flow.md'], evaluation: { startedAt: 'x', endedAt: null } }), 'project.md');
+    expect(running.find((n) => n.key === 'project.md')!.badge).toBe('agentes revisando');
+    expect(running.find((n) => n.key === 'flow.md')!.badge).toBeUndefined();
   });
 });
 

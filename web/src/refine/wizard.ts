@@ -38,7 +38,7 @@ export const prevStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD
 export const nextStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) + 1] ?? null;
 
 /** The stepper's nodes: state only, never a score. A stage session reads done from the journal; a project with no stages reads it from the position. */
-export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture'>, current: WizardStep): StepperStep[] {
+export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture' | 'questions' | 'patches' | 'evaluation'>, current: WizardStep): StepperStep[] {
   const done = new Set(st.doneStages ?? []);
   const steps = stepsOf(st);
   const at = steps.indexOf(current);
@@ -50,9 +50,24 @@ export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' 
       key: step,
       label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Resumo' : step === 'architecture' ? 'Arquitetura' : 'Backlog',
       state: step === current ? 'active' : isDone ? 'done' : 'todo',
-      ...(outdated ? { marker: 'desatualizado' } : {}),
+      ...(outdated ? { marker: outdatedMarker(st, doc) } : {}),
+      ...(doc && stepBadge(st, doc, step === current) ? { badge: stepBadge(st, doc, step === current) } : {}),
     };
   });
+}
+
+/** Why a finished document is outdated: the document that changed, or that it left the graph. */
+function outdatedMarker(st: Pick<State, 'staleBy'>, doc: DocFile): string {
+  const cause = st.staleBy?.[doc];
+  return cause ? `${DOC_LABEL[cause as DocFile] ?? cause} mudou` : 'fora do Graphify';
+}
+
+/** What the step waits for, in few words: the owner's answer, the open items, or the agents; nothing when it waits for none. */
+function stepBadge(st: Pick<State, 'questions' | 'patches' | 'evaluation'>, doc: DocFile, isCurrent: boolean): string | undefined {
+  if (docQuestions(st, doc).some((q) => q.blocking)) return 'sua decisão';
+  const pending = pendingCount(st, doc);
+  if (pending > 0) return pending === 1 ? '1 pendência' : `${pending} pendências`;
+  return isCurrent && st.evaluation != null && st.evaluation.endedAt === null ? 'agentes revisando' : undefined;
 }
 
 const pendingQuestions = (st: Pick<State, 'questions'>) => st.questions.filter((q) => q.status === 'pending');
