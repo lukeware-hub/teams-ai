@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { coverageGaps, coverageMatrix } from '@server/refine/coverage';
 import type { AcceptanceCriterion, BacklogView } from '../api.js';
 import { Icon } from '../components/Icons.js';
@@ -32,8 +32,11 @@ function EpicGroup({ testId, title, total, children }: { testId: string; title: 
 
 /** The detailed backlog as a coverage tree: épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
 export function SpecTree({ backlog, evaluating = false, note }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode }) {
+  const treeRef = useRef<HTMLDivElement>(null);
   const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
   const gaps = useMemo(() => coverageGaps(backlog as never), [backlog]);
+  // A count chip opens every group, so the épico, its spec and the spec's criteria and tasks show.
+  const expandAll = () => treeRef.current?.querySelectorAll('details').forEach((d) => { d.open = true; });
   const titles = new Map(backlog.items.map((i) => [i.key, i.title]));
   const specs = matrix.items.filter((i) => i.specId !== null).length;
   const criteria = matrix.items.reduce((n, i) => n + i.criteria.length, 0);
@@ -59,7 +62,7 @@ export function SpecTree({ backlog, evaluating = false, note }: { backlog: Backl
     </ol>
   );
   return (
-    <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree">
+    <div className="my-4 grid gap-[0.6rem]" data-testid="spec-tree" ref={treeRef}>
       <h3 className="section-title m-0 flex items-center gap-2"><Icon name="list" size={20} />Cobertura<InfoTip text={HELP} /></h3>
       <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Resumo da cobertura">
         {[
@@ -67,7 +70,7 @@ export function SpecTree({ backlog, evaluating = false, note }: { backlog: Backl
           count(specs, 'spec', 'specs'),
           count(criteria, 'critério', 'critérios'),
           count(tasks, 'tarefa', 'tarefas'),
-        ].map((text) => <li key={text} className={`${stat} border-line bg-surface text-ink-soft`}>{text}</li>)}
+        ].map((text) => <li key={text}><button type="button" className={`${stat} cursor-pointer border-line bg-surface text-ink-soft hover:text-ink`} onClick={expandAll}>{text}</button></li>)}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`}>{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
       {!evaluating && gaps.length > 0 && (

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { BacklogView } from '../api.js';
 import { SpecTree } from './SpecTree.js';
@@ -19,6 +19,13 @@ describe('SpecTree', () => {
     const gaps = within(screen.getByTestId('tree-gaps'));
     expect(gaps.getByText(/9\. Faturamento/)).toBeTruthy();
     expect(gaps.getByText(/AC-002 sem tarefa/)).toBeTruthy();
+  });
+
+  it('opens the épico and the spec from a count chip', () => {
+    render(<SpecTree backlog={backlog} />);
+    fireEvent.click(screen.getByRole('button', { name: '1 spec' }));
+    expect((screen.getByTestId('tree-epic-core') as HTMLDetailsElement).open).toBe(true);
+    expect((screen.getByTestId('tree-caso') as HTMLDetailsElement).open).toBe(true);
   });
 
   it('hides the gaps while the detailing runs', () => {
