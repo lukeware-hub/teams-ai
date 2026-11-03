@@ -35,7 +35,7 @@ describe('RefinementPage of a new project', () => {
     fireEvent.click(await screen.findByTestId('confidential-yes'));
     await waitFor(() => expect(conf).toHaveBeenCalledWith('hello-app', 'hello-001', true));
     fireEvent.click(await screen.findByTestId('wizard-continue'));
-    await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
+    await waitFor(() => expect(cont).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md', false));
   });
 
   it('saves a document with the hash of the text it was typed over, then with the hash the save returned', async () => {

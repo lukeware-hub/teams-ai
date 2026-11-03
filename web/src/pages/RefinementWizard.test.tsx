@@ -85,7 +85,7 @@ describe('Voltar and Continuar', () => {
     const handlers = show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md'] }));
     fireEvent.click(screen.getByTestId('wizard-back'));
     fireEvent.click(screen.getByTestId('wizard-continue'));
-    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md', false));
   });
 
   it('disables Voltar on the first stage, with the reason, and goes back from the others', () => {
@@ -101,7 +101,7 @@ describe('Voltar and Continuar', () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(editor('briefing.md').value).toBe('## Objectives'));
-    expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md');
+    expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md', false);
   });
 
   it('only moves the view with Continuar on a stage that is already done', async () => {
@@ -117,7 +117,7 @@ describe('Voltar and Continuar', () => {
     expect(screen.getByText('Pode pular: Continuar avança sem resposta.')).toBeTruthy();
     expect(screen.queryByText('Bloqueia o avanço até você responder.')).toBeNull();
     fireEvent.click(screen.getByTestId('wizard-continue'));
-    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('flow.md'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('flow.md', false));
   });
 
   it('stays on the screen when the server refuses to continue', async () => {

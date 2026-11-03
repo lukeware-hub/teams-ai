@@ -40,7 +40,7 @@ import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
 import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
-import { percentOf } from '@server/refine/readiness';
+import { PASS_LINE, percentOf } from '@server/refine/readiness';
 
 type DocFile = 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
 const questionText = (text: string) => text.startsWith('What counts as valid client data?')
@@ -223,7 +223,7 @@ export interface ViewProps {
   onPreparePlans?(): void | Promise<unknown>;
   onResolveClosing?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
-  onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
+  onContinueStage?(doc?: DocFile, confirmLowScore?: boolean): void | boolean | Promise<unknown>;
   /** The final review puts a document in the Graphify graph as it is now; `false` says the server refused. */
   onAddToGraph?(doc: DocFile): void | boolean | Promise<unknown>;
   /** design.md is marked not applicable: the server writes the mark, keeps it as passed and, in a repository session, adds it to the graph. */
@@ -1027,6 +1027,8 @@ export function RefinementView(p: ViewProps) {
   const stageSession = st.stages === true;
   const doneStages = st.doneStages ?? [];
   // What keeps Continuar closed, in plain words; the graph check is not one: Continuar itself adds the document.
+  // A document scored below the pass line: the agents already tried once, so the owner decides to go on.
+  const lowScore = isDocStep(step) && !doneStages.includes(step) && st.readiness?.docs?.[step] !== undefined && st.readiness.docs[step]!.score < PASS_LINE ? percentOf(st.readiness.docs[step]!.score) : null;
   const continueBlock = ((): StageCheck | null => {
     if (!stageSession || st.repositories !== true || !isDocStep(step) || doneStages.includes(step)) return null;
     const block = stageBlock(step);
@@ -1346,6 +1348,7 @@ export function RefinementView(p: ViewProps) {
         {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
       {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft">{continueBlock.hint}</p>}
+      {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
       <ActionButton
         data-testid="wizard-continue"
         className="primary"
@@ -1356,14 +1359,14 @@ export function RefinementView(p: ViewProps) {
           // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
           const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
           if (stageSession && (!doneStages.includes(step) || notGraphed)) {
-            const result = await p.onContinueStage?.(step);
+            const result = await p.onContinueStage?.(step, lowScore !== null);
             if (result === false) return;
           }
           goTo(nextWizardStep(step, stepsOf(st)));
         }}
         icon={<Icon name="arrow-right" size={16} />}
       >
-        Continuar
+        {lowScore !== null && !continueBlock ? 'Continuar mesmo assim' : 'Continuar'}
       </ActionButton>
     </>
   );
@@ -1548,7 +1551,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onResolveClosing={act(() => refineApi.resolve(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
-        onContinueStage={(doc) => act(() => refineApi.continueStage(projectId, specId, doc))()}
+        onContinueStage={(doc, confirmLowScore) => act(() => refineApi.continueStage(projectId, specId, doc, confirmLowScore))()}
         onAddToGraph={(doc) => act(() => refineApi.addToGraph(projectId, specId, doc))()}
         onNotApplicable={act(async () => {
           await refineApi.notApplicable(projectId, specId);

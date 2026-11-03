@@ -348,3 +348,24 @@ describe('the stage review panel while the agents work', () => {
     expect(screen.getByTestId('refinement-stage-locked').textContent).toMatch(/Avaliação em andamento · 01:0\d/);
   });
 });
+
+describe('a document scored below the pass line', () => {
+  const score = (value: number) => ({ score: value, checks: { complete: value, concrete: value, consistent: value, scoped: value }, doubts: [] });
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
+
+  it('says the score and asks the owner to continue anyway, and sends the confirmation', () => {
+    const h = { ...handlers(), onContinueStage: vi.fn() };
+    renderView(project({ stages: true, readiness: { docs: { 'flow.md': score(0.42) } } } as never), h);
+    expect(screen.getByTestId('wizard-low-score').textContent).toContain('42%');
+    const button = screen.getByTestId('wizard-continue');
+    expect(button.textContent).toContain('Continuar mesmo assim');
+    fireEvent.click(button);
+    expect(h.onContinueStage).toHaveBeenCalledWith('flow.md', true);
+  });
+
+  it('shows nothing special for a good score', () => {
+    renderView(project({ stages: true, readiness: { docs: { 'flow.md': score(0.9) } } } as never));
+    expect(screen.queryByTestId('wizard-low-score')).toBeNull();
+    expect(screen.getByTestId('wizard-continue').textContent).toBe('Continuar');
+  });
+});

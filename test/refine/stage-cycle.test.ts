@@ -553,7 +553,7 @@ describe('runStageCycle', () => {
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
-    expect(review).toContain('### Jev index of this document (information only)\n\nScores of briefing.md, probability of yes: complete 0.50, concrete 0.90, consistent 0.90, scoped 0.90. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.');
+    expect(review).toContain('### Jev index of this document (information only)\n\nScores of briefing.md, probability of yes: complete 0.50, concrete 0.90, consistent 0.90, scoped 0.90. They show where the Jev doubts the document; they are not a verdict and they can be wrong; a low score only means read the doubts below with care. Do not change the document only to raise a number.');
     expect(review).not.toContain('### Jev goals');
   });
 

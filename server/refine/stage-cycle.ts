@@ -81,7 +81,7 @@ function jevIndex(file: DocFile, score: DocScore): string[] {
   const doubts = (score.doubts ?? []).map((d) => `- ${d.check} ${d.value.toFixed(2)} in ${placeOf(d)}: ${LOOK_FOR[d.check]}.`);
   return [
     '### Jev index of this document (information only)',
-    `Scores of ${file}, probability of yes: ${checks}. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.`,
+    `Scores of ${file}, probability of yes: ${checks}. They show where the Jev doubts the document; they are not a verdict and they can be wrong; a low score only means read the doubts below with care. Do not change the document only to raise a number.`,
     ...(doubts.length ? [`### Where the Jev doubts this document (information only)\nRead these places first. The Jev can be wrong: change only what you can quote as wrong.\n${doubts.join('\n')}`] : []),
   ];
 }
