@@ -530,7 +530,7 @@ describe('runStageCycle', () => {
     const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### briefing.md (this stage)'))!;
     expect(review).not.toContain('FIM-DO-PROJETO');
     expect(review).toContain('FIM-DO-BRIEFING');
-    expect(review).toContain('(context only, a digest)');
+    expect(review).toContain('(context only, a digest');
   });
 
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {

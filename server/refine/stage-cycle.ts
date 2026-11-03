@@ -7,6 +7,7 @@ import type { StepOutcome } from '../runner/step.js';
 import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { isConfidential, type CycleJournal, type RunAgent } from './cycle.js';
 import { DIGEST_NOTE, docDigest } from './docs-view.js';
+import { normHeading } from './sections.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
@@ -80,8 +81,14 @@ function jevIndex(file: DocFile, score: DocScore): string[] {
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
 export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[] }): ContextPackInput {
   const earlier = earlierDocs(input.file);
+  // A section of an earlier document that this document names is read whole: the review quotes it, and a cut section hides what it says.
+  const own = ` ${normHeading(input.docs[input.file])} `;
+  const cited = (heading: string) => {
+    const name = normHeading(heading);
+    return name.length >= 4 && own.includes(` ${name} `);
+  };
   const context = earlier.length > 0
-    ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS)}`)].join('\n\n')
+    ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest; the sections this document names are whole)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS, cited)}`)].join('\n\n')
     : '(no document before this stage)';
   const feedback = [
     `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,

@@ -14,15 +14,16 @@ export const MAX_DOCS_TOKENS = 70_000;
 export const DIGEST_NOTE = 'The documents below are a digest, because the whole text does not fit one evaluation: every heading as written, each followed by the start of its section and "[…]" where it was cut. Cite headings exactly as they appear; never assume what an excerpt does not show.';
 
 /** Every heading of the doc as written, each with the first `chars` characters of the lines under it, up to the next heading. */
-export function docDigest(doc: string, chars: number): string {
+export function docDigest(doc: string, chars: number, whole: (heading: string) => boolean = () => false): string {
   const lines = doc.split(/\r?\n/);
-  const starts = docSections(doc).map((s) => s.line);
-  const part = (from: number, to: number, withHeading: boolean) => {
+  const sections = docSections(doc);
+  const starts = sections.map((s) => s.line);
+  const part = (from: number, to: number, withHeading: boolean, all = false) => {
     const body = lines.slice(withHeading ? from + 1 : from, to).join('\n').trim();
-    const excerpt = body.length > chars ? `${body.slice(0, chars).trimEnd()} […]` : body;
+    const excerpt = !all && body.length > chars ? `${body.slice(0, chars).trimEnd()} […]` : body;
     return [...(withHeading ? [lines[from]!] : []), ...(chars > 0 && excerpt !== '' ? [excerpt] : [])].join('\n');
   };
-  const blocks = starts.map((from, i) => part(from, starts[i + 1] ?? lines.length, true));
+  const blocks = starts.map((from, i) => part(from, starts[i + 1] ?? lines.length, true, whole(sections[i]!.heading)));
   if ((starts[0] ?? lines.length) > 0) blocks.unshift(part(0, starts[0] ?? lines.length, false));
   return blocks.filter((b) => b !== '').join('\n\n');
 }
