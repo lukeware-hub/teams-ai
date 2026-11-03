@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Architecture } from '../../server/contracts/architecture.js';
-import { historyOf, loadRepoSource, repositoryCards, repositoryDetail, statusOf, type RepoSource, type RepoSpec } from '../../server/api/repositories.js';
+import { historyOf, latestRunsOf, loadRepoSource, repositoryCards, repositoryDetail, statusOf, type RepoSource, type RepoSpec } from '../../server/api/repositories.js';
 
 const ARCH: Architecture = {
   style: 'microservices',
@@ -153,5 +153,16 @@ describe('reading a project\'s repositories from disk', () => {
 
   it('gives no source for a project with no architecture yet', async () => {
     expect(await loadRepoSource(dir, [])).toBeNull();
+  });
+});
+
+describe('latestRunsOf', () => {
+  it('keeps only the latest run of each spec, so an older blocked run no longer blocks a delivered spec', () => {
+    const runs = [
+      { runId: 'a-run-1', specId: 'a', n: 1, status: 'blocked' },
+      { runId: 'a-run-2', specId: 'a', n: 2, status: 'awaiting-validation' },
+      { runId: 'b-run-1', specId: 'b', n: 1, status: 'blocked' },
+    ];
+    expect(latestRunsOf(runs).map((r) => r.runId).sort()).toEqual(['a-run-2', 'b-run-1']);
   });
 });

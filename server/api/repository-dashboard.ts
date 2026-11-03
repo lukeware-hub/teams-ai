@@ -77,6 +77,8 @@ export interface DashboardSpec {
   pending: number;
   blocked: number;
   failed: number;
+  /** The latest run of the spec that waits for the owner to validate it, or null. */
+  validationRunId: string | null;
 }
 
 export interface DashboardTask {
@@ -280,6 +282,11 @@ function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: M
   return { rows: [...best.values()], plannedPlan };
 }
 
+/** The spec's latest run that waits for validation: the one the owner validates. */
+function latestAwaitingRun(specId: string, runs: DashboardRun[]): DashboardRun | undefined {
+  return runs.filter((r) => r.specId === specId && r.status === 'awaiting-validation').sort((a, b) => b.n - a.n)[0];
+}
+
 function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>): { view: DashboardSpec; rows: DashboardTask[] } {
   const { rows, plannedPlan } = specTasks(spec, runs, tasksByRun);
   const done = spec.status === 'done';
@@ -299,6 +306,7 @@ function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Ma
     pending: count('pending') + notStarted,
     blocked: count('blocked'),
     failed: count('failed'),
+    validationRunId: latestAwaitingRun(spec.specId, runs)?.runId ?? null,
   };
   view.state = specStateOf(spec, runs, view);
   return { view, rows };

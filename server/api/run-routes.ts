@@ -39,7 +39,7 @@ import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { probeProcess, type ProbeProcess } from './process-identity.js';
 import { deleteRepo } from '../git/github.js';
-import { BLOCKED_RUN, historyOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource, type RepoSpec } from './repositories.js';
+import { BLOCKED_RUN, SETTLED_RUN, historyOf, latestRunsOf, loadRepoSource, repositoryCards, repositoryDetail, type RepoSource, type RepoSpec } from './repositories.js';
 import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
@@ -415,13 +415,15 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     if (!row) throw new HttpError(404, `unknown project ${projectId}`);
     const runs = await listRuns(idx, projectId);
     // A spec is blocked when one of its runs needs the owner; its run list also feeds the history.
-    const specs = row.specs.map((spec) => ({ ...spec, blocked: runs.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
+    const current = latestRunsOf(runs);
+    const specs = row.specs.map((spec) => ({ ...spec, blocked: current.some((run) => run.specId === spec.specId && BLOCKED_RUN.has(run.status)) }));
     const src = await loadRepoSource(row.dir, specs);
     // Each run's journal is read once here; the repository pages and the dashboard reduce the same events.
     const repoRuns = await loadRepoRuns(runsDir(idx), runs);
     const journals = new Map(repoRuns.map((r) => [r.runId, r.events] as const));
     if (!src) return { src, runs, runsDir: runsDir(idx), journals, repoRuns };
-    const programStops = (await deps.stoppedItems?.(projectId).catch(() => [])) ?? [];
+    const settled = new Set(current.filter((run) => SETTLED_RUN.has(run.status)).map((run) => run.specId));
+    const programStops = ((await deps.stoppedItems?.(projectId).catch(() => [])) ?? []).filter((stop) => !settled.has(stop.specId));
     // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
     const ws = workspacePaths(idx.cfg, projectId, deps.home);
     const drafts = await fs.readdir(refineRoot(ws)).catch(() => [] as string[]);
@@ -440,6 +442,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const rootBlocks: Array<{ specId: string; taskId: string; reason: string }> = [];
     // The fix and deploy-fix tasks the orchestrator added to each spec's runs, counted apart from the planned tasks.
     const added = new Map<string, { fixes: number; deployFixes: number }>();
+    const currentIds = new Set(current.map((run) => run.runId));
     for (const run of runs) {
       const events = journals.get(run.runId) ?? [];
       const count = added.get(run.specId) ?? { fixes: 0, deployFixes: 0 };
@@ -449,7 +452,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       }
       added.set(run.specId, count);
       const ids = new Set(events.flatMap((e) => (e.data.taskId === undefined ? [] : [String(e.data.taskId)])));
-      for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
+      if (currentIds.has(run.runId)) for (const blocked of rootBlockers(liveBlocked(events, ids))) rootBlocks.push({ specId: run.specId, ...blocked });
     }
     src.specs = src.specs.map((spec) => ({ ...spec, ...(added.get(spec.specId) ?? { fixes: 0, deployFixes: 0 }) }));
     // A spec's tasks and delivered tasks come from its journals, the count the dashboard shows.

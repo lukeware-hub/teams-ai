@@ -336,7 +336,7 @@ describe('runStageCycle', () => {
       [{ id: 'q1', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], options: [], subject: 'Prazo de entrega' }],
     );
     const reviews = [failed, retried];
-    const runAgent = vi.fn(async () => reviews.shift());
+    const runAgent = vi.fn(async (_req: { pack: { feedback?: string } }) => reviews.shift());
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
     expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(1);

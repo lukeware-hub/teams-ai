@@ -5,6 +5,15 @@ import { loadEvents } from '../store/event-store.js';
 
 /** The run statuses that stop a spec: its run needs the owner. */
 export const BLOCKED_RUN: ReadonlySet<string> = new Set(['blocked', 'deadlocked', 'phase-failed']);
+/** Runs that delivered the spec or finished it: an older stop of the same spec no longer counts against it. */
+export const SETTLED_RUN: ReadonlySet<string> = new Set(['awaiting-validation', 'complete']);
+
+/** Each spec's latest run, by run number: an older run of a spec no longer blocks it once a later run exists. */
+export function latestRunsOf<T extends { specId: string; n: number }>(runs: readonly T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const run of runs) if ((latest.get(run.specId)?.n ?? -1) < run.n) latest.set(run.specId, run);
+  return [...latest.values()];
+}
 
 /** One event of a run's journal as the dashboard lists it. */
 export interface HistoryEvent {

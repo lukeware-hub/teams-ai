@@ -103,6 +103,9 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
             )}
           </div>
         ))}
+        {deploy && probe && (
+          <span data-testid="repo-service-status" className={`status-pill tone-${probe.online ? 'good' : 'bad'}`}>{probe.online ? 'Sistema no ar' : 'Sistema fora do ar'}</span>
+        )}
         {isOffline(deploy, probe) && (
           <button type="button" className={action.primary} onClick={start} disabled={starting} data-testid="start-system">
             Iniciar
