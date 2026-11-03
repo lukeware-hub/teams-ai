@@ -459,7 +459,7 @@ describe('the final review', () => {
     show(snap);
     // The summary never waits for the specs.md: it is made and checked in the backlog step.
     expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByTestId('open-backlog-reason')).toBeNull();
+    expect(screen.queryByTestId('start-missing')).toBeNull();
     cleanup();
     open('?etapa=backlog');
     show(snap);
@@ -475,7 +475,7 @@ describe('the final review', () => {
       specsApproved: true,
     });
     expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.queryByTestId('open-backlog-reason')).toBeNull();
+    expect(screen.queryByTestId('start-missing')).toBeNull();
   });
 
   it('asks the Jev for the scores of all five documents when some have none', () => {

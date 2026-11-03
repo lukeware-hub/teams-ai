@@ -1286,9 +1286,21 @@ export function RefinementView(p: ViewProps) {
               <ActionButton data-testid="final-resolve-run" className="secondary h-10 w-full" onClick={() => p.onResolveClosing?.()} icon={<Icon name="refresh" size={16} />}>Deixar o time resolver as pendências</ActionButton>
             </div>
   ) : null;
-  const startLine = (
-    startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>
-  );
+  // Everything the start still waits for, in plain words, in the order the owner can act on it; empty once the button is open.
+  const blockingOpen = pending.filter((q) => q.blocking).length;
+  const startMissing: string[] = [];
+  if (backlogOn) {
+    if (evaluating) startMissing.push('O time ainda está trabalhando: espere ele terminar.');
+    if (blockingOpen > 0) startMissing.push(blockingOpen === 1 ? 'Responda a pergunta obrigatória em aberto.' : `Responda as ${blockingOpen} perguntas obrigatórias em aberto.`);
+    if (!st.backlog?.detail) startMissing.push('Detalhe o backlog antes de iniciar.');
+    else if (st.status !== 'ready' && !evaluating && blockingOpen === 0) {
+      const lacks = st.checklist.filter((c) => !c.passed).map((c) => c.detail || c.id);
+      startMissing.push(`O backlog ainda não está pronto: ${lacks.length > 0 ? lacks.join('; ') : 'avalie o backlog'}.`);
+    }
+    if (speckitReason && !speckitAsked.some((q) => q.blocking)) startMissing.push(speckitReason);
+    if (specsReason && st.status === 'ready' && specsAsked.length === 0) startMissing.push(`${specsReason}.`);
+  }
+  const startLine = null;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
@@ -1318,7 +1330,7 @@ export function RefinementView(p: ViewProps) {
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{specsReason && <span data-testid="open-backlog-reason" className="text-[0.8rem] text-ink-soft">{specsReason}</span>}{prepareButton}{developButton}</>
+    ) : <>{startMissing.length > 0 && <p data-testid="start-missing" role="status" className="m-0 basis-full text-[0.8125rem] font-semibold leading-normal text-warn">Falta para iniciar o desenvolvimento: {startMissing.join(' ')}</p>}{prepareButton}{developButton}</>
   ) : step === 'review' ? (
     <>
       {backlogOn || st.repositories === true ? (

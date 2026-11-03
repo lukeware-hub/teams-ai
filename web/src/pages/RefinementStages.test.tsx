@@ -70,7 +70,7 @@ describe('stage 7 of a new project prepares the development', () => {
     renderView(project({ backlog: backlogDetailed as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-idle')).toBeTruthy();
     expect((screen.getByTestId('speckit-prepare') as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare os planos antes de iniciar.');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Prepare os planos antes de iniciar.');
   });
 
   it('asks for the preparation first, and keeps the start locked until it is done', () => {
@@ -125,7 +125,7 @@ describe('stage 7 of a new project prepares the development', () => {
     renderView(wizard({ speckit: speckit({ stale: true }) as never }), handlersWithSpeckit());
     expect(screen.queryByTestId('speckit-stale')).toBeNull();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('start-reason').textContent).toBe('Os documentos mudaram: prepare os planos de novo.');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Os documentos mudaram: prepare os planos de novo.');
   });
 
   it('says the plans were already current when a preparation reuses them all', () => {
@@ -153,7 +153,7 @@ describe('stage 7 of a new project prepares the development', () => {
   it('keeps the start closed, with the reason beside it, until PO and SM approve the specs.md', () => {
     renderView(wizard({ speckit: speckit() as never, status: 'ready' }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Preparando o specs.md');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Preparando o specs.md');
   });
 
   it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks only on the click', () => {
@@ -209,14 +209,14 @@ describe('stage 7 of a new project prepares the development', () => {
   it('Iniciar is primary only once the preparation is ready, and says what it waits for', () => {
     renderView(wizard({ speckit: undefined as never }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).className).not.toContain('primary');
-    expect(screen.getByTestId('start-reason').textContent).toContain('Prepare os planos antes de iniciar.');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Prepare os planos antes de iniciar.');
   });
 
   it('the steps of a running preparation sit behind a closed list, and a finished step says Feito', () => {
     renderView(wizard({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect((screen.getByTestId('speckit-log') as HTMLDetailsElement).open).toBe(false);
     expect(screen.getByTestId('speckit-steps').textContent).toContain('Feito');
-    expect(screen.getByTestId('start-reason').textContent).toContain('em andamento');
+    expect(screen.getByTestId('start-missing').textContent).toContain('em andamento');
   });
 
 
@@ -441,7 +441,7 @@ describe('the questions the team asked about specs.md', () => {
 
   it('keeps the start closed with the reason beside it, and shows the question nowhere else', () => {
     renderView(snap());
-    expect(screen.getByTestId('open-backlog-reason').textContent).toBe('Responda as perguntas sobre o specs.md');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Responda a pergunta obrigatória em aberto');
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 });
@@ -461,6 +461,35 @@ describe('a question the owner cannot answer yet', () => {
     render(<MemoryRouter><RefinementView snap={snap({ status: 'answering' })} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
     expect(screen.queryByTestId('question-waiting')).toBeNull();
     expect((screen.getByTestId('answer-specs-1-0') as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('what the start waits for', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
+
+  it('lists every missing thing in yellow, in plain words, beside the closed button', () => {
+    const failing = [{ id: 'sm.no-open-questions', role: 'sm', passed: false, detail: '1 pergunta obrigatória em aberto' }];
+    const open = { ...question(true), questionId: 'po-c1-0' };
+    renderView(project({ stages: true, backlog: detailed as never, status: 'answering', checklist: failing as never, questions: [open as never] } as never));
+    const text = screen.getByTestId('start-missing').textContent ?? '';
+    expect(text).toContain('Falta para iniciar o desenvolvimento');
+    expect(text).toContain('Responda a pergunta obrigatória em aberto.');
+    expect(text).toContain('Prepare os planos antes de iniciar.');
+    expect(screen.getByTestId('start-missing').className).toContain('text-warn');
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('names what the backlog lacks when it is not ready and nothing else blocks it', () => {
+    const failing = [{ id: 'po.scope-explicit', role: 'po', passed: false, detail: 'o escopo não está explícito' }];
+    renderView(project({ stages: true, backlog: detailed as never, status: 'drafting', checklist: failing as never } as never));
+    expect(screen.getByTestId('start-missing').textContent).toContain('O backlog ainda não está pronto: o escopo não está explícito.');
+  });
+
+  it('says nothing once everything is ready and the button is open', () => {
+    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never);
+    expect(screen.queryByTestId('start-missing')).toBeNull();
+    expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
