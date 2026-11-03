@@ -12,7 +12,12 @@ describe('repository read routes', () => {
     expect(json).not.toHaveBeenCalled();
   });
 
-  it('answers 400 for a repository name that is neither a service name nor the project', async () => {
+  it('answers 404 for a well-formed repository name the architecture does not name', async () => {
+    const json = vi.fn();
+    await expect(handler('/repositories/:repo')({ params: { projectId: 'live-skill', repo: 'teste' }, json } as never)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('answers 400 for a repository name that is not a slug', async () => {
     const json = vi.fn();
     await expect(handler('/repositories/:repo')({ params: { projectId: 'shop', repo: 'Bad_Name' }, json } as never)).rejects.toMatchObject({ status: 400 });
   });

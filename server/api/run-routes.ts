@@ -454,7 +454,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/repositories/:repo`,
       handler: async ({ params, json }) => {
         const name = params.repo!;
-        if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
+        if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
         const { src, runs, runsDir: runsRoot } = await repoSource(params.projectId!);
         const detail = src ? repositoryDetail(src, name) : null;
         if (!detail) throw new HttpError(404, `unknown repository ${name}`);
@@ -467,7 +467,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/repositories/:repo/dashboard`,
       handler: async ({ params, json }) => {
         const name = params.repo!;
-        if (!ID_PATTERNS.SERVICE.test(name) && name !== params.projectId) throw new HttpError(400, `invalid repository ${name}`);
+        if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
         const { src, repoRuns } = await repoSource(params.projectId!);
         const detail = src ? repositoryDetail(src, name) : null;
         if (!detail) throw new HttpError(404, `unknown repository ${name}`);
