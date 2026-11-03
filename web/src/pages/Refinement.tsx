@@ -1002,8 +1002,21 @@ export function RefinementView(p: ViewProps) {
     url.searchParams.delete('vista');
     window.history.replaceState(null, '', url);
   };
+  // A step opens from the stepper up to the first one not done: the later ones wait for the stage before.
+  const canOpenStep = (key: WizardStep): boolean => {
+    const nodes = wizardNodes(st, step);
+    const firstOpen = nodes.findIndex((node) => node.state !== 'done' && node.key !== step);
+    const target = nodes.findIndex((node) => node.key === key);
+    return target >= 0 && (firstOpen === -1 || target <= firstOpen || nodes[target]!.state === 'done');
+  };
   const stageSession = st.stages === true;
   const doneStages = st.doneStages ?? [];
+  // What keeps Continuar closed, in plain words; the graph check is not one: Continuar itself adds the document.
+  const continueBlock = ((): StageCheck | null => {
+    if (!stageSession || st.repositories !== true || !isDocStep(step) || doneStages.includes(step)) return null;
+    const block = stageBlock(step);
+    return block?.id === 'graphed' ? null : block;
+  })();
   const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
   const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ ${snap.tokens.costUsd.toFixed(2)}`;
   const outdatedDocs = st.outdatedDocs ?? [];
@@ -1315,10 +1328,11 @@ export function RefinementView(p: ViewProps) {
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
+      {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft">{continueBlock.hint}</p>}
       <ActionButton
         data-testid="wizard-continue"
         className="primary"
-        disabled={locked}
+        disabled={locked || continueBlock !== null}
         onClick={async () => {
           // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
           const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
@@ -1338,7 +1352,7 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
-          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" />}
+          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => { if (canOpenStep(key as WizardStep)) goTo(key as WizardStep); }} />}
           stepKey={step}
           meta={usageLine}
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}

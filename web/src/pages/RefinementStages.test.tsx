@@ -278,3 +278,33 @@ describe('the summary resolves the stage pending items with the agents', () => {
     expect(h.onResolveClosing).not.toHaveBeenCalled();
   });
 });
+
+describe('the stepper opens the steps', () => {
+  const stageSteps = ['flow.md', 'project.md'];
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=briefing.md'));
+
+  it('opens a finished step with one click, and not a step after the first unfinished one', () => {
+    renderView(project({ stages: true, doneStages: stageSteps } as never));
+    fireEvent.click(screen.getByTestId('step-flow.md'));
+    expect(window.location.search).toContain('etapa=flow.md');
+    fireEvent.click(screen.getByTestId('step-design.md'));
+    expect(window.location.search).toContain('etapa=flow.md');
+  });
+});
+
+describe('the wizard Continuar names why it is closed', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
+
+  it('is disabled with the reason beside it while a suggestion is open, in a repository session', () => {
+    const patch = { patchId: 'p1', role: 'po', file: 'flow.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status: 'pending', decision: null };
+    renderView(project({ stages: true, repositories: true, doneStages: [], reviewedStages: ['flow.md'], patches: [patch] } as never));
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-continue-reason').textContent).toContain('sugestões');
+  });
+
+  it('stays open in a session with no repository flow', () => {
+    renderView(project({ stages: true, doneStages: [] } as never));
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('wizard-continue-reason')).toBeNull();
+  });
+});

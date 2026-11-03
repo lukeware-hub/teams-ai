@@ -61,10 +61,10 @@ describe('one stage per screen', () => {
     expect(editor('flow.md').value).toBe('# Flow');
   });
 
-  it('the stepper does not open another step: only Continuar and Voltar move between them', () => {
+  it('the stepper opens a step up to the first one not done, and no step after it', () => {
     show(base());
-    expect(screen.queryByTestId('step-design.md')).toBeNull();
-    expect(window.location.search).not.toBe('?etapa=design.md');
+    fireEvent.click(screen.getByTestId('step-design.md'));
+    expect(window.location.search).not.toContain('etapa=design.md');
   });
 
   it('shows the usage of the whole refinement as one line in the footer', () => {
