@@ -1,9 +1,11 @@
+import type { z } from 'zod';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { redactSecrets } from '../core/redact.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { FailureKind } from '../scheduler/retry-policy.js';
 import { PackTooLargeError } from './fit-pack.js';
 import { OwnerError } from '../core/owner-error.js';
+import { repairByDropping } from './repair-answer.js';
 
 /** Longest raw error text the journal keeps; the screen never shows it. */
 const DETAIL_CHARS = 1000;
@@ -41,11 +43,13 @@ export function internalErrorMessage(stage: string, err: unknown): { reason: str
   return { reason: `${stage} parou por um erro interno. ${REVALUATE}`, detail: clip(redactSecrets(text)) };
 }
 
-/** Runs an agent call, and when its answer fails the output schema, runs it once more with a note on what was wrong. */
-export async function retryOnSchema<T>(attempt: (note: string | null) => Promise<StepOutcome<T>>): Promise<StepOutcome<T>> {
+/** Runs an agent call, and when its answer fails the output schema, repairs the answer when `schema` is given, else runs it once more with a note on what was wrong. */
+export async function retryOnSchema<T>(attempt: (note: string | null) => Promise<StepOutcome<T>>, schema?: z.ZodType<T>): Promise<StepOutcome<T>> {
   const first = await attempt(null);
   if (first.ok || first.failure !== 'schema') return first;
-  return attempt(schemaNote(first.errors));
+  // A bad list entry is dropped from the answer, which costs no new call.
+  const repaired = schema ? repairByDropping(first, schema) : null;
+  return repaired ?? attempt(schemaNote(first.errors));
 }
 
 /** The pack with a note appended to its feedback, or the pack itself when there is no note. */

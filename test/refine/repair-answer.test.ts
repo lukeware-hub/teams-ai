@@ -28,3 +28,27 @@ describe('repairByDropping', () => {
     expect(repairByDropping<Out>(failed(answer, ['docPatch.0.reason: Required']), Schema)).toBeNull();
   });
 });
+
+describe('a stage review with one bad suggestion', () => {
+  it('keeps the review without asking the agent again', async () => {
+    const { retryOnSchema } = await import('../../server/refine/agent-failure.js');
+    let calls = 0;
+    const answer = { specHash: 'h', docPatch: [{ find: 'a', reason: 'r' }, { find: 'b' }], questions: [] };
+    const out = await retryOnSchema<Out>(async () => {
+      calls++;
+      return failed(answer, ['docPatch.1.reason: Required']);
+    }, Schema);
+    expect(calls).toBe(1);
+    expect(out).toMatchObject({ ok: true, value: { docPatch: [{ find: 'a', reason: 'r' }] } });
+  });
+
+  it('asks again when the answer cannot be repaired', async () => {
+    const { retryOnSchema } = await import('../../server/refine/agent-failure.js');
+    let calls = 0;
+    await retryOnSchema<Out>(async () => {
+      calls++;
+      return failed({ specHash: 'h' }, ['specHash: Required']);
+    }, Schema);
+    expect(calls).toBe(2);
+  });
+});

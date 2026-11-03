@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { RefineOutput } from '../agents/outputs.js';
+import { RefineOutput } from '../agents/outputs.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
@@ -125,7 +125,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', stage: file, ...jev });
     }
     // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
-    const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)));
+    const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)), RefineOutput);
     let n = 0;
     // Every patch is checked against the documents as the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
