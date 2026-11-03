@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { refineApi, type ProgramDecision } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { visibleInterval } from '../visibleInterval.js';
 
 const BACKEND = { jev: 'Jev', local: 'modelo local', claude: 'Claude' } as const;
 const who = (d: ProgramDecision) => (d.backend === null ? 'sem resposta' : `${BACKEND[d.backend as keyof typeof BACKEND] ?? d.backend}${d.escalated ? ' (escalada)' : ''}`);
@@ -14,8 +15,7 @@ export function useDecisions(projectId: string, specId: string, live: boolean) {
     const load = () => refineApi.programDecisions(projectId, specId).then(setDecisions).catch(() => undefined);
     void load();
     if (!live) return;
-    const timer = setInterval(() => void load(), 15_000);
-    return () => clearInterval(timer);
+    return visibleInterval(() => void load(), 15_000);
   }, [projectId, specId, live]);
   return decisions;
 }

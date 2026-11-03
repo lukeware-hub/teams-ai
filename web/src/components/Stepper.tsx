@@ -21,8 +21,10 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
   // On a phone the flags do not fit under their labels, so the flagged steps are named in a line below the steps.
   const flagged = steps.filter((step) => step.marker);
   const flags = [...new Set(flagged.map((step) => step.marker))].join(' · ');
+  const at = steps.findIndex((step) => step.state === 'active');
   return (
     <>
+      {at >= 0 && <p data-testid="stepper-position" className="m-0 hidden text-[0.8125rem] font-semibold text-ink-soft max-[720px]:block">Etapa {at + 1} de {steps.length} · {steps[at]!.label}</p>}
       <ol data-testid="stepper" className="onboarding-stepper" aria-label={ariaLabel}>
         {steps.map((step, index) => {
           const body = (

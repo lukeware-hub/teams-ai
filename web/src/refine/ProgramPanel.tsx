@@ -7,6 +7,7 @@ import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { visibleInterval } from '../visibleInterval.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
@@ -95,8 +96,7 @@ export function useProgram(projectId: string, specId: string, enabled: boolean) 
       setPhases(Object.fromEntries(await Promise.all(runIds.map(async (id) => [id, (await runApi.run(id)).phase] as const))));
     }).catch(() => undefined);
     void poll();
-    const timer = setInterval(() => void poll(), 5_000);
-    return () => clearInterval(timer);
+    return visibleInterval(() => void poll(), 5_000);
   }, [live, projectId, specId]);
   return { program, phases, setProgram };
 }
