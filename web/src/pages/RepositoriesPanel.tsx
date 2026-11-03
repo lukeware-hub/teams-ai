@@ -29,7 +29,7 @@ export function RepositoriesPanel({ projectId, repositories }: { projectId: stri
         </div>
         <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:grid-cols-3">
           {repositories.map((repo) => (
-            <li key={repo.name} className="card grid min-w-0 gap-2 p-4" data-testid={`repo-card-${repo.name}`}>
+            <li key={repo.name} className="card flex min-w-0 flex-col gap-2 p-4" data-testid={`repo-card-${repo.name}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <strong className="wrap-anywhere">{repo.name}</strong>
                 <span className="count-pill">{KIND_LABEL[repo.kind ?? ''] ?? repo.kind ?? 'sem tipo'}</span>
@@ -38,7 +38,7 @@ export function RepositoriesPanel({ projectId, repositories }: { projectId: stri
               <p className="m-0 text-[0.8125rem] text-ink-soft">{repo.responsibility}</p>
               <p className="m-0 text-[0.8125rem] text-ink-soft">{`${repo.specs} specs · ${repo.plans} planos · ${repo.tasks} tarefas`}</p>
               <p className="m-0 text-[0.8125rem] text-ink-soft">{`Tarefas: ${repo.tasksDone} de ${repo.tasks} concluídas`}</p>
-              <Link className="link-button justify-self-start" to={`/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(repo.name)}`}>Abrir painel</Link>
+              <Link className="link-button mt-auto self-end" to={`/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(repo.name)}`}>Abrir painel</Link>
             </li>
           ))}
         </ul>
