@@ -880,7 +880,7 @@ export class RefineSession {
   }
 
   /** Whether the architecture was decided on documents that have changed since. */
-  private async isArchitectureStale(): Promise<boolean> {
+  async isArchitectureStale(): Promise<boolean> {
     return this.state.architecture != null && this.state.architecture.docsHash !== docsHashOf(await this.docsNow());
   }
 

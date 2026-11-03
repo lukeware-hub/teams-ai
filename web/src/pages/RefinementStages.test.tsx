@@ -150,28 +150,14 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the start open while a closing check fails, and lists each unmet item with its detail and what to fix', () => {
+  it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks once', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
     const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
-    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, handlersWithSpeckit());
+    const h = { ...handlersWithSpeckit(), onResolveClosing: vi.fn() };
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, h);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
-    const alert = screen.getByTestId('closing-alert');
-    expect(alert.textContent).toContain('Itens reprovados no resumo. Eles não travam o início');
-    expect(alert.textContent).toContain('Escopo explícito');
-    expect(alert.textContent).toContain('o plano traz tarefa fora dos documentos');
-    expect(alert.textContent).not.toContain('po.scope-explicit');
-    fireEvent.click(screen.getByTestId('start-reason-action'));
-    expect(window.location.search).toContain('etapa=revisao');
-  });
-
-  it('points each failing item to the documents to review, with one shortcut for each file', () => {
-    const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'revise antes de iniciar' }] };
-    const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'falta escopo' } : c));
-    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing } as never, handlersWithSpeckit());
-    const alert = screen.getByTestId('closing-alert');
-    expect(alert.textContent).toContain('Revise em:');
-    fireEvent.click(within(alert).getByRole('button', { name: 'briefing.md' }));
-    expect(window.location.search).toContain('etapa=briefing.md');
+    expect(screen.queryByTestId('closing-alert')).toBeNull();
+    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
   it('shows the questions the plan asked, for the owner to answer, and keeps the start locked while one blocks', () => {

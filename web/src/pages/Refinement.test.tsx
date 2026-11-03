@@ -728,22 +728,24 @@ describe('the architecture step names what the documentation repository does', (
     expect(window.location.search).toContain('etapa=backlog');
   });
 
-  it('the backlog summary names the architecture gap, and its action opens the architecture step', () => {
+  it('a stale architecture on the backlog is resolved by the agents once, with no alert', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
     const closing = { ok: false, checks: [{ id: 'architecture', ok: false, detail: 'a arquitetura não está decidida sobre os documentos atuais' }], assumptions: [], repositories: [], summaryHash: 'h' };
-    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing, architectureStale: true } as never)} busy={false} events={[]} {...on()} /></MemoryRouter>);
-    fireEvent.click(screen.getByTestId('closing-architecture'));
-    expect(window.location.search).toContain('etapa=arquitetura');
+    const h = { ...on(), onResolveClosing: vi.fn() };
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing, architectureStale: true } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
+    expect(screen.queryByTestId('closing-alert')).toBeNull();
+    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
-  it('an empty backlog names that it has no items, and offers no architecture action while the decision is current', () => {
+  it('an empty backlog is resolved by the agents once, with no architecture action on the page', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] };
     const closing = { ok: false, checks: [{ id: 'architecture', ok: false, detail: 'o backlog ainda não tem itens' }], assumptions: [], repositories: [], summaryHash: 'h' };
-    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing } as never)} busy={false} events={[]} {...on()} /></MemoryRouter>);
-    expect(screen.getByText('o backlog ainda não tem itens')).toBeTruthy();
+    const h = { ...on(), onResolveClosing: vi.fn() };
+    render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
     expect(screen.queryByTestId('closing-architecture')).toBeNull();
+    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
   });
 
   it('the architecture button asks for a decision on the click when none exists, and does not move', () => {

@@ -14,7 +14,7 @@ import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
 import { allGreen, isApproval } from '@server/refine/state';
-import { CHECK_NAMES, reviewFiles, type Divergence, type DivergenceSide } from '@server/refine/checklist';
+import { CHECK_NAMES, type Divergence, type DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
 import { ReshapeNotice } from '../refine/ReshapeNotice.js';
@@ -216,6 +216,7 @@ export interface ViewProps {
   onDecideArchitecture?(): void | Promise<unknown>;
   /** Stage 7: the owner asks for the plans of every backlog item. */
   onPreparePlans?(): void | Promise<unknown>;
+  onResolveClosing?(): void | Promise<unknown>;
   /** The owner moves on from a document's stage; `false` says the server refused. */
   onContinueStage?(doc?: DocFile): void | boolean | Promise<unknown>;
   /** The final review puts a document in the Graphify graph as it is now; `false` says the server refused. */
@@ -1192,38 +1193,18 @@ export function RefinementView(p: ViewProps) {
   const startReason = canStart && speckitReady ? undefined
     : !speckitRunning && !st.backlog?.detail ? 'Detalhe o backlog antes de iniciar.'
     : speckitReason;
-  // The closing checks only alert: the start stays open, and each unmet check says what to fix, with its divergences.
+  // The closing checks the agents can fix are resolved on their own, once per summary: the owner sees no alert.
   const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
-  const failingChecklist = st.checklist.filter((c) => !c.passed);
-  const architectureNeedsDecision = snap.architectureStale === true || st.architecture == null;
-  const closingRows = closingFailing.flatMap((check) => (check.id === 'architecture' && architectureNeedsDecision
-    ? [<li key={check.id}>{check.detail}. <button type="button" className="link-button" data-testid="closing-architecture" onClick={() => goTo('architecture')}>Decidir a arquitetura de novo</button></li>]
-    : check.id === 'questions' && failingChecklist.length > 0
-    ? failingChecklist.map((item) => (
-      <li key={`${check.id}-${item.id}`}>
-        <b>{checkLabel[item.id] ?? item.id}</b>: {checkDetail(item.detail)}
-        {item.divergences?.length ? <Divergences items={item.divergences} /> : null}
-        <span className="mt-1 flex flex-wrap items-center gap-2">
-          Revise em:
-          {reviewFiles(item).map((file) => <button key={file} type="button" className="link-button" onClick={() => goTo(file as DocFile)}>{file}</button>)}
-        </span>
-      </li>
-    ))
-    : [<li key={check.id}>{check.detail}</li>]));
-  // The plain reason and the closing alert sit under the coverage; the footer keeps only the buttons.
+  const closingHash = snap.closing?.summaryHash;
+  const resolveClosing = p.onResolveClosing;
+  const resolvedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (closingHash === undefined || closingFailing.length === 0 || st.backlog?.detail !== true || locked || resolvedFor.current === closingHash) return;
+    resolvedFor.current = closingHash;
+    void resolveClosing?.();
+  }, [closingHash, closingFailing.length, locked, st.backlog?.detail, resolveClosing]);
   const startLine = (
-    <>
-      {startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>}
-      {closingFailing.length > 0 && st.backlog?.detail === true && (
-        <div role="status" data-testid="closing-alert" className="grid gap-3 rounded-md border border-warn-line bg-warn-soft p-3 text-[0.8125rem] text-ink">
-          <p className="m-0 font-semibold">Itens reprovados no resumo. Eles não travam o início: corrija o que for preciso e veja o motivo de cada um.</p>
-          <ul className="m-0 grid list-disc gap-2 pl-5">{closingRows}</ul>
-          <div className="flex flex-wrap justify-end">
-            <ActionButton data-testid="start-reason-action" className="secondary" onClick={() => goTo('review')} icon={<Icon name="arrow-right" size={16} />}>Ver o que falta</ActionButton>
-          </div>
-        </div>
-      )}
-    </>
+    startReason && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="start-reason">{startReason}</p>
   );
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
@@ -1505,6 +1486,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
+        onResolveClosing={act(() => refineApi.resolve(projectId, specId))}
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc) => refineApi.continueStage(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
         onAddToGraph={(doc) => refineApi.addToGraph(projectId, specId, doc).then(() => true, (e: Error) => (setError(e.message), false))}
