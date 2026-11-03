@@ -23,7 +23,7 @@ import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } 
 import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
-import { runStageCycle } from './stage-cycle.js';
+import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
 import { scoresDocs } from './readiness.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
@@ -570,7 +570,7 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await this.keepPassedText(file, restore);
-      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal };
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f) };
       await runStageCycle(deps, this.state.cycle + 1, file);
       if (this.state.status !== 'error') await this.acceptSafePatches(file);
       // The Jev score of the reviewed document follows on its own: the owner no longer asks for it with a button.

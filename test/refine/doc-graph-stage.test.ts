@@ -118,6 +118,26 @@ describe('document graph in the stages', () => {
     await s.close();
   });
 
+  it('an identical review is not asked of the agent again, and a new answer or an edit asks it again', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    calls.length = 0;
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(0);
+    expect(s.state.reviewedStages).toContain('flow.md');
+    await s.saveDoc('flow.md', `${FLOW}
+Editado.
+`);
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(1);
+    await s.close();
+  });
+
   it('a failed review does not put the document in the graph', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);

@@ -32,6 +32,7 @@ describe('answers while a stage review runs', () => {
     const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-project');
     script['refine/po'] = [out([ask('Quem usa?'), ask('Qual o prazo?')]), out(), out()];
     await s.evaluateStage('flow.md');
+    calls.length = 0;
     const [q1, q2] = s.state.questions.filter((q) => q.status === 'pending');
     const running = s.reprocessStage('flow.md').catch(() => s.evaluateStage('flow.md'));
     await s.answer(q1!.questionId, 'Clientes');
@@ -39,7 +40,6 @@ describe('answers while a stage review runs', () => {
     const first = s.reviewAfterAnswers('flow.md');
     expect(s.reviewAfterAnswers('flow.md')).toBe(first);
     await running;
-    calls.length = 0;
     await first;
     expect(s.state.questions.filter((q) => q.status === 'answered')).toHaveLength(2);
     expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);

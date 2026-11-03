@@ -38,6 +38,14 @@ export interface StageCycleDeps {
   validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   principles: () => readonly string[];
   signal?: AbortSignal;
+  /** The key of the document's last finished review: an identical review is not asked of the agent again. */
+  lastReviewKey?: (file: DocFile) => string | undefined;
+}
+
+/** The key of the last finished review of a document in the journal's events. */
+export function lastReviewKeyOf(events: ReadonlyArray<{ type: string; data: Record<string, unknown> }>, file: DocFile): string | undefined {
+  const last = [...events].reverse().find((e) => e.type === RefineEvent.StageReviewed && e.data.file === file);
+  return typeof last?.data.inputKey === 'string' ? last.data.inputKey : undefined;
 }
 
 /** The stage document and the documents before it: the only ones a review compares, and the only ones it may move text into. */
@@ -117,6 +125,12 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const scope = scopeOf(file);
     // The stage's own key: a change to a later document leaves the review's key as it was.
     const specHash = sha256(JSON.stringify(scope.map((f) => [f, docs[f]])));
+    // What the review reads: the documents, the answers and the decisions on suggestions. The same input gives the same review.
+    const inputKey = sha256(JSON.stringify([specHash, deps.principles(), journal.state.questions.map((q) => [q.questionId, q.status, q.answer ?? null]), journal.state.patches.map((p) => [p.patchId, p.status])]));
+    if (deps.lastReviewKey?.(file) === inputKey) {
+      await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: [], divergences: journal.state.stageAlignment?.[file] ?? [], discardedPatches: [], inputKey, replayed: true });
+      return;
+    }
     const role = OWNER[file];
     const run = role === 'front' && deps.frontAgent ? deps.frontAgent : deps.runAgent;
     const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
@@ -176,7 +190,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     // the patches above are already on record, so a second pass would propose them twice.
     const guarded = checkRepeats(questions, journal.state.questions, STAGE_REPEAT_OVERLAP);
     for (const { question, matches } of guarded.unresolved) await journal.fact(RefineEvent.QuestionDropped, droppedOf(question, matches[0]!, file));
-    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: guarded.kept, divergences, discardedPatches });
+    await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: guarded.kept, divergences, discardedPatches, inputKey });
   } catch (err) {
     await journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage(`A revisão de ${file}`, err) });
   }
