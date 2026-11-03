@@ -369,3 +369,22 @@ describe('a document scored below the pass line', () => {
     expect(screen.getByTestId('wizard-continue').textContent).toBe('Continuar');
   });
 });
+
+describe('several questions of a stage on screen', () => {
+  const first = { ...question(false), questionId: 'po-s1-0', file: 'flow.md', text: 'Quem usa o fluxo?' };
+  const second = { ...question(false), questionId: 'po-s1-1', file: 'flow.md', text: 'Qual o prazo?' };
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
+
+  it('lists them all, and each keeps its own answer', () => {
+    const h = renderView(project({ stages: true, questions: [first as never, second as never] } as never));
+    expect(screen.getByText('Quem usa o fluxo?')).toBeTruthy();
+    expect(screen.getByText('Qual o prazo?')).toBeTruthy();
+    const boxes = screen.getAllByTestId('answer') as HTMLTextAreaElement[];
+    expect(boxes).toHaveLength(2);
+    fireEvent.change(boxes[1]!, { target: { value: '30 dias' } });
+    expect(boxes[0]!.value).toBe('');
+    fireEvent.click(screen.getByTestId('answer-po-s1-1'));
+    expect(h.onAnswer).toHaveBeenCalledWith('po-s1-1', '30 dias', false);
+    expect((screen.getByTestId('answer-po-s1-0') as HTMLButtonElement).disabled).toBe(true);
+  });
+});

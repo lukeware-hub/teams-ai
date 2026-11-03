@@ -350,8 +350,10 @@ export function RefinementView(p: ViewProps) {
   const unchanged = st.cycle > 0 && !st.stale && !changedSince;
   const attachInput = useRef<HTMLInputElement>(null);
   const docFileInput = useRef<HTMLInputElement>(null);
-  const [answer, setAnswer] = useState('');
-  const [docsAnswered, setDocsAnswered] = useState(false);
+  // What the owner typed for each open question: every question keeps its own draft, so several can be answered one after the other.
+  const [drafts, setDrafts] = useState<Record<string, { text: string; docs: boolean }>>({});
+  const draftOf = (id: string) => drafts[id] ?? { text: '', docs: false };
+  const setDraft = (id: string, change: Partial<{ text: string; docs: boolean }>) => setDrafts((all) => ({ ...all, [id]: { ...(all[id] ?? { text: '', docs: false }), ...change } }));
   const [reasons, setReasons] = useState<Record<string, string>>({});
   // The patch being accepted or rejected: both of its buttons stay locked until the action ends.
   const [deciding, setDeciding] = useState<string | null>(null);
@@ -391,11 +393,6 @@ export function RefinementView(p: ViewProps) {
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
-  // A new question on screen starts with an empty answer and no mark, so neither reaches the wrong question.
-  useEffect(() => {
-    setAnswer('');
-    setDocsAnswered(false);
-  }, [current?.questionId, speckitAsked[0]?.questionId, step]);
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -753,7 +750,11 @@ export function RefinementView(p: ViewProps) {
   /** One pending question with its options, answer box and actions; `remaining` counts the open ones, this included. */
   // A stage question can be answered while the agents review: the server only records it and runs one review for the batch.
   const answerLocked = locked && (st.stages !== true || st.backlog?.enabled === true);
-  const questionCard = (current: QuestionRow, remaining: number) => (
+  const questionCard = (current: QuestionRow, remaining: number) => {
+    const { text: answer, docs: docsAnswered } = draftOf(current.questionId);
+    const setAnswer = (text: string) => setDraft(current.questionId, { text });
+    const setDocsAnswered = (docs: boolean) => setDraft(current.questionId, { docs });
+    return (
         <div data-testid="refinement-question-card" className="rounded-lg border border-line bg-surface-sunken p-4">
           <div data-testid="refinement-question-badges" className="flex flex-wrap items-center gap-[0.35rem]">
             {current.origin === 'speckit'
@@ -792,8 +793,8 @@ export function RefinementView(p: ViewProps) {
           {current.options && current.options.length > 0 && (
             <OptionGroup lead="Escolha uma opção ou escreva a sua resposta abaixo." options={current.options} value={answer} onChange={setAnswer} disabled={locked} />
           )}
-          <label data-testid="refinement-question-answer-label" className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor="refinement-answer">Sua resposta</label>
-          <textarea id="refinement-answer" data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
+          <label data-testid="refinement-question-answer-label" className="mt-4 mb-[0.4rem] block text-[0.8125rem] font-semibold text-ink-soft" htmlFor={`refinement-answer-${current.questionId}`}>Sua resposta</label>
+          <textarea id={`refinement-answer-${current.questionId}`} data-testid="answer" className="min-h-28 w-full resize-y p-4 text-[0.9rem] leading-normal" value={answer} onChange={(e) => setAnswer(e.target.value)} />
           {/* A long label wraps under its text, so the checkbox and the tip sit on the first line. */}
           {current.origin !== 'speckit' && <div data-testid="refinement-question-docs-row" className="mt-3 mb-4 flex items-start gap-[0.35rem] text-[0.8125rem] leading-5 text-ink-soft [&_.info-tip]:mt-[0.1rem]">
             <label data-testid="refinement-question-docs-label" className="inline-flex cursor-pointer items-start gap-2">
@@ -809,8 +810,7 @@ export function RefinementView(p: ViewProps) {
               disabled={answerLocked || answer.trim() === ''}
               onClick={() => {
                 const sent = p.onAnswer(current.questionId, answer, docsAnswered);
-                setAnswer('');
-                setDocsAnswered(false);
+                setDrafts((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== current.questionId)));
                 return sent;
               }}
               icon={<Icon name="send" size={16} />}
@@ -825,7 +825,8 @@ export function RefinementView(p: ViewProps) {
           </div>
           <small data-testid="refinement-question-remaining" className="mt-2 block text-ink-soft">{remaining === 1 ? 'Esta é a última pergunta em aberto.' : remaining === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${remaining - 1} perguntas depois desta.`}</small>
         </div>
-  );
+    );
+  };
   /** One pending suggestion with its diff, reason box and the two decisions. */
   const patchCard = (x: PatchRow, i: number) => (
           <div data-testid={`refinement-patch-${x.patchId}`} key={x.patchId} className="mt-4 rounded-lg border border-line bg-surface p-[0.85rem]">
@@ -1141,7 +1142,7 @@ export function RefinementView(p: ViewProps) {
             </ol>
           )}
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
-          {questions[0] && (!locked || !answerLocked) && questionCard(questions[0], questions.length)}
+          {(!locked || !answerLocked) && questions.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, questions.length - i)}</Fragment>)}
           {!locked && patches.map(patchCard)}
           {discarded.map((d, i) => <p data-testid="refinement-stage-discarded" key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
