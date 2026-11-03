@@ -37,8 +37,7 @@ import { questionPairs } from './question-pairs.js';
 import { checkRepeats, droppedOf, ROUND_REPEAT_OVERLAP } from './question-guard.js';
 import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
-import { PATCH_FILES, patchOwners, reorganizeGroups, reorganizePack, refinePack } from './packs.js';
-import { reshapeAll } from './reshape.js';
+import { PATCH_FILES, patchOwners, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { planMove } from './moves.js';
@@ -135,89 +134,16 @@ export async function recordScore(deps: ScoreDeps, cycle: number, confidential: 
   await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, ...scored });
 }
 
-const BLANK_FILES = ['stack.md', 'flow.md'] as const;
-const BLANK_TEMPLATE: Record<(typeof BLANK_FILES)[number], () => string> = { 'stack.md': stackTemplate, 'flow.md': flowTemplate };
-
-/** The SM fills a blank template only with text that keeps its shape: a Mermaid diagram for flow.md, the template's headings for stack.md. */
-function fillsTemplate(file: (typeof BLANK_FILES)[number], text: string): boolean {
-  const template = BLANK_TEMPLATE[file]();
-  if (text.trim() === '' || text.trim() === template.trim()) return false;
-  if (file === 'flow.md') return flowIsMermaid(text);
-  return template.split('\n').filter((line) => line.startsWith('## ')).every((heading) => text.includes(heading));
-}
-
-/** A role may move at most this many pieces of content in one cycle; the rest are discarded with the reason. */
-const MAX_MOVES_PER_ROLE = 3;
-/** The reorganization pass is the whole job of its call, so it may move more than a review. */
-const REORGANIZE_MAX_MOVES = 20;
 const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
 
 /** The titles a question quotes in double quotes, normalized: the section a pending question is about. */
 export const titlesOf = (texts: readonly string[]) => texts.flatMap((t) => [...t.matchAll(/"([^"]{4,})"/g)].map((m) => norm(m[1]!)));
-
-/** Texts of the questions waiting for the owner, the ones of this cycle's reorganization included. */
-const askedTexts = (s: RefineState, pending: ReadonlyArray<{ text: string }>) => [...s.questions.filter((q) => q.status === 'pending').map((q) => q.text), ...pending.map((q) => q.text)];
 
 /** A pending suggestion whose quoted text no longer stands in its document leaves the list now, as after an accepted patch. */
 export async function dropCoveredPatches(journal: CycleJournal, docs: Record<DocFile, string>, files: readonly DocFile[]): Promise<void> {
   for (const p of journal.state.patches) {
     if (p.status === 'pending' && files.includes(p.file) && applyPatch(docs[p.file], p) === null) {
       await journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: COVERED_REASON });
-    }
-  }
-}
-
-/** Applies the moves role by role (Front, PO, SM), each against the documents as the earlier ones left them; a refused move is discarded with its reason. */
-export async function applyMoves(
-  journal: CycleJournal,
-  draft: Draft,
-  cycle: number,
-  docs: Record<DocFile, string>,
-  scope: { specId: string; projectBriefing: boolean; asked: readonly string[] },
-  proposals: ReadonlyArray<{ role: 'front' | 'po' | 'sm'; moves: readonly DocMoveProposal[]; limit: number }>,
-  discarded: Array<{ role: string; file: string; reason: string }>,
-): Promise<void> {
-  const blank = new Set(BLANK_FILES.filter((f) => docs[f] === BLANK_TEMPLATE[f]()));
-  for (const { role, moves, limit } of proposals) {
-    // Counted from the journal, so a move id of this cycle never repeats one an earlier pass gave the same role.
-    let index = journal.state.moves.filter((m) => m.cycle === cycle && m.role === role).length;
-    for (const [n, move] of moves.entries()) {
-      if (n >= limit) {
-        discarded.push({ role, file: move.from, reason: `mais de ${limit} movimentos em um ciclo` });
-        continue;
-      }
-      // A section a question still waits on is the owner's to decide: no role moves it before the answer.
-      const cited = scope.asked.find((title) => norm(move.quote).includes(title));
-      if (cited) {
-        discarded.push({ role, file: move.from, reason: `a pergunta pendente cita este trecho: "${cited}"` });
-        continue;
-      }
-      const plan = planMove(move, {
-        ...scope,
-        docs,
-        blank,
-        applied: journal.state.moves.filter((m) => m.status === 'applied'),
-        undone: journal.state.moves.filter((m) => m.status === 'undone'),
-      });
-      if (!plan.ok) {
-        discarded.push({ role, file: move.from, reason: plan.reason });
-        continue;
-      }
-      const { from, to, cut, put } = plan;
-      await writeDoc(draft, from, cut.next);
-      await writeDoc(draft, to, put.next);
-      // The texts as they are on disk: writeDoc adds a final line break, and undo compares hashes of these texts.
-      docs[from] = await readDoc(draft, from);
-      docs[to] = await readDoc(draft, to);
-      const fromHash = sha256(docs[from]);
-      const toHash = sha256(docs[to]);
-      await journal.fact(RefineEvent.DocEdited, { file: from, hash: fromHash, source: 'move' });
-      await journal.fact(RefineEvent.DocEdited, { file: to, hash: toHash, source: 'move' });
-      await journal.fact(RefineEvent.DocMoved, {
-        moveId: `move-${role}-c${cycle}-${index++}`, role, cycle, from, to, reason: move.reason, quote: move.quote, text: move.text.trim(),
-        removedAt: cut.removedAt, removed: cut.removed, insertAt: put.insertAt, inserted: put.inserted, fromHash, toHash,
-      });
-      await dropCoveredPatches(journal, docs, [from, to]);
     }
   }
 }
@@ -435,35 +361,6 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
   const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
-  // Every document takes its template's layout first, so the reorganization pass reads the layout the documents must keep.
-  await reshapeAll({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, docs, discardedPatches);
-  // The reorganization pass reads every changed document in full against the charter and moves what is misplaced, before any review reads them.
-  // A document whose hash is the one the last pass left is skipped; the first pass reads all five.
-  const changed = REORGANIZED_FILES.filter((f) => sha256(docs[f]) !== journal.state.reorganized[f]);
-  const reorgQuestions: z.infer<typeof RefineOutput>['questions'] = [];
-  if (changed.length > 0) {
-    for (const group of reorganizeGroups(changed, docs)) {
-      const out = (await deps.runAgent<'refine'>(
-        {
-          kind: 'refine',
-          role: 'po',
-          pack: fitPackBudget(reorganizePack({ specHash: hash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: group, projectBriefing: backlogMode })),
-          cwd: draft.root,
-          phase: 'refine',
-          taskId: null,
-          attempt: cycle,
-        },
-        ctx,
-      )) as StepOutcome<z.infer<typeof RefineOutput>>;
-      if (!out.ok) {
-        await failAgent('A reorganização dos documentos', out);
-        return;
-      }
-      await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode, asked: titlesOf(askedTexts(journal.state, reorgQuestions)) }, [{ role: 'po', moves: out.value.moves ?? [], limit: REORGANIZE_MAX_MOVES }], discardedPatches);
-      reorgQuestions.push(...out.value.questions);
-    }
-    await journal.fact(RefineEvent.DocsReorganized, { cycle, hashes: Object.fromEntries(REORGANIZED_FILES.map((f) => [f, sha256(docs[f])])) });
-  }
   // Front's review waits for the moves: its patches are checked after them.
   let frontReview: z.infer<typeof RefineOutput> | null = null;
   if (deps.frontAgent) {
@@ -527,14 +424,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     await failAgent('A revisão do SM', sm);
     return;
   }
-  // The reviewers read these documents, so the quotes they copy are checked against them, even when a move below takes that text away.
+  // The reviewers read these documents, so the quotes they copy are checked against them.
   const reviewed = { ...docs };
-  // Content in the wrong document moves first: every patch is checked against the documents as the moves leave them.
-  await applyMoves(journal, draft, cycle, docs, { specId: draft.specId, projectBriefing: backlogMode, asked: titlesOf(askedTexts(journal.state, reorgQuestions)) }, [
-    { role: 'front', moves: frontReview?.moves ?? [], limit: MAX_MOVES_PER_ROLE },
-    { role: 'po', moves: po.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
-    { role: 'sm', moves: sm.value.moves ?? [], limit: MAX_MOVES_PER_ROLE },
-  ], discardedPatches);
   // A finding stands only when its quote is in the document it names: a claim the documents do not show is not routed to the owner.
   const reported = [
     ...(frontReview?.findings ?? []).map((f) => ({ ...f, role: 'front' as const })),
@@ -581,7 +472,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const merged: Question[] = [];
   const counters = { po: 0, sm: 0 };
   for (const blocking of [true, false]) {
-    for (const [role, out] of [['po', { questions: [...reorgQuestions, ...po.value.questions] }], ['sm', sm.value]] as const) {
+    for (const [role, out] of [['po', { questions: po.value.questions }], ['sm', sm.value]] as const) {
       for (const q of out.questions.filter((x) => x.blocking === blocking)) {
         const key = norm(q.text);
         // A reworded question about a section a pending one already asks is the same question.
@@ -652,15 +543,6 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
-      // A stack.md or flow.md that is still the blank template is filled by the SM straight away: nobody has anything
-      // to review in a placeholder, and asking the human what to put there is the friction this avoids.
-      const blank = role === 'sm' ? BLANK_FILES.find((f) => DOC_REL[f](draft.specId) === p.file && docs[f] === BLANK_TEMPLATE[f]()) : undefined;
-      if (blank && fillsTemplate(blank, p.replace)) {
-        await writeDoc(draft, blank, p.replace);
-        docs[blank] = await readDoc(draft, blank);
-        await journal.fact(RefineEvent.DocEdited, { file: blank, hash: sha256(docs[blank]), source: 'autofill' });
-        continue;
-      }
       const c = checkPatch(p, draft.specId, docs, backlogMode);
       if (c.ok && c.file === 'design.md') {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });

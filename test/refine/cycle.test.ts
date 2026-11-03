@@ -103,7 +103,7 @@ describe('refinement cycle: owner reasons for a failed agent step', () => {
   });
 });
 
-describe('refinement cycle: moves, findings and template fills', () => {
+describe('refinement cycle: findings and template fills', () => {
   const MOVED = 'O cliente confirma o pedido antes do pagamento.';
   /** Runs one cycle of a new project whose project.md holds MOVED; flow.md is a diagram unless `blankFlow` keeps the blank template. */
   async function run(poOutput: { moves?: unknown[]; findings?: unknown[] }, smOutput: { moves?: unknown[]; docPatch?: unknown[] }, { blankFlow = false, projectMd = `# Shop\n\n## Visão\n\nLoja online.\n\n${MOVED}\n`, mode = null, scoreDocs }: { blankFlow?: boolean; projectMd?: string; mode?: RefineState['mode']; scoreDocs?: CycleDeps['scoreDocs'] } = {}) {
@@ -127,34 +127,6 @@ describe('refinement cycle: moves, findings and template fills', () => {
     await runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [], scoreDocs }, 1);
     return { events, draft };
   }
-  const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: MOVED, text: MOVED, reason: 'ordem de passos' };
-
-  it('applies a move before the patches are checked, so a suggestion quoting the moved text is discarded', async () => {
-    const { events, draft } = await run({ moves: [move] }, { docPatch: [{ file: 'docs/project.md', find: 'O cliente confirma o pedido', replace: 'O cliente paga', reason: 'r' }] });
-    expect(events.find((e) => e.type === 'DOC_MOVED')?.data).toMatchObject({ moveId: 'move-po-c1-0', from: 'project.md', to: 'flow.md' });
-    expect(await readFile(draft.projectMd, 'utf8')).not.toContain(MOVED);
-    expect(await readFile(draft.flowMd, 'utf8')).toContain(MOVED);
-    expect(events.some((e) => e.type === 'PATCH_PROPOSED' && e.data.role === 'sm')).toBe(false);
-    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'find not found in project.md' });
-  });
-
-  it('refuses a move a second role repeats, since its quote is already gone, so the text moves once', async () => {
-    const { events, draft } = await run({ moves: [move] }, { moves: [move] });
-    expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0']);
-    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'sm', file: 'docs/project.md', reason: 'o trecho deve ser linhas inteiras encontradas uma vez em project.md' });
-    expect((await readFile(draft.flowMd, 'utf8')).split(MOVED).length - 1).toBe(1);
-  });
-
-  it('discards the fourth move of one role in a cycle, and the first three still apply', async () => {
-    const quotes = ['Linha A.', 'Linha B.', 'Linha C.', 'Linha D.'];
-    const moves = quotes.map((quote) => ({ from: 'docs/project.md', to: 'docs/flow.md', quote, text: quote, reason: 'r' }));
-    const { events } = await run({ moves }, {}, { projectMd: `# Shop\n\n${quotes.join('\n\n')}\n` });
-    expect(events.filter((e) => e.type === 'DOC_MOVED').map((e) => e.data.moveId)).toEqual(['move-po-c1-0', 'move-po-c1-1', 'move-po-c1-2']);
-    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.discardedPatches).toContainEqual({ role: 'po', file: 'docs/project.md', reason: 'mais de 3 movimentos em um ciclo' });
-  });
 
   it('keeps a finding only when its quote is in the document it names', async () => {
     const shown = { doc: 'design.md', severity: 'advice', quote: '## Brand and direction', text: 'Falta a paleta.', fix: 'Defina as cores.' };
@@ -168,23 +140,20 @@ describe('refinement cycle: moves, findings and template fills', () => {
     expect(events.find((e) => e.type === 'PATCH_PROPOSED')?.data).toMatchObject({ role: 'sm', file: 'stack.md' });
   });
 
-  it('fills a blank flow.md only with a diagram; any other text stays a patch for the human', async () => {
-    const fill = (replace: string) => ({ file: 'docs/flow.md', find: '# Application flow', replace, reason: 'r' });
-    const prose = await run({}, { docPatch: [fill('# Fluxo\n\nTexto sem diagrama.\n')] }, { blankFlow: true });
-    expect(await readFile(prose.draft.flowMd, 'utf8')).not.toContain('Texto sem diagrama');
-    expect(prose.events.find((e) => e.type === 'PATCH_PROPOSED')?.data).toMatchObject({ role: 'sm', file: 'flow.md' });
-    const diagram = await run({}, { docPatch: [fill('# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n')] }, { blankFlow: true });
-    expect(await readFile(diagram.draft.flowMd, 'utf8')).toContain('flowchart TD');
-    expect(diagram.events.some((e) => e.type === 'PATCH_PROPOSED')).toBe(false);
+  it('never fills a blank flow.md by itself: the diagram is a patch the owner accepts', async () => {
+    const fill = { file: 'docs/flow.md', find: '# Application flow', replace: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n', reason: 'r' };
+    const { events, draft } = await run({}, { docPatch: [fill] }, { blankFlow: true });
+    expect(await readFile(draft.flowMd, 'utf8')).not.toContain('A --> B');
+    expect(events.find((e) => e.type === 'PATCH_PROPOSED')?.data).toMatchObject({ role: 'sm', file: 'flow.md' });
   });
 
-  it('journals the score of the documents after the moves, and before the evaluation', async () => {
+  it('journals the score of the documents before the evaluation', async () => {
     const scoreDocs = vi.fn(async (_docs: Record<string, string>) => ({ available: true, model: 'jev-1.13.0', average: 0.9, docs: null, usage: null }));
-    const { events } = await run({ moves: [move] }, {}, { mode: 'new-project', scoreDocs });
+    const { events } = await run({}, {}, { mode: 'new-project', scoreDocs });
     const types = events.map((e) => e.type);
     expect(types.indexOf('REFINE_DOCS_SCORED')).toBeGreaterThan(-1);
     expect(types.indexOf('REFINE_DOCS_SCORED')).toBeLessThan(types.indexOf('REFINE_EVALUATED'));
-    expect(scoreDocs.mock.calls[0]![0]['flow.md']).toContain(MOVED);
+    expect(scoreDocs.mock.calls[0]![0]['project.md']).toContain(MOVED);
   });
 
   it('scores nothing for a single spec, which is neither a new project nor a backlog', async () => {
@@ -1059,7 +1028,7 @@ describe('refinement cycle in backlog mode', () => {
     on(journal);
     const { fn, packs } = agent([raw([item('casos', { dependsOn: ['base'] }), item('base', { priority: 'P0' })])]);
     await runCycle({ draft, journal, runAgent: fn as never, principles: () => [], retrieval: () => [] }, 1);
-    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine', 'refine']);
+    expect(packs.map((p) => p.kind)).toEqual(['backlog', 'refine', 'refine']);
     const derived = events.find((e) => e.type === 'BACKLOG_DERIVED')!.data as { items: Array<{ key: string; rank: number }> };
     expect(derived.items.map((i) => [i.key, i.rank])).toEqual([['base', 1], ['casos', 2]]);
     expect(events.some((e) => e.type === 'DERIVED')).toBe(false);
@@ -1133,96 +1102,5 @@ describe('refinement cycle pending questions', () => {
     expect(evaluated.data.questions).toEqual([]);
     const open = (evaluated.data.checklist as Array<{ id: string; detail: string }>).find((i) => i.id === 'sm.no-open-questions')!;
     expect(open.detail).toBe('1 blocking question(s) open');
-  });
-});
-
-describe('refinement cycle reorganization pass', () => {
-  const TECH = 'Usamos React no front.';
-  const ok = (value: unknown) => ({ ok: true, value, summary: {} });
-  const check = (ids: string[]) => ids.map((id) => ({ id, passed: true, detail: 'ok' }));
-  const REORG_EMPTY = { checklist: [], questions: [], docPatch: [], moves: [] };
-
-  /** A new project whose project.md holds TECH; the journal applies its events to the state, as the real one does. */
-  async function setup(reorg: Record<string, unknown> = REORG_EMPTY, po: Record<string, unknown> = {}) {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-refine-'));
-    const ws = { projectId: 'shop', root, repo: `${root}/repo`, worktrees: `${root}/wt`, graph: `${root}/g`, knowledgeDb: `${root}/k.sqlite`, secrets: `${root}/secrets`, runs: `${root}/runs` } as Workspace;
-    const draft = draftPaths(ws, 'shop-003');
-    await createNewProject(draft, 'Shop');
-    await writeFile(draft.projectMd, `# Shop\n\n## Visão\n\nLoja online.\n\n${TECH}\n`);
-    await writeFile(draft.flowMd, '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
-    // A filled stack.md: a blank template is never a move's destination.
-    await writeFile(draft.stackMd, '# Stack\n\n## Tecnologias\n\nNode 22.\n');
-    await writeFile(draft.designMd!, '# Design\n\n## Contrato da API para quem faz a tela\n\nFormato de datas.\n');
-    const state = emptyRefineState();
-    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
-    const journal = {
-      state,
-      allocStepSeq: () => 1,
-      fact: async (type: string, data: Record<string, unknown>) => {
-        events.push({ type, data });
-        applyRefineEvent(state, { type, data });
-        return { seq: events.length, at: '', runId: 'shop/shop-003', specHash: 'draft', type, kind: 'fact' as const, data };
-      },
-    };
-    const packs: Array<{ role: string; kind: string; feedback: string }> = [];
-    const runAgent = vi.fn(async (req: { kind: string; role: string; pack: { feedback?: string } }) => {
-      const feedback = String(req.pack.feedback);
-      packs.push({ kind: req.kind, role: req.role, feedback });
-      if (req.kind === 'derive') return ok({ project: makeProject(), spec: { ...makeSpec(), specId: 'shop-003', acceptanceCriteria: [{ id: 'AC-001', given: 'g', when: 'w', then: 't2', smoke: false }] } });
-      if (feedback.startsWith('REORGANIZE:')) return ok(reorg);
-      if (req.role === 'po') return ok({ checklist: check(['po.objectives-verifiable', 'po.personas', 'po.scope-explicit', 'po.no-contradictions']), questions: [], docPatch: [], moves: [], ...po });
-      return ok({ checklist: check(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions']), questions: [], docPatch: [] });
-    });
-    const cycle = (n: number) => runCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], retrieval: () => [] }, n);
-    return { draft, events, packs, cycle };
-  }
-
-  it('reads every document in full on the first pass, and moves the misplaced line to the document that holds it', async () => {
-    const { draft, events, packs, cycle } = await setup({ ...REORG_EMPTY, moves: [{ from: 'docs/project.md', to: 'docs/stack.md', quote: TECH, text: TECH, reason: 'tecnologia' }] });
-    await cycle(1);
-    const pass = packs.find((p) => p.feedback.startsWith('REORGANIZE:'))!;
-    expect(pass.feedback).toContain('### docs/project.md (reorganize in full)');
-    expect(events.some((e) => e.type === 'DOCS_REORGANIZED')).toBe(true);
-    expect(events.find((e) => e.type === 'DOC_MOVED')?.data).toMatchObject({ moveId: 'move-po-c1-0', from: 'project.md', to: 'stack.md' });
-    expect(await readFile(draft.projectMd, 'utf8')).not.toContain(TECH);
-  });
-
-  it('skips the pass when no document changed since the last one', async () => {
-    const { packs, cycle } = await setup();
-    await cycle(1);
-    packs.length = 0;
-    await cycle(2);
-    expect(packs.some((p) => p.feedback.startsWith('REORGANIZE:'))).toBe(false);
-  });
-
-  it('asks an ambiguous piece as a question with its choices, and never moves it', async () => {
-    const question = { id: 'q1', text: 'Onde fica o prazo de entrega?', blocking: false, relatedAcIds: [], subject: 'Prazo de entrega', options: [{ label: 'Briefing', detail: 'Regra de negócio.', recommended: true }, { label: 'Fluxo', detail: 'Ordem de passos.' }] };
-    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] });
-    await cycle(1);
-    const evaluated = events.find((e) => e.type === 'REFINE_EVALUATED')!;
-    expect(evaluated.data.questions).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Onde fica o prazo de entrega?', subject: 'Prazo de entrega' })]));
-    expect(events.some((e) => e.type === 'DOC_MOVED')).toBe(false);
-  });
-
-  it('refuses a move of a section a pending question is about, so the owner decides it first', async () => {
-    const question = { id: 'q1', text: 'Onde fica a seção "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
-    const move = { from: 'docs/design.md', to: 'docs/stack.md', quote: '## Contrato da API para quem faz a tela', text: '## Contrato da API para quem faz a tela', reason: 'API' };
-    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] }, { moves: [move] });
-    await cycle(1);
-    expect(events.some((e) => e.type === 'DOC_MOVED')).toBe(false);
-    expect(events.find((e) => e.type === 'REFINE_EVALUATED')!.data.discardedPatches).toContainEqual(expect.objectContaining({ role: 'po', reason: 'a pergunta pendente cita este trecho: "contrato da api para quem faz a tela"' }));
-  });
-
-  it('drops a reworded question about a section a pending question already asks', async () => {
-    const question = { id: 'q1', text: 'Onde fica a seção "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
-    const reworded = { id: 'q2', text: 'Qual documento deve ter a "Contrato da API para quem faz a tela"?', blocking: false, relatedAcIds: [], options: [{ label: 'Briefing', detail: 'Regra.' }] };
-    // The PO asks the reworded question in the second cycle, after the first cycle left the first one pending.
-    const po: Record<string, unknown> = {};
-    const { events, cycle } = await setup({ ...REORG_EMPTY, questions: [question] }, po);
-    await cycle(1);
-    po.questions = [reworded];
-    await cycle(2);
-    const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
-    expect((evaluated.data.questions as Array<{ text: string }>).map((q) => q.text)).toEqual([]);
   });
 });

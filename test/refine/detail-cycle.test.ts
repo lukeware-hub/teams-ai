@@ -129,7 +129,7 @@ describe('backlog detailing in the refinement cycle', () => {
     const { journal, events, run, itemDir, draft } = await setup();
     const agent = fakeAgent(() => OUTLINE);
     await run(agent, 1);
-    expect(agent.kinds()).toEqual(['backlog', 'refine', 'refine', 'refine']);
+    expect(agent.kinds()).toEqual(['backlog', 'refine', 'refine']);
     await journal.fact(RefineEvent.BacklogDetailEnabled, {});
 
     let from = agent.calls.length;
@@ -159,8 +159,8 @@ describe('backlog detailing in the refinement cycle', () => {
     from = agent.calls.length;
     await writeFile(draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
     await run(agent, 4);
-    expect(agent.kinds(from)).toEqual(['backlog', 'spec', 'refine', 'refine', 'refine']);
-    expect(agent.calls.at(-4)!.feedback).toContain('## Item opme:');
+    expect(agent.kinds(from)).toEqual(['backlog', 'spec', 'refine', 'refine']);
+    expect(agent.calls.at(-3)!.feedback).toContain('## Item opme:');
     const opme = JSON.parse(await readFile(`${itemDir('opme')}/spec.json`, 'utf8'));
     expect(opme.acceptanceCriteria.map((c: { id: string }) => c.id)).toEqual(ids.slice(4, 6));
     // Same content, same revision: its pre-plan is still current and the spec stays planned.
@@ -183,16 +183,16 @@ describe('backlog detailing in the refinement cycle', () => {
   });
 
   // R11.10 (plan 87): the dependencies feed the pre-plan only, so one the outline adds re-derives no spec.
-  it('puts a document that left its layout back in the layout on the next cycle', async () => {
+  it('leaves a document that left its layout as it is: the derive cycle never rewrites it', async () => {
     const { events, run, draft } = await setup();
     const layout = filled(projectTemplate('big'));
-    await writeFile(draft.projectMd, layout.replace('## Stack', '## Entregas'));
+    const moved = layout.replace('## Stack', '## Entregas');
+    await writeFile(draft.projectMd, moved);
     const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'suggest' ? ok({ specHash: H, text: layout }) : undefined));
     await run(agent, 1);
-    expect(events.some((e) => e.type === RefineEvent.DocReshaped && e.data.file === 'project.md')).toBe(true);
-    expect((await readFile(draft.projectMd, 'utf8')).trim()).toBe(layout.trim());
+    expect(events.some((e) => e.type === RefineEvent.DocReshaped)).toBe(false);
+    expect((await readFile(draft.projectMd, 'utf8')).trim()).toBe(moved.trim());
   });
-
   it('re-derives only the pre-plan of an item whose dependencies changed', async () => {
     const { journal, run, draft } = await setup();
     let outline = OUTLINE;
@@ -205,7 +205,7 @@ describe('backlog detailing in the refinement cycle', () => {
     await writeFile(draft.designMd, `${filled(designTemplate())}\n- Cores da clínica\n`);
     const from = agent.calls.length;
     await run(agent, 3);
-    expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine', 'refine']);
+    expect(agent.kinds(from)).toEqual(['backlog', 'preplan', 'conflicts', 'refine', 'refine']);
     expect(agent.calls.slice(from).find((c) => c.kind === 'preplan')!.feedback).toContain('## Spec fat:');
     expect(journal.state.status).toBe('ready');
   });

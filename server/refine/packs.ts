@@ -50,10 +50,7 @@ export const patchOwners = (file: DocFile): string => (Object.keys(PATCH_FILES) 
 /** The roles that own each document: the ones whose review carries that document's findings. */
 const DOC_OWNERS: Record<DocFile, ReadonlyArray<'po' | 'sm' | 'front'>> = { 'project.md': ['po'], 'briefing.md': ['po'], 'stack.md': ['sm'], 'flow.md': ['po', 'sm'], 'design.md': ['front'] };
 
-/** Any role may move content that sits in the wrong document; the move is applied at once and the owner can undo it. */
-const MOVE_RULE = 'MOVES: content that sits in the wrong document is moved, not patched and not only reported. Do this first: read each of the five documents line by line against the document charter in your instructions, and move each piece that sits in the wrong one. An empty `moves` list is correct only when every line of every document belongs where it is. The four kinds to look for: a technology name or version outside stack.md (for example React, TypeScript, PostgreSQL or Node) moves to stack.md; a color, size, contrast value, spacing, font, or list of screens or portals outside design.md moves to design.md; a business rule, a limit or the detailed behavior of a feature outside the briefing moves to the briefing, and a deadline, a limit or what is allowed is a business rule even when a step checks it; a goal or a deliverable named at product level stays in project.md; an order of steps, or a branch that picks the next step, that flow.md does not draw moves to flow.md; a written explanation of a step that flow.md draws stays in the briefing. Return one entry in `moves` per piece: `from` and `to` are document paths as listed above; `quote` is the whole lines to take out of `from`, copied character for character and found once in it; `text` is the same content for `to`, in that document style, keeping every fact, number and name: only the sentence form may change, and every word that names a place, a tool, a value or a name stays. A fact that conflicts with another document is never rewritten inside a move: the text moves as it is, and the conflict is reported on its own, so the text holds no remark about the move or about a conflict. `after` is an exact existing line of `to` to place the text below, or absent to append at the end; `reason` says why it belongs in `to`. Any role may move content between any two documents. A line that holds two kinds of content is not moved and not cut: its owner leaves the line as it is and reports the other part as a finding for the owner of that document, quoting its words exactly. A finding about a misplaced piece never replaces its move, and a piece that a pending question names in double quotes is not moved until the owner answers it. Move only a clear misplacement, never wording or polish, and never touch a decision under the decisions heading of the briefing. Moves are not held back by the convergence rule. Each move is applied at once and the owner can undo it, so keep moves small and at most 3 per review.';
-
-const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it, except content in the wrong document: any role may move that (MOVES below). A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
+const rolesRule = (role: 'po' | 'sm' | 'front') => `ROLES IN THIS REVIEW: PO, SM and Front read the same documents at the same time, and none sees what the others propose in this cycle. ${ROLE_OWNERSHIP.po} ${ROLE_OWNERSHIP.sm} ${ROLE_OWNERSHIP.front} You are the ${role.toUpperCase()}: ask or patch only inside what you own. A problem in another area belongs to the role that owns it. A fact that differs between two documents is the PO's; something that cannot be built is the SM's.`;
 
 /** Every role reads all five documents from its own point of view and reports what it sees outside its area as a finding. */
 const FINDINGS_RULE = 'FINDINGS: read all five documents through your own lens, and report a defect in a document you do not own as an entry in `findings` (doc, severity blocking or advice, the exact quote copied character for character, the problem in text, and the fix). Report at most 3 findings per document, and only a defect that would make the implementation wrong or untestable. A finding never replaces the checklist ids of your own role.';
@@ -86,52 +83,6 @@ function backlogDigest(b: BacklogState): string {
     for (const issue of [...(spec?.issues ?? []), ...(pre?.issues ?? [])]) lines.push(`  problema: ${clip(issue, 160)}`);
     return lines.join('\n');
   }).join('\n');
-}
-
-/** The reorganization pass: every line of a changed document is checked against the charter; the other documents are context only. */
-const REORGANIZE_RULE ='REORGANIZE: a full pass of the documents against the charter in your instructions. Read every line of each document marked "reorganize in full" and check it against the charter. A line in the wrong document is a move: `from` and `to` are document paths as listed below, `quote` is the whole lines to take out of `from`, copied character for character and found once in it, `text` is the same content for `to` keeping every fact, number and name, `after` is an exact existing line of `to` to place it below (or absent to append), and `reason` says why it belongs in `to`. A piece that fits two documents goes where the charter tie-break puts it. Ask a question with two or three `options` (the recommended one marked) and a `subject` only when the charter leaves its right place open. Never guess a move. A document marked as context is for reference only: take nothing out of it. Write every question, option, reason and subject in Brazilian Portuguese. Set every question\'s `blocking` to false, and return empty `checklist`, `docPatch`, `findings` and `contradictions`: this pass only moves and asks. An empty `moves` list is correct only when every line of every document marked "reorganize in full" belongs where it is.';
-
-/** Groups the changed documents into calls: one call for all of them when they fit, else one call per document. */
-export function reorganizeGroups(changed: readonly DocFile[], texts: Record<DocFile, string>): DocFile[][] {
-  const tokens = changed.reduce((sum, file) => sum + estimateTokens(texts[file]), 0);
-  return tokens <= MAX_DOCS_TOKENS ? [[...changed]] : changed.map((file) => [file]);
-}
-
-/** One reorganization call: `changed` in full, the other documents as a digest for context. */
-export function reorganizePack(input: {
-  specHash: string;
-  principles: readonly string[];
-  specId: string;
-  projectMd: string;
-  briefMd: string;
-  stackMd?: string;
-  flowMd?: string;
-  designMd?: string;
-  changed: readonly DocFile[];
-  projectBriefing?: boolean;
-}): ContextPackInput {
-  const docs: Record<DocFile, string | undefined> = { 'project.md': input.projectMd, 'briefing.md': input.briefMd, 'stack.md': input.stackMd, 'flow.md': input.flowMd, 'design.md': input.designMd };
-  const sections = (Object.keys(docs) as DocFile[]).flatMap((file) => {
-    const text = docs[file];
-    if (text === undefined) return [];
-    const path = DOC_REL[file](input.specId, input.projectBriefing);
-    return input.changed.includes(file)
-      ? [`### ${path} (reorganize in full)`, text]
-      : [`### ${path} (context only, a digest)`, docDigest(text, 600)];
-  });
-  const feedback = [REORGANIZE_RULE, ...sections].join('\n\n');
-  return {
-    kind: 'refine',
-    role: 'po',
-    specHash: input.specHash,
-    principles: input.principles,
-    outputContract: outputContract('refine'),
-    criteria: [],
-    objectives: [],
-    retrieval: [],
-    feedback,
-    budgetTokens: MAX_DOCS_TOKENS + 10_000,
-  };
 }
 
 /** The owner's answers, skips and open questions and the patches rejected so far: every review shows them, so no role asks or proposes them again. */
@@ -205,7 +156,6 @@ export function refinePack(input: {
   const ids = input.role === 'po' ? PO_ITEMS : input.role === 'sm' ? SM_ITEMS : [];
   const parts = (d: Record<'project' | 'brief' | 'stack' | 'flow' | 'design', string | undefined>, digested: boolean) => [
     `LANGUAGE (mandatory): write every question, checklist detail, patch reason, summary, and explanation 100% in Brazilian Portuguese, even when project.md, ${brief}, the acceptance criteria, or this prompt are in English. Never copy English sentences into a question; translate the idea. Keep only technical identifiers, JSON keys, file names, HTTP status codes, and checklist ids unchanged.`,
-    MOVE_RULE,
     input.role === 'po'
       ? `Review flow.md as the business and application flow contract. Check that create, validate, persist, list, search, detail, update, delete, error, health, and persistence flows agree with project.md and ${brief}. Ask a question or propose a patch when a flow is missing, ambiguous, or contradictory.`
       : input.role === 'sm'

@@ -12,7 +12,7 @@ import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
-import { historyBlocks, PATCH_WORTH, reorganizePack } from './packs.js';
+import { historyBlocks, PATCH_WORTH } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeStage } from './reshape.js';
@@ -100,7 +100,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
   return { kind: 'refine', role: input.role, specHash: input.specHash, principles: [...input.principles], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 60_000 };
 }
 
-/** One review of a stage's document, in two passes: the reorganization of that document, then the owner's review, which asks what the owner must decide and lists findings and contradictions against the documents before it. Then the document's score is taken. Only the stage document changes. */
+/** One review of a stage's document, in one pass: the owner's review, which asks what the owner must decide and lists findings and contradictions against the documents before it. Then the document's score is taken. Only the stage document changes. */
 export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: DocFile): Promise<void> {
   const { draft, journal } = deps;
   const hash = await draftHash(draft);
@@ -123,16 +123,11 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
     const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)));
-    const reorganized = await askOnce(fitPackBudget({ ...reorganizePack({ specHash, principles: deps.principles(), specId: draft.specId, projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], changed: [file] }), role }));
-    if (!reorganized.ok) {
-      await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A reorganização de ${file}`, reorganized.failure, reorganized.errors) });
-      return;
-    }
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
     // The stage document takes its template's layout before the review, so the review and its patches read that text.
     await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
     let n = 0;
-    // Every patch is checked against the documents as the moves and the reshape left them, and only the stage document may change.
+    // Every patch is checked against the documents as the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
       for (const p of patches) {
         const check = checkPatch(p, draft.specId, docs);
@@ -140,7 +135,6 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
         await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
       }
     };
-    await propose(reorganized.value.docPatch);
     // The document's last Jev scores, while they are current and the document has text, go to the review as an index; they set no goal.
     // A confidential project gets no Jev finding, and a blank document's zeros were never answered by the Jev.
     const score = journal.state.readiness?.docs?.[file];
@@ -152,7 +146,7 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     await propose(review.value.docPatch);
     // Front asks no questions: only the PO and the SM put one to the owner.
-    const questions: Question[] = role === 'front' ? [] : [...reorganized.value.questions, ...review.value.questions].map((q, i) => ({
+    const questions: Question[] = role === 'front' ? [] : review.value.questions.map((q, i) => ({
       questionId: `${role}-s${cycle}-${i}`,
       role,
       text: q.text,

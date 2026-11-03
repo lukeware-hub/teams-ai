@@ -46,7 +46,6 @@ const answer = (docPatch: unknown[], questions: unknown[] = [], contradictions: 
 /** The reorganization pass gets its answer; the owner's review gets the other. */
 const passes = (reorg: unknown, review: unknown) => vi.fn(async (req: { pack: { feedback?: string } }, _opts: unknown) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? reorg : review));
 
-const REORGANIZE_FAILED = 'A reorganização de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
 const REVIEW_FAILED = 'A revisão de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
 
 /** A reshape answer: the whole document as the agent writes it back. */
@@ -216,10 +215,10 @@ describe('runStageCycle', () => {
     const runAgent = vi.fn(async () => answer([]));
     const frontAgent = vi.fn(async () => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, frontAgent: frontAgent as never, principles: () => [] }, 1, 'design.md');
-    expect(frontAgent).toHaveBeenCalledTimes(2);
+    expect(frontAgent).toHaveBeenCalledTimes(1);
     expect(runAgent).not.toHaveBeenCalled();
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 2, 'design.md');
-    expect(runAgent).toHaveBeenCalledTimes(2);
+    expect(runAgent).toHaveBeenCalledTimes(1);
   });
 
   it('a stack document is reviewed by the SM', async () => {
@@ -257,7 +256,7 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => ({ ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false }));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: REORGANIZE_FAILED, detail: 'bad json' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: REVIEW_FAILED, detail: 'bad json' });
     expect(journal.events.some((e) => e.type === RefineEvent.PatchProposed)).toBe(false);
   });
 
@@ -298,7 +297,7 @@ describe('runStageCycle', () => {
     expect(journal.state.stageAlignment).toEqual({ 'project.md': [] });
   });
 
-  it('a failed owner review after the reorganization fails the cycle with its reason', async () => {
+  it('a failed owner review fails the cycle with its reason', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     const failed = { ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false };
@@ -312,7 +311,7 @@ describe('runStageCycle', () => {
     const failed = { ok: false, failure: 'schema', errors: ['bad json'], summary: undefined, sandboxDisabled: false };
     const runAgent = vi.fn().mockResolvedValueOnce(failed).mockResolvedValue(answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(runAgent).toHaveBeenCalledTimes(3);
+    expect(runAgent).toHaveBeenCalledTimes(2);
     expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
   });
 
@@ -324,7 +323,7 @@ describe('runStageCycle', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     expect(runAgent).toHaveBeenCalledTimes(2);
     const data = journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data;
-    expect(data).toMatchObject({ cycle: 1, reason: REORGANIZE_FAILED });
+    expect(data).toMatchObject({ cycle: 1, reason: REVIEW_FAILED });
     expect(String(data?.reason)).not.toContain('from":');
   });
 
@@ -337,12 +336,12 @@ describe('runStageCycle', () => {
       [{ id: 'q1', text: 'Qual o prazo?', blocking: true, relatedAcIds: [], options: [], subject: 'Prazo de entrega' }],
     );
     const reviews = [failed, retried];
-    const runAgent = vi.fn(async (req: { pack: { feedback?: string } }) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? answer([]) : reviews.shift()));
+    const runAgent = vi.fn(async () => reviews.shift());
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
     expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(1);
     expect(journal.events.find((e) => e.type === RefineEvent.StageReviewed)?.data).toMatchObject({ questions: [expect.objectContaining({ text: 'Qual o prazo?' })] });
-    expect(String(runAgent.mock.calls[2]?.[0]?.pack?.feedback)).toContain('did not match the output schema: bad json');
+    expect(String(runAgent.mock.calls[1]?.[0]?.pack?.feedback)).toContain('did not match the output schema: bad json');
   });
 
   it('a pack that is too large fails the stage with its own message', async () => {
@@ -517,8 +516,8 @@ describe('runStageCycle', () => {
     await writeDoc(draft, 'project.md', '# Shop mudou');
     await runStageCycle(deps, 3, 'briefing.md');
     const keys = runAgent.mock.calls.map((c) => (c[1] as { specHash: string }).specHash);
-    expect(keys[2]).toBe(keys[0]);
-    expect(keys[4]).not.toBe(keys[2]);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
   });
 
   it('an earlier document reaches the review as a digest, and the stage document in full', async () => {
@@ -540,9 +539,8 @@ describe('runStageCycle', () => {
     journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, skipped: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    const reorganization = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
-    const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
-    for (const text of [reorganization, review]) {
+    const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
+    for (const text of [review]) {
       expect(text).not.toContain('### Jev goals');
       expect(text).not.toContain('JEV GOALS');
     }
@@ -554,12 +552,9 @@ describe('runStageCycle', () => {
     journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    const reorganization = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
-    const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
+    const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
     expect(review).toContain('### Jev index of this document (information only)\n\nScores of briefing.md, probability of yes: complete 0.50, concrete 0.90, consistent 0.90, scoped 0.90. They show where the Jev doubts the document; they are not a goal, a minimum or a verdict, and they can be wrong. Do not change the document only to raise a number.');
     expect(review).not.toContain('### Jev goals');
-    expect(reorganization).not.toContain('Jev index');
-    expect(reorganization).not.toContain('probability of yes');
   });
 
   it('gives the review no index when the project is confidential, as no Jev finding reaches a confidential project', async () => {
@@ -569,7 +564,7 @@ describe('runStageCycle', () => {
     journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
+    expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
   });
 
   it('gives the review no index for a blank document, since its stored zeros were never answered by the Jev', async () => {
@@ -579,7 +574,7 @@ describe('runStageCycle', () => {
     journal.state.readiness = { available: true, model: 'jev', average: 0, usage: null, outdated: false, docs: { 'briefing.md': { score: 0, checks: { complete: 0, concrete: 0, consistent: 0, scoped: 0 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
+    expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
   });
 
   it('gives the review no index when the score is older than the last edit of the document', async () => {
@@ -589,7 +584,7 @@ describe('runStageCycle', () => {
     journal.state.outdatedDocs = ['briefing.md'];
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
+    expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
   });
 
   it('gives the review one line per doubt, naming the place in the document', async () => {
@@ -601,7 +596,7 @@ describe('runStageCycle', () => {
     ] } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-    const review = (runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback;
+    const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
     expect(review).toContain('### Where the Jev doubts this document (information only)');
     expect(review).toContain('- consistent 0.20 in part 2 of 2, from "## Escopo": find two statements that disagree');
     expect(review).toContain('- scoped 0.40 in the whole document: find content the charter gives to another document');
@@ -618,7 +613,7 @@ describe('runStageCycle', () => {
     for (const journal of [confidential, outdated]) {
       const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
       await runStageCycle({ draft: await newDraft(), journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
-      expect((runAgent.mock.calls[1]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Where the Jev doubts');
+      expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Where the Jev doubts');
     }
   });
 

@@ -114,8 +114,8 @@ describe('RefineSession', () => {
     expect(st.discarded[0]).toMatchObject({ reason: 'find not found in project.md' });
     expect(st.checklist.map((i) => i.id)).not.toContain('sm.dependencies-and-secrets');
     expect(st.checklist.find((i) => i.id === 'sm.no-open-questions')).toMatchObject({ passed: false });
-    expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine', 'refine']);
-    expect((await s.snapshot()).tokens.steps).toBe(4);
+    expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine']);
+    expect((await s.snapshot()).tokens.steps).toBe(3);
   });
 
   it('routes Front patches to design.md and keeps them reviewable', async () => {
@@ -246,7 +246,7 @@ describe('RefineSession', () => {
     script['refine/sm'] = [refineOut(green(SM))];
     await s.evaluate();
     expect(s.state.cycle).toBe(1);
-    expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine', 'refine']);
+    expect(calls.map((call) => call.kind)).toEqual(['derive', 'refine', 'refine']);
   });
 
   it("journals the owner's mark that the documents already answered a question, the label the routing eval reads", async () => {
@@ -410,28 +410,6 @@ describe('RefineSession', () => {
     await expect(s.accept('sm-c1-0')).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it('a move changes both documents at once, and undo puts both back byte for byte', async () => {
-    await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
-    await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
-    const before = { project: await readDoc(draft(), 'project.md'), flow: await readDoc(draft(), 'flow.md') };
-    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
-    script['derive/po'] = [derived];
-    const move = { from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' };
-    script['refine/po'] = [refineOut(green(PO), [], [], [move])];
-    script['refine/sm'] = [refineOut(green(SM))];
-    await passStages(s);
-    await s.evaluate();
-    expect(s.state.moves).toMatchObject([{ moveId: 'move-po-c1-0', status: 'applied', from: 'project.md', to: 'flow.md' }]);
-    expect(await readDoc(draft(), 'project.md')).not.toContain('O usuário valida');
-    expect(await readDoc(draft(), 'flow.md')).toContain('O usuário valida o código antes do login.');
-    expect(s.state.stale).toBe(true);
-    await s.undoMove('move-po-c1-0');
-    expect(s.state.moves[0]!.status).toBe('undone');
-    expect(await readDoc(draft(), 'project.md')).toBe(before.project);
-    expect(await readDoc(draft(), 'flow.md')).toBe(before.flow);
-    await expect(s.undoMove('move-po-c1-0')).rejects.toBeInstanceOf(ConflictError);
-  });
-
   it('a failing check ends the click at once: no backlog cycle runs on documents the owner still has to fix', async () => {
     // A flow without a diagram fails sm.flow-is-mermaid, so the documents are not ready.
     await writeDoc(draft(), 'flow.md', '# Fluxo\n\nSem diagrama.\n');
@@ -444,46 +422,23 @@ describe('RefineSession', () => {
     expect(s.state.error).toBeNull();
     expect(s.state.status).toBe('drafting');
     expect(s.state.backlog?.enabled ?? false).toBe(false);
-    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(3);
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(2);
     expect(calls.some((c) => c.kind === 'backlog')).toBe(false);
   });
 
-  it('refuses to undo a move once one of its two documents changed after it', async () => {
-    await writeDoc(draft(), 'project.md', '# Hello\n\n## Visão\n\nApp de teste.\n\nO usuário valida o código antes do login.\n');
-    await writeDoc(draft(), 'flow.md', '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n');
-    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
-    script['derive/po'] = [derived];
-    script['refine/po'] = [refineOut(green(PO), [], [], [{ from: 'docs/project.md', to: 'docs/flow.md', quote: 'O usuário valida o código antes do login.', text: 'O usuário valida o código antes do login.', reason: 'ordem de passos' }])];
-    script['refine/sm'] = [refineOut(green(SM))];
-    await passStages(s);
-    await s.evaluate();
-    await s.saveDoc('flow.md', `${await readDoc(draft(), 'flow.md')}\nEditado pelo dono.\n`);
-    await expect(s.undoMove('move-po-c1-0')).rejects.toThrow(/mudou depois dela/);
-    expect(s.state.moves[0]!.status).toBe('applied');
-  });
-
-  it('fills a stack.md or flow.md that is still the blank template, straight from the SM patch; an edited one is left to the usual patch flow', async () => {
+  it('a blank stack.md or flow.md is never filled by the SM: its text waits as a patch for the owner', async () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
     script['refine/po'] = [refineOut(green(PO))];
     script['refine/sm'] = [refineOut(green(SM), [], [
-      { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n', reason: 'preencher' },
+      { file: 'docs/stack.md', find: '# Stack', replace: '# Stack\n\n## Runtime\n\n- Node 22\n', reason: 'preencher' },
       { file: 'docs/flow.md', find: '# Application flow', replace: '# Fluxo\n\n```mermaid\nflowchart TD\n  A --> B\n```\n', reason: 'preencher' },
     ])];
+    const stackBefore = await readDoc(draft(), 'stack.md');
     await passStages(s);
     await s.evaluate();
-    expect(await readDoc(draft(), 'stack.md')).toBe('# Stack\n\n## Runtime\n\n- Node 22\n\n## Frameworks\n\n- Express\n\n## Storage\n\n- SQLite\n\n## Tooling\n\n- Vitest\n');
-    expect(await readDoc(draft(), 'flow.md')).toContain('flowchart TD');
-    expect(s.state.patches.filter((x) => x.status === 'pending')).toHaveLength(0);
-    expect(s.state.discarded).toHaveLength(0);
-
-    // the next cycle: stack.md is no longer the template, so a patch to it is an ordinary one for the human
-    script['derive/po'] = [derived];
-    script['refine/po'] = [refineOut(green(PO))];
-    script['refine/sm'] = [refineOut(green(SM), [], [{ file: 'docs/stack.md', find: 'Node 22', replace: 'Node 24', reason: 'r' }])];
-    await s.evaluate();
-    expect(await readDoc(draft(), 'stack.md')).toContain('Node 22');
-    expect(s.state.patches.find((x) => x.file === 'stack.md')?.status).toBe('pending');
+    expect(await readDoc(draft(), 'stack.md')).toBe(stackBefore);
+    expect(s.state.patches.filter((x) => x.status === 'pending').map((x) => x.file)).toEqual(['stack.md', 'flow.md']);
   });
 
   it('replays after a restart and turns an open cycle into an interrupted error', async () => {

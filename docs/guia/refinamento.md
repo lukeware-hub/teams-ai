@@ -73,15 +73,15 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 - O backlog agrupa as specs pelo repositório que cada uma muda. Uma funcionalidade que atravessa repositórios vira uma spec por repositório, com a dependência do consumidor para o provedor.
 - Antes de iniciar, o **Resumo do refinamento** mostra sete verificações, a contagem de specs, planos e tarefas por repositório, e as premissas assumidas. O início só funciona com o resumo que você leu.
 
-## Movimentos de conteúdo
+## Cada documento muda só pela sua etapa
 
-Quando um agente encontra um trecho no documento errado (por exemplo, a ordem de passos dentro do design.md), ele move o trecho para o documento certo e avisa no topo da tela. **Desfazer** devolve os dois documentos ao texto anterior, enquanto nenhum deles mudou depois do movimento. **Fechar** só esconde o aviso; o movimento continua valendo.
+Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
 
-A cada avaliação, cada documento alterado desde a última avaliação é lido por inteiro e conferido contra as regras de cada documento. Um trecho que claramente pertence a outro documento é movido. Um trecho que pode ficar em mais de um lugar não é movido: vira uma pergunta, com as opções para você escolher. Documentos que não mudaram não são lidos de novo.
+Depois das cinco etapas, a avaliação completa gera o backlog e as specs a partir dos documentos atuais, mas também não altera nenhum documento. Quando um agente encontra algo no documento errado, ele vira uma sugestão ou uma pergunta para o dono daquele documento. Você aceita, rejeita ou responde.
 
 ## Formato do modelo
 
-Ao processar uma etapa, o documento da etapa é reescrito no formato do seu modelo: as seções do modelo, na mesma ordem, com os textos de exemplo trocados pelo conteúdo real. Um texto que está em outra seção vai para a seção a que pertence, e nenhum fato é apagado. O aviso no topo da tela traz **Desfazer**, que devolve o texto anterior enquanto o documento não mudou depois da reescrita. As decisões já registradas no briefing.md não são alteradas.
+Ao processar uma etapa, o documento da etapa é reescrito no formato do seu modelo: as seções do modelo, na mesma ordem, com os textos de exemplo trocados pelo conteúdo real. Um texto que está em outra seção vai para a seção a que pertence, e nenhum fato é apagado. Só o documento da etapa é reescrito. O aviso no topo da tela traz **Desfazer**, que devolve o texto anterior enquanto o documento não mudou depois da reescrita. As decisões já registradas no briefing.md não são alteradas.
 
 ## Segredos
 
