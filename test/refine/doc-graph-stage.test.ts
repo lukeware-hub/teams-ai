@@ -83,7 +83,7 @@ describe('document graph in the stages', () => {
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO))];
     void s.evaluateStage('flow.md');
-    await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 100 && s.state.graphing !== 'flow.md'; i++) await new Promise((r) => setTimeout(r, 20));
     expect(s.state.graphing).toBe('flow.md');
     // The crash: the process is gone, so its lock goes with it.
     await fs.rm(`${draft().events}.lock`, { force: true });
