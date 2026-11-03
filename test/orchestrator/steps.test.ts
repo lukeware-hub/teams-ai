@@ -415,6 +415,18 @@ describe('packs', () => {
   });
 });
 
+describe('specGapPack gate commands', () => {
+  it('lists the gate commands the orchestrator runs now, so the SM does not repeat an applied fix', () => {
+    const feedback = specGapPack(base, task, { question: 'Which Go?', frozenPaths: [], gates: [{ name: 'format', command: 'git ls-files -z | xargs -0 npx prettier --check --ignore-unknown' }] }).feedback;
+    expect(feedback).toContain('Gate commands the orchestrator runs now');
+    expect(feedback).toContain('- format: git ls-files -z | xargs -0 npx prettier --check --ignore-unknown');
+  });
+
+  it('leaves the list out when no gates are given', () => {
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('Gate commands the orchestrator runs now');
+  });
+});
+
 describe('specGapPack', () => {
   it('lets the SM overrule an owner decision only when the owner lets the agents decide', () => {
     expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('overrule it');
