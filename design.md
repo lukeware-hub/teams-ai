@@ -1460,7 +1460,7 @@ Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por sp
 
 - **Linha.** Título da tarefa em negrito, com a spec e o responsável em texto de apoio abaixo; à direita, o chip de estado (§11.4) e, só para tarefa que não terminou com sucesso (bloqueada ou falhou), o botão `Detalhe`. Abaixo de 768px a linha vira uma coluna.
 - **Filtro.** Caixa de busca por título, tarefa ou spec, e um filtro de status com os estados da tela de entregas (`Entregue`, `Em desenvolvimento`, `Pendente`, `Bloqueada`, `Falhou`). Sem o filtro, o contador mostra só o total.
-- **Carregar mais.** A lista começa com 10 tarefas. O botão `Carregar mais` soma a próxima página ao fim da lista, e o texto `N de M` mostra quantas já aparecem. Quando todas aparecem, o botão some. Trocar o filtro ou a busca volta para a primeira página.
+- **Paginação.** A mesma paginação das outras tabelas do repositório (`Itens por página`, o intervalo `1–10 de 16` e as setas anterior e próxima), feita no servidor. Trocar o filtro ou a busca volta para a primeira página.
 - **Detalhe.** Abre um diálogo (§11.3) com o título da tarefa, três dados (`Tarefa`, `Spec`, `O que aconteceu`), o problema e a solução em linguagem simples, e o texto técnico do revisor dobrado em "Ver detalhe técnico". O mesmo bloco aparece na tela da run, então o texto é igual nos dois lugares. Link `Abrir run` no rodapé do diálogo.
 - **Vazio.** "Nenhuma tarefa encontrada." quando o filtro não acha nada.
 
@@ -1470,7 +1470,7 @@ Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por sp
 │ spec-02 · Desenvolvimento                              │
 │ Validar login                          ● Falhou  [Detalhe]
 │ spec-02 · Desenvolvimento                              │
-│                  10 de 16     [ Carregar mais ]        │
+│  Itens por página [10 ▾]     1–10 de 16     ← →      │
 └────────────────────────────────────────────────────────┘
 ```
 

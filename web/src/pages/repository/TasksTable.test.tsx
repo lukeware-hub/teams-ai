@@ -62,15 +62,16 @@ describe('TasksTable', () => {
     expect(dialog.getByRole('link', { name: 'Abrir run' }).getAttribute('href')).toBe('/runs/shop-api-pay-1?task=T3-pay');
   });
 
-  it('shows the next page of tasks when Carregar mais is pressed, and not once every page is listed', async () => {
+  it('pages the tasks on the server, ten a page, with the range and the previous and next buttons', async () => {
     const many = Array.from({ length: 12 }, (_, i) => row(`P${i + 1}`, 'pending'));
-    serve(many);
+    const fetchPage = serve(many);
     renderTable();
     await waitFor(() => expect(listed()).toHaveLength(10));
-    expect(screen.getByTestId('repo-tasks-count').textContent).toBe('10 de 12');
-    fireEvent.click(screen.getByTestId('repo-tasks-load-more'));
-    await waitFor(() => expect(listed()).toHaveLength(12));
-    expect(screen.queryByTestId('repo-tasks-load-more')).toBeNull();
+    expect(screen.getByText('1–10 de 12')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }));
+    await waitFor(() => expect(listed()).toHaveLength(2));
+    expect(screen.getByText('11–12 de 12')).toBeTruthy();
+    expect(fetchPage).toHaveBeenLastCalledWith('shop', 'shop-api', 'tasks', expect.objectContaining({ page: 2, size: 10 }));
   });
 
   it('filters the list by status and counts the matches', async () => {

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { runPath } from '../../routes.js';
 import { runApi, type DashboardTaskRow, type TaskState } from '../../api.js';
 import { BlockReason, Facts } from '../../components/BlockReason.js';
 import { Dialog } from '../../components/Dialog.js';
-import { TableFilters, usePagedTable } from '../../components/DataTable.js';
+import { Pagination, TableFilters, usePagedTable } from '../../components/DataTable.js';
 import { InfoTip } from '../../components/InfoTip.js';
 import { blockExplanation } from '../../run/selectors.js';
 import { ROLE_LABEL } from '../../run/roles.js';
@@ -16,27 +16,15 @@ import { StatePill } from './StatePill.js';
 const DID_NOT_FINISH: ReadonlySet<TaskState> = new Set(['blocked', 'failed']);
 const DETAIL_BUTTON = 'secondary h-10 flex-none px-3 text-[0.8125rem]';
 
-/** Every task of the repository, filtered by status and searched, read one page at a time: "Carregar mais" appends the next page. */
+/** Every task of the repository, filtered by status and searched, paged on the server like the other repository tables. */
 export function TasksTable({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(
     `${projectId}/${repo}/tasks`,
     (req) => runApi.repositoryDashboardTable<DashboardTaskRow>(projectId, repo, 'tasks', req),
     (state) => TASK_STATE[state as TaskState]?.label ?? state,
   );
-  const [pages, setPages] = useState<Record<number, DashboardTaskRow[]>>({});
   const [opened, setOpened] = useState<{ task: DashboardTaskRow; opener: HTMLElement } | null>(null);
-
-  // Each loaded page is kept; a first page (a new filter or search) starts the list over.
-  useEffect(() => {
-    if (!view.loaded) return;
-    setPages((prev) => (view.page === 1 ? { 1: view.rows } : { ...prev, [view.page]: view.rows }));
-  }, [view.rows, view.page, view.loaded]);
-
-  const rows = Object.keys(pages)
-    .map(Number)
-    .sort((a, b) => a - b)
-    .flatMap((p) => pages[p] ?? []);
-  const shown = rows.length;
+  const rows = view.rows;
 
   return (
     <section className={panel} data-testid="repo-tasks">
@@ -55,7 +43,7 @@ export function TasksTable({ projectId, repo }: { projectId: string; repo: strin
             <li key={`${task.specId}-${task.taskId}`} data-testid={`repo-task-${task.taskId}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 border-t border-line pt-2 first:border-t-0 max-md:grid-cols-1">
               <div className="grid min-w-0 gap-1">
                 <span data-testid={`repo-task-title-${task.taskId}`} className="font-medium wrap-anywhere">{task.title}</span>
-                <span className="hint">{`${task.specId} · ${ROLE_LABEL[task.owner] ?? task.owner}`}</span>
+                <span className="hint">{task.owner ? `${task.specId} · ${ROLE_LABEL[task.owner] ?? task.owner}` : task.specId}</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <StatePill label={TASK_STATE[task.state].label} tone={TASK_STATE[task.state].tone} />
@@ -69,14 +57,7 @@ export function TasksTable({ projectId, repo }: { projectId: string; repo: strin
           ))}
         </ul>
       )}
-      {view.loaded && view.page < view.pages && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <p data-testid="repo-tasks-count" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${shown} de ${view.matched}`}</p>
-          <button data-testid="repo-tasks-load-more" type="button" className="secondary" onClick={() => view.setPage(view.page + 1)}>
-            Carregar mais
-          </button>
-        </div>
-      )}
+      <Pagination view={view} />
       {opened && <TaskDetailDialog task={opened.task} opener={opened.opener} onClose={() => setOpened(null)} />}
     </section>
   );

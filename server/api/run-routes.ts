@@ -44,7 +44,7 @@ import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
-import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews } from './repository-dashboard.js';
+import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews, type DashboardSpecInput } from './repository-dashboard.js';
 import { graphLinkResolver } from './graph-links.js';
 import { buildGraphView, linkNodes } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -427,7 +427,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // Each run's journal is read once here; the repository pages and the dashboard reduce the same events.
     const repoRuns = await loadRepoRuns(runsDir(idx), runs);
     const journals = new Map(repoRuns.map((r) => [r.runId, r.events] as const));
-    if (!src) return { src, runs, runsDir: runsDir(idx), journals, repoRuns };
+    if (!src) return { src, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists: new Map<string, DashboardSpecInput['taskList']>() };
     const settled = new Set(current.filter((run) => SETTLED_RUN.has(run.status)).map((run) => run.specId));
     const programStops = ((await deps.stoppedItems?.(projectId).catch(() => [])) ?? []).filter((stop) => !settled.has(stop.specId));
     // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
@@ -464,18 +464,25 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // A spec's tasks and delivered tasks come from its journals, the count the dashboard shows.
     const views = new Map(specViews(src.specs, repoRuns).specs.map((v) => [v.specId, v] as const));
     src.specs = src.specs.map((spec) => (views.has(spec.specId) ? { ...spec, tasks: views.get(spec.specId)!.total, delivered: views.get(spec.specId)!.delivered } : spec));
-    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns };
+    // A spec no run has started lists its tasks in its task.md, the list the dashboard counts.
+    const taskLists = new Map<string, DashboardSpecInput['taskList']>();
+    for (const spec of src.specs) {
+      if (spec.status === 'done' || runs.some((r) => r.specId === spec.specId)) continue;
+      const text = await fs.readFile(path.join(row.dir, 'docs', 'specs', spec.specId, 'task.md'), 'utf8').catch(() => '');
+      taskLists.set(spec.specId, [...text.matchAll(/^## Task (\d+): (.+)$/gm)].map((m) => ({ taskId: `T${m[1]}`, title: m[2]!.trim() })));
+    }
+    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists };
   };
   // The dashboard's input for one repository; the summary and each paged table read the same input.
   const dashboardInput = async (params: Record<string, string>) => {
     const name = params.repo!;
     if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
-    const { src, repoRuns } = await repoSource(params.projectId!);
+    const { src, repoRuns, taskLists } = await repoSource(params.projectId!);
     const detail = src ? repositoryDetail(src, name) : null;
     if (!detail) throw new HttpError(404, `unknown repository ${name}`);
     const ids = new Set(detail.rows.map((r) => r.specId));
     return {
-      specs: detail.rows,
+      specs: detail.rows.map((row) => ({ ...row, taskList: taskLists.get(row.specId) ?? [] })),
       runs: repoRuns.filter((r) => ids.has(r.specId)),
       questions: detail.questions.map((q) => q.text),
       missingSecrets: detail.missingSecrets,

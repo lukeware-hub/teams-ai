@@ -51,6 +51,8 @@ export interface DashboardSpecInput {
   status: string;
   /** The tasks in the spec's task list. */
   tasks: number;
+  /** The tasks listed in the spec's task.md, for a spec no run has started yet; empty otherwise. */
+  taskList?: Array<{ taskId: string; title: string }>;
   plan: boolean;
   blocked: boolean;
   activeRunId: string | null;
@@ -289,7 +291,10 @@ function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: M
       });
     }
   }
-  return { rows: [...best.values()], plannedPlan };
+  // A task of the spec's task list that no run has planned yet is pending: it has a title, and no owner is written for it yet.
+  const listedOnly = (spec.taskList ?? []).filter((t) => !plannedPlan.has(t.taskId) && !best.has(t.taskId));
+  const pending: DashboardTaskRow[] = listedOnly.map((t) => ({ specId: spec.specId, runId: null, taskId: t.taskId, title: t.title, owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null }));
+  return { rows: [...best.values(), ...pending], plannedPlan, listedOnly: listedOnly.length };
 }
 
 /** The spec's latest run that waits for validation: the one the owner validates. */
@@ -298,9 +303,9 @@ function latestAwaitingRun(specId: string, runs: DashboardRun[]): DashboardRun |
 }
 
 function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>): { view: DashboardSpec; rows: DashboardTaskRow[] } {
-  const { rows, plannedPlan } = specTasks(spec, runs, tasksByRun);
+  const { rows, plannedPlan, listedOnly } = specTasks(spec, runs, tasksByRun);
   const done = spec.status === 'done';
-  const notStarted = done ? 0 : Math.max(0, spec.tasks - plannedPlan.size);
+  const notStarted = done ? 0 : Math.max(0, spec.tasks - plannedPlan.size - listedOnly);
   // A spec delivered before journals existed: its task list counts as delivered.
   const fallback = done && rows.length === 0 ? spec.tasks : 0;
   const count = (s: TaskState) => rows.filter((r) => r.state === s).length;

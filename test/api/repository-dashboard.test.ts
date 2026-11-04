@@ -215,6 +215,19 @@ describe('the tasks table', () => {
     expect(tasksPage(inp).facets.sort()).toEqual(['blocked', 'delivered', 'failed', 'pending']);
   });
 
+  it('lists the tasks of a spec no run has started yet, from its task list, as pending, without counting them twice', () => {
+    const taskList = [
+      { taskId: 'T1', title: 'Criar a rota de login' },
+      { taskId: 'T2', title: 'Documentar a rota' },
+    ];
+    const pre = input({ specs: [spec('auth', { tasks: 2, taskList, status: 'pending' })] });
+    expect(tasksPage(pre).list).toEqual([
+      { specId: 'auth', runId: null, taskId: 'T1', title: 'Criar a rota de login', owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null },
+      { specId: 'auth', runId: null, taskId: 'T2', title: 'Documentar a rota', owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null },
+    ]);
+    expect(buildDashboard(pre).counts).toMatchObject({ tasks: 2, pending: 2, delivered: 0 });
+  });
+
   it('pages every task of a large repository, past the dashboard cap', () => {
     const many = Array.from({ length: 520 }, (_, i) => planned('r2', `T${i}`));
     const big = input({ specs: [spec('pay', { tasks: 520 })], runs: [run('r2', 'pay', 1, 'running', many)] });
