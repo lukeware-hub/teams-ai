@@ -29,7 +29,7 @@ import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
-import { resolveEverything } from './autopilot.js';
+import { runExtension } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
@@ -308,7 +308,7 @@ export class SessionRegistry {
       await session.addRequest({ requestId: `pedido-${number}`, title, text, before, idBase: idSchemeOf(index)?.idBase });
       await session.enableBacklog();
       // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
-      session.evaluate().then(() => resolveEverything(session, { byOwner: false })).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      runExtension(session).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
       return session;
     });
   }

@@ -1537,10 +1537,11 @@ export class RefineSession {
     return p;
   }
 
-  async accept(patchId: string): Promise<void> {
+  /** Accepts a suggestion; `auto` marks one the team accepted on its own, which the impact card lists. */
+  async accept(patchId: string, auto = false): Promise<void> {
     this.guardLight();
     const { file } = this.patch(patchId);
-    await this.applyPatchRow(patchId);
+    await this.applyPatchRow(patchId, auto);
     await this.markGraphOutdated(file as DocFile);
   }
 

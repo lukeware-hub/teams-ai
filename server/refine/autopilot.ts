@@ -16,6 +16,9 @@ export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, t
   return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
 }
 
+/** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
+export const runExtension = (s: RefineSession): Promise<void> => s.evaluate().then(() => resolveEverything(s, { byOwner: false }));
+
 /** The rounds the team works through before it follows the specs.md on the owner's word. */
 const ROUNDS = 5;
 
@@ -51,8 +54,8 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
   try {
     for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
       // The documents: stages outdated by an edit are reviewed again, and the suggestions the rule allows are accepted.
-      await tolerate(() => resolveStages(s, allowed));
-      for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId));
+      await tolerate(() => resolveStages(s, allowed, teamAlone));
+      for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
       // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.

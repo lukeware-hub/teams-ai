@@ -40,7 +40,7 @@ describe('resolveClosing', () => {
     });
     await resolveClosing(s as unknown as RefineSession);
     expect(s.accept).toHaveBeenCalledTimes(1);
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.evaluate).toHaveBeenCalledTimes(1);
     expect(s.runPlans).not.toHaveBeenCalled();
   });
@@ -64,7 +64,7 @@ describe('resolveClosing', () => {
     });
     await resolveClosing(s as unknown as RefineSession);
     expect(s.evaluateStage).toHaveBeenCalledWith('stack.md');
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.decideArchitecture).not.toHaveBeenCalled();
     expect(s.runPlans).not.toHaveBeenCalled();
   });

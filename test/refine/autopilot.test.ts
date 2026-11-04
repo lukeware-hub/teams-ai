@@ -35,7 +35,7 @@ describe('resolveEverything', () => {
   it('accepts every suggestion, answers every question, evaluates, settles specs.md and prepares the plans', async () => {
     const s = fake({ patches: [{ patchId: 'p1', status: 'pending', scopeChange: true, reason: '', find: 'a', replace: 'b', file: 'flow.md' }], questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
     await resolveEverything(s as unknown as RefineSession);
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.decideAnswer).toHaveBeenCalledWith('q1');
     expect(s.evaluate).toHaveBeenCalledTimes(1);
     expect(s.startSpecs).toHaveBeenCalledWith({ autonomous: true });
@@ -94,7 +94,7 @@ describe('resolveEverything', () => {
     ] });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    expect(s.accept).toHaveBeenCalledWith('add');
+    expect(s.accept).toHaveBeenCalledWith('add', true);
     expect(s.accept).not.toHaveBeenCalledWith('reword');
   });
 

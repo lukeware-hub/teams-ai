@@ -65,7 +65,7 @@ async function ignoreConflict(run: () => Promise<unknown>): Promise<void> {
 }
 
 /** Reviews each outdated stage again with its own role, then accepts the safe patches the rule allows; returns how many were accepted. */
-export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true): Promise<number> {
+export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true, auto = false): Promise<number> {
   for (const file of Object.keys(s.state.staleBy ?? {}) as DocFile[]) {
     await s.evaluateStage(file);
     await s.settled();
@@ -80,7 +80,7 @@ export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => 
   let accepted = 0;
   for (const p of safePatches(s.state.patches).filter(allowed)) {
     try {
-      await s.accept(p.patchId);
+      await s.accept(p.patchId, auto);
       accepted++;
     } catch (err) {
       // A patch the last one covered is dropped by the session; the others still apply.
