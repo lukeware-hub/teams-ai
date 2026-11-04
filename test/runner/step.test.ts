@@ -438,7 +438,7 @@ describe('runStep', () => {
     expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash');
     const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
     // The PO role's Skill permission is listed, but the chat's tools leave the Skill tool out, so the chat cannot call it.
-    expect(settings.permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)', 'Bash(graphify query:*)']);
+    expect(settings.permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)', 'Bash(graphify query:*)']);
     expect(settings.sandbox.filesystem.denyRead).toContain('/ws/*/repo');
     expect(settings.permissions.deny).toContain('Read(//ws/*/repo)');
     expect(stepCaps('chat', deps.caps).maxTurns).toBe(6);
@@ -453,7 +453,8 @@ describe('runStep', () => {
     const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
     expect(captured.argv[captured.argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Bash,WebSearch');
     const settings = JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--settings') + 1], 'utf8'));
-    expect(settings.permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)', 'WebSearch']);
+    // The allow rules cover every role; the tool list above is what a chat step really gets: the search, and never a fetch.
+    expect(settings.permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)', 'WebSearch']);
   });
 
   it('gives the web search to a chat step only, whatever a step asks for', async () => {

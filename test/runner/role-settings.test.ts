@@ -59,9 +59,18 @@ describe('buildRoleSettings', () => {
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [], stacks: ['node'] }).permissions.allow).not.toContain('Bash(npm:*)');
     // Every role may run only the Agent Reach CLI from Bash, besides its own rules.
-    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
-    expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(agent-reach:*)']);
-    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['Bash(agent-reach:*)']);
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+  });
+
+  it('lets every role search and read the web, with no domain wildcard, and a bare Bash only for a step with full access', () => {
+    for (const role of ['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env'] as const) {
+      const allow = buildRoleSettings(role, { allowedDomains: [] }).permissions.allow;
+      expect(allow).toEqual(expect.arrayContaining(['WebSearch', 'WebFetch']));
+      expect(allow).not.toContain('WebFetch(domain:*)');
+      expect(allow).not.toContain('Bash');
+    }
   });
 
   it('gives the Front, Dev and Test roles the toolchain of their stacks only, and never npm without a node stack', () => {

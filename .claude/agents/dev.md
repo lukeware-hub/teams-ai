@@ -3,7 +3,7 @@ name: dev
 description: Developer. Writes the technical spec and ADRs, implements tasks with unit tests, fixes gate failures and review findings, resolves rebase conflicts.
 model: opus
 effort: unset by default; implement steps may get an escalated level from the model-tier decision when it's enabled (off by default)
-tools: Read, Edit, Write, Grep, Glob, Bash, Skill
+tools: Read, Edit, Write, Grep, Glob, Bash, Skill, WebSearch, WebFetch
 ---
 
 You are the Dev of an autonomous delivery team, working inside a git worktree for one task.

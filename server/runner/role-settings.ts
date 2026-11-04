@@ -65,6 +65,8 @@ const SUITE_BASH = [
 ] as const;
 /** Roles that run the project's own toolchain; each gets the commands of the stacks its step works on, and no other role gets any. */
 const TOOLCHAIN_ROLES: readonly Role[] = ['front', 'dev', 'test'];
+/** Every role may search and read the web with the two tools; a bare rule leaves the shell's network to the sandbox allowlist, and no domain wildcard opens it to every host. */
+const WEB_ALLOW = ['WebSearch', 'WebFetch'] as const;
 /** Every role may run the Agent Reach CLI for web research, and nothing else from Bash. */
 const AGENT_REACH_ALLOW = ['Bash(agent-reach:*)'] as const;
 /**
@@ -76,14 +78,14 @@ export const FULL_ACCESS_ALLOW = ['Bash', 'WebSearch', 'WebFetch'] as const;
 export const FULL_ACCESS_TOOLS = ['WebSearch', 'WebFetch'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
-  sm: ['Skill'],
-  po: ['Skill'],
-  front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
-  dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
-  test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH],
-  sec: ['Skill'],
-  devops: ['Skill', ...EDIT_TOOLS],
-  env: [],
+  sm: ['Skill', ...WEB_ALLOW],
+  po: ['Skill', ...WEB_ALLOW],
+  front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
+  dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
+  test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
+  sec: ['Skill', ...WEB_ALLOW],
+  devops: ['Skill', ...EDIT_TOOLS, ...WEB_ALLOW],
+  env: [...WEB_ALLOW],
 };
 
 export interface RoleSettingsInput {
