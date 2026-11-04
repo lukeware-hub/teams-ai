@@ -91,6 +91,11 @@ describe('additiveOnly: a change that only adds to the text it finds', () => {
     expect(additiveOnly('## Antigo\n\ntexto', '## Novo\n\ntexto')).toBe(false);
   });
 
+  it('accepts a clause added after the sentence, joined by a comma in place of its final mark', () => {
+    expect(additiveOnly('Responde com o corpo `Seja bem-vindo, <nome>!`.', 'Responde com o corpo `Seja bem-vindo, <nome>!`, exceto quando o nome for `noite`.')).toBe(true);
+    expect(additiveOnly('Retorna a mensagem no seguinte formato:', 'Retorna a mensagem no seguinte formato, exceto para `noite`:')).toBe(true);
+  });
+
   it('refuses a rewording, which does not keep the text it finds', () => {
     expect(additiveOnly('O cliente paga.', 'O cliente paga por cartão.')).toBe(false);
   });

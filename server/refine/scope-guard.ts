@@ -29,9 +29,10 @@ export function patchChangesScope(find: string, replace: string): boolean {
   return [...new Set([...before.keys(), ...after.keys()])].some((key) => (before.get(key) ?? 0) !== (after.get(key) ?? 0));
 }
 
-/** A change that only adds to the text it finds: the find stays whole in the replacement, and no structure of it is lost. */
+/** A change that only adds to the text it finds: the find stays whole in the replacement (a clause joined by a comma may take the place of its final mark), and no structure of it is lost. */
 export function additiveOnly(find: string, replace: string): boolean {
-  if (!replace.includes(find)) return false;
+  const bare = find.replace(/[.:;]+$/, '');
+  if (!replace.includes(find) && !(bare !== find && replace.includes(`${bare},`))) return false;
   const before = tally(structureOf(find));
   const after = tally(structureOf(replace));
   return [...before.keys()].every((key) => (after.get(key) ?? 0) >= (before.get(key) ?? 0));
