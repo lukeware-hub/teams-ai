@@ -47,6 +47,7 @@ describe('a request in a project already in development', () => {
     try {
       expect(s.state.extension).toMatchObject({ requestId: 'hello-app-pedido-1', text: 'Exportar o relatório mensal em PDF.' });
       expect(s.state.backlog).toMatchObject({ enabled: true, idBase: 'shop-001' });
+      expect(s.state.extension?.before).toEqual([{ key: 'login', rank: 1, dependsOn: [] }]);
       const draft = draftPaths(rig.ws, 'hello-app-pedido-1');
       const briefing = await fs.readFile(path.join(draft.docs, 'briefing.md'), 'utf8');
       expect(briefing).toContain('## Nova demanda (hello-app-pedido-1)');

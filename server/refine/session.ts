@@ -40,7 +40,7 @@ import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
@@ -999,7 +999,7 @@ export class RefineSession {
   }
 
   /** A request made in a project already in development: journaled with its title and text; the brief holds the text. */
-  async addRequest(request: { requestId: string; title: string; text: string }): Promise<void> {
+  async addRequest(request: { requestId: string; title: string; text: string; before?: ExtensionRequest['before'] }): Promise<void> {
     this.guard();
     await this.journal.fact(RefineEvent.RequestReceived, { ...request, at: new Date().toISOString() });
   }

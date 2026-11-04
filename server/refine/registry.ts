@@ -28,6 +28,7 @@ import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
+import { outlineOfIndex, type SpecsIndex } from './specs-index.js';
 import { resolveEverything } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
@@ -283,17 +284,20 @@ export class SessionRegistry {
       await this.assertMirrorProject(ws);
       const main = await this.mainOf(ws);
       // A main without a backlog index (never broken into specs) takes the request as one spec.
-      if ((await main.text('docs/specs.json').catch(() => null)) === null) {
+      const indexText = await main.text('docs/specs.json').catch(() => null);
+      if (indexText === null) {
         const { id } = await this.suggestName('spec', { projectId, name: '', description: text });
         return this.newSpec(projectId, id, text);
       }
+      // The outline as main has it now: the replan view reads what the request adds, moves and keeps against it.
+      const before = outlineOfIndex(JSON.parse(indexText) as SpecsIndex).items.map((i) => ({ key: i.key, rank: i.rank, dependsOn: [...i.dependsOn] }));
       const draft = draftPaths(ws, await this.nextRequestId(ws));
       await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' }, main);
       // The text is the spec's brief: enabling the backlog moves it under its own "Nova demanda" heading in the project briefing.
       await fs.writeFile(draft.briefMd, `${text}\n`);
       const session = await this.session(draft, ws, 'backlog');
       const title = text.split('\n').find((line) => line.trim() !== '')!.trim().slice(0, 80);
-      await session.addRequest({ requestId: draft.specId, title, text });
+      await session.addRequest({ requestId: draft.specId, title, text, before });
       await session.enableBacklog();
       // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
       session.evaluate().then(() => resolveEverything(session)).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));

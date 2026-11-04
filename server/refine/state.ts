@@ -118,6 +118,8 @@ export interface ExtensionRequest {
   title: string;
   text: string;
   at: string;
+  /** The outline the request follows as main had it when the request was made: what it adds, moves and keeps is read against it. */
+  before?: Array<{ key: string; rank: number; dependsOn: string[] }>;
 }
 
 /** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
@@ -706,7 +708,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.RequestReceived:
-      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at) };
+      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}) };
       break;
     case RefineEvent.ImpactDerived:
       s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[] };
