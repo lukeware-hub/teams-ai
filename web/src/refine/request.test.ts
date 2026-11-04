@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RefineState } from '../api.js';
-import { impactCounts, readyChecks, replanRows, requestNodes, requestTrail } from './request.js';
+import { impactCounts, readyChecks, replanRows, requestNodes, requestTrail, understoodCounts } from './request.js';
 
 const item = (key: string, rank: number, dependsOn: string[] = []) => ({ key, title: key, epic: 'core', scope: 's', priority: 'P1', rationale: 'r', dependsOn, sources: [], size: 'M', rank });
 const base = {
@@ -34,6 +34,14 @@ describe('the impact counts', () => {
     const impact = { summary: 's', affected: [{ kind: 'spec', ref: 'login', effect: 'e', action: 'adjust' }, { kind: 'doc', ref: 'flow.md', effect: 'e', action: 'review' }], conflicts: [], duplicates: [], dependencies: [], risks: [{ text: 'r', severity: 'low', mitigation: 'm' }] };
     expect(impactCounts(impact as never, 1)).toEqual({ novas: 1, afetadas: 1, documentos: 1, riscos: 1 });
     expect(impactCounts(null, 0)).toEqual({ novas: 0, afetadas: 0, documentos: 0, riscos: 0 });
+  });
+});
+
+describe('what the request understood', () => {
+  it('counts its new specs as requirements and the criteria of their ready specs as business rules', () => {
+    const st = { backlog: { specs: { export: { spec: { acceptanceCriteria: [{ id: 'AC-1' }, { id: 'AC-2' }] } }, login: { spec: { acceptanceCriteria: [{ id: 'AC-3' }] } } } } } as unknown as RefineState;
+    expect(understoodCounts(st, ['export'])).toEqual({ requirements: 1, rules: 2 });
+    expect(understoodCounts(st, ['export', 'cart'])).toEqual({ requirements: 2, rules: 2 });
   });
 });
 

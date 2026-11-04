@@ -29,6 +29,12 @@ export function impactCounts(impact: RequestImpact | null, added: number): { nov
   };
 }
 
+/** The new specs are the requirements; the acceptance criteria of their ready specs are the business rules. */
+export function understoodCounts(st: RefineState, added: string[]): { requirements: number; rules: number } {
+  const rules = added.reduce((sum, key) => sum + (st.backlog?.specs?.[key]?.spec?.acceptanceCriteria.length ?? 0), 0);
+  return { requirements: added.length, rules };
+}
+
 export interface ReplanRow {
   key: string;
   title: string;

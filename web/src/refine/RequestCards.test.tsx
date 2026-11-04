@@ -9,6 +9,13 @@ describe('the cards of a request', () => {
     expect(screen.getByText('salvo em briefing.md › Pedido pedido-1')).toBeTruthy();
   });
 
+  it('says what the request understood, in the singular or the plural its numbers need', () => {
+    const { rerender } = render(<RequestCard text="Exportar." heading="Pedido pedido-1" interpreted understood={{ requirements: 1, rules: 1 }} />);
+    expect(screen.getByTestId('request-understood').textContent).toBe('Entendido: 1 requisito · 1 regra de negócio');
+    rerender(<RequestCard text="Exportar." heading="Pedido pedido-1" interpreted understood={{ requirements: 3, rules: 2 }} />);
+    expect(screen.getByTestId('request-understood').textContent).toBe('Entendido: 3 requisitos · 2 regras de negócio');
+  });
+
   it('says why an impact that did not close is not shown, and counts the one that did', () => {
     const { rerender } = render(<ImpactCard impact={null} issues={['o impacto cita a spec x']} addedKeys={[]} />);
     expect(screen.getByTestId('impact-issues').textContent).toContain('o impacto cita a spec x');

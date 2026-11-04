@@ -40,7 +40,7 @@ import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
-import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail } from '../refine/request.js';
+import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail, understoodCounts } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
@@ -1477,7 +1477,7 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
           actions={null}
         >
-          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} />
+          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}
