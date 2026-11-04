@@ -140,7 +140,7 @@ describe('a documentation repository session syncs its documents', () => {
     const r = await openRig();
     const s = await decided(r);
     await s.enableBacklog();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 1, lastError: null, refused: false, failures: 0 });
     const events = s.events.length;
     offline = true;
     await s.tickDocs();
@@ -153,7 +153,7 @@ describe('a documentation repository session syncs its documents', () => {
     vi.setSystemTime(Date.now() + 60_000);
     offline = false;
     await s.tickDocs();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false, failures: 0 });
     expect(s.events.length).toBe(events);
   });
 
@@ -166,7 +166,7 @@ describe('a documentation repository session syncs its documents', () => {
     await s.tickDocs();
     await debounced();
     await s.tickDocs();
-    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false });
+    expect((await s.snapshot()).docsSync).toEqual({ pending: 0, lastError: null, refused: false, failures: 0 });
   });
 
   it('a session that is not a documentation repository has no docsSync', async () => {

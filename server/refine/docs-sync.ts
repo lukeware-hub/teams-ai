@@ -15,6 +15,8 @@ export interface DocsSyncView {
   lastError: string | null;
   /** True when lastError is the store's refusal, which names its documents in plain words. */
   refused: boolean;
+  /** Failures in a row: the page shows a failure only once the automatic retries did not settle it. */
+  failures?: number;
 }
 
 export interface DocsSyncInput {
@@ -78,6 +80,7 @@ export class DocsSync {
   private lastError: string | null = null;
   /** Set by a run the store refused; only a run without a refusal clears it. */
   private refused = false;
+  private failures = 0;
   /** Set when a reset dropped local commits, so the next tick projects them again. */
   private resync = false;
   private lastRetryAt = -Infinity;
@@ -88,7 +91,7 @@ export class DocsSync {
   constructor(private readonly input: DocsSyncInput) {}
 
   get view(): DocsSyncView {
-    return { pending: this.pending, lastError: this.lastError, refused: this.refused };
+    return { pending: this.pending, lastError: this.lastError, refused: this.refused, failures: this.failures };
   }
 
   /** A document changed; it rides the next boundary. */
@@ -198,6 +201,7 @@ export class DocsSync {
     this.refused = false;
     this.resync = false;
     this.lastError = null;
+    this.failures = 0;
   }
 
   /** The secret values a flush must not commit, read at each flush. */
@@ -217,10 +221,17 @@ export class DocsSync {
         this.published();
       } else await this.push(store);
       if (this.pending === 0 && !this.refused) this.lastError = null;
+    this.failures = 0;
     } catch (err) {
       this.refused = false;
-      this.lastError = messageOf(err);
+      this.fail(err);
     }
+  }
+
+  /** A failure that is not a refusal: kept for the retry, and counted so the page stays quiet until it repeats. */
+  private fail(err: unknown): void {
+    this.failures += 1;
+    this.lastError = messageOf(err);
   }
 
   /** Pushes the local commits; a push that leaves them out of origin keeps them pending and asks for a projection on the next tick. */
@@ -279,8 +290,9 @@ export class DocsSync {
         return;
       }
       this.lastError = null;
+    this.failures = 0;
     } catch (err) {
-      this.lastError = messageOf(err);
+      this.fail(err);
     }
   }
 }

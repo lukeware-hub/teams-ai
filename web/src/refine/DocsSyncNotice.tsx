@@ -1,5 +1,8 @@
 import type { DocsSyncView } from '../api.js';
 
+/** The failures in a row the team retries in silence before the owner is told. */
+const QUIET_FAILURES = 3;
+
 const GENERIC_FAILURE = 'Os documentos não foram publicados. Eles seguem salvos neste computador e a publicação tenta de novo.';
 
 /** The store's refusal already names its documents in Portuguese; any other failure reads as the generic line. */
@@ -11,8 +14,10 @@ const pendingLine = (pending: number): string =>
 /** The documentation repository sync: a failure first, then the changes waiting; nothing once everything is published. */
 export function DocsSyncNotice({ docsSync }: { docsSync?: DocsSyncView }) {
   if (!docsSync) return null;
-  const { pending, lastError, refused } = docsSync;
+  const { pending, lastError, refused, failures } = docsSync;
   if (lastError === null && pending === 0) return null;
+  // The server retries a failed publication by itself: a single failure is not shown, only one that repeats or a refusal.
+  if (lastError !== null && !refused && (failures ?? QUIET_FAILURES) < QUIET_FAILURES) return null;
   const failed = lastError !== null;
   const text = lastError !== null ? failureLine(refused, lastError) : pendingLine(pending);
   return (
