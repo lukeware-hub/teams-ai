@@ -314,10 +314,10 @@ export function ProjectsView(p: {
                   </p>
                 </div>
                 <div className={cardActions} data-testid={`projects-card-actions-${pr.projectId}`}>
-                  <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>
-                    Excluir
-                    {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
-                  </button>
+                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={projectPath(pr.projectId)}>
+                    Abrir
+                    <Icon name="arrow-right" size={14} />
+                  </Link>
                   <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={newSpecPath(pr.projectId)}>
                     Nova spec
                     <Icon name="plus" size={14} />
@@ -326,10 +326,10 @@ export function ProjectsView(p: {
                     Graphify
                     <Icon name="code" size={14} />
                   </button>
-                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={projectPath(pr.projectId)}>
-                    Abrir
-                    <Icon name="arrow-right" size={14} />
-                  </Link>
+                  <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>
+                    Excluir
+                    {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
+                  </button>
                 </div>
               </article>
             );

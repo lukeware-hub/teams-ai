@@ -992,6 +992,26 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     </p>
                   )}
                 </section>
+                {prs.length ? (
+                  <section data-testid="run-prs" className="card">
+                    <h2 data-testid="run-prs-title">Pull requests mesclados</h2>
+                    <ul data-testid="run-prs-list" className="m-0 grid list-none grid-cols-1 gap-[0.6rem] p-0 sm:grid-cols-2 lg:grid-cols-4">
+                      {prs.map((p) => (
+                        <li key={p.taskId} data-testid={`run-pr-${p.taskId}`} className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
+                          <span data-testid={`run-pr-task-${p.taskId}`} className="break-all font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
+                          {safeHttpUrl(p.url) ? (
+                            <a data-testid={`run-pr-link-${p.taskId}`} href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
+                              PR #{p.number}
+                              <Icon name="external" size={14} />
+                            </a>
+                          ) : (
+                            <span data-testid={`run-pr-plain-${p.taskId}`}>PR #{p.number}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
                 {error ? <p data-testid="run-error" className="error m-0">{error}</p> : null}
                 <section data-testid="run-tasks" className="card">
                   <h2 data-testid="run-tasks-title">Tarefas</h2>
@@ -1086,26 +1106,6 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     <p data-testid="run-phases-empty" className={`hint ${RUN_UI.asideNote}`}>Nenhuma fase iniciada ainda.</p>
                   )}
                 </section>
-                {prs.length ? (
-                  <section data-testid="run-prs" className="card">
-                    <h2 data-testid="run-prs-title">Pull requests mesclados</h2>
-                    <ul data-testid="run-prs-list" className="m-0 flex list-none flex-wrap gap-[0.6rem] p-0">
-                      {prs.map((p) => (
-                        <li key={p.taskId} data-testid={`run-pr-${p.taskId}`} className="flex items-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
-                          <span data-testid={`run-pr-task-${p.taskId}`} className="font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
-                          {safeHttpUrl(p.url) ? (
-                            <a data-testid={`run-pr-link-${p.taskId}`} href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
-                              PR #{p.number}
-                              <Icon name="external" size={14} />
-                            </a>
-                          ) : (
-                            <span data-testid={`run-pr-plain-${p.taskId}`}>PR #{p.number}</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ) : null}
                 <section data-testid="run-usage" className="card">
                   <h2 data-testid="run-usage-title">Consumo dos modelos</h2>
                   <dl className={RUN_UI.totals} data-testid="tokens-total">

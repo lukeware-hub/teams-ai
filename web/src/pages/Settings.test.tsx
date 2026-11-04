@@ -40,14 +40,15 @@ async function openModelsCollapse() {
 }
 
 describe('SettingsPage', () => {
-  it('lists a project in refinement, so its agents can be configured before it is registered', async () => {
+  it('lists only registered projects, never one still in refinement', async () => {
     mockEnv();
-    vi.spyOn(runApi, 'projects').mockResolvedValue([]);
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
     vi.spyOn(refineApi, 'list').mockResolvedValue([{ projectId: 'kayron-hub', specId: 'kayron-hub-001', state: 'drafting' }] as never);
     vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
-    expect(await screen.findByRole('option', { name: 'kayron-hub' })).toBeTruthy();
-    await waitFor(() => expect(settingsApi.agents).toHaveBeenCalledWith('kayron-hub'));
+    expect(await screen.findByRole('option', { name: 'Demo' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'kayron-hub' })).toBeNull();
+    expect(refineApi.list).not.toHaveBeenCalled();
   });
 
   it('shows the global environment collapses separate from project agents', async () => {
