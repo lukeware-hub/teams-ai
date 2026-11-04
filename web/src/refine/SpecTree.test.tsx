@@ -13,19 +13,20 @@ const backlog = {
 } as unknown as BacklogView;
 
 describe('SpecTree', () => {
-  it('opens the backlog list from the specs chip when the page gives it', () => {
+  it('opens the backlog list from the items chip when the page gives it, and keeps the specs chip plain', () => {
     render(<SpecTree backlog={backlog} locked={false} />);
     expect(screen.queryByTestId('item-caso')).toBeNull();
+    fireEvent.click(screen.getByTestId('spec-tree-chip-button-items'));
+    expect(within(screen.getByTestId('coverage-list-items')).getByTestId('item-caso')).toBeTruthy();
     fireEvent.click(screen.getByTestId('spec-tree-chip-button-specs'));
-    expect(within(screen.getByTestId('coverage-list-specs')).getByTestId('item-caso')).toBeTruthy();
-    expect(screen.queryByTestId('spec-tree-spec-row-caso')).toBeNull();
-    fireEvent.click(screen.getByTestId('spec-tree-chip-button-specs'));
-    expect(screen.queryByTestId('coverage-list-specs')).toBeNull();
+    expect(screen.queryByTestId('coverage-list-items')).toBeNull();
+    expect(within(screen.getByTestId('coverage-list-specs')).getByText('k-caso')).toBeTruthy();
+    expect(screen.queryByTestId('item-caso')).toBeNull();
   });
 
   it('counts sections, specs, criteria and tasks, and lists the gaps', () => {
     render(<SpecTree backlog={backlog} />);
-    expect(within(screen.getByLabelText('Resumo da cobertura')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['2 seções', '1 spec', '2 critérios', '1 tarefa', '2 lacunas']);
+    expect(within(screen.getByLabelText('Resumo da cobertura')).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['2 seções', '1 item', '1 spec', '2 critérios', '1 tarefa', '2 lacunas']);
     const gaps = within(screen.getByTestId('tree-gaps'));
     expect(gaps.getByText(/9\. Faturamento/)).toBeTruthy();
     expect(gaps.getByText(/AC-002 sem tarefa/)).toBeTruthy();

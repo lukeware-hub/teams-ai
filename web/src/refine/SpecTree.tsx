@@ -8,7 +8,7 @@ import { InfoTip } from '../components/InfoTip.js';
 const HELP = 'Cada seção do flow.md deve ser coberta por um item; cada item tem uma spec com critérios de aceite; cada critério é coberto por tarefas do pré-plano. O que falta aparece em vermelho e impede o refinamento de ficar pronto.';
 const stat = 'rounded-md border px-[0.6rem] py-[0.3rem] text-[0.8125rem] font-semibold normal-case tracking-normal';
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-type Kind = 'sections' | 'specs' | 'criteria' | 'tasks';
+type Kind = 'sections' | 'items' | 'specs' | 'criteria' | 'tasks';
 const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
 
 /** A collapsible row with a chevron, a title and a count, styled like the backlog's épico rows. */
@@ -32,7 +32,7 @@ function EpicGroup({ testId, title, total, children }: { testId: string; title: 
   );
 }
 
-/** The detailed backlog as a coverage tree (`locked`, when given, makes the specs chip open the backlog list): épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
+/** The detailed backlog as a coverage tree (`locked`, when given, makes the items chip open the backlog list): épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
 export function SpecTree({ backlog, evaluating = false, note, locked }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode; locked?: boolean }) {
   const [shown, setShown] = useState<Kind | null>(null);
   const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
@@ -65,6 +65,7 @@ export function SpecTree({ backlog, evaluating = false, note, locked }: { backlo
   const plannedTasks = Object.values(backlog.preplans ?? {}).flatMap((row) => row.preplan?.tasks ?? []);
   const chips: Array<{ kind: Kind; text: string }> = [
     { kind: 'sections', text: count(matrix.sections.length, 'seção', 'seções') },
+    { kind: 'items', text: count(backlog.items.length, 'item', 'itens') },
     { kind: 'specs', text: count(specs, 'spec', 'specs') },
     { kind: 'criteria', text: count(criteria, 'critério', 'critérios') },
     { kind: 'tasks', text: count(tasks, 'tarefa', 'tarefas') },
@@ -77,6 +78,7 @@ export function SpecTree({ backlog, evaluating = false, note, locked }: { backlo
   );
   const rowsOf = (kind: Kind) => {
     if (kind === 'sections') return matrix.sections.map((s, n) => row(String(n), s.heading, count(s.items.length, 'item', 'itens'), `spec-tree-section-row-${s.heading}`));
+    if (kind === 'items') return backlog.items.map((i) => row(i.key, i.title, epicTitle.get(i.epic) ?? 'Sem épico', `spec-tree-item-row-${i.key}`));
     if (kind === 'specs') return matrix.items.filter((i) => i.specId !== null).map((i) => row(i.key, `${titles.get(i.key) ?? i.key} · ${epicTitle.get(epicOf.get(i.key) ?? '') ?? 'Sem épico'}`, <code className="settings-collapse-meta">{i.specId}</code>, `spec-tree-spec-row-${i.key}`));
     if (kind === 'criteria') {
       return matrix.items.flatMap((i) => i.criteria.map((c) => {
@@ -98,7 +100,7 @@ export function SpecTree({ backlog, evaluating = false, note, locked }: { backlo
         ))}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`} data-testid="spec-tree-gap-count">{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
-      {shown === 'specs' && locked !== undefined ? <div data-testid="coverage-list-specs"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
+      {shown === 'items' && locked !== undefined ? <div data-testid="coverage-list-items"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
         <ul data-testid={`coverage-list-${shown}`} className="m-0 grid list-none rounded-md border border-line bg-surface px-[0.8rem] py-[0.2rem] text-[0.8125rem] leading-snug text-ink-soft">
           {rows.length > 0 ? rows : <li className="py-[0.45rem]" data-testid="spec-tree-empty">Nenhum item ainda.</li>}
         </ul>
