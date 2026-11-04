@@ -54,6 +54,8 @@ export const RefineEvent = {
   StartedRun: 'REFINE_STARTED_RUN',
   /** A request in a project already in development: `{requestId, title, text, at}`; its text is the draft's brief. */
   RequestReceived: 'REFINE_REQUEST_RECEIVED',
+  /** The SM's impact of the request on the backlog it follows: `{cycle, inputHash, impact|null, issues}`. */
+  ImpactDerived: 'IMPACT_DERIVED',
   /** Backlog mode: the human asked the agents to break the docs into a prioritized backlog of specs. */
   BacklogEnabled: 'BACKLOG_ENABLED',
   BacklogDerived: 'BACKLOG_DERIVED',

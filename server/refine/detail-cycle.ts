@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ConflictsOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
+import type { ConflictsOutput, ImpactOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
 import { Governor } from '../budget/governor.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS } from '../core/ids.js';
@@ -25,7 +25,9 @@ import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
 import { idSourceOf, specIdOf } from './specs-index.js';
-import type { BacklogState, PreplanRow, SpecRow } from './state.js';
+import { requestHeading, type BacklogState, type PreplanRow, type SpecRow } from './state.js';
+import type { Impact } from '../contracts/impact.js';
+import { impactPack, validateImpact } from './impact.js';
 
 /** Agent calls of one detailing run at a time; the account-wide governor still caps every session together. */
 const DETAIL_CONCURRENCY = 3;
@@ -343,6 +345,29 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     if (items.length < 2 || out?.ok) {
       conflicts = { inputHash: conflictsHash, pairs: out?.ok ? uniquePairs(out.value.pairs, new Set(items.map((i) => i.key))) : [] };
       await journal.fact(RefineEvent.ConflictsDerived, { ...conflicts });
+    }
+  }
+  // R12: a follow-on request's impact on the backlog it follows, made again only when the request or the outline changed.
+  if (journal.state.extension) {
+    const request = journal.state.extension;
+    const outline = items.map((i) => ({ key: i.key, title: i.title, rank: i.rank, dependsOn: [...i.dependsOn], started: kept.has(i.key), modules: (preplans[i.key]?.preplan?.modules ?? []).map((m) => m.name) }));
+    const inputHash = sha256(canonicalJson({ request: request.text, outline }));
+    if (journal.state.impact?.inputHash !== inputHash) {
+      const scope = { known: new Set(items.map((i) => i.key)), kept };
+      let issues: string[] = [];
+      let impact: Impact | null = null;
+      for (let attempt = 1; attempt <= 2 && impact === null; attempt++) {
+        const out = await call(() => deps.runAgent<'impact'>({
+          kind: 'impact', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
+          pack: fitPackBudget(impactPack({ specHash: hash, principles: deps.principles(), request: request.text, heading: requestHeading(request.requestId), docs, items: outline, issues })),
+        }, ctx) as Promise<StepOutcome<ImpactOutput>>);
+        const haltImpact = haltedResult();
+        if (haltImpact) return haltImpact;
+        if (!out?.ok) break;
+        issues = validateImpact(out.value.impact, scope);
+        if (issues.length === 0) impact = out.value.impact;
+      }
+      if (impact !== null || issues.length > 0) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact, issues });
     }
   }
   return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater, ...(conflicts ? { conflicts } : {}) } };

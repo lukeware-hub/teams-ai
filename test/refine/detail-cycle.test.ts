@@ -816,3 +816,29 @@ describe('a follow-on backlog keeps the spec ids of the main it came from', () =
     expect(index.specs.find((s) => s.key === 'triagem')).toMatchObject({ specId: 'big-001-triagem', dependsOn: ['big-001-caso'] });
   });
 });
+
+describe('the impact of a follow-on request on the backlog it follows', () => {
+  it('journals the impact once for the outline, and asks the SM again once when it breaks a rule', async () => {
+    const env = await setup();
+    // A follow-on request: its section is in the brief, and every new item cites it besides its flow section.
+    const REQUEST = 'Nova demanda (big-pedido-1)';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'big-pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      // The first answer depends on an item the backlog does not name: the rule sends it back once.
+      const dependencies = impactCalls === 1 ? [{ from: 'caso', to: 'fantasma', reason: 'r' }] : [{ from: 'triagem', to: 'caso', reason: 'a triagem usa o caso' }];
+      return ok({ specHash: H, impact: { summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
+    });
+    await env.run(agent, 1);
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(2);
+    const impacts = env.events.filter((e) => e.type === RefineEvent.ImpactDerived);
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]!.data).toMatchObject({ cycle: 2, issues: [], impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+});

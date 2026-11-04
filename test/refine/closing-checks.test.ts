@@ -123,3 +123,15 @@ describe('closing checks of a follow-on request', () => {
     expect(failing(withStarted, true)).toEqual([]);
   });
 });
+
+describe('the impact check of a follow-on request', () => {
+  it('is asked only of a follow-on request, and passes once the impact is made without a broken rule', () => {
+    const state = greenState();
+    expect(closingChecks(state, true).some((c) => c.id === 'impact')).toBe(false);
+    const request: RefineState = { ...state, extension: { requestId: 'hello-001-pedido-1', title: 'T', text: 'Exportar.', at: 'x' } };
+    expect(failing(request, true)).toEqual(['impact']);
+    const impact = { summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] };
+    expect(failing({ ...request, impact: { inputHash: 'h', impact, issues: [] } }, true)).toEqual([]);
+    expect(failing({ ...request, impact: { inputHash: 'h', impact: null, issues: ['o impacto cita a spec x'] } }, true)).toEqual(['impact']);
+  });
+});

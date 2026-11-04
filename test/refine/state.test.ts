@@ -150,6 +150,11 @@ describe('backlog events', () => {
     expect(reduceRefineEvents([{ type: RefineEvent.RequestReceived, data: request }]).extension).toEqual(request);
     expect(reduceRefineEvents([]).extension).toBeUndefined();
   });
+  it('keeps the impact of a request with the outline it was made from, and what it broke', () => {
+    const impact = reduceRefineEvents([{ type: RefineEvent.ImpactDerived, data: { cycle: 2, inputHash: 'h1', impact: null, issues: ['o impacto cita a spec x'] } }]).impact;
+    expect(impact).toEqual({ inputHash: 'h1', impact: null, issues: ['o impacto cita a spec x'] });
+    expect(reduceRefineEvents([]).impact).toBeUndefined();
+  });
   it('enabling is idempotent and only makes an already evaluated session stale', () => {
     const fresh = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(fresh.backlog).toMatchObject({ enabled: true, items: [], project: null });

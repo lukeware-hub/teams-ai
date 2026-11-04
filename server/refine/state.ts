@@ -1,5 +1,6 @@
 import type { Architecture } from '../contracts/architecture.js';
 import type { Backlog, BacklogItem } from '../contracts/backlog.js';
+import type { Impact } from '../contracts/impact.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -214,6 +215,8 @@ export interface RefineState {
   backlog: BacklogState | null;
   /** The owner's request this draft follows up, when it was made in a project already in development. */
   extension?: ExtensionRequest;
+  /** The SM's impact of the request on the backlog it follows, with the outline it was made from; `issues` names what it broke. */
+  impact?: { inputHash: string; impact: Impact | null; issues: string[] };
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** The backlog key a continued spec came from, which names its plan file; absent when it came from no backlog. */
@@ -379,7 +382,19 @@ const reviewLine = (item: ChecklistItem): string => {
 };
 
 /** The seven checks the owner reads before starting a repository session; they alert and never lock the start. */
+/** The checks of a repository session; a follow-on request adds the check of its impact. */
 export function closingChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
+  return [...sevenChecks(s, architectureCurrent), ...(s.extension ? [impactCheck(s)] : [])];
+}
+
+/** The impact the SM made of the request is usable: it exists and it broke no rule. */
+const impactCheck = (s: RefineState): ClosingCheck => {
+  const ok = s.impact?.impact != null && s.impact.issues.length === 0;
+  const detail = ok ? 'o impacto do pedido foi analisado e não quebra regra' : s.impact ? `o impacto não fechou: ${s.impact.issues.join('; ')}` : 'o impacto do pedido ainda não foi analisado';
+  return { id: 'impact', ok, detail };
+};
+
+function sevenChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
   const items = s.backlog?.items ?? [];
   const keys = items.map((i) => i.key);
   const doneSteps = (s.speckit?.steps ?? []).filter((step) => step.basis !== undefined);
@@ -692,6 +707,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.RequestReceived:
       s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at) };
+      break;
+    case RefineEvent.ImpactDerived:
+      s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[] };
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
