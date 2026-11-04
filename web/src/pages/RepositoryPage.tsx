@@ -7,7 +7,6 @@ import { usePolling } from '../usePolling.js';
 import { action, panel, sectionHeading, sectionTitle } from './project-shared.js';
 import { AgentActivity } from './repository/AgentActivity.js';
 import { DeliveryBoard } from './repository/DeliveryBoard.js';
-import { GraphPanel } from './repository/GraphPanel.js';
 import { FailuresBlockers } from './repository/FailuresBlockers.js';
 import { IndicatorCards } from './repository/IndicatorCards.js';
 import { RepoHeader } from './repository/RepoHeader.js';
@@ -107,7 +106,6 @@ export function RepositoryPage() {
         </summary>
         <SpecsTable projectId={projectId} repo={repoId} />
       </details>
-      <GraphPanel projectId={projectId} />
       <Timeline projectId={projectId} repo={repoId} />
     </div>
   );

@@ -1284,20 +1284,6 @@ Dado que a fonte não existe mostra `sem dados`, nunca um número.
 
 Bloco recolhível, fechado por padrão, abaixo do board de entregas. Colunas: spec, prioridade, estado, plano, tarefas `n de m`, depende de. Em telas estreitas, a tabela rola na horizontal dentro do seu painel. Filtro, paginação e a abertura das tarefas de cada linha ainda não estão implementados.
 
-#### 27.3.2 Grafo do código (recolhível)
-
-Bloco recolhível, fechado por padrão, entre `Especificações` e a linha do tempo. Fechado, mostra só o título; nada é buscado no servidor. Aberto, busca o resumo do grafo do projeto e mostra: três números (nós, ligações, comunidades), o uso pelos agentes (quantas vezes o contexto de código veio do grafo, da busca de texto ou de nenhum dos dois) e os módulos mais ligados. O botão `Ver mapa` desenha os módulos mais ligados num anel de SVG, agrupados por comunidade; o desenho só existe depois do clique. Cada bolinha e cada módulo da lista cujo arquivo existe no GitHub é um link para esse arquivo, aberto em nova aba, no commit atual do repositório e na linha do nó; sem arquivo no GitHub, é só texto, e o título da bolinha avisa. Os nós que descrevem o projeto, sem arquivo próprio, não aparecem. Sem grafo, o painel diz que o grafo ainda não foi construído. Usa `panel`, `sectionHeading`, `action.secondary` e `count-pill`; nenhum valor visual novo.
-
-```
-┌ Grafo do código ──────────────────────────────  ▸ ┐   (fechado)
-├────────────────────────────────────────────────────┤
-│ 6034 nós · 14490 ligações · 219 comunidades        │   (aberto)
-│ Agentes: 12 pelo grafo · 3 por busca · 0 sem nada  │
-│ Módulos mais ligados: A (210) · B (180) · …        │
-│ [ Ver mapa ]                                       │
-└────────────────────────────────────────────────────┘
-```
-
 ### 26.10 Etapa de arquitetura: aviso de documentos
 
 Aparece só numa sessão de repositório de documentos cujo backlog ainda não foi ativado. Em sessões legadas a etapa fica como está.
