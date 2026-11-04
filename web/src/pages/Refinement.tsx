@@ -346,7 +346,7 @@ export function RefinementView(p: ViewProps) {
   const [busyDialog, setBusyDialog] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // The owner's button for everything: the team takes the autonomy to answer, decide, repair and prepare, after one confirmation.
-  const resolveAll = () => setAsk({ title: 'Preparar o backlog', text: 'O time revisa os documentos (PO e SM), aceita as sugestões, responde as perguntas, gera o specs.md e os planos, corrige o que for reprovado, coloca os cinco documentos no Graphify e salva tudo nos repositórios. Só para quando o desenvolvimento puder começar. Isso usa chamadas de agente.', confirmLabel: 'Preparar backlog', tone: 'accent', icon: 'check', onConfirm: () => void p.onResolveAll?.() });
+  const resolveAll = () => setAsk({ title: 'Preparar o backlog', text: 'O time revisa os documentos (PO e SM), aceita as sugestões, responde as perguntas, gera o specs.md e os planos, corrige o que for reprovado, coloca os cinco documentos no Graphify e salva tudo nos repositórios. Só para quando o desenvolvimento puder começar. Isso usa chamadas de agente.', confirmLabel: 'Preparar backlog', tone: 'accent', icon: 'check', onConfirm: () => { setPreparing(true); void Promise.resolve(p.onResolveAll?.()).catch(() => setPreparing(false)); } });
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
   const [step, setStep] = useState<WizardStep>(() => {
@@ -407,8 +407,21 @@ export function RefinementView(p: ViewProps) {
     try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
   };
   const evaluating = busy || st.status === 'evaluating';
+  // The button shows the spinner from the click until the server has worked and gone idle again.
+  const [preparing, setPreparing] = useState(false);
+  const preparingSeen = useRef(false);
   // The server holds a process of its own (the plans, the specs, a check) that the page may not have seen start: the decisions on suggestions wait for it, with a notice on the click.
   const serverBusy = snap.busy === true && !st.graphing;
+  useEffect(() => {
+    if (!preparing) return;
+    if (serverBusy || evaluating) preparingSeen.current = true;
+    else if (preparingSeen.current) { preparingSeen.current = false; setPreparing(false); }
+  }, [preparing, serverBusy, evaluating]);
+  useEffect(() => {
+    if (!preparing) return;
+    const timer = setTimeout(() => setPreparing(false), 20_000);
+    return () => clearTimeout(timer);
+  }, [preparing]);
   const locked = evaluating || st.status === 'started';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
@@ -1240,6 +1253,7 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
+      {startMissing.length > 0 && <p data-testid="start-missing" role="status" className={notice}><b>Falta para iniciar o desenvolvimento:</b> {startMissing.join(' ')}</p>}
       {pendingSummary}
       {!locked && unfiledQuestions(st).length > 0 && (
         <div data-testid="round-questions" className="grid gap-3">
@@ -1346,7 +1360,7 @@ export function RefinementView(p: ViewProps) {
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{startMissing.length > 0 && <p data-testid="start-missing" role="status" className="m-0 basis-full text-[0.8125rem] font-semibold leading-normal text-warn">Falta para iniciar o desenvolvimento: {startMissing.join(' ')}</p>}<ActionButton data-testid="prepare-backlog" className={startMissing.length > 0 ? 'primary' : 'secondary'} busy={serverBusy || evaluating} disabled={locked || evaluating || serverBusy || !p.onResolveAll} onClick={resolveAll} icon={<Icon name="check" size={16} />}>{serverBusy || evaluating ? 'Preparando…' : 'Preparar backlog'}</ActionButton>{developButton}</>
+    ) : <><ActionButton data-testid="prepare-backlog" className={startMissing.length > 0 ? 'primary' : 'secondary'} busy={preparing || serverBusy || evaluating} disabled={locked || preparing || evaluating || serverBusy || !p.onResolveAll} onClick={resolveAll} icon={<Icon name="check" size={16} />}>{preparing || serverBusy || evaluating ? 'Preparando…' : 'Preparar backlog'}</ActionButton>{developButton}</>
   ) : step === 'review' ? (
     <>
       {backlogOn || st.repositories === true ? (

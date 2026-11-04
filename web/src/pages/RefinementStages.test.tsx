@@ -495,6 +495,19 @@ describe('the button that lets the team resolve everything', () => {
     expect(h.onResolveAll).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the spinner from the click, and the yellow list sits at the top of the step in the notice pattern', () => {
+    const h = { ...handlers(), onResolveAll: vi.fn() };
+    renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
+    const missing = screen.getByTestId('start-missing');
+    expect(missing.className).toContain('bg-warn-soft');
+    expect(screen.getByTestId('refinement-backlog-heading').nextElementSibling).toBe(missing);
+    fireEvent.click(screen.getByTestId('prepare-backlog'));
+    fireEvent.click(screen.getByTestId('stage-confirm'));
+    const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('Preparando');
+  });
+
   it('is not offered when nothing keeps the start closed', () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never, h);
