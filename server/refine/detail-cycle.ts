@@ -24,7 +24,7 @@ import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draf
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
-import { specIdOf } from './specs-index.js';
+import { idSourceOf, specIdOf } from './specs-index.js';
 import type { BacklogState, PreplanRow, SpecRow } from './state.js';
 
 /** Agent calls of one detailing run at a time; the account-wide governor still caps every session together. */
@@ -212,7 +212,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const specHash = new Map(items.map((i) => [i.key, specInputHash(i, docs, repositoryContextOf(deps.journal.state, i.repository))]));
   const graphContext = deps.docGraphContext ? await deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), SPEC_GRAPH_QUESTION, SPEC_GRAPH_TOKENS) : '';
   const previous = new Map<string, Spec | null>();
-  const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
+  const idOf = (key: string) => specIdOf(idSourceOf(draft.specId, input.backlog), key, input.backlog.keyIds);
   for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
   // R11.7.2: an item whose spec on main started or was delivered is kept as main has it; a newer delivery is recorded again.
   const kept = new Set<string>();
@@ -226,6 +226,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
   }
+  // The walking skeleton is asked of a new pre-plan only while nothing of the backlog has started; the hash keeps the rank, so no reused pre-plan is made again.
+  const first = (item: Item) => item.rank === 1 && kept.size === 0;
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
   // R11.7.3: a new draft reuses main's spec of an item whose inputs did not change, and its pre-plan when still current.
   for (const i of items) {
@@ -320,7 +322,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   };
   const runPreplans = (batch: readonly Item[], rejection: Record<string, string[]>) => call(() => deps.runAgent<'preplan'>({
     kind: 'preplan', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
+    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: first(i), previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
   const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null || feedback[i.key]?.length));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan, feedbackOf);

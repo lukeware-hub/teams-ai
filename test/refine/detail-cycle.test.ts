@@ -77,15 +77,16 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
   return { fn, calls, kinds };
 }
 
-async function setup(existing?: string) {
+async function setup(existing?: string, opts: { specId?: string; enable?: Record<string, unknown> } = {}) {
   const root = existing ?? (await mkdtemp(path.join(os.tmpdir(), 'teams-ai-detail-'))).replace(/\\/g, '/');
   const docs = `${root}/docs`;
   await mkdir(docs, { recursive: true });
+  const specId = opts.specId ?? 'big-001';
   const draft = {
-    projectId: 'big', specId: 'big-001', root, docs, base: `${root}/.base/docs`,
-    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/big-001/briefing.md`, briefingMd: `${docs}/briefing.md`,
+    projectId: 'big', specId, root, docs, base: `${root}/.base/docs`,
+    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/${specId}/briefing.md`, briefingMd: `${docs}/briefing.md`,
     stackMd: `${docs}/stack.md`, flowMd: `${docs}/flow.md`, designMd: `${docs}/design.md`,
-    specJson: `${docs}/specs/big-001/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
+    specJson: `${docs}/specs/${specId}/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
   };
   await writeFile(draft.projectMd, filled(projectTemplate('big')));
   await writeFile(draft.briefingMd, filled(briefTemplate()));
@@ -104,7 +105,7 @@ async function setup(existing?: string) {
       return { seq: events.length, at: '', runId: 'big/big-001', specHash: 'draft', type, kind: 'fact' as const, data };
     },
   };
-  await journal.fact(RefineEvent.BacklogEnabled, {});
+  await journal.fact(RefineEvent.BacklogEnabled, opts.enable ?? {});
   const run = (agent: ReturnType<typeof fakeAgent>, cycle: number, decider?: ReturnType<typeof jev>) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], decider: decider as never }, cycle);
   const itemDir = (key: string) => `${docs}/specs/big-001-${key}`;
   return { draft, journal, events, run, itemDir, docs };
@@ -244,6 +245,26 @@ describe('backlog detailing in the refinement cycle', () => {
   };
   const withoutFat = (d: Env) => writeFile(d.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
   const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Ajuste aprovado'));
+
+  // A new top item builds on the foundation of a backlog that started: only a backlog with nothing started marks its first spec FIRST.
+  const OUTLINE_FOUNDATION = [
+    item('base', 'atend', '1. Caso', { priority: 'P0' }),
+    item('caso', 'atend', '1. Caso', { priority: 'P0', dependsOn: ['base'] }),
+    item('triagem', 'atend', '2. Triagem', { dependsOn: ['caso'] }),
+    item('opme', 'supr', '3. OPME', { dependsOn: ['caso'] }),
+    item('fat', 'fin', '4. Faturamento', { priority: 'P2', dependsOn: ['opme'] }),
+  ];
+  it('marks the new top item FIRST when nothing of the backlog has started on main', async () => {
+    const { agent } = await secondDraft(undefined, fakeAgent(() => OUTLINE_FOUNDATION));
+    const preplans = agent.calls.filter((c) => c.kind === 'preplan').map((c) => c.feedback).join('\n');
+    expect(preplans).toContain('## Spec base: Item base (FIRST: carries the walking skeleton)');
+  });
+  it('does not mark a new top item FIRST once a spec of the backlog started on main', async () => {
+    const { agent } = await secondDraft(async (d) => markStatus(d, 'caso', 'running'), fakeAgent(() => OUTLINE_FOUNDATION));
+    const preplans = agent.calls.filter((c) => c.kind === 'preplan').map((c) => c.feedback).join('\n');
+    expect(preplans).toContain('## Spec base: Item base');
+    expect(preplans).not.toContain('(FIRST: carries the walking skeleton)');
+  });
 
   it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
     const { second, detailing } = await secondDraft();
@@ -783,5 +804,15 @@ describe('backlog detailing without secrets', () => {
     await run(agent, 2);
     const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
     expect((evaluated.data.checklist as Array<{ id: string }>).some((i) => i.id === 'sm.dependencies-and-secrets')).toBe(false);
+  });
+});
+
+describe('a follow-on backlog keeps the spec ids of the main it came from', () => {
+  it('names every spec after the main draft id, while the index records its own draft', async () => {
+    const env = await setup(undefined, { specId: 'big-pedido-1', enable: { keyIds: false, idBase: 'big-001' } });
+    await env.run(fakeAgent(() => OUTLINE), 1);
+    const index = JSON.parse(await readFile(`${env.docs}/specs.json`, 'utf8')) as { draftId: string; specs: Array<{ key: string; specId: string; dependsOn: string[] }> };
+    expect(index.draftId).toBe('big-pedido-1');
+    expect(index.specs.find((s) => s.key === 'triagem')).toMatchObject({ specId: 'big-001-triagem', dependsOn: ['big-001-caso'] });
   });
 });

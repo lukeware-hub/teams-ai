@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
 import { execCommand } from '../../server/exec/command.js';
-import { docsSnapshotDir, readState } from '../../server/docs/project-state.js';
+import { docsSnapshotDir, readState, writeState } from '../../server/docs/project-state.js';
 import { OrchEvent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
 import { serviceWorkspace } from '../../server/orchestrator/workspace.js';
@@ -186,6 +186,38 @@ describe('phase 0 of a docs-repo project', () => {
     expect(created).toEqual(['o/artefacty']);
     expect(await git(hub, ['log', '--format=%s', 'origin/main'])).toBe('chore: create artefacty');
     expect(await git(hub, ['ls-tree', '--name-only', 'origin/main'])).toBe('');
+    await run.close();
+  });
+});
+
+describe('the mirror keeps a top-level file a newer closing wrote', () => {
+  const base = () => path.join(remote.root, 'draft', '.base', 'docs');
+  const writeBase = async (rel: string, text: string) => {
+    await fs.mkdir(path.dirname(path.join(base(), rel)), { recursive: true });
+    await fs.writeFile(path.join(base(), rel), text);
+  };
+  const ws = () => deps(new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s))).ws;
+
+  it('does not roll back a file the draft did not change, when another draft moved it on the mirror', async () => {
+    await writeDraft();
+    await writeBase('project.json', JSON.stringify(project));
+    const newer = { ...project, name: 'Moved on by another closing' };
+    await writeState(ws(), 'project.json', JSON.stringify(newer));
+    const d = deps(new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)), { docs: { style: 'monolith', snapshot: await writeSnapshot() } });
+    const run = await Run.create(d, 'hello-001-p0-9');
+    expect(await run.executePhase0()).toEqual({ ok: true });
+    expect(await readState(d.ws, 'project.json')).toEqual(newer);
+    await run.close();
+  });
+
+  it('writes a file the draft changed while the mirror still holds the copy the draft began from', async () => {
+    await writeDraft();
+    await writeBase('specs.json', '[]');
+    await fs.writeFile(path.join(draftDocs, 'specs.json'), '[{"specId":"hello-001"}]');
+    const d = deps(new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)), { docs: { style: 'monolith', snapshot: await writeSnapshot() } });
+    const run = await Run.create(d, 'hello-001-p0-10');
+    expect(await run.executePhase0()).toEqual({ ok: true });
+    expect(await readState(d.ws, 'specs.json')).toEqual([{ specId: 'hello-001' }]);
     await run.close();
   });
 });

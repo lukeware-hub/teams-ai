@@ -80,6 +80,17 @@ describe('RefineSession', () => {
     await again.close();
   });
 
+  it('a backlog takes the id scheme of the main index it came from, so legacy spec ids survive a follow-on', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    // Main names its specs after an older draft (the legacy scheme): the backlog must keep that naming.
+    await fs.mkdir(draft().base!, { recursive: true });
+    await fs.writeFile(path.join(draft().base!, 'specs.json'), JSON.stringify({ version: 1, draftId: 'shop-001', epics: [], specs: [{ specId: 'shop-001-login', key: 'login' }] }));
+    await s.enableBacklog();
+    expect(s.state.backlog).toMatchObject({ enabled: true, idBase: 'shop-001' });
+    expect(s.state.backlog?.keyIds).toBeUndefined();
+    await s.close();
+  });
+
   it('keeps the criterion ids of the spec it continues as the floor of the backlog numbering', async () => {
     const s = await RefineSession.create(deps(), 'continue');
     const continued = { ...makeSpec({ specId: 'hello-001' }), acceptanceCriteria: [{ id: 'AC-040', given: 'g', when: 'w', then: 't', smoke: true }] };

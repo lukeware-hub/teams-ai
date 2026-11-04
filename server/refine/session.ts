@@ -35,7 +35,7 @@ import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchi
 import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { restoreMove } from './moves.js';
-import { buildSpecsIndex } from './specs-index.js';
+import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
@@ -56,7 +56,7 @@ import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } fro
 import { mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import { boundaryLabel } from './docs-boundary.js';
 import { DocsSync, type DocsSyncView } from './docs-sync.js';
-import type { SpecAlias } from './docs-projection.js';
+import { specChanged, type SpecAlias } from './docs-projection.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -840,9 +840,11 @@ export class RefineSession {
     if (label !== null) this.docs.boundary(label);
   }
 
-  /** The specs this draft derived: each alias folder, and for a microservice its repository. */
-  private docsAliases(style: Style): SpecAlias[] {
-    return Object.values(this.state.backlog?.specs ?? {}).flatMap((row) => (row.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
+  /** The specs this draft changed since main: each alias folder it writes, and for a microservice its repository. Main's own specs stay as main has them. */
+  private async docsAliases(style: Style): Promise<SpecAlias[]> {
+    const rows = Object.values(this.state.backlog?.specs ?? {}).filter((row) => row.spec);
+    const changed = await Promise.all(rows.map(async (row) => ((await specChanged(this.deps.draft, row.specId)) ? row : null)));
+    return changed.flatMap((row) => (row?.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
   }
 
   /** Closes the documentation repository before the launch; a refusal is a conflict, and nothing launches. A legacy session has nothing to close. */
@@ -983,10 +985,19 @@ export class RefineSession {
     if (why) throw new ConflictError(why);
     if (bindRepo && this.state.docsRepo === true) await this.bindDocsRepo();
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
-    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
+    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), ...(await this.idSchemeOfMain()) });
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await moveBriefingToProject(this.deps.draft);
+  }
+
+  /** The id scheme main's specs index holds, so this backlog keeps the ids main already gave; a project without one takes the readable ids. */
+  private async idSchemeOfMain(): Promise<Pick<BacklogState, 'keyIds' | 'idBase'>> {
+    const index = JSON.parse((await readBase(this.deps.draft, 'specs.json')) ?? 'null') as SpecsIndex | null;
+    if (index === null) return { keyIds: true };
+    const scheme = idSchemeOf(index);
+    if (scheme === null) throw new ConflictError('Os ids das specs de main misturam dois formatos: o backlog não pode mantê-los.');
+    return scheme;
   }
 
   /** Plan 90: the owner's answers not yet in the brief go into it as decisions, so the brief carries them into the move. */
@@ -1701,7 +1712,8 @@ export class RefineSession {
     }
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
     const entries = programEntries(this.deps.draft.specId, backlog, onMain);
-    await this.closeDocs(entries.map((e) => e.specId));
+    // A spec main already started keeps the start tag it got then: only the specs this start begins get one.
+    await this.closeDocs(entries.filter((e) => !isStarted(onMain[e.specId])).map((e) => e.specId));
     return entries;
   }
 

@@ -239,6 +239,27 @@ describe('run index', () => {
     expect((await listProjects(d))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'awaiting-validation', activeRunId: null }]);
   });
 
+  it('a spec with no refinement dir of its own takes its most advanced copy, whichever dir registered first', async () => {
+    // A follow-on backlog's specs have no dir named after them: the copy a run moved on is the one that speaks.
+    const planned = path.join(home, 'refine', 'shop-pedido-1');
+    const running = path.join(home, 'refine', 'shop-pedido-2');
+    await fs.cp(HELLO, planned, { recursive: true });
+    await fs.cp(HELLO, running, { recursive: true });
+    const write = async (dir: string, status: string) => {
+      const file = path.join(dir, 'docs', 'specs', 'hello-001', 'spec.json');
+      await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status }));
+    };
+    await write(planned, 'planned');
+    await write(running, 'running');
+    const specsWith = async (dirs: string[]) => {
+      const d = deps();
+      d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: dirs.map((dir) => ({ dir })) });
+      return (await listProjects(d))[0]!.specs;
+    };
+    expect(await specsWith([planned, running])).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
+    expect(await specsWith([running, planned])).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
+  });
+
   it('SAFE_ID rejects path tricks', () => {
     expect(SAFE_ID.test('hello-001-r1')).toBe(true);
     expect(SAFE_ID.test('../x')).toBe(false);

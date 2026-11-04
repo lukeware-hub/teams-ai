@@ -150,6 +150,9 @@ describe('backlog events', () => {
     expect(fresh.stale).toBe(false);
     expect(fresh.backlog?.keyIds).toBeUndefined();
     expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBe(true);
+    // A follow-on backlog takes the id scheme and the id source of the main it came from.
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: false, idBase: 'shop-001' } }]).backlog).toMatchObject({ enabled: true, idBase: 'shop-001' });
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: false, idBase: 'shop-001' } }]).backlog?.keyIds).toBeUndefined();
     // Re-enabling an older backlog never renames its specs.
     expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBeUndefined();
     const evaluated = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }, { type: RefineEvent.BacklogEnabled, data: {} }]);

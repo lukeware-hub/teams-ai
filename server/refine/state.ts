@@ -127,6 +127,8 @@ export interface BacklogState {
   acHighWater?: number;
   /** Roadmap R11.12: item specs are named by their key alone (see `specIdOf`); absent on older drafts. */
   keyIds?: boolean;
+  /** A follow-on backlog's spec ids derive from the draft id its main named them by, not from its own (see `idSourceOf`). */
+  idBase?: string;
   /** The SM's conflict map of the current pre-plans; absent until made, and then the program runs one spec at a time. */
   conflicts?: ConflictMap;
 }
@@ -676,7 +678,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
       const floor = Number(d.acFloor ?? 0);
-      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0, ...(d.keyIds === true ? { keyIds: true } : {}) };
+      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0, ...(d.keyIds === true ? { keyIds: true } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
       if (floor > 0) s.backlog = { ...s.backlog, acHighWater: Math.max(s.backlog.acHighWater ?? 0, floor) };
       if (s.derived || s.checklist.length > 0) s.stale = true;
       break;
