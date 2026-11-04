@@ -6,17 +6,7 @@
   },
   "decisions": {
     "enabled": true,
-    "local": { "enabled": false },
-    "perDecision": {
-      "gate-triage": { "enabled": false },
-      "attempt-progress": { "enabled": false },
-      "pr-risk": { "enabled": false },
-      "model-tier": { "enabled": false },
-      "scope-drift": { "enabled": false },
-      "report-routing": { "enabled": false },
-      "cli-error": { "enabled": false },
-      "plan-rank": { "enabled": false }
-    }
+    "local": { "enabled": false }
   },
   "projects": []
 }

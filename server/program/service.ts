@@ -51,8 +51,8 @@ export interface ProgramDecision {
 }
 interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
 
-const FAILED_ASK: readonly AttemptOutcome[] = ['unavailable', 'invalid', 'low-confidence'];
-/** A backend that was called and failed or was unsure, or the Jev that is needed and has no key. */
+const FAILED_ASK: readonly AttemptOutcome[] = ['unavailable', 'invalid'];
+/** A backend that was called and failed, or the Jev that is needed and has no key. An unsure answer is not a failure. */
 const failedAsk = (a: DecisionAttempt): boolean => FAILED_ASK.includes(a.outcome) || (a.backend === 'jev' && a.outcome === 'missing-backend');
 
 const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
