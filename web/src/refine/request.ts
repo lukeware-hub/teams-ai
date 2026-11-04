@@ -1,5 +1,5 @@
 import { outlineDiff } from '@server/refine/outline-diff';
-import type { RefineState, RequestImpact } from '../api.js';
+import type { RefineState, RequestImpact, RequestTrace } from '../api.js';
 import type { StepperStep } from '../components/Stepper.js';
 
 /** The specs whose run began: a request does not change them, it only adds around them. */
@@ -88,4 +88,11 @@ export function readyChecks(st: RefineState): ReadyCheck[] {
     { id: 'planos', label: 'planos', ok: planned },
     { id: 'perguntas', label: 'sem pergunta aberta', ok: !st.questions.some((q) => q.status === 'pending' && q.blocking) },
   ];
+}
+
+/** The trail the bar shows: what the request made, from its specs to their plans and their task lists. */
+export function requestTrail(trace: RequestTrace | null | undefined, specs: number): string {
+  const planned = trace?.specs.filter((s) => s.planned).length ?? 0;
+  const tasked = trace?.specs.filter((s) => s.tasked).length ?? 0;
+  return `Pedido → ${specs} specs → ${planned} planos → ${tasked} tarefas`;
 }

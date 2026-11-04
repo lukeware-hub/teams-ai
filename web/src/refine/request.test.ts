@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RefineState } from '../api.js';
-import { impactCounts, readyChecks, replanRows, requestNodes } from './request.js';
+import { impactCounts, readyChecks, replanRows, requestNodes, requestTrail } from './request.js';
 
 const item = (key: string, rank: number, dependsOn: string[] = []) => ({ key, title: key, epic: 'core', scope: 's', priority: 'P1', rationale: 'r', dependsOn, sources: [], size: 'M', rank });
 const base = {
@@ -53,5 +53,13 @@ describe('the checks of a request before it starts', () => {
     const ready = { ...base, status: 'ready', speckit: { status: 'done', stale: false, steps: [] }, impact: { inputHash: 'h', impact: { summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] }, issues: [] } } as unknown as RefineState;
     expect(readyChecks(ready).every((c) => c.ok)).toBe(true);
     expect(readyChecks(base).find((c) => c.id === 'impacto')?.ok).toBe(false);
+  });
+});
+
+describe('the trail of a request', () => {
+  it('counts the specs, their plans and their task lists', () => {
+    const trace = { heading: 'Nova demanda (shop-pedido-1)', specs: [{ key: 'a', specId: 'a', citesRequest: true, planned: true, tasked: true }, { key: 'b', specId: 'b', citesRequest: true, planned: true, tasked: false }] };
+    expect(requestTrail(trace, 2)).toBe('Pedido → 2 specs → 2 planos → 1 tarefas');
+    expect(requestTrail(null, 0)).toBe('Pedido → 0 specs → 0 planos → 0 tarefas');
   });
 });

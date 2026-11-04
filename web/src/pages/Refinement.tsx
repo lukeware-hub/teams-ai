@@ -17,7 +17,7 @@ import { OptionGroup } from '../components/OptionGroup.js';
 import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
-import { allGreen, isApproval } from '@server/refine/state';
+import { allGreen, isApproval, requestHeading } from '@server/refine/state';
 import { CHECK_NAMES, type Divergence, type DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
@@ -39,6 +39,8 @@ import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
+import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
+import { readyChecks, replanRows, requestNodes, requestTrail } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
@@ -354,6 +356,7 @@ function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: Drop
 }
 
 export function RefinementView(p: ViewProps) {
+  const navigate = useNavigate();
   const { snap, busy } = p;
   const st = snap.state;
   const [tab, setTab] = useState<DocFile>('flow.md');
@@ -1462,6 +1465,30 @@ export function RefinementView(p: ViewProps) {
       </ActionButton>
     </>
   );
+  // A follow-on request (design.md §31): its trail, its impact and its replan above the backlog's own cards, and the bar that starts it.
+  if (st.extension) {
+    const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
+    return (
+      <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
+        <WizardShell
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" />}
+          stepKey="request"
+          meta={usageLine}
+          back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
+          actions={null}
+        >
+          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} />
+          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} />
+          <ReplanCard rows={replanRows(st)} />
+          {backlogScreen()}
+          <ReadyBar checks={readyChecks(st)} trail={requestTrail(snap.trace, st.backlog?.items.length ?? 0)} action={developButton} />
+        </WizardShell>
+        {reevaluateDialog}
+        {askDialog}
+        {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
+      </div>
+    );
+  }
   if (newProject) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">

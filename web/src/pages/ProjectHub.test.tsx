@@ -190,24 +190,20 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
     expect(screen.getByText('US$ 3.33')).toBeTruthy();
   });
-  it('creates a spec from a description: Continuar suggests the id, which stays editable', async () => {
+  it('a request is made from the description alone: the agents name and split the specs', () => {
     const o = on();
-    const suggest = vi.fn(async () => ({ id: 'user-login' }));
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} onSuggestName={suggest} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
     fireEvent.click(screen.getByTestId('open-new-spec'));
-    expect((screen.getByTestId('continue-new-spec') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('new-spec-id')).toBeNull();
+    expect((screen.getByTestId('new-spec') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Entrar com e-mail e senha' } });
-    fireEvent.click(screen.getByTestId('continue-new-spec'));
-    await waitFor(() => expect((screen.getByTestId('new-spec-id') as HTMLInputElement).value).toBe('user-login'));
-    expect(suggest).toHaveBeenCalledWith({ kind: 'spec', projectId: 'hello-app', name: '', description: 'Entrar com e-mail e senha' });
-    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'user-sign-in' } });
     fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('user-sign-in', 'Entrar com e-mail e senha');
+    expect(o.newSpec).toHaveBeenCalledWith('Entrar com e-mail e senha');
   });
   it('opens the new spec form straight from a ?novaSpec=1 link and drops the parameter when it closes', () => {
     const o = on();
@@ -235,26 +231,32 @@ describe('ProjectHubView', () => {
     expect(screen.getByTestId('new-spec-description')).toBeTruthy();
     expect(screen.queryByTestId('no-specs')).toBeNull();
   });
-  it('a failed suggestion leaves the id field to fill by hand, and Cancelar closes the panel', async () => {
+  it('an open request holds the form: its notice names it, and Continuar leads to it', () => {
     const o = on();
-    const suggest = vi.fn(async () => {
-      throw new Error('IA indisponível');
-    });
+    const drafts = [{ projectId: 'hello-app', specId: 'hello-app-pedido-1', state: 'answering' as const, registered: true, extension: true }];
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} onSuggestName={suggest} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('open-new-spec'));
+    expect(screen.queryByTestId('new-spec-description')).toBeNull();
+    expect(screen.getByTestId('project-hub-open-request').textContent).toContain('hello-app-pedido-1');
+    expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-app/hello-app-pedido-1');
+  });
+
+  it('Cancelar closes the form without making a request', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Listar usuários' } });
-    fireEvent.click(screen.getByTestId('continue-new-spec'));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('IA indisponível'));
-    expect((screen.getByTestId('new-spec') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'list-users' } });
-    fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('list-users', 'Listar usuários');
     fireEvent.click(screen.getByTestId('cancel-new-spec'));
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
+    expect(o.newSpec).not.toHaveBeenCalled();
   });
   it('shows the same breadcrumb as the run page: Projetos › project id', () => {
     const o = on();
@@ -279,10 +281,8 @@ describe('ProjectHubView', () => {
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Greet in Portuguese' } });
-    fireEvent.click(screen.getByTestId('continue-new-spec'));
-    fireEvent.change(screen.getByTestId('new-spec-id'), { target: { value: 'hello-005' } });
     fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('hello-005', 'Greet in Portuguese');
+    expect(o.newSpec).toHaveBeenCalledWith('Greet in Portuguese');
     expect(screen.queryByTestId('continue-hello-000')).toBeNull(); // a concluded spec is read-only
     expect(screen.queryByTestId('continue-hello-001')).toBeNull();
     expect(screen.getByTestId('refine-hello-003').getAttribute('href')).toBe('/refine/hello-app/hello-003');
