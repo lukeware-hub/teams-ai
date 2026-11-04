@@ -1045,6 +1045,47 @@ describe('refine api', () => {
     expect(after.specsApproved).toBe(true);
   });
 
+  it('the autopilot answers the open questions, has the PO decide what the reviewers keep rejecting, and clears the start', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    // The reviewers reject the text three times; the PO then decides alone and the new text is approved.
+    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
+    script['specs-review/po'] = [rejected, rejected, rejected, { verdict: 'approved', findings: [] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }];
+    script['refine/po'] = [review('po'), review('po'), review('po'), review('po')];
+    script['refine/sm'] = [review('sm'), review('sm'), review('sm')];
+    script['spec/po'] = [spec, spec, spec];
+    script['preplan/sm'] = [preplan, preplan, preplan];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    const started = await call('POST', `${url}/autopilot`);
+    expect(started.status).toBe(202);
+    // The work runs in the background: wait until the specs.md is approved.
+    for (let i = 0; i < 200 && !(await snapshot()).specsApproved; i++) await new Promise((r) => setTimeout(r, 50));
+    // The autopilot goes on to the plans after that, which this test does not script: let it end before the next test.
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    const after = await snapshot();
+    expect(after.specsApproved).toBe(true);
+    expect(after.state.questions.filter((q: { status: string }) => q.status === 'pending')).toEqual([]);
+    // The PO was the one that decided: a refine call without a question came after the repairs.
+    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThanOrEqual(4);
+  });
+
   it('two concurrent start requests spawn exactly one run', async () => {
     await specDraft();
     script['derive/po'] = [derived];

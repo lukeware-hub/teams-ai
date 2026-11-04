@@ -493,3 +493,24 @@ describe('what the start waits for', () => {
   });
 });
 
+describe('the button that lets the team resolve everything', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
+
+  it('sits beside the yellow list, asks for one confirmation, and then calls the team', () => {
+    const h = { ...handlers(), onResolveAll: vi.fn() };
+    renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
+    fireEvent.click(screen.getByTestId('resolve-all'));
+    expect(h.onResolveAll).not.toHaveBeenCalled();
+    expect(screen.getByText(/O time vai responder as perguntas por você/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('stage-confirm'));
+    expect(h.onResolveAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not offered when nothing keeps the start closed', () => {
+    const h = { ...handlers(), onResolveAll: vi.fn() };
+    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never, h);
+    expect(screen.queryByTestId('resolve-all')).toBeNull();
+  });
+});
+

@@ -5,6 +5,7 @@ import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
 import { ConflictError, NotFoundError } from '../refine/session.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
+import { resolveEverything } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -148,6 +149,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         s.ensureCanEvaluate();
         s.evaluate().catch(logRunFailure(params));
         json(202, { state: 'evaluating' });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/autopilot`,
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        resolveEverything(s).catch(logRunFailure(params));
+        json(202, { ok: true });
       }),
     },
     {

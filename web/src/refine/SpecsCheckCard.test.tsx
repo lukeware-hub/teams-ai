@@ -61,10 +61,10 @@ describe('the specs.md card when the repairs did not settle it', () => {
     expect(onApprove).toHaveBeenCalledTimes(1);
   });
 
-  it('once the team asked, points to the questions and offers only to follow anyway', () => {
+  it('once the team asked, points to the questions, and still offers to let the team resolve everything or to follow anyway', () => {
     render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={2} asked onAsk={() => undefined} onApprove={() => undefined} />);
-    expect(screen.queryByTestId('specs-check-ask')).toBeNull();
     expect(screen.getByTestId('specs-check-gave-up').textContent).toContain('Responda as perguntas abaixo');
+    expect(screen.getByTestId('specs-check-ask')).toBeTruthy();
     expect(screen.getByTestId('specs-check-approve')).toBeTruthy();
   });
 });

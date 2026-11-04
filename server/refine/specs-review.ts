@@ -29,18 +29,30 @@ export function specsReviewPack(input: { role: SpecsReviewer; specHash: string; 
 }
 
 /** What the PO does when the agents could not repair a rejected specs.md: settle the obvious in the documents, and ask the owner only the rest. */
-export function specsAskPack(input: { specHash: string; specsMd: string; findings: ReadonlyArray<{ role: SpecsReviewer; text: string }> }): ContextPackInput {
+export function specsAskPack(input: { specHash: string; specsMd: string; findings: ReadonlyArray<{ role: SpecsReviewer; text: string }>; decide?: boolean }): ContextPackInput {
   const feedback = [
     'The PO and the SM rejected specs.md, and detailing the items again twice did not settle it. Their findings:',
     ...input.findings.map((f) => `- ${f.role.toUpperCase()}: ${f.text}`),
     '',
     'Your job, in this order:',
     '1. What the five documents already settle (docs/project.md, briefing.md, stack.md, flow.md, design.md, which you can read) you decide yourself: write a docPatch that fixes the document, and make no question of it. A point that only needs a choice the documents lean towards is an assumption, written into the document as `Assumption: <claim>. Reason: <why>.`',
-    '2. What no document settles, and changes what gets built, you ask the owner, as few questions as possible and never one the documents answer.',
+    input.decide
+      ? '2. The owner gave you full autonomy: what no document settles you decide yourself, choosing the option you would recommend, and write the decision into the right document as `Assumption: <claim>. Reason: <why>.` Return no question at all.'
+      : '2. What no document settles, and changes what gets built, you ask the owner, as few questions as possible and never one the documents answer.',
     'Write every question for a person who reads it in ten seconds: the text is one or two plain sentences that say what is unclear and why it matters, no file jargon, no acronyms. Give two to four options. Each option has a short label and a detail that says, in one sentence, what happens if it is chosen. Mark exactly one option as recommended, the one you would pick, and make the first option that one.',
     'Mark every question blocking. Return an empty checklist. Write everything in Brazilian Portuguese.',
     '',
     `### specs.md\n${input.specsMd}`,
   ].join('\n');
   return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 40_000 };
+}
+
+/** The PO decides one open question for the owner, who gave the team full autonomy: the decision goes into the right document as an assumption. */
+export function decideQuestionPack(input: { specHash: string; question: string }): ContextPackInput {
+  const feedback = [
+    'The owner gave you full autonomy: decide this open question yourself, using what the documents say (docs/project.md, briefing.md, stack.md, flow.md, design.md, which you can read) and choosing what you would recommend.',
+    `Question: ${input.question}`,
+    'Write the decision into the right document as a docPatch, as `Assumption: <claim>. Reason: <why>.` Return no question and an empty checklist. Write everything in Brazilian Portuguese.',
+  ].join('\n');
+  return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 30_000 };
 }
