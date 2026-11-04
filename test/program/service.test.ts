@@ -331,7 +331,7 @@ describe('program service view', () => {
     await fs.writeFile(path.join(runsDir(), runId, 'state.json'), JSON.stringify({ status: 'running', tokens: { costUsd } }));
   };
 
-  it('shows the cost of an item as the sum of all its runs, the running one included, and leaves out other specs and projects', async () => {
+  it('shows an item\'s cost as the sum of all its runs, the running one included, and leaves out other specs and projects', async () => {
     await write([item('a', 'running', 'shop--d-a--run-2'), item('b', 'pending', null)]);
     await cost('shop--d-a--run-1', 0.5);
     await cost('shop--d-a--run-2', 0.25);
