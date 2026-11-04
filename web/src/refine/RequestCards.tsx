@@ -69,12 +69,13 @@ export function ReplanCard({ rows }: { rows: ReplanRow[] }) {
       <ol data-testid="replan-rows" className="m-0 grid list-none gap-2 p-0">
         <li aria-hidden="true" className={`hidden gap-x-3 text-[0.75rem] uppercase tracking-[0.06em] text-ink-soft sm:grid ${REPLAN_COLUMNS}`}><span>antes</span><span>spec</span><span>estado</span><span>novo #</span><span>mudança</span></li>
         {rows.map((r) => (
-          <li key={r.key} data-testid={`replan-row-${r.key}`} className={`grid gap-x-3 gap-y-1 border-b border-line pb-2 text-[0.875rem] sm:items-baseline ${REPLAN_COLUMNS}`}>
-            <span className="tabular-nums text-ink-soft">{r.oldRank ?? '—'}</span>
-            <span className="min-w-0 break-words font-semibold text-ink">{r.key}</span>
-            <span className="min-w-0 break-words text-ink-soft">{r.state}</span>
-            <span className="tabular-nums text-ink">{r.newRank}</span>
-            <span className="flex min-w-0 items-center gap-1.5 break-words text-ink-soft">{r.change.includes('mantida') && <Icon name="lock" size={13} />}{r.change}</span>
+          <li key={r.key} data-testid={`replan-row-${r.key}`} className={`grid gap-x-3 gap-y-1 border-b border-line pb-2 text-[0.875rem] max-sm:grid-cols-[1.5rem_minmax(0,1fr)] sm:items-baseline ${REPLAN_COLUMNS}`}>
+            <span className="tabular-nums text-ink-soft max-sm:hidden">{r.oldRank ?? '—'}</span>
+            <span className="min-w-0 break-words font-semibold text-ink max-sm:order-2">{r.key}</span>
+            <span className="min-w-0 break-words text-ink-soft max-sm:hidden">{r.state}</span>
+            <span className="tabular-nums text-ink max-sm:order-1">{r.newRank}</span>
+            <span className="flex min-w-0 items-center gap-1.5 break-words text-ink-soft max-sm:hidden">{r.change.includes('mantida') && <Icon name="lock" size={13} />}{r.change}</span>
+            <span className="col-start-2 min-w-0 break-words text-ink-soft max-sm:order-3 sm:hidden">{r.state} · {r.change}</span>
           </li>
         ))}
       </ol>
