@@ -331,13 +331,26 @@ describe('program service view', () => {
     const decision = (decisionId: string, at: string, answers: unknown, backend: string | null = 'jev', attempts: unknown[] = []) => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend, model: 'm', escalated: false, answers, attempts, usage: {}, at } } });
     const jevMissing = [{ backend: 'jev', outcome: 'missing-backend', confidence: null, model: null, usage: null, message: null }];
     await journal('a-r1', [started('d-a'), decision('model-tier', '2026-10-13T10:00:00.000Z', { tier: { type: 'choice', value: 'large', probabilities: {}, confidence: 0.9 } })]);
-    // scope-drift is switched off (no attempts): not a problem; gate-triage was asked and nobody answered: counted.
+    // scope-drift is switched off (no attempts): not counted; gate-triage has no Jev key: counted.
     await journal('b-r1', [started('d-b'), decision('pr-risk', '2026-10-13T11:00:00.000Z', null), decision('scope-drift', '2026-10-13T11:30:00.000Z', null, null), decision('gate-triage', '2026-10-13T12:00:00.000Z', null, null, jevMissing), decision('failure-cause', '2026-10-13T09:00:00.000Z', { cause: { type: 'noul', value: 0.7, probabilities: { yes: 0.7, no: 0.3 }, confidence: 0.7 } })]);
     const { decisions: list, unanswered } = await service().decisions('shop', 'd');
     expect(list.map((x) => `${x.key}:${x.decisionId}`)).toEqual(['b:pr-risk', 'a:model-tier', 'b:failure-cause']);
     expect(list[1]!.answers).toEqual([{ question: 'tier', value: 'large', confidence: 0.9 }]);
     expect(unanswered).toBe(1);
     expect((await service().decisions('shop', 'd', 2)).decisions).toHaveLength(2);
+  });
+
+  it('counts a decision only when a model was asked and failed, or the Jev key is missing', async () => {
+    await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
+    const attempt = (backend: string, outcome: string) => ({ backend, outcome, confidence: null, model: null, usage: null, message: null });
+    const undecided = (decisionId: string, attempts: unknown[]) => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend: null, model: null, escalated: false, answers: null, attempts, usage: {}, at: '2026-10-13T10:00:00.000Z' } } });
+    // model-tier: Jev unavailable (counted). pr-risk: blocked by confidentiality, local off (not counted).
+    await journal('a-r1', [started('d-a'), undecided('model-tier', [attempt('jev', 'unavailable')]), undecided('pr-risk', [attempt('jev', 'skipped-confidential'), attempt('local', 'missing-backend')])]);
+    // scope-drift: switched off (not counted). failure-cause: low confidence (counted). gate-triage: no Jev key (counted).
+    await journal('b-r1', [started('d-b'), undecided('scope-drift', []), undecided('failure-cause', [attempt('jev', 'low-confidence'), attempt('local', 'missing-backend')]), undecided('gate-triage', [attempt('jev', 'missing-backend'), attempt('local', 'missing-backend')])]);
+    const { decisions, unanswered } = await service().decisions('shop', 'd');
+    expect(decisions).toEqual([]);
+    expect(unanswered).toBe(3);
   });
 
   it('is null without a program, and keeps the pull requests of a finished item without reading its journal again', async () => {

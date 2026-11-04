@@ -7,7 +7,7 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import type { Decider } from '../decide/decider.js';
-import type { DecisionRecord } from '../decide/types.js';
+import type { AttemptOutcome, DecisionAttempt, DecisionRecord } from '../decide/types.js';
 import { classifyFailure } from '../decide/decisions/failure-cause.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
@@ -43,15 +43,19 @@ export interface ProgramDecision {
   decisionId: string;
   /** Who answered: `jev`, `local`, `claude`, or null when none did. */
   backend: string | null;
-  /** Whether any backend was asked; false when the decision was switched off. */
-  attempted: boolean;
+  /** Whether a model was asked and failed, or the Jev key is missing; never true for an answered decision. */
+  unanswered: boolean;
   escalated: boolean;
   answers: Array<{ question: string; value: string | number; confidence: number | null }>;
 }
 interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
 
+const FAILED_ASK: readonly AttemptOutcome[] = ['unavailable', 'invalid', 'low-confidence'];
+/** A backend that was called and failed or was unsure, or the Jev that is needed and has no key. */
+const failedAsk = (a: DecisionAttempt): boolean => FAILED_ASK.includes(a.outcome) || (a.backend === 'jev' && a.outcome === 'missing-backend');
+
 const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
-  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, attempted: r.attempts.length > 0, escalated: r.escalated,
+  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, unanswered: r.backend === null && r.attempts.some(failedAsk), escalated: r.escalated,
   answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
 });
 
@@ -143,14 +147,14 @@ export class ProgramService {
     return row?.status === 'interrupted' || row?.status === 'unknown' ? runId : null;
   }
 
-  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many were asked and nobody answered (a decision switched off is not counted). */
+  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many were asked and nobody answered. */
   async decisions(projectId: string, draftId: string, limit = 100): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     const program = await this.read(projectId, draftId);
     if (program === null) return { decisions: [], unanswered: 0 };
     const runs = runsDirOf(await this.index());
     const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
     const answered = all.filter((d) => d.backend !== null);
-    const unanswered = all.filter((d) => d.backend === null && d.attempted).length;
+    const unanswered = all.filter((d) => d.unanswered).length;
     return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered };
   }
 

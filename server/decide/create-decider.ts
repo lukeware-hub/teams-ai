@@ -4,7 +4,6 @@ import { ClaudeEscalateBackend, type EscalationRunner } from './claude-escalate.
 import { Decider } from './decider.js';
 import { JevOpenRouterBackend } from './jev-openrouter.js';
 import { LocalLogprobsBackend } from './local-logprobs.js';
-import { LocalStubBackend } from './local-stub.js';
 import type { BackendName, DecisionBackend, DecisionRecord } from './types.js';
 
 export interface CreateDeciderDeps {
@@ -21,11 +20,12 @@ export interface CreateDeciderDeps {
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Spec 10A.0 chain: jev (when a key exists) → local (when enabled, else the stub) → claude. Cost lands in accounting under system1. */
+/** Spec 10A.0 chain: jev (when a key exists) → local (when enabled) → claude. Cost lands in accounting under system1. */
 export function createDecider(deps: CreateDeciderDeps): Decider {
   const l = deps.cfg.decisions.local;
+  // A disabled local model is left out, so the decider records it as missing rather than as a call that failed.
   const backends: Partial<Record<BackendName, DecisionBackend>> = {
-    local: l.enabled ? new LocalLogprobsBackend({ fetch: deps.fetch ?? globalThis.fetch, baseUrl: l.baseUrl, timeoutMs: l.timeoutMs, nProbs: l.nProbs }) : new LocalStubBackend(),
+    ...(l.enabled ? { local: new LocalLogprobsBackend({ fetch: deps.fetch ?? globalThis.fetch, baseUrl: l.baseUrl, timeoutMs: l.timeoutMs, nProbs: l.nProbs }) } : {}),
     claude: new ClaudeEscalateBackend(deps.runEscalation),
   };
   const key = deps.secrets.OPENROUTER_API_KEY;
