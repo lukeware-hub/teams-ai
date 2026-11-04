@@ -305,7 +305,8 @@ export const runApi = {
   repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
-  repositoryGraph: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/graph`).then((r) => json<GraphView>(r)),
+  projectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph`).then((r) => json<GraphView>(r)),
+  rebuildProjectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/rebuild`, { method: 'POST' }).then((r) => json<{ ok: true }>(r)),
   repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),
   repositoryDashboardTable: <T,>(projectId: string, repo: string, table: DashboardTable, req: PageRequest) =>

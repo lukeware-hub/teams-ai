@@ -107,7 +107,7 @@ export function RepositoryPage() {
         </summary>
         <SpecsTable projectId={projectId} repo={repoId} />
       </details>
-      <GraphPanel projectId={projectId} repo={repoId} />
+      <GraphPanel projectId={projectId} />
       <Timeline projectId={projectId} repo={repoId} />
     </div>
   );

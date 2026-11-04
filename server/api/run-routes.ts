@@ -15,7 +15,7 @@ import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
-import { buildProjectGraph } from '../knowledge/project-graph.js';
+import { buildProjectGraph, locateProject, projectMainDocs } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
@@ -409,6 +409,8 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
+  // Projects whose code graph is being built right now: one build at a time per project.
+  const rebuilding = new Set<string>();
   /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
   const repoSource = async (projectId: string) => {
     const idx = await index();
@@ -521,13 +523,34 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     },
     {
       method: 'GET',
-      path: `${P}/projects/:projectId/repositories/:repo/graph`,
+      path: `${P}/projects/:projectId/graph`,
       handler: async ({ params, json }) => {
-        const input = await dashboardInput(params);
-        const idx = await index();
-        const ws = workspacePaths(idx.cfg, params.projectId!, deps.home);
+        const { repoRuns } = await repoSource(params.projectId!);
+        const ws = workspacePaths((await index()).cfg, params.projectId!, deps.home);
         const raw = await fs.readFile(graphFile(path.posix.join(ws.graph, 'project')), 'utf8').catch(() => null);
-        json(200, buildGraphView(raw, input.runs));
+        json(200, buildGraphView(raw, repoRuns));
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/graph/rebuild`,
+      handler: async ({ params, json }) => {
+        const projectId = params.projectId!;
+        if (!deps.graphify) throw new HttpError(501, 'o graphify não está disponível neste servidor');
+        if (rebuilding.has(projectId)) throw new HttpError(409, 'o grafo já está sendo construído');
+        const cfg = (await index()).cfg;
+        const located = await locateProject(cfg, projectId);
+        if (!located) throw new HttpError(404, `unknown project ${projectId}`);
+        rebuilding.add(projectId);
+        try {
+          const present = await Promise.all((located.project.services ?? []).map(async (service) => ((await fs.access(serviceWorkspace(located.ws, service).repo).then(() => true, () => false)) ? service : null)));
+          await buildProjectGraph(deps.graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectMainDocs(located));
+        } catch (err) {
+          throw new HttpError(500, `não foi possível construir o grafo: ${(err as Error).message}`);
+        } finally {
+          rebuilding.delete(projectId);
+        }
+        json(200, { ok: true });
       },
     },
     {

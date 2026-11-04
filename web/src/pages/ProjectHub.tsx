@@ -9,6 +9,7 @@ import { Pagination, SortHeader, TableFilters, usePagedTable } from '../componen
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
+import { GraphPanel } from './repository/GraphPanel.js';
 import { BacklogBanner } from '../refine/ProgramPanel.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
@@ -331,6 +332,7 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
+      <GraphPanel projectId={pr.projectId} />
       {(p.repositories?.length ?? 0) > 0 ? <RepositoriesPanel projectId={pr.projectId} repositories={p.repositories ?? []} /> : pr.services?.length ? (
         <section className={panel} data-testid="project-services">
           <div data-testid="project-hub-services-section" className={section}>

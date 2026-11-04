@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { runApi, type GraphView } from '../../api.js';
 import { action, panel, sectionHeading, sectionTitle } from '../project-shared.js';
 
@@ -30,23 +30,53 @@ function GraphMap({ view }: { view: GraphView }) {
 }
 
 /** The project's code graph, closed by default: nothing is fetched until the owner opens it, and the map is drawn only on request. */
-export function GraphPanel({ projectId, repo }: { projectId: string; repo: string }) {
+export function GraphPanel({ projectId }: { projectId: string }) {
   const [view, setView] = useState<GraphView | null | undefined>(undefined);
   const [map, setMap] = useState(false);
+  // The body exists only after the first opening, so a closed panel adds nothing to the page.
+  const [opened, setOpened] = useState(false);
+  const requested = useRef(false);
+  const [building, setBuilding] = useState(false);
+  // Why the last build failed, in the server's words.
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   const onToggle = (open: boolean) => {
-    if (!open || view !== undefined) return;
-    runApi.repositoryGraph(projectId, repo).then(setView, () => setView(null));
+    if (!open || requested.current) return;
+    requested.current = true;
+    setOpened(true);
+    runApi.projectGraph(projectId).then(setView, () => setView(null));
   };
+
+  const build = () => {
+    setBuilding(true);
+    setBuildError(null);
+    runApi
+      .rebuildProjectGraph(projectId)
+      .then(() => runApi.projectGraph(projectId))
+      .then(setView, (err: unknown) => setBuildError(err instanceof Error ? err.message : 'não foi possível construir o grafo'))
+      .finally(() => setBuilding(false));
+  };
+
+  const buildButton = (label: string) => (
+    <button data-testid="graph-build" type="button" className={action.secondary} disabled={building} onClick={build}>
+      {building ? 'Construindo o grafo…' : label}
+    </button>
+  );
 
   return (
     <details className={panel} data-testid="repo-graph" onToggle={(e) => onToggle(e.currentTarget.open)}>
       <summary data-testid="graph-summary" className={`${sectionTitle} cursor-pointer`}>
         <h2 data-testid="graph-heading" className={sectionHeading}>Grafo do código</h2>
       </summary>
-      {view === undefined && <p data-testid="graph-loading" className="hint" role="status">Carregando o grafo…</p>}
+      {opened && view === undefined && <p data-testid="graph-loading" className="hint" role="status">Carregando o grafo…</p>}
       {view === null && <p data-testid="graph-error" className="hint">Não foi possível ler o grafo. Tente de novo mais tarde.</p>}
-      {view && !view.available && <p data-testid="graph-empty" className="hint">O grafo deste projeto ainda não foi construído. Ele é gerado ao importar o projeto e a cada entrega.</p>}
+      {view && !view.available && (
+        <div className="grid justify-items-start gap-3">
+          <p data-testid="graph-empty" className="hint m-0">O grafo deste projeto ainda não foi construído. Ele é gerado ao importar o projeto por link e a cada entrega.</p>
+          {buildButton('Construir grafo')}
+        </div>
+      )}
+      {buildError && <p data-testid="graph-build-error" className="error m-0" role="alert">{buildError}</p>}
       {view?.available && (
         <div className="grid gap-3 text-[0.875rem]">
           <p data-testid="graph-counts" className="m-0">{`${view.nodes} nós · ${view.links} ligações · ${view.communities} comunidades`}</p>
@@ -62,6 +92,7 @@ export function GraphPanel({ projectId, repo }: { projectId: string; repo: strin
             {map ? 'Esconder mapa' : 'Ver mapa'}
           </button>
           {map && <GraphMap view={view} />}
+          {buildButton('Atualizar grafo')}
         </div>
       )}
     </details>

@@ -29,3 +29,18 @@ describe('repository read routes', () => {
     expect(json).not.toHaveBeenCalled();
   });
 });
+
+describe('project graph routes', () => {
+  const find = (method: string, suffix: string, deps: object = {}) =>
+    runRoutes({ cfg: async () => ({ projects: [] }) as never, home: '/tmp/teams-ai-none', control: {} as never, ...deps } as never).find((r) => r.method === method && r.path.endsWith(suffix))!.handler;
+
+  it('answers 404 for the graph of a project the server does not know', async () => {
+    await expect(find('GET', '/projects/:projectId/graph')({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuses to build the graph without graphify (501) and for an unknown project (404)', async () => {
+    const rebuild = '/graph/rebuild';
+    await expect(find('POST', rebuild)({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 501 });
+    await expect(find('POST', rebuild, { graphify: {} })({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 404 });
+  });
+});
