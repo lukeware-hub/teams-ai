@@ -17,6 +17,10 @@ const show = (onClose = vi.fn(), openRequest?: string) =>
 afterEach(() => vi.restoreAllMocks());
 
 describe('NewSpecDialog', () => {
+  it('focuses the description field when it opens', () => {
+    show();
+    expect(document.activeElement).toBe(screen.getByTestId('new-spec-description'));
+  });
   it('keeps Criar spec disabled until there is a description', () => {
     show();
     expect((screen.getByTestId('new-spec') as HTMLButtonElement).disabled).toBe(true);

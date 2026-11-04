@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi } from '../api.js';
 import { action } from '../pages/project-shared.js';
@@ -18,6 +18,9 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  const field = useRef<HTMLTextAreaElement>(null);
+  // The dialog focuses its close button first; this effect runs after it and moves focus to the field.
+  useEffect(() => field.current?.focus(), []);
   const tryClose = () => (description.trim() === '' ? onClose() : setDiscarding(true));
   const submit = async () => {
     setSubmitting(true);
@@ -48,7 +51,7 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
             }}
           >
             <label data-testid="new-spec-description-label" className="text-[0.8125rem] font-semibold" htmlFor="new-spec-description">Descreva o que adicionar ou mudar</label>
-            <textarea className="min-h-[14rem] w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={10} autoFocus value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: o administrador precisa exportar o relatório mensal em PDF." />
+            <textarea className="min-h-[14rem] w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={10} ref={field} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: o administrador precisa exportar o relatório mensal em PDF." />
             <p data-testid="new-spec-helper" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Os agentes leem os documentos e as specs, organizam a descrição no padrão das outras specs e medem o impacto. Você só responde o que eles não decidirem sozinhos.</p>
             {error ? <div className="error" role="alert" data-testid="new-spec-error">{error}</div> : null}
             <div data-testid="new-spec-actions" className="new-spec-actions flex flex-wrap justify-end gap-2">
