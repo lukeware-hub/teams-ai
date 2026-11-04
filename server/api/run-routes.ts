@@ -45,7 +45,8 @@ import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews } from './repository-dashboard.js';
-import { buildGraphView } from './repository-graph.js';
+import { graphLinkResolver } from './graph-links.js';
+import { buildGraphView, linkNodes } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
 import { RUN_TABLE, SPEC_TABLE, specPageRow } from './project-pages.js';
 import { VALIDATION_TABLES, validationPage, withoutTableRows } from './validation-tables.js';
@@ -106,6 +107,10 @@ export function blobUrl(repoUrl: string, commit: string, file: string, line: num
 
 const originOf = (dir: string): Promise<string | null> =>
   execCommand({ bin: 'git', args: ['remote', 'get-url', 'origin'], cwd: dir, timeoutMs: 5_000 }).then((r) => (r.exitCode === 0 ? r.stdout.trim() : null), () => null);
+
+/** The trimmed output of a git command in a clone, or null when it fails. */
+const gitOut = (dir: string, args: string[]): Promise<string | null> =>
+  execCommand({ bin: 'git', args, cwd: dir, timeoutMs: 5_000 }).then((r) => (r.exitCode === 0 ? r.stdout.trim() : null), () => null);
 
 /** GitHub page of the clone at repoDir, or null when it has no GitHub origin. */
 async function repoUrlOf(repoDir: string): Promise<string | null> {
@@ -528,7 +533,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const { repoRuns } = await repoSource(params.projectId!);
         const ws = workspacePaths((await index()).cfg, params.projectId!, deps.home);
         const raw = await fs.readFile(graphFile(path.posix.join(ws.graph, 'project')), 'utf8').catch(() => null);
-        json(200, buildGraphView(raw, repoRuns));
+        const located = await locateProject((await index()).cfg, params.projectId!);
+        const clones: Record<string, string> = located ? { [params.projectId!]: located.ws.repo, ...Object.fromEntries((located.project.services ?? []).map((service) => [service, serviceWorkspace(located.ws, service).repo])) } : {};
+        json(200, await linkNodes(buildGraphView(raw, repoRuns), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, clones)));
       },
     },
     {
