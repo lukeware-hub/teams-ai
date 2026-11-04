@@ -2,7 +2,6 @@ const id = encodeURIComponent;
 
 export const PROJECTS = '/projects';
 export const projectPath = (projectId: string) => `${PROJECTS}/${id(projectId)}`;
-export const newSpecPath = (projectId: string) => `${projectPath(projectId)}?novaSpec=1`;
 export const executionPath = (projectId: string) => `${projectPath(projectId)}#execucao`;
 export const repoPath = (projectId: string, repoId: string) => `${projectPath(projectId)}/${id(repoId)}`;
 export const refinePath = (projectId: string, specId: string) => `/refine/${id(projectId)}/${id(specId)}`;

@@ -1,11 +1,12 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Breadcrumb } from '../components/Breadcrumb.js';
-import { afterStartPath, newSpecPath, projectPath, runPath, validationPath } from '../routes.js';
+import { afterStartPath, projectPath, runPath, validationPath } from '../routes.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
 import { runApi, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
+import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { OptionGroup } from '../components/OptionGroup.js';
@@ -528,6 +529,7 @@ const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed']);
 
 export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction, testLinks }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction; testLinks?: Record<string, TestLink> }) {
+  const [newSpec, setNewSpec] = useState(false);
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = finishedEvent(unique);
@@ -736,9 +738,10 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
         {detail.locked ? (
           <p className="hint" data-testid="locked-notice">
-            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={newSpecPath(detail.projectId)}>nova spec no projeto</Link>.
+            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <button type="button" className="inline h-auto min-h-0 min-w-0 border-0 bg-transparent p-0 font-[inherit] text-accent-text underline" data-testid="locked-new-spec" onClick={() => setNewSpec(true)}>nova spec no projeto</button>.
           </p>
         ) : null}
+        {newSpec ? <NewSpecDialog projectId={detail.projectId} onClose={() => setNewSpec(false)} /> : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
           <div data-testid="run-progress" className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatApi, runApi, type ChatMessage } from '../api.js';
 import { ChatPage, plainError, usageLine } from './Chat.js';
@@ -84,12 +84,10 @@ describe('ChatPage', () => {
   it('has a Nova spec shortcut for the chosen project and the example question about it', async () => {
     vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
     vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
-    const Hub = () => <output data-testid="hub">{useLocation().search}</output>;
     render(
       <MemoryRouter initialEntries={['/chat']}>
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/projects/:projectId" element={<Hub />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -97,7 +95,7 @@ describe('ChatPage', () => {
     expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).value).toBe('Como crio uma nova spec?');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'other' } });
     fireEvent.click(screen.getByRole('button', { name: 'Nova spec' }));
-    expect(screen.getByTestId('hub').textContent).toBe('?novaSpec=1');
+    expect(screen.getByRole('dialog').textContent).toContain('Nova spec · other');
   });
 
   it('shows what an answer cost under it, and nothing for an old answer saved before the cost was measured', async () => {

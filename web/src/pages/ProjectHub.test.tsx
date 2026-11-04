@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { queryPage } from '@server/api/paging.js';
 import { RUN_TABLE, SPEC_TABLE, specPageRow } from '@server/api/project-pages.js';
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
 import { appLinks, ProjectHub, ProjectHubView, shouldAutoDeploy } from './ProjectHub.js';
 
@@ -25,7 +25,7 @@ const runs = [
   { runId: 'hello-001-r1', specId: 'hello-001', projectId: 'hello-app', status: 'paused:auth', at: '2026-09-24T09:00:00.000Z', tokens: 100, cost: 0.01, stoppable: false },
   { runId: 'hello-000-r1', specId: 'hello-000', projectId: 'hello-app', status: 'complete', at: '2026-09-23T09:00:00.000Z', tokens: 9000, cost: 3.33, stoppable: false },
 ].map(row);
-const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), newSpec: vi.fn(), cont: vi.fn(), restart: vi.fn(), validate: vi.fn(), deleteDraft: vi.fn() });
+const on = () => ({ start: vi.fn(), resume: vi.fn(), stop: vi.fn(), cont: vi.fn(), restart: vi.fn(), validate: vi.fn(), deleteDraft: vi.fn() });
 
 /** Serves the project page tables from the runs and specs a test renders, one page at a time. */
 const servePages = (runList: unknown[], specList: unknown[]) => {
@@ -99,7 +99,7 @@ describe('ProjectHubView', () => {
     const o = on();
     const hub = (repoUrl: string | null) => (
       <MemoryRouter>
-        <ProjectHubView project={{ ...project, repoUrl }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={{ ...project, repoUrl }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
     const { rerender } = render(hub('https://github.com/acme/hello-app'));
@@ -111,7 +111,7 @@ describe('ProjectHubView', () => {
     const o = on();
     const hub = (extra: object) => (
       <MemoryRouter>
-        <ProjectHubView project={{ ...project, ...extra }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={{ ...project, ...extra }} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
     const { rerender } = render(hub({ services: [{ name: 'orders', repoUrl: 'https://github.com/acme/shop-orders' }, { name: 'inventory', repoUrl: null }], platform: [{ name: 'nats', image: 'nats:2.10.22-alpine' }] }));
@@ -127,7 +127,7 @@ describe('ProjectHubView', () => {
     const o = on();
     const hub = (docs: ProjectDoc[] | undefined) => (
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={docs} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={docs} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
     const { rerender } = render(hub([{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]));
@@ -145,7 +145,7 @@ describe('ProjectHubView', () => {
     vi.spyOn(refineApi, 'program').mockResolvedValue({ program: null });
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} backlogs={['hello-app-002', 'hello-app-001']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} backlogs={['hello-app-002', 'hello-app-001']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }, { file: 'briefing.md', text: null }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.getByRole('link', { name: 'Visualizar project.md' }).getAttribute('href')).toBe('/refine/hello-app/hello-app-001?etapa=project.md');
@@ -159,7 +159,7 @@ describe('ProjectHubView', () => {
     vi.spyOn(refineApi, 'program').mockResolvedValue({ program: null });
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} backlogs={['hello-app-002']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} backlogs={['hello-app-002']} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} docs={[{ file: 'project.md', text: '# Hello' }]} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.queryByRole('link', { name: 'Visualizar project.md' })).toBeNull();
@@ -171,7 +171,7 @@ describe('ProjectHubView', () => {
     servePages(runs, (project).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -190,11 +190,12 @@ describe('ProjectHubView', () => {
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
     expect(screen.getByText('US$ 3.33')).toBeTruthy();
   });
-  it('a request is made from the description alone: the agents name and split the specs', () => {
+  it('a request is made from the description alone: the agents name and split the specs', async () => {
     const o = on();
+    const request = vi.spyOn(refineApi, 'request').mockResolvedValue({ sessionId: 'hello-app/hello-app-pedido-1' });
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
@@ -203,45 +204,30 @@ describe('ProjectHubView', () => {
     expect((screen.getByTestId('new-spec') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Entrar com e-mail e senha' } });
     fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('Entrar com e-mail e senha');
-  });
-  it('opens the new spec form straight from a ?novaSpec=1 link and drops the parameter when it closes', () => {
-    const o = on();
-    const Where = () => <output data-testid="where">{useLocation().search}</output>;
-    render(
-      <MemoryRouter initialEntries={['/projects/hello-app?novaSpec=1']}>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
-        <Where />
-      </MemoryRouter>,
-    );
-    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('cancel-new-spec'));
-    expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('where').textContent).toBe('');
+    await waitFor(() => expect(request).toHaveBeenCalledWith('hello-app', 'Entrar com e-mail e senha'));
   });
   it('a project with no spec teaches the path and offers Nova spec, which opens the form', () => {
     const o = on();
     render(
       <MemoryRouter>
-        <ProjectHubView project={{ ...project, specs: [] }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={{ ...project, specs: [] }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('no-specs').textContent).toContain('descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado');
     fireEvent.click(screen.getByTestId('empty-new-spec'));
     expect(screen.getByTestId('new-spec-description')).toBeTruthy();
-    expect(screen.queryByTestId('no-specs')).toBeNull();
   });
   it('an open request holds the form: its notice names it, and Continuar leads to it', () => {
     const o = on();
     const drafts = [{ projectId: 'hello-app', specId: 'hello-app-pedido-1', state: 'answering' as const, registered: true, extension: true }];
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('project-hub-open-request').textContent).toContain('hello-app-pedido-1');
+    expect(screen.getByTestId('new-spec-open-request').textContent).toContain('hello-app-pedido-1');
     expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-app/hello-app-pedido-1');
   });
 
@@ -249,40 +235,43 @@ describe('ProjectHubView', () => {
     const o = on();
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Listar usuários' } });
+    const request = vi.spyOn(refineApi, 'request');
     fireEvent.click(screen.getByTestId('cancel-new-spec'));
+    fireEvent.click(screen.getByTestId('discard-new-spec'));
     expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(o.newSpec).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
   });
   it('shows the same breadcrumb as the run page: Projetos › project id', () => {
     const o = on();
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     const nav = screen.getByRole('navigation', { name: 'Navegação' });
     expect(nav.querySelector('a')?.getAttribute('href')).toBe('/projects');
     expect(nav.querySelector('strong')?.textContent).toBe('hello-app');
   });
-  it('creates a new spec, continues one and opens its refinements, with delete', () => {
+  it('creates a new spec, continues one and opens its refinements, with delete', async () => {
     const o = on();
+    const request = vi.spyOn(refineApi, 'request').mockResolvedValue({ sessionId: 'hello-app/hello-app-pedido-1' });
     const drafts = [
       { projectId: 'hello-app', specId: 'hello-003', state: 'answering' as const, registered: true },
     ];
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={drafts} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
     fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Greet in Portuguese' } });
     fireEvent.click(screen.getByTestId('new-spec'));
-    expect(o.newSpec).toHaveBeenCalledWith('Greet in Portuguese');
+    await waitFor(() => expect(request).toHaveBeenCalledWith('hello-app', 'Greet in Portuguese'));
     expect(screen.queryByTestId('continue-hello-000')).toBeNull(); // a concluded spec is read-only
     expect(screen.queryByTestId('continue-hello-001')).toBeNull();
     expect(screen.getByTestId('refine-hello-003').getAttribute('href')).toBe('/refine/hello-app/hello-003');
@@ -298,7 +287,7 @@ describe('ProjectHubView', () => {
     servePages(awaitingRuns, (awaiting).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={awaiting} notFound={false} runs={awaitingRuns} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={awaiting} notFound={false} runs={awaitingRuns} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -312,7 +301,7 @@ describe('ProjectHubView', () => {
     servePages([], (awaiting).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onValidate={o.validate} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onValidate={o.validate} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -325,7 +314,7 @@ describe('ProjectHubView', () => {
     servePages([], (awaiting).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={awaiting} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -344,7 +333,7 @@ describe('ProjectHubView', () => {
     servePages(runs, (project).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -363,7 +352,7 @@ describe('ProjectHubView', () => {
     const after = [{ ...before[0]!, cost: 0.96 }];
     const hub = (list: Row[]) => (
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={list} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={list} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
     servePages(before, project.specs);
@@ -379,7 +368,7 @@ describe('ProjectHubView', () => {
     servePages(seven, (project).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={seven} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={seven} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -398,7 +387,7 @@ describe('ProjectHubView', () => {
     servePages(history, (concluded).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={concluded} notFound={false} runs={history} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={concluded} notFound={false} runs={history} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -420,7 +409,7 @@ describe('ProjectHubView', () => {
     servePages(runs, (project).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -454,7 +443,7 @@ describe('ProjectHubView', () => {
     servePages([], (grouped).specs);
     const { container } = render(
       <MemoryRouter>
-        <ProjectHubView project={grouped} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={grouped} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -473,7 +462,7 @@ describe('ProjectHubView', () => {
     servePages([], ({ ...project, specs: many }).specs);
     const { container } = render(
       <MemoryRouter>
-        <ProjectHubView project={{ ...project, specs: many }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={{ ...project, specs: many }} notFound={false} runs={[]} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
     await settle();
@@ -492,7 +481,7 @@ describe('ProjectHubView', () => {
   it('shows a not-found state with a link back to Projetos', () => {
     render(
       <MemoryRouter>
-        <ProjectHubView project={null} notFound runs={[]} drafts={[]} error={null} deleteError={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onNewSpec={vi.fn()} onContinue={vi.fn()} onRestart={vi.fn()} onDeleteDraft={vi.fn()} />
+        <ProjectHubView project={null} notFound runs={[]} drafts={[]} error={null} deleteError={null} onStart={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onContinue={vi.fn()} onRestart={vi.fn()} onDeleteDraft={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByText('Esse projeto não foi encontrado.')).toBeTruthy();
@@ -506,7 +495,7 @@ describe('project apps', () => {
     const o = on();
     return render(
       <MemoryRouter>
-        <ProjectHubView project={p} notFound={false} runs={runs} drafts={[]} apps={apps} onStartApp={onStartApp} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={p} notFound={false} runs={runs} drafts={[]} apps={apps} onStartApp={onStartApp} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
   };
@@ -558,7 +547,7 @@ describe('the backlog banner on the project page', () => {
   const o = on();
   const view = (extra: object) => (
     <MemoryRouter>
-      <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} {...extra} />
+      <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} {...extra} />
     </MemoryRouter>
   );
   it('shows the banner of a backlog whose run lost its process as interrupted', async () => {
@@ -643,7 +632,7 @@ describe('the app that answers without links', () => {
     servePages(rows, concluded.specs);
     return render(
       <MemoryRouter>
-        <ProjectHubView project={concluded} notFound={false} runs={rows} drafts={[]} apps={apps} onStartApp={o.start} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={concluded} notFound={false} runs={rows} drafts={[]} apps={apps} onStartApp={o.start} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>,
     );
   };
@@ -719,7 +708,7 @@ describe('the runs table on the project page', () => {
     servePages(waiting, (project).specs);
     render(
       <MemoryRouter>
-        <ProjectHubView project={project} notFound={false} runs={waiting} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+        <ProjectHubView project={project} notFound={false} runs={waiting} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
       </MemoryRouter>
     );
     await settle();
