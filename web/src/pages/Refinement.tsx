@@ -158,6 +158,23 @@ const tabGroupLabel = 'mr-1 text-[0.75rem] text-ink-soft';
 const muted = 'text-[0.8125rem] text-ink-soft';
 // Inside a toned callout the tip takes the callout's ink: the faint default fails contrast on a tinted ground.
 const notice = 'rounded-md bg-warn-soft px-3 py-[0.65rem] text-[0.8rem] text-warn [&_.info-tip]:text-current';
+// Discarded suggestions stay folded: they are history, not something the owner must act on.
+const DiscardedNotices = ({ rows, testId, named }: { rows: { role: string; file: string; reason: string }[]; testId: string; named: boolean }) =>
+  rows.length === 0 ? null : (
+    <details data-testid={`${testId}-group`} className="group m-0">
+      <summary data-testid={`${testId}-summary`} className={`flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden ${notice}`}>
+        <span className="flex-1">{rows.length === 1 ? '1 sugestão descartada' : `${rows.length} sugestões descartadas`}</span>
+        <span className="transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+      </summary>
+      <ul className="m-0 mt-2 grid list-none gap-2 p-0">
+        {rows.map((d, i) => (
+          <li data-testid={testId} key={i} className={notice}>
+            Uma sugestão do {d.role.toUpperCase()}{named ? ` para ${docName(d.file)}` : ''} não pôde ser aplicada e foi descartada ({d.reason}).
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
 const fileStatus = 'text-[0.75rem] font-semibold text-ink-soft';
 const fileEmpty = 'mx-0 mt-[0.65rem] mb-0 text-[0.78rem] text-ink-soft';
 const secretRow = 'grid gap-[0.45rem] rounded-lg border p-3';
@@ -923,11 +940,7 @@ export function RefinementView(p: ViewProps) {
         <p data-testid="refinement-review-no-questions" className={muted}>Nenhuma pergunta em aberto.</p>
       )}
       {(evaluating ? [] : st.patches).filter((x) => x.status === 'pending').map(patchCard)}
-      {st.discarded.map((d, i) => (
-        <p data-testid="refinement-discarded-notice" key={i} className={notice}>
-          Uma sugestão do {d.role.toUpperCase()} para {docName(d.file)} não pôde ser aplicada e foi descartada ({d.reason}).
-        </p>
-      ))}
+      <DiscardedNotices rows={st.discarded} testId="refinement-discarded-notice" named />
       <details data-testid="refinement-history" className="group mt-5" open>
       <summary data-testid="refinement-history-summary" className="mx-0 mb-[0.7rem] flex cursor-pointer list-none items-center gap-[0.55rem] text-[0.8rem] tracking-[0.06em] text-ink uppercase [&>svg]:text-ink-soft [&::-webkit-details-marker]:hidden"><Icon name="clock" size={20} /><span data-testid="refinement-history-count" className="flex-1">Histórico · {st.questions.filter((q) => q.status !== 'pending').length + st.patches.filter((x) => x.status !== 'pending').length}</span><span data-testid="refinement-history-chevron" className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={18} /></span></summary>
       <ul data-testid="refinement-history-list" className="m-0 list-none rounded-lg border border-line bg-surface px-4 py-[0.8rem] text-[0.8rem] leading-normal text-justify text-ink-soft empty:grid empty:min-h-[3.3rem] empty:place-items-center empty:before:text-ink-soft empty:before:content-['Nenhum_registro_no_momento.'] [&>li+li]:mt-[0.6rem] [&>li+li]:border-t [&>li+li]:border-line [&>li+li]:pt-[0.6rem]">
@@ -1189,7 +1202,7 @@ export function RefinementView(p: ViewProps) {
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
           {(!locked || !answerLocked) && questions.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, questions.length - i)}</Fragment>)}
           {!locked && patches.map(patchCard)}
-          {discarded.map((d, i) => <p data-testid="refinement-stage-discarded" key={i} className={`m-0 ${notice}`}>Uma sugestão do {d.role.toUpperCase()} não pôde ser aplicada e foi descartada ({d.reason}).</p>)}
+          <DiscardedNotices rows={discarded} testId="refinement-stage-discarded" named={false} />
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
           {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={locked} onReask={(id) => p.onReask?.(id)} />}
         </aside>

@@ -554,3 +554,18 @@ describe('the button that lets the team resolve everything', () => {
   });
 });
 
+
+describe('discarded suggestions', () => {
+  it('stay folded in one group instead of one alert each', () => {
+    const rows = [
+      { role: 'po', file: 'docs/briefing.md', reason: 'a' },
+      { role: 'po', file: 'docs/briefing.md', reason: 'b' },
+    ];
+    window.history.replaceState(null, '', '/?etapa=briefing.md');
+    renderView(project({ stages: true, discarded: rows as never }));
+    const group = screen.getByTestId('refinement-stage-discarded-group') as HTMLDetailsElement;
+    expect(group.open).toBe(false);
+    expect(within(group).getByTestId('refinement-stage-discarded-summary').textContent).toContain('2 sugestões descartadas');
+    expect(within(group).getAllByTestId('refinement-stage-discarded')).toHaveLength(2);
+  });
+});
