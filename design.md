@@ -1576,3 +1576,54 @@ Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda
 O título interno do conteúdo não se repete: a contagem de specs vai no chip do cartão do backlog. Abaixo de 720 px os cartões continuam empilhados, sem mudar de ordem.
 
 A lista de specs por repositório não fica solta no cartão do backlog: ela abre ao clicar no chip `specs` da `Cobertura`, e o mesmo clique a fecha.
+
+## 31. Pedido em projeto em desenvolvimento (aprovada pelo dono e implementada)
+
+Estado: proposta. Nenhuma tela desta seção foi implementada. A aprovação do dono vem antes do código: é a regra de frontend do projeto.
+
+### 31.1 Hub: formulário "Nova spec"
+
+Mesmo lugar e aparência de hoje, sem a etapa de ID. Texto livre e o botão "Começar refinamento". Com um pedido já aberto, o formulário é trocado por um aviso que nomeia o pedido e leva a ele.
+
+```
+Especificações (i)                                      [ Nova spec + ]
+┌────────────────────────────────────────────────────────────────────┐
+│ Descreva o que adicionar ou mudar                                  │
+│ ┌────────────────────────────────────────────────────────────────┐ │
+│ │ Ex.: o administrador precisa exportar o relatório mensal em PDF│ │
+│ └────────────────────────────────────────────────────────────────┘ │
+│ Os agentes leem os documentos e as specs, medem o impacto e         │
+│ replanejam. Você só responde o que eles não decidirem sozinhos.     │
+│                        [ Cancelar ]  [ Começar refinamento → ]      │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 31.2 Tela do pedido
+
+Trilha de etapas (Pedido · Impacto · Specs e plano · Pronto) e cartões no mesmo padrão do `StepCard`. Os cartões existentes do backlog (Precisa de você, Itens do backlog, Planos e Verificação) continuam. Os novos são Pedido, Impacto e Replanejamento.
+
+```
+⌂ › Projetos › meu-projeto › pedido-2
+● Pedido ── ○ Impacto ── ○ Specs e plano ── ○ Pronto
+┌ Seu pedido · Escrito por você                              [ Interpretado ] ┐
+│ "O administrador precisa exportar…"   salvo em briefing.md › Nova demanda    │
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Impacto · Analisado pelo SM                                          [ Atual ] ┐
+│ [3 specs novas] [2 afetadas] [2 documentos] [1 risco]   ← chips abrem a lista   │
+│ Afeta: auth-login (entregue) → ajuste proposto                                  │
+│ Conflito: export-csv ↔ report-pdf (mesmo módulo) → ordem definida               │
+│ Documentos atualizados (acréscimos): flow.md › Exportação               [ ver ] │
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Replanejamento · Montado pelo PO                                  [ 4 mudaram ] ┐
+│  #  spec            estado      novo #   mudança                                 │
+│  1  auth-login      entregue    1        mantida                                 │
+│  4  report-pdf      nova        2        nova                                    │
+│  2  export-csv      planejada   3        desceu 1 · depende de …                 │
+└───────────────────────────────────────────────────────────────────────────────┘
+Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pergunta aberta
+        Trilha: Pedido → 3 specs → 3 planos → 14 tarefas     [ Iniciar desenvolvimento ]
+```
+
+### 31.3 Responsivo
+
+Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.

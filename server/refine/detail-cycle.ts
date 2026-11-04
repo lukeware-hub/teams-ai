@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ConflictsOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
+import type { ConflictsOutput, ImpactOutput, ItemPreplan, ItemSpec, PreplanOutput, SpecDetailOutput } from '../agents/outputs.js';
 import { Governor } from '../budget/governor.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS } from '../core/ids.js';
@@ -24,8 +24,10 @@ import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draf
 import { RefineEvent } from './events.js';
 import { fitPackBudget } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
-import { specIdOf } from './specs-index.js';
-import type { BacklogState, PreplanRow, SpecRow } from './state.js';
+import { idSourceOf, specIdOf } from './specs-index.js';
+import { requestHeading, type BacklogState, type PreplanRow, type SpecRow } from './state.js';
+import type { Impact } from '../contracts/impact.js';
+import { impactPack, validateImpact } from './impact.js';
 
 /** Agent calls of one detailing run at a time; the account-wide governor still caps every session together. */
 const DETAIL_CONCURRENCY = 3;
@@ -212,7 +214,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const specHash = new Map(items.map((i) => [i.key, specInputHash(i, docs, repositoryContextOf(deps.journal.state, i.repository))]));
   const graphContext = deps.docGraphContext ? await deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), SPEC_GRAPH_QUESTION, SPEC_GRAPH_TOKENS) : '';
   const previous = new Map<string, Spec | null>();
-  const idOf = (key: string) => specIdOf(draft.specId, key, input.backlog.keyIds);
+  const idOf = (key: string) => specIdOf(idSourceOf(draft.specId, input.backlog), key, input.backlog.keyIds);
   for (const i of items) previous.set(i.key, specs[i.key]?.spec ?? (await readItemSpec(draft, idOf(i.key))));
   // R11.7.2: an item whose spec on main started or was delivered is kept as main has it; a newer delivery is recorded again.
   const kept = new Set<string>();
@@ -226,6 +228,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     specs[i.key] = { inputHash: specHash.get(i.key)!, specId: onMain.specId, rev, spec: onMain, issues: [], cycle };
     await journal.fact(RefineEvent.SpecDerived, { cycle, key: i.key, specId: onMain.specId, inputHash: specHash.get(i.key), rev, spec: onMain, issues: [], highWater });
   }
+  // The walking skeleton is asked of a new pre-plan only while nothing of the backlog has started; the hash keeps the rank, so no reused pre-plan is made again.
+  const first = (item: Item) => item.rank === 1 && kept.size === 0;
   const planHashOf = (item: Item, rev: string) => preplanInputHash(item, rev, docs['stack.md'], item.rank === 1);
   // R11.7.3: a new draft reuses main's spec of an item whose inputs did not change, and its pre-plan when still current.
   for (const i of items) {
@@ -320,7 +324,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   };
   const runPreplans = (batch: readonly Item[], rejection: Record<string, string[]>) => call(() => deps.runAgent<'preplan'>({
     kind: 'preplan', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: i.rank === 1, previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
+    pack: fitPackBudget(preplanPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], stackMd: docs['stack.md'], batch: batch.map((i) => ({ item: i, spec: specs[i.key]!.spec!, first: first(i), previous: preplans[i.key]?.preplan ?? null, rejection: rejection[i.key] ?? [] })) })),
   }, ctx) as Promise<StepOutcome<PreplanOutput>>);
   const preplanTodo = items.filter((i) => !kept.has(i.key) && planHash.has(i.key) && (!preplans[i.key] || preplans[i.key]!.inputHash !== planHash.get(i.key) || preplans[i.key]!.preplan === null || feedback[i.key]?.length));
   await runBatches(preplanTodo, runPreplans, (v: PreplanOutput, key) => v.preplans.find((p) => p.key === key), acceptPreplan, failPreplan, feedbackOf);
@@ -341,6 +345,30 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     if (items.length < 2 || out?.ok) {
       conflicts = { inputHash: conflictsHash, pairs: out?.ok ? uniquePairs(out.value.pairs, new Set(items.map((i) => i.key))) : [] };
       await journal.fact(RefineEvent.ConflictsDerived, { ...conflicts });
+    }
+  }
+  // R12: a follow-on request's impact on the backlog it follows, made again only when the request or the outline changed.
+  if (journal.state.extension) {
+    const request = journal.state.extension;
+    const outline = items.map((i) => ({ key: i.key, title: i.title, rank: i.rank, dependsOn: [...i.dependsOn], started: kept.has(i.key), modules: (preplans[i.key]?.preplan?.modules ?? []).map((m) => m.name) }));
+    const inputHash = sha256(canonicalJson({ request: request.text, outline }));
+    // An impact that broke a rule (no usable impact) is measured again on the next run, not kept for an unchanged outline.
+    if (journal.state.impact?.inputHash !== inputHash || journal.state.impact?.impact === null) {
+      const scope = { known: new Set(items.map((i) => i.key)), kept, requestId: request.requestId };
+      let issues: string[] = [];
+      let impact: Impact | null = null;
+      for (let attempt = 1; attempt <= 2 && impact === null; attempt++) {
+        const out = await call(() => deps.runAgent<'impact'>({
+          kind: 'impact', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
+          pack: fitPackBudget(impactPack({ specHash: hash, principles: deps.principles(), request: request.text, requestId: request.requestId, heading: requestHeading(request.requestId), docs, items: outline, issues })),
+        }, ctx) as Promise<StepOutcome<ImpactOutput>>);
+        const haltImpact = haltedResult();
+        if (haltImpact) return haltImpact;
+        if (!out?.ok) break;
+        issues = validateImpact(out.value.impact, scope);
+        if (issues.length === 0) impact = out.value.impact;
+      }
+      if (impact !== null || issues.length > 0) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact, issues });
     }
   }
   return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater, ...(conflicts ? { conflicts } : {}) } };

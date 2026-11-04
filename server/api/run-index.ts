@@ -236,11 +236,30 @@ async function projectDirs(deps: IndexDeps): Promise<Map<string, Array<{ dir: st
   return out;
 }
 
-/** One entry per spec: its own refinement dir speaks for it, else the first dir that carries a copy. A run started from the clone moves only main past `running`, so a copy already delivered beats the stale own one. */
+/** A spec whose run started (running, paused, awaiting validation or done): a copy that reached it beats one that did not. */
+const started = (s: Read['specs'][number]): boolean => ['running', 'paused:quota', 'paused:auth', 'awaiting-validation', 'done'].includes(s.status);
+
+/** How far a spec's run got: of the copies of one spec, the most advanced is the one the index shows. */
+export const progressOf = (status: string): number => ({ done: 4, 'awaiting-validation': 3, running: 2, 'paused:quota': 1, 'paused:auth': 1 } as Record<string, number>)[status] ?? 0;
+
+/**
+ * One entry per spec. Its own refinement dir speaks for it; a run started from the clone moves only main past `running`, so a copy
+ * already delivered beats the stale own one. Another dir's copy only replaces a copy that has not started: a follow-on backlog's
+ * run writes its status in its own dir, while the dir that first registered the spec still says planned.
+ */
 function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['specs'] {
   const out = new Map<string, Read['specs'][number]>();
+  const owned = new Set<string>();
   const delivered = (s?: Read['specs'][number]) => s?.status === 'awaiting-validation' || s?.status === 'done';
-  for (const { dir, read } of dirs) for (const s of read.specs) if (!out.has(s.specId) || (path.basename(dir) === s.specId && !(s.status === 'running' && delivered(out.get(s.specId))))) out.set(s.specId, s);
+  for (const { dir, read } of dirs) for (const s of read.specs) {
+    const held = out.get(s.specId);
+    if (path.basename(dir) === s.specId) {
+      if (!held || !(s.status === 'running' && delivered(held))) {
+        out.set(s.specId, s);
+        owned.add(s.specId);
+      }
+    } else if (!held || (!owned.has(s.specId) && progressOf(s.status) > progressOf(held.status))) out.set(s.specId, s);
+  }
   return [...out.values()];
 }
 

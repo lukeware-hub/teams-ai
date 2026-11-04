@@ -87,6 +87,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${P}/projects/:projectId/requests`,
+      handler: wrap(async ({ params, body, json }) => {
+        const b = await body();
+        const session = await registry.addRequest(params.projectId!, str(b, 'description'));
+        json(200, { ...(await idOf(session)), mode: session.state.extension ? 'backlog' : 'single' });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${P}/projects/:projectId/specs/:specId/continue`,
       handler: wrap(async (ctx) => {
         const report = str(await optionalBody(ctx), 'report', true);

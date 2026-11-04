@@ -1,5 +1,6 @@
 import type { Architecture } from '../contracts/architecture.js';
 import type { Backlog, BacklogItem } from '../contracts/backlog.js';
+import type { Impact } from '../contracts/impact.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -108,6 +109,21 @@ export interface PreplanRow {
   cycle: number;
 }
 
+/** The section of briefing.md a follow-on request's text sits under: "Pedido <requestId>", as the approved screens name it. */
+export const requestHeading = (requestId: string): string => `Pedido ${requestId}`;
+
+/** A request the owner made in a project already in development: its id is the draft id, its text the draft's brief. */
+export interface ExtensionRequest {
+  requestId: string;
+  title: string;
+  text: string;
+  at: string;
+  /** The outline the request follows as main had it when the request was made: what it adds, moves and keeps is read against it. */
+  before?: Array<{ key: string; specId?: string; title?: string; rank: number; dependsOn: string[] }>;
+  /** The id scheme of main when the request was made: the request's specs keep the ids main gave them. */
+  idBase?: string;
+}
+
 /** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
 export interface BacklogState {
   enabled: boolean;
@@ -127,6 +143,8 @@ export interface BacklogState {
   acHighWater?: number;
   /** Roadmap R11.12: item specs are named by their key alone (see `specIdOf`); absent on older drafts. */
   keyIds?: boolean;
+  /** A follow-on backlog's spec ids derive from the draft id its main named them by, not from its own (see `idSourceOf`). */
+  idBase?: string;
   /** The SM's conflict map of the current pre-plans; absent until made, and then the program runs one spec at a time. */
   conflicts?: ConflictMap;
 }
@@ -199,6 +217,10 @@ export interface RefineState {
   error: string | null;
   runId: string | null;
   backlog: BacklogState | null;
+  /** The owner's request this draft follows up, when it was made in a project already in development. */
+  extension?: ExtensionRequest;
+  /** The SM's impact of the request on the backlog it follows, with the outline it was made from; `issues` names what it broke. */
+  impact?: { inputHash: string; impact: Impact | null; issues: string[]; cycle?: number };
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** The backlog key a continued spec came from, which names its plan file; absent when it came from no backlog. */
@@ -364,11 +386,30 @@ const reviewLine = (item: ChecklistItem): string => {
 };
 
 /** The seven checks the owner reads before starting a repository session; they alert and never lock the start. */
+/** The checks of a repository session; a follow-on request adds the check of its impact. */
 export function closingChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
+  return [...sevenChecks(s, architectureCurrent), ...(s.extension ? [impactCheck(s)] : [])];
+}
+
+/** The impact the SM made of the request is usable: it exists and it broke no rule. */
+const impactCheck = (s: RefineState): ClosingCheck => {
+  // An impact made on an outline the backlog has since moved past is stale: the next detail run measures it again.
+  const stale = s.impact?.cycle !== undefined && s.impact.cycle !== s.backlog?.cycle;
+  // A new item that repeats a spec the backlog already delivers is not added: the request is covered by that spec.
+  const before = new Set((s.extension?.before ?? []).map((i) => i.key));
+  const covered = (s.impact?.impact?.duplicates ?? []).filter((d) => d.verdict === 'reuse' && !before.has(d.newKey));
+  const ok = s.impact?.impact != null && s.impact.issues.length === 0 && !stale && covered.length === 0;
+  const detail = ok ? 'o impacto do pedido foi analisado e não quebra regra' : stale ? 'o impacto ficou para trás: o backlog mudou depois dele' : covered.length > 0 ? `o pedido já é entregue por ${covered.map((d) => d.existing).join(', ')}: ${covered.map((d) => d.newKey).join(', ')} não deve ser um item novo` : s.impact ?`o impacto não fechou: ${s.impact.issues.join('; ')}` : 'o impacto do pedido ainda não foi analisado';
+  return { id: 'impact', ok, detail };
+};
+
+function sevenChecks(s: RefineState, architectureCurrent: boolean): ClosingCheck[] {
   const items = s.backlog?.items ?? [];
   const keys = items.map((i) => i.key);
   const doneSteps = (s.speckit?.steps ?? []).filter((step) => step.basis !== undefined);
-  const stepDone = (command: string) => keys.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
+  // A spec main already started was planned by its own run: the plan and task checks ask only about the items still to start.
+  const unstarted = keys.filter((key) => !isStarted(s.backlog?.specs?.[key]?.spec?.status));
+  const stepDone = (command: string) => unstarted.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
   const repos = s.architecture?.decision.repositories.map((r) => r.name) ?? [];
   // A follow-on draft has no document stages: its documents are the ones main holds, and the check reads them as in place.
   const open = s.stages === true ? DOC_STAGES.filter((file) => !(s.doneStages ?? []).includes(file) || !(s.graphed ?? []).includes(file)) : [];
@@ -673,10 +714,16 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       // An accepted suggestion or an architecture decision keeps the document in the graph: its processing still counts after it.
       if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
+    case RefineEvent.RequestReceived:
+      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
+      break;
+    case RefineEvent.ImpactDerived:
+      s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[], ...(typeof d.cycle === 'number' ? { cycle: d.cycle } : {}) };
+      break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.
       const floor = Number(d.acFloor ?? 0);
-      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0, ...(d.keyIds === true ? { keyIds: true } : {}) };
+      s.backlog = s.backlog ? { ...s.backlog, enabled: true } : { enabled: true, project: null, epics: [], items: [], cycle: 0, ...(d.keyIds === true ? { keyIds: true } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
       if (floor > 0) s.backlog = { ...s.backlog, acHighWater: Math.max(s.backlog.acHighWater ?? 0, floor) };
       if (s.derived || s.checklist.length > 0) s.stale = true;
       break;

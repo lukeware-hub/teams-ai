@@ -1,6 +1,6 @@
 import { ConflictError, type RefineSession } from './session.js';
 import type { DocFile } from './draft.js';
-import { safePatches } from './state.js';
+import { safePatches, type PatchRow } from './state.js';
 
 /** Rounds at most: each one accepts the safe patches, evaluates, decides the architecture and prepares the plans that are still open. */
 export const CLOSING_ROUNDS = 3;
@@ -42,7 +42,8 @@ async function resolveOnce(s: RefineSession): Promise<void> {
 /** One round, in the order the checks depend on: patches, then the checklist, then the architecture, then the plans. */
 async function resolveRound(s: RefineSession, failing: string[]): Promise<void> {
   const accepted = await resolveStages(s);
-  if (accepted > 0 || failing.includes('questions')) await s.evaluate();
+  // A round re-evaluates when a patch was accepted, a question is open, or the request's impact is missing or stale: the heal runs the impact step again.
+  if (accepted > 0 || failing.includes('questions') || failing.includes('impact')) await s.evaluate();
   if (s.state.architecture == null || (await s.isArchitectureStale())) {
     await s.decideArchitecture();
     await s.settled();
@@ -63,8 +64,8 @@ async function ignoreConflict(run: () => Promise<unknown>): Promise<void> {
   }
 }
 
-/** Reviews each outdated stage again with its own role, then accepts the safe patches; returns how many were accepted. */
-export async function resolveStages(s: RefineSession): Promise<number> {
+/** Reviews each outdated stage again with its own role, then accepts the safe patches the rule allows; returns how many were accepted. */
+export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true, auto = false): Promise<number> {
   for (const file of Object.keys(s.state.staleBy ?? {}) as DocFile[]) {
     await s.evaluateStage(file);
     await s.settled();
@@ -77,9 +78,9 @@ export async function resolveStages(s: RefineSession): Promise<number> {
     }
   }
   let accepted = 0;
-  for (const p of safePatches(s.state.patches)) {
+  for (const p of safePatches(s.state.patches).filter(allowed)) {
     try {
-      await s.accept(p.patchId);
+      await s.accept(p.patchId, auto);
       accepted++;
     } catch (err) {
       // A patch the last one covered is dropped by the session; the others still apply.

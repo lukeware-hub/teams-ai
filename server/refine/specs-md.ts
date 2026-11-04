@@ -16,7 +16,7 @@ function byRepository(specs: readonly SpecsIndexEntry[]): SpecsIndexEntry[] {
 }
 
 /** The specs index as Markdown, in rank order, with each item's criteria and pre-plan (browser-safe). */
-export function renderSpecsMd(specId: string, backlog: Pick<BacklogState, 'epics' | 'items' | 'keyIds' | 'specs' | 'preplans'>): string {
+export function renderSpecsMd(specId: string, backlog: Pick<BacklogState, 'epics' | 'items' | 'keyIds' | 'idBase' | 'specs' | 'preplans'>): string {
   const index = buildSpecsIndex(specId, backlog);
   if (index.specs.length === 0) return '';
   const epicTitle = new Map(backlog.epics.map((e) => [e.key, e.title]));

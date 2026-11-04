@@ -116,7 +116,7 @@ export function ProjectHubView(p: {
   onStart: (specId: string) => void | Promise<void>;
   onResume: (runId: string) => void | Promise<void>;
   onStop: (runId: string) => void | Promise<void>;
-  onNewSpec: (specId: string, description: string) => void | Promise<void>;
+  onNewSpec: (description: string) => void | Promise<void>;
   onContinue: (specId: string) => void | Promise<void>;
   onRestart: (specId: string) => void | Promise<void>;
   /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
@@ -124,7 +124,6 @@ export function ProjectHubView(p: {
   /** Brings the concluded project's application up from its last delivery. */
   onStartApp?: () => void;
   onDeleteDraft: (specId: string) => void;
-  onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
   const projectId = p.project?.projectId ?? '';
   // A run's status, tokens and cost move while it goes on: the runs table reads the page again when they do.
@@ -138,16 +137,12 @@ export function ProjectHubView(p: {
   const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
   const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => listed(s) && groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
   const groupedSpecs = groupSpecs(specsView.rows);
-  const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingRestart, setPendingRestart] = useState<string | null>(null);
   // A link with ?novaSpec=1 (project card, chat, finished run) opens the form straight away.
   const [search, setSearch] = useSearchParams();
   const [creating, setCreating] = useState(search.get('novaSpec') === '1');
-  const [idShown, setIdShown] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const closeNewSpec = () => {
     if (search.has('novaSpec')) {
@@ -155,24 +150,10 @@ export function ProjectHubView(p: {
       setSearch(search, { replace: true });
     }
     setCreating(false);
-    setIdShown(false);
-    setSpecDraft('');
     setSpecDescription('');
-    setSuggestError(null);
   };
-  const continueNewSpec = async () => {
-    setIdShown(true);
-    if (!p.onSuggestName || !p.project) return;
-    setSuggesting(true);
-    setSuggestError(null);
-    try {
-      setSpecDraft((await p.onSuggestName({ kind: 'spec', projectId: p.project.projectId, name: '', description: specDescription })).id);
-    } catch (e) {
-      setSuggestError((e as Error).message);
-    } finally {
-      setSuggesting(false);
-    }
-  };
+  // A request not yet started holds the form: its notice names it and leads to it.
+  const openRequest = p.drafts.find((d) => d.extension === true && d.state !== 'started');
   if (p.notFound) {
     return (
       <main data-testid="project-hub-not-found">
@@ -411,32 +392,27 @@ export function ProjectHubView(p: {
               </button>
             )}
           </div>
-          {creating ? (
+          {creating && openRequest ? (
+            <div data-testid="project-hub-open-request" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-line bg-accent-soft px-3.5 py-2.5 text-[0.875rem] text-ink">
+              <span>Já há um pedido aberto, ainda não iniciado: <b className="font-semibold">{openRequest.specId}</b>. Continue-o antes de fazer outro.</span>
+              <Link className={action.secondary} data-testid="continue-open-request" to={refinePath(projectId, openRequest.specId)}>Continuar</Link>
+            </div>
+          ) : creating ? (
             <form
               data-testid="project-hub-new-spec-form"
               className="mt-3 flex flex-col flex-nowrap items-stretch gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 setSubmitting(true);
-                void Promise.resolve(p.onNewSpec(specDraft.trim(), specDescription)).finally(() => setSubmitting(false));
+                void Promise.resolve(p.onNewSpec(specDescription.trim())).finally(() => setSubmitting(false));
               }}
             >
-              <label data-testid="project-hub-new-spec-description-label" className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
-              <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
-              {idShown ? (
-                <>
-                  <label data-testid="project-hub-new-spec-id-label" className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
-                  <input className="w-full max-w-[24rem] min-w-0" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
-                </>
-              ) : null}
-              {suggestError ? <span data-testid="project-hub-new-spec-error" className="error" role="alert">{suggestError}</span> : null}
+              <label data-testid="project-hub-new-spec-description-label" className={newSpecLabel} htmlFor="new-spec-description">Descreva o que adicionar ou mudar</label>
+              <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: o administrador precisa exportar o relatório mensal em PDF. Os agentes leem os documentos e as specs, medem o impacto e replanejam." />
+              <p data-testid="new-spec-helper" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Os agentes leem os documentos e as specs, medem o impacto e replanejam. Você só responde o que eles não decidirem sozinhos.</p>
               <div data-testid="project-hub-new-spec-actions" className="flex flex-wrap justify-end gap-2">
                 <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
-                {idShown ? (
-                  <ActionButton key="new-spec" type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
-                ) : (
-                  <ActionButton key="continue-new-spec" className={action.primary} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={continueNewSpec} icon={<Icon name="arrow-right" size={14} />}>Continuar</ActionButton>
-                )}
+                <ActionButton type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
               </div>
             </form>
           ) : null}
@@ -697,12 +673,11 @@ export function ProjectHub() {
       })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
       onStop={(runId) => act(() => runApi.stopRun(runId))()}
-      onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
+      onNewSpec={(description) => void go(() => refineApi.request(projectId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
       onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}
       onValidate={(specId) => void act(async () => navigate(validationPath((await runApi.deployAgain(projectId, specId)).runId)))()}
-      onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => (async () => {
         setDeleteError(null);
         try {

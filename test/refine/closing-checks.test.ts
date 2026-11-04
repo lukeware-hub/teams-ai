@@ -111,3 +111,27 @@ describe('closing checks of a repository session', () => {
     expect(failing(asked, true)).toEqual(['questions']);
   });
 });
+
+describe('closing checks of a follow-on request', () => {
+  it('asks no plan and no task list of a spec main already started', () => {
+    const state = greenState();
+    const withStarted = {
+      ...state,
+      backlog: { ...state.backlog!, specs: { ...state.backlog!.specs, cart: { spec: { status: 'running', acceptanceCriteria: [] }, rev: 'r' } } },
+      speckit: { ...state.speckit!, steps: (state.speckit?.steps ?? []).filter((step) => step.itemKey !== 'cart') },
+    } as never;
+    expect(failing(withStarted, true)).toEqual([]);
+  });
+});
+
+describe('the impact check of a follow-on request', () => {
+  it('is asked only of a follow-on request, and passes once the impact is made without a broken rule', () => {
+    const state = greenState();
+    expect(closingChecks(state, true).some((c) => c.id === 'impact')).toBe(false);
+    const request: RefineState = { ...state, extension: { requestId: 'hello-001-pedido-1', title: 'T', text: 'Exportar.', at: 'x' } };
+    expect(failing(request, true)).toEqual(['impact']);
+    const impact = { requestId: 'pedido-1', summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] };
+    expect(failing({ ...request, impact: { inputHash: 'h', impact, issues: [] } }, true)).toEqual([]);
+    expect(failing({ ...request, impact: { inputHash: 'h', impact: null, issues: ['o impacto cita a spec x'] } }, true)).toEqual(['impact']);
+  });
+});

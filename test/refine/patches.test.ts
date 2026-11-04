@@ -55,3 +55,17 @@ describe('patches', () => {
     expect(checkPatch({ file: 'docs/stack.md', find: '- Vitest para testes.', replace: '- Vitest para testes.\n- Docker para subir o serviço localmente.', reason: 'r' }, 'hello-001', stack)).toEqual({ ok: true, file: 'stack.md' });
   });
 });
+
+describe("the owner's request is not changed by an agent", () => {
+  const briefing = '# Briefing\n\n## Objectives\n\nVender.\n\n## Pedido pedido-1\n\nExportar o relatório em PDF.\n';
+  const REQUEST = 'Pedido pedido-1';
+
+  it('refuses a change inside the request section', () => {
+    const check = checkPatch({ file: 'briefing.md', find: 'Exportar o relatório em PDF.', replace: 'Exportar em CSV.', reason: 'r' }, 'shop-001', { 'briefing.md': briefing }, true, REQUEST);
+    expect(check).toEqual({ ok: false, reason: 'o texto do pedido é do dono: os agentes não o alteram' });
+  });
+
+  it('accepts a change outside the request section', () => {
+    expect(checkPatch({ file: 'briefing.md', find: 'Vender.', replace: 'Vender online.', reason: 'r' }, 'shop-001', { 'briefing.md': briefing }, true, REQUEST)).toEqual({ ok: true, file: 'briefing.md' });
+  });
+});

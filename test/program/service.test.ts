@@ -22,7 +22,7 @@ async function journal(runId: string, events: Array<{ type: string; data: Record
 const started = (specId: string) => ({ type: 'RUN_STARTED', data: { runId: 'x', specId, projectId: 'shop' } });
 const finished = (result: string, extra: Record<string, unknown> = {}) => ({ type: 'RUN_FINISHED', data: { result, reason: null, merged: [], blocked: [], tokens: { costUsd: null }, ...extra } });
 
-function service(decider?: ProgramServiceDeps['decider'], alive = true) {
+function service(decider?: ProgramServiceDeps['decider'], alive = true, draftRoot: ProgramServiceDeps['draftRoot'] = async () => path.join(root, 'draft')) {
   const control: RunControlDeps = {
     spawn: (a) => {
       spawned.push({ args: a.args });
@@ -40,7 +40,7 @@ function service(decider?: ProgramServiceDeps['decider'], alive = true) {
   return new ProgramService({
     cfg: async () => loadConfig({ paths: { workspaces: path.join(root, 'ws'), runs: runsDir(), secrets: path.join(root, 'secrets') } }),
     control,
-    draftRoot: async () => path.join(root, 'draft'),
+    draftRoot,
     freezeItem: async () => undefined,
     register: async () => undefined,
     decider,
@@ -484,5 +484,54 @@ describe('program service view', () => {
       expect((await s.view('shop', 'd'))!.items[0]!.interrupted).toEqual({ runId: 'l-r1' });
       expect(await s.outcome('l-r1')).toEqual({ kind: 'interrupted', restart: true });
     });
+  });
+});
+
+describe('program service: a follow-on request joins the program that runs', () => {
+  const perDraft = async (_project: string, draft: string) => path.join(root, draft);
+  const entry = (specId: string, rank: number) => ({ specId, key: specId, rank, dependsOn: [] });
+
+  it('its specs queue in the owner ledger, and the request reads that same program', async () => {
+    await fs.mkdir(path.join(root, 'shop-001'), { recursive: true });
+    await fs.mkdir(path.join(root, 'shop-pedido-1'), { recursive: true });
+    const svc = service(undefined, true, perDraft);
+    await svc.start('shop', 'shop-001', [entry('login', 1)]);
+    await svc.extend('shop', 'shop-001', 'shop-pedido-1', [entry('login', 1), entry('export', 2)]);
+    const owner = await svc.read('shop', 'shop-001');
+    expect(await svc.read('shop', 'shop-pedido-1')).toEqual(owner);
+    expect(owner!.items.map((i) => [i.specId, i.draftId ?? null, i.status])).toEqual([
+      ['login', null, 'running'],
+      ['export', 'shop-pedido-1', 'pending'],
+    ]);
+    expect(owner!.history).toEqual([expect.objectContaining({ requestId: 'pedido-1', draftId: 'shop-pedido-1', added: ['export'] })]);
+  });
+
+  it('two requests that join at the same time both reach the ledger', async () => {
+    await fs.mkdir(path.join(root, 'shop-001'), { recursive: true });
+    await fs.mkdir(path.join(root, 'shop-pedido-1'), { recursive: true });
+    await fs.mkdir(path.join(root, 'shop-pedido-2'), { recursive: true });
+    const svc = service(undefined, true, perDraft);
+    await svc.start('shop', 'shop-001', [entry('login', 1)]);
+    await Promise.all([
+      svc.extend('shop', 'shop-001', 'shop-pedido-1', [entry('login', 1), entry('export', 2)]),
+      svc.extend('shop', 'shop-001', 'shop-pedido-2', [entry('login', 1), entry('report', 3)]),
+    ]);
+    const owner = await svc.read('shop', 'shop-001');
+    expect(owner!.history).toHaveLength(2);
+    expect(owner!.items.map((i) => i.specId).sort()).toEqual(['export', 'login', 'report']);
+  });
+
+  it('a join made while a tick runs keeps the ledger the tick writes back', async () => {
+    await fs.mkdir(path.join(root, 'shop-001'), { recursive: true });
+    await fs.mkdir(path.join(root, 'shop-pedido-1'), { recursive: true });
+    const svc = service(undefined, true, perDraft);
+    await svc.start('shop', 'shop-001', [entry('login', 1)]);
+    await Promise.all([
+      svc.tick('shop', 'shop-001'),
+      svc.extend('shop', 'shop-001', 'shop-pedido-1', [entry('login', 1), entry('export', 2)]),
+    ]);
+    const owner = await svc.read('shop', 'shop-001');
+    expect(owner!.items.map((i) => i.specId).sort()).toEqual(['export', 'login']);
+    expect(owner!.history).toHaveLength(1);
   });
 });

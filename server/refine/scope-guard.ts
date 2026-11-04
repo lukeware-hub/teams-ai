@@ -29,6 +29,14 @@ export function patchChangesScope(find: string, replace: string): boolean {
   return [...new Set([...before.keys(), ...after.keys()])].some((key) => (before.get(key) ?? 0) !== (after.get(key) ?? 0));
 }
 
+/** A change that only adds to the text it finds: the find stays whole in the replacement, and no structure of it is lost. */
+export function additiveOnly(find: string, replace: string): boolean {
+  if (!replace.includes(find)) return false;
+  const before = tally(structureOf(find));
+  const after = tally(structureOf(replace));
+  return [...before.keys()].every((key) => (after.get(key) ?? 0) >= (before.get(key) ?? 0));
+}
+
 /** A line as a change is compared: its words, without list and heading marks, stars, a final punctuation mark or an orchestrator id. */
 const CITATION = /(,?\s*conforme\b[^,]*?)?\s*\(?\b(?:po|sm|front)-[cs]\d+-\d+\)?$/;
 const contentLine = (line: string): string =>

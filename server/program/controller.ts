@@ -41,6 +41,8 @@ export interface ProgramItem {
   retryAt?: string;
   /** Waits after an environment failure so far; absent in a ledger written before them. */
   waits?: number;
+  /** The draft that owns the spec, when a follow-on request joined this program; absent means this ledger's own draft. */
+  draftId?: string;
 }
 
 export interface Program {
@@ -49,6 +51,9 @@ export interface Program {
   status: 'running' | 'finished';
   items: ProgramItem[];
   updatedAt: string;
+  /** The follow-on requests that joined this program, oldest first: what each added and re-ordered. */
+  /** Each request that joined the program: its request id ("pedido-<n>"), its draft, and what it added and moved. */
+  history?: Array<{ at: string; requestId: string; draftId: string; added: string[]; reranked: string[] }>;
 }
 
 export type RunOutcome =
@@ -111,6 +116,36 @@ const MAX_WAIT_MS = 3_600_000;
 export function newProgram(draftId: string, entries: readonly ProgramEntry[], now: Date): Program {
   const items = [...entries].sort((a, b) => a.rank - b.rank).map(({ done, ...e }): ProgramItem => ({ ...e, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? now.toISOString() : null, reason: null, resumes: 0, costUsd: null }));
   return { version: 1, draftId, status: 'running', items, updatedAt: now.toISOString() };
+}
+
+/**
+ * A follow-on request joins the program that runs: the specs it adds are queued, the pending ones take its order and dependencies
+ * and are owned by the request's draft, and what started or delivered stays as it is. The change is kept in the ledger's history.
+ */
+export function extendProgram(program: Program, entries: readonly ProgramEntry[], requestDraftId: string, now: Date): Program {
+  const p = structuredClone(program);
+  const at = now.toISOString();
+  const added: string[] = [];
+  const reranked: string[] = [];
+  for (const e of entries) {
+    const item = p.items.find((i) => i.specId === e.specId);
+    if (!item) {
+      const { done, ...rest } = e;
+      p.items.push({ ...rest, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? at : null, reason: null, resumes: 0, costUsd: null, draftId: requestDraftId });
+      added.push(e.specId);
+    } else if (item.status === 'pending') {
+      const moved = item.rank !== e.rank || JSON.stringify(item.dependsOn) !== JSON.stringify(e.dependsOn);
+      Object.assign(item, { rank: e.rank, dependsOn: [...e.dependsOn], draftId: requestDraftId, ...(e.conflictsWith ? { conflictsWith: e.conflictsWith } : {}) });
+      if (moved) reranked.push(e.specId);
+    }
+  }
+  p.items.sort((a, b) => a.rank - b.rank);
+  if (added.length > 0 || reranked.length > 0) p.status = 'running';
+  // The draft id ends with the request's "-pedido-<n>": the request id is that part of it.
+  const requestId = requestDraftId.slice(requestDraftId.lastIndexOf('-pedido-') + 1);
+  p.history = [...(p.history ?? []), { at, requestId, draftId: requestDraftId, added, reranked }];
+  p.updatedAt = at;
+  return p;
 }
 
 /**

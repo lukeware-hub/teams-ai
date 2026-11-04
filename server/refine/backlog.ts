@@ -30,6 +30,13 @@ const RULES = [
 /** The backlog rules; a stamped draft's services come from its architecture, so the naming rule stays out of its pack. */
 const rulesFor = (repositories: readonly string[] | undefined): string => (repositories ? RULES.trimEnd() : RULES + SERVICE_NAMING);
 
+/** A follow-on request: the backlog it follows stays whole, and each new item cites the request's section. */
+const requestRules = (request: string): string => [
+  `REQUEST (mandatory): this draft follows up the owner's request, the section "${request}" of briefing.md.`,
+  '- Keep every item of the previous backlog (its key, title and scope); add only the items the request needs, and never rename or drop one.',
+  `- Cite "${request}" in the sources of each new item.`,
+].join('\n');
+
 export function backlogPack(input: {
   specHash: string;
   principles: readonly string[];
@@ -46,12 +53,16 @@ export function backlogPack(input: {
   started?: readonly string[];
   /** The architecture's repositories of a stamped draft: every item names one of them. */
   repositories?: readonly string[];
+  /** The briefing section of the owner's request, when the draft follows one. */
+  request?: string;
 }): ContextPackInput {
   const started = new Set(input.started);
   const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
+  // The owner's request section is never cut: it is the one text the outline must follow word for word.
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
     rulesFor(input.repositories),
     ...(input.repositories ? [repositoryRules(input.repositories)] : []),
+    ...(input.request ? [requestRules(input.request)] : []),
     ...(digested ? [DIGEST_NOTE] : []),
     '### docs/project.md',
     d.project,
@@ -65,7 +76,7 @@ export function backlogPack(input: {
     '### previous backlog (keep the keys)',
     previous,
     ...(input.rejection?.length ? ['### Your last attempt was rejected: fix every point', input.rejection.map((r) => `- ${r}`).join('\n')] : []),
-  ].join('\n\n'));
+  ].join('\n\n'), undefined, (heading) => heading === input.request);
   return { kind: 'backlog', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('backlog'), criteria: [], feedback, budgetTokens: 20_000 };
 }
 
@@ -113,7 +124,25 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 }
 
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
-export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[], docsRepo?: boolean): BacklogCheck {
+/** A follow-on request only adds: no item of the backlog it follows leaves, and every new item cites the request's section. */
+function requestIssues(items: readonly BacklogItem[], previous: BacklogState | null, started: readonly BacklogItem[], request: string): string[] {
+  const kept = new Set(items.map((i) => i.key));
+  const known = new Map((previous?.items ?? []).map((i) => [i.key, i] as const));
+  const dropped = [...known.keys()].filter((key) => !kept.has(key) && !started.some((s) => s.key === key) && !isAdjustment(key));
+  const cites = (i: BacklogItem) => i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request);
+  // A known item whose content the request changes cites the request too; its rank follows the order, so it is not content.
+  const changed = (i: BacklogItem) => {
+    const old = known.get(i.key);
+    return old !== undefined && (old.title !== i.title || old.scope !== i.scope || old.priority !== i.priority || old.dependsOn.join('\n') !== i.dependsOn.join('\n'));
+  };
+  return [
+    ...(dropped.length > 0 ? [`o pedido só acrescenta: estes itens do backlog anterior saíram: ${dropped.join(', ')}`] : []),
+    ...items.filter((i) => !known.has(i.key) && !cites(i)).map((i) => `o item ${i.key} é novo e não cita a seção "${request}" de briefing.md`),
+    ...items.filter((i) => changed(i) && !cites(i)).map((i) => `o item ${i.key} mudou de conteúdo ou de dependências e não cita a seção "${request}" de briefing.md`),
+  ];
+}
+
+export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[], docsRepo?: boolean, request?: string): BacklogCheck {
   const project = Project.safeParse(out.project);
   const backlog = Backlog.safeParse(out.backlog);
   const issues = [
@@ -124,6 +153,10 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories, docsRepo });
   if (rules.length > 0) return { ok: false, issues: rules };
+  if (request !== undefined) {
+    const issues = requestIssues(items, previous, started, request);
+    if (issues.length > 0) return { ok: false, issues };
+  }
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
   const keys = new Set([...items, ...started].map((i) => i.key));
   const all = [...items, ...started.filter((s) => !items.some((i) => i.key === s.key)).map((s) => ({ ...s, dependsOn: s.dependsOn.filter((d) => keys.has(d)) }))];

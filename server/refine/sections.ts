@@ -11,6 +11,33 @@ export interface DocSection {
   line: number;
 }
 
+/** The heading a follow-on request's section carries: "Pedido pedido-<n>". */
+const REQUEST_HEADING = /^Pedido pedido-\d+$/;
+
+/** Whether a heading is the one a follow-on request's section carries. */
+export const isRequestHeading = (heading: string): boolean => REQUEST_HEADING.test(heading);
+
+/**
+ * The document without the sections of follow-on requests. A document without any is returned as it is, so its text keeps the
+ * meaning it had: an added request leaves the plans of the items it does not touch as they are.
+ */
+export function withoutRequests(doc: string): string {
+  const sections = docSections(doc);
+  const requests = sections.filter((s) => REQUEST_HEADING.test(s.heading));
+  if (requests.length === 0) return doc;
+  const lines = doc.split(/\r?\n/);
+  const starts = sections.map((s) => s.line);
+  const dropped = new Set<number>();
+  for (const s of requests) for (let i = s.line, end = starts.find((l) => l > s.line) ?? lines.length; i < end; i++) dropped.add(i);
+  return lines.filter((_, i) => !dropped.has(i)).join('\n');
+}
+
+/** Whether a change's find lies inside the section that has `heading`: a change of the text under that heading. */
+export function changesSection(doc: string, heading: string, find: string): boolean {
+  if (find === '') return false;
+  return docSections(doc).some((s) => s.heading === heading && s.text.includes(find));
+}
+
 const NUMBERED = /^%%\s*(\d+\.\s+\S.*?)\s*$/;
 const MARKDOWN = /^(#{1,6})\s+(\S.*?)\s*$/;
 const FENCE = /^\s*```/;

@@ -4,7 +4,7 @@ import type { CommandResult, Exec } from '../../exec/command.js';
 import { planFileOf, taskFileOf } from '../../refine/plan-file.js';
 import { CENTRAL_REPO, FIVE_DOCS, FIVE_DOC_PATHS, SPEC_FILES, parseRepoPath, repoPath, type DocsRun, type Style } from '../../docs/layout.js';
 import type { Spec } from '../../contracts/spec.js';
-import { docsSnapshotDir, writeState } from '../../docs/project-state.js';
+import { docsSnapshotDir, readStateText, writeState } from '../../docs/project-state.js';
 import { repoName } from '../../core/ids.js';
 import { fetch as gitFetch, git, headSha, removeWorktree } from '../../git/git.js';
 import { ensureRepo, NOT_FOUND } from '../../git/github.js';
@@ -13,7 +13,7 @@ import { Intent, OrchEvent } from '../events.js';
 import { mergeDoc, sameDoc as same } from '../../git/merge-doc.js';
 import { isStarted } from '../../refine/coverage.js';
 import { renderWorkflows, validateWorkflow } from '../workflows.js';
-import { serviceWorkspace } from '../workspace.js';
+import { serviceWorkspace, type Workspace } from '../workspace.js';
 import { commitAndMergeDocs, commitDocs, docsCommitKey, docsWorktree, type PhaseDeps, type PhaseResult } from './shared.js';
 
 const isRepo = (dir: string) => fs.access(path.join(dir, '.git')).then(() => true, () => false);
@@ -105,8 +105,24 @@ async function runDocsRepoPhase0(deps: PhaseDeps & { ghExec: Exec }, opts: { doc
     await journal.fact(OrchEvent.PhaseFailed, { phase: 0, reason });
     return { ok: false, reason };
   }
-  for (const rel of await machineFilesOf(opts.docsDir, spec.specId)) await writeState(ws, rel, await fs.readFile(path.join(opts.docsDir, rel), 'utf8'));
+  const baseDir = path.join(path.dirname(opts.docsDir), '.base', 'docs');
+  for (const rel of await machineFilesOf(opts.docsDir, spec.specId)) {
+    const text = await fs.readFile(path.join(opts.docsDir, rel), 'utf8');
+    if (await mayPublishMachineFile(ws, baseDir, rel, text)) await writeState(ws, rel, text);
+  }
   return ensureProjectRepo(deps, opts.owner, opts.docs.style);
+}
+
+/**
+ * A top-level machine file goes to the mirror when the draft changed it and the mirror still holds the copy the draft began from:
+ * a draft started earlier never rolls back what a newer closing wrote. The spec's own folder is always written.
+ */
+async function mayPublishMachineFile(ws: Pick<Workspace, 'root'>, baseDir: string, rel: string, text: string): Promise<boolean> {
+  if (rel.includes('/')) return true;
+  const mirror = await readStateText(ws, rel);
+  if (mirror === undefined) return true;
+  const base = await fs.readFile(path.join(baseDir, rel), 'utf8').catch(() => null);
+  return text !== base && mirror === base;
 }
 
 /** Spec (refinement) §4: put the draft's docs on main — by creating the repository or by a docs PR. */

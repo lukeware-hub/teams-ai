@@ -28,6 +28,22 @@ async function aliasFiles(draft: Draft, style: Style, { alias, service }: SpecAl
   return found;
 }
 
+/**
+ * Whether the draft changed a spec since main's copy: its spec, plan or task, the files `aliasFiles` projects for it. A spec the
+ * draft left as main has it is not written again, so its alias folder, owned by another draft, stays out of the projection.
+ */
+export async function specChanged(draft: Draft, specId: string): Promise<boolean> {
+  const plan = planFileOf(specId);
+  const task = taskFileOf(specId);
+  const pairs: ReadonlyArray<readonly [string, string]> = [
+    [path.posix.join(draft.docs, 'specs', specId, 'spec.json'), `specs/${specId}/spec.json`],
+    [path.posix.join(draft.root, plan), plan.slice('docs/'.length)],
+    [path.posix.join(draft.root, task), task.slice('docs/'.length)],
+  ];
+  for (const [file, rel] of pairs) if ((await readOptional(file)) !== (await readBase(draft, rel))) return true;
+  return false;
+}
+
 /** The copy of each document the draft started from: the store writes a document only over the copy it started from. */
 export async function draftBases(draft: Draft): Promise<Record<string, string>> {
   const bases: Record<string, string> = {};

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { draftPaths, type Draft } from '../../server/refine/draft.js';
-import { projectDraftFiles } from '../../server/refine/docs-projection.js';
+import { projectDraftFiles, specChanged } from '../../server/refine/docs-projection.js';
+import { planFileOf, taskFileOf } from '../../server/refine/plan-file.js';
 import { makeSpec } from '../fixtures/contracts.js';
 
 const ALIAS = 'hello-app-login';
@@ -89,5 +90,49 @@ describe('projectDraftFiles', () => {
     expect(files[`docs/specify/${ALIAS}/spec.md`]).toBeUndefined();
     expect(files[`docs/specify/${ALIAS}/plan.md`]).toBe('# plan\n');
     expect(Object.keys(files).some((file) => file.includes('hello-app-other'))).toBe(false);
+  });
+});
+
+describe('specChanged: a spec the draft left as main has it', () => {
+  const write = async (file: string, text: string) => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, text);
+  };
+  const SPEC = 'specs/hello-app-login/spec.json';
+  const inDraft = { spec: () => path.join(draft.docs, SPEC), plan: () => path.join(draft.root, planFileOf(ALIAS)), task: () => path.join(draft.root, taskFileOf(ALIAS)) };
+  const inBase = { spec: () => path.join(draft.base!, SPEC), plan: () => path.join(draft.base!, planFileOf(ALIAS).slice('docs/'.length)), task: () => path.join(draft.base!, taskFileOf(ALIAS).slice('docs/'.length)) };
+  const copyOfMain = async (text: { spec: string; plan: string; task: string }) => {
+    await write(inDraft.spec(), text.spec);
+    await write(inDraft.plan(), text.plan);
+    await write(inDraft.task(), text.task);
+    await write(inBase.spec(), text.spec);
+    await write(inBase.plan(), text.plan);
+    await write(inBase.task(), text.task);
+  };
+  const SAME = { spec: '{"specId":"hello-app-login"}\n', plan: '# plan\n', task: '# tasks\n' };
+
+  it('is unchanged when the draft holds main\'s copy of its spec, plan and task', async () => {
+    await copyOfMain(SAME);
+    expect(await specChanged(draft, ALIAS)).toBe(false);
+  });
+
+  it('is changed when the draft rewrote its spec', async () => {
+    await copyOfMain(SAME);
+    await write(inDraft.spec(), '{"specId":"hello-app-login","status":"planned"}\n');
+    expect(await specChanged(draft, ALIAS)).toBe(true);
+  });
+
+  it('is changed when only its plan or its task differs from main', async () => {
+    await copyOfMain(SAME);
+    await write(inDraft.plan(), '# plan, revised\n');
+    expect(await specChanged(draft, ALIAS)).toBe(true);
+    await copyOfMain(SAME);
+    await write(inDraft.task(), '# tasks, revised\n');
+    expect(await specChanged(draft, ALIAS)).toBe(true);
+  });
+
+  it('is changed when main does not hold the spec at all', async () => {
+    await write(inDraft.spec(), SAME.spec);
+    expect(await specChanged(draft, ALIAS)).toBe(true);
   });
 });

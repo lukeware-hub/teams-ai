@@ -35,7 +35,7 @@ import { readProjectDocs } from '../git/main-docs.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, DRAIN_STOP_MS, isAlive, NO_DRAIN_STOP_MS, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, progressOf, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { probeProcess, type ProbeProcess } from './process-identity.js';
@@ -265,12 +265,17 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   /** Every draft registers its own root, so one project can have several directories: the spec decides which holds it. */
   const projectDir = async (idx: IndexDeps, projectId: string, specId?: string): Promise<string> => {
     let first: string | null = null;
+    let best: { dir: string; progress: number } | null = null;
     for (const { dir } of idx.cfg.projects) {
       const read = await readProject(dir).catch(() => null);
       if (read?.project.projectId !== projectId) continue;
       first ??= dir;
-      if (specId === undefined || read.specs.some((s) => s.specId === specId)) return dir;
+      if (specId === undefined) return dir;
+      // Of the copies of the spec, the one whose run got furthest is the project's.
+      const copy = read.specs.find((s) => s.specId === specId);
+      if (copy && (best === null || progressOf(copy.status) > best.progress)) best = { dir, progress: progressOf(copy.status) };
     }
+    if (best !== null) return best.dir;
     if (first !== null) return first;
     throw new HttpError(404, `unknown project ${projectId}`);
   };
