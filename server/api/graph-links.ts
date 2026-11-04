@@ -13,7 +13,7 @@ const safePath = (file: string): boolean => file !== '' && !file.startsWith('/')
 
 /**
  * Resolves each node to the GitHub page of its file at the clone's current commit. `clones` maps the repository tag of a
- * node to its clone; a node of any other tag has no link. A file the commit does not hold gives no link rather than a 404.
+ * node to its clone; a node of any other tag has no link. A commit GitHub does not have, or a file the commit does not hold, gives no link rather than a 404.
  */
 export function graphLinkResolver(deps: GraphLinkDeps, clones: Readonly<Record<string, string>>): (node: GraphViewNode) => Promise<string | null> {
   // One lookup of the GitHub page and the commit per clone for the whole request.
@@ -23,7 +23,10 @@ export function graphLinkResolver(deps: GraphLinkDeps, clones: Readonly<Record<s
     if (!info) {
       info = (async () => {
         const [url, commit] = await Promise.all([deps.repoUrlOf(dir).catch(() => null), deps.git(dir, ['rev-parse', 'HEAD']).catch(() => null)]);
-        return url && commit ? { url, commit } : null;
+        if (!url || !commit) return null;
+        // A commit no remote branch holds is not on GitHub yet, so a link to it would be a 404.
+        const pushed = await deps.git(dir, ['branch', '-r', '--contains', commit]).catch(() => null);
+        return pushed ? { url, commit } : null;
       })();
       infos.set(dir, info);
     }

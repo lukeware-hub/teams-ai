@@ -34,6 +34,8 @@ beforeAll(() => {
   run(['add', '-A']);
   run(['commit', '-q', '-m', 'init']);
   commit = run(['rev-parse', 'HEAD']);
+  // The commit is on the remote, as it is for a clone that was fetched and not changed.
+  run(['update-ref', 'refs/remotes/origin/main', commit]);
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -70,6 +72,17 @@ describe('graph link resolver', () => {
     expect(await graphLinkResolver(deps(null), { shop: dir })(node('docs/brief.md'))).toBeNull();
     expect(await graphLinkResolver(deps(REPO), { shop: dir })(node('docs/brief.md', { repo: 'other' }))).toBeNull();
     expect(await graphLinkResolver(deps(REPO), { shop: dir })(node('docs/brief.md', { repo: 'constructor' }))).toBeNull();
+  });
+
+  it('gives no link for a commit no remote branch holds yet', async () => {
+    writeFileSync(path.join(dir, 'docs', 'local.md'), '# local');
+    run(['add', '-A']);
+    run(['commit', '-q', '-m', 'local only']);
+    try {
+      expect(await graphLinkResolver(deps(REPO), { shop: dir })(node('docs/local.md'))).toBeNull();
+    } finally {
+      run(['reset', '-q', '--hard', commit]);
+    }
   });
 
   it('gives no link when git fails in the clone', async () => {
