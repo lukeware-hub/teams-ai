@@ -357,6 +357,22 @@ describe('ProjectHubView', () => {
     expect(table.getByRole('button', { name: 'O serviço não subiu no ambiente local.' })).toBeTruthy();
     expect(screen.getByLabelText('Filtrar execuções')).toBeTruthy();
   });
+  it('the runs table shows the new cost of a run once the runs change, with no filter touched', async () => {
+    const o = on();
+    const before = [row({ runId: 'hello-002-r1', n: 1, specId: 'hello-002', projectId: 'hello-app', status: 'running', at: null, tokens: 10, cost: 0.03, stoppable: false })];
+    const after = [{ ...before[0]!, cost: 0.96 }];
+    const hub = (list: Row[]) => (
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={list} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onNewSpec={o.newSpec} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>
+    );
+    servePages(before, project.specs);
+    const { rerender } = render(hub(before));
+    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0.03'));
+    servePages(after, project.specs);
+    rerender(hub(after));
+    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0.96'));
+  });
   it('lists every run of the project, ten a page', async () => {
     const o = on();
     const seven = Array.from({ length: 7 }, (_, i) => row({ runId: `hello-001-r${7 - i}`, n: 7 - i, specId: 'hello-001', projectId: 'hello-app', status: 'complete', at: null, tokens: 10, cost: 0.1, stoppable: false }));

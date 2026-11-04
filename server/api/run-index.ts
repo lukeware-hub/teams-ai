@@ -189,6 +189,16 @@ export function finishOf<E extends { type: string }>(events: readonly E[]): E | 
   return lastFinish > events.findLastIndex((e) => e.type === 'RUN_REOPENED') ? events[lastFinish] : undefined;
 }
 
+/** The run's state snapshot, or null before the first one is written. */
+async function readState(runs: string, runId: string): Promise<StateFile | null> {
+  return fs.readFile(path.join(runs, runId, 'state.json'), 'utf8').then((t) => JSON.parse(t) as StateFile).catch(() => null);
+}
+
+/** What a run has cost so far, as its row in the runs table reads it. */
+export async function runCost(runs: string, runId: string): Promise<number> {
+  return (await readState(runs, runId))?.tokens?.costUsd ?? 0;
+}
+
 export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
   const runs = runsDir(deps);
   const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
@@ -197,10 +207,7 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   const specId = String(startedAt?.data.specId ?? parsed?.specId ?? runId);
   const projectId = startedAt ? String(startedAt.data.projectId) : parsed?.projectId ?? null;
   const finished = finishOf(events);
-  const state: StateFile | null = await fs
-    .readFile(path.join(runs, runId, 'state.json'), 'utf8')
-    .then((t) => JSON.parse(t) as StateFile)
-    .catch(() => null);
+  const state = await readState(runs, runId);
   const { alive, interrupted } = await runLiveness(deps, runId);
   const userStopped = await isStopRequested(runs, runId);
   // A launch that never wrote its journal leaves only ui.log behind.

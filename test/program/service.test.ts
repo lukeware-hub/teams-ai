@@ -326,6 +326,29 @@ describe('program service view', () => {
     expect(view!.items[2]!.pause).toBeUndefined();
   });
 
+  const cost = async (runId: string, costUsd: number) => {
+    await fs.mkdir(path.join(runsDir(), runId), { recursive: true });
+    await fs.writeFile(path.join(runsDir(), runId, 'state.json'), JSON.stringify({ status: 'running', tokens: { costUsd } }));
+  };
+
+  it('shows an item's cost as the sum of all its runs, the running one included, and leaves out other specs and projects', async () => {
+    await write([item('a', 'running', 'shop--d-a--run-2'), item('b', 'pending', null)]);
+    await cost('shop--d-a--run-1', 0.5);
+    await cost('shop--d-a--run-2', 0.25);
+    await cost('shop--d-a--complete-run-1', 0.1);
+    await cost('shop--d-c--run-1', 9);
+    await cost('other--d-a--run-1', 7);
+    const view = await service().view('shop', 'd');
+    expect(view!.items[0]!.costUsd).toBeCloseTo(0.85);
+    expect(view!.items[1]!.costUsd).toBeNull();
+  });
+
+  it('keeps the ledger cost of an item that has no run to read it from', async () => {
+    await write([{ ...item('b', 'pending', null), costUsd: 2 }]);
+    const view = await service().view('shop', 'd');
+    expect(view!.items[0]!.costUsd).toBe(2);
+  });
+
   it('lists the decisions of the runs, the newest first, with what each question came to', async () => {
     await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
     const decision = (decisionId: string, at: string, answers: unknown, backend: string | null = 'jev', attempts: unknown[] = []) => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend, model: 'm', escalated: false, answers, attempts, usage: {}, at } } });

@@ -1,11 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
-import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
+import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runCost, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import { parseRunId } from '../core/ids.js';
 import type { Decider } from '../decide/decider.js';
 import type { AttemptOutcome, DecisionAttempt, DecisionRecord } from '../decide/types.js';
 import { classifyFailure } from '../decide/decisions/failure-cause.js';
@@ -125,16 +126,28 @@ export class ProgramService {
     return facts;
   }
 
-  /** The ledger with each item's pull requests, its pause, and whether its run lost its process. */
+  /** What all the runs of each spec cost in total, read as the runs table reads them, so the program and the table agree. */
+  private async specSpend(projectId: string, runs: string): Promise<Map<string, number>> {
+    const spend = new Map<string, number>();
+    for (const name of await fs.readdir(runs).catch(() => [] as string[])) {
+      const parsed = parseRunId(name);
+      if (!parsed || (parsed.projectId !== null && parsed.projectId !== projectId)) continue;
+      spend.set(parsed.specId, (spend.get(parsed.specId) ?? 0) + (await runCost(runs, name)));
+    }
+    return spend;
+  }
+
+  /** The ledger with each item's cost and pull requests, its pause, and whether its run lost its process. */
   async view(projectId: string, draftId: string): Promise<ProgramView | null> {
     const program = await this.read(projectId, draftId);
     if (program === null) return null;
     const idx = await this.index();
     const runs = runsDirOf(idx);
+    const spend = await this.specSpend(projectId, runs);
     const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
       const { prs, pause } = await this.runFacts(item, runs);
       const lost = await this.lostRun(item, idx);
-      return { ...item, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
+      return { ...item, costUsd: spend.get(item.specId) ?? item.costUsd, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
     }));
     return { ...program, items };
   }

@@ -199,7 +199,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
               <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
               <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
-                {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
+                {i.costUsd != null ? <Tipped text="Soma do custo de todas as execuções desta spec: tentativas, conclusão e deploy."><span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span></Tipped> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
               </span>
               <span className="flex lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}

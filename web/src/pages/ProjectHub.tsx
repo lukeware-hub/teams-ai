@@ -127,7 +127,9 @@ export function ProjectHubView(p: {
   onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
   const projectId = p.project?.projectId ?? '';
-  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status);
+  // A run's status, tokens and cost move while it goes on: the runs table reads the page again when they do.
+  const runsKey = p.runs.map((r) => `${r.runId}:${r.status}:${r.tokens}:${r.cost}`).join('|');
+  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status, runsKey);
   const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), (status) => LABEL[status] ?? status);
   const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
   // While a backlog runs its panel lists the planned specs, so the specs card leaves them out.

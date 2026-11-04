@@ -72,6 +72,12 @@ describe('ProgramPanel', () => {
     expect(row.queryByRole('button', { name: /Use Retomar/ })).toBeNull();
   });
 
+  it('shows the cost of a spec in total, explained by its info button', () => {
+    renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', costUsd: 1 })]));
+    expect(screen.getByTestId('program-item-cost-a').textContent).toBe('US$ 1.00');
+    expect(within(screen.getByTestId('program-panel-cost-a')).getByRole('button', { name: 'Soma do custo de todas as execuções desta spec: tentativas, conclusão e deploy.' })).toBeTruthy();
+  });
+
   it('offers to run a queued spec now, and marks one already prioritized', () => {
     const onPrioritize = vi.fn();
     render(<MemoryRouter><ProgramPanel program={program([item('a', { status: 'running', runId: 'd-a-r1' }), item('b', { rank: 2 }), item('c', { rank: 3, priority: true })])} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
