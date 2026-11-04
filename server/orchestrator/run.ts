@@ -25,6 +25,7 @@ import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
+import { refreshProjectGraph } from '../knowledge/project-graph.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { RunEvent, type RunState } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
@@ -939,6 +940,7 @@ export class Run {
       }
       if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
       error = out.errors?.join('; ') ?? error;
+      docsErrors = out.errors ?? [];
     }
     if (!readme) return this.finish('phase-failed', error);
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
@@ -1002,6 +1004,8 @@ export class Run {
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
     if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p6.ok) return this.finish('phase-failed', p6.reason);
+    // The agents read the graph, so it is rebuilt from main with the documents this run just merged.
+    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, this.deps.log);
     return this.finish(result, reason);
   }
 
