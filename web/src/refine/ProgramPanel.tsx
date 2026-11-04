@@ -7,16 +7,16 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
-import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { action, panel, plural, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
 
-const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam e publicam cada spec. Quando uma spec fica pronta para validação, a próxima segue sem esperar; só você a conclui. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
+const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam e publicam cada spec. Quando uma spec fica pronta para validação, a próxima segue sem esperar; só você a valida e conclui. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
 const ITEM_HELP = {
   pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
   running: 'Os agentes estão executando esta spec agora.',
   completing: 'A spec foi entregue e está sendo concluída.',
-  delivered: 'A run entregou a spec e o código já está na main. A próxima spec segue sem esperar; esta só fica concluída quando você valida.',
+  delivered: 'A run entregou a spec e o código já está na main. A próxima spec segue sem esperar; esta só fica concluída quando você valida e conclui.',
   waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
   done: 'A spec foi entregue e concluída.',
   partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
@@ -124,7 +124,7 @@ const awaitingOwner = (program: ProgramView) => program.items.filter((i) => i.st
 const onlyValidationsLeft = (program: ProgramView) => awaitingOwner(program) > 0 && !program.items.some((i) => i.status === 'running' || i.status === 'completing' || i.status === 'pending' || i.status === 'waiting');
 
 /** `1 aguarda sua validação` or `2 aguardam sua validação`. */
-const awaitingText = (n: number) => `${n} ${n === 1 ? 'aguarda' : 'aguardam'} sua validação`;
+const awaitingText = (n: number) => plural(n, 'aguarda sua validação', 'aguardam sua validação');
 
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
