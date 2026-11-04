@@ -464,12 +464,12 @@ describe('ProjectHubView', () => {
     const specs = within(screen.getByTestId('project-specs'));
     const ids = () => specs.queryAllByText(/^hello-\d{3}$/).map((el) => el.textContent);
     const headings = () => Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
-    expect(ids()).toEqual(many.slice(0, 10).map((s) => s.specId));
+    // The pages arrive from a mocked server: under load they take longer than one tick, so each check waits for them.
+    await waitFor(() => expect(ids()).toEqual(many.slice(0, 10).map((s) => s.specId)));
     expect(headings()).toEqual(['Precisam de você', 'Prontas']);
     expect(specs.getByText('1–10 de 13')).toBeTruthy();
     fireEvent.click(specs.getByRole('button', { name: 'Próxima página' }));
-    await settle();
-    expect(ids()).toEqual(['hello-010', 'hello-011', 'hello-012']);
+    await waitFor(() => expect(ids()).toEqual(['hello-010', 'hello-011', 'hello-012']));
     expect(headings()).toEqual(['Prontas', 'Concluídas']);
     expect(specs.getByText('11–13 de 13')).toBeTruthy();
   });
