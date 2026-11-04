@@ -10,6 +10,7 @@ import { loadSecretValues, loadSecrets } from '../core/secrets.js';
 import { draftPaths, refineRoot } from '../refine/draft.js';
 import { reduceRefineEvents } from '../refine/state.js';
 import { requiredSecretNames } from '../refine/session.js';
+import { phase6Resume } from '../orchestrator/phase6-resume.js';
 import { redactSecrets } from '../core/redact.js';
 import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
@@ -797,7 +798,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const runId = safe(params.runId!);
         const runs = runsDir(idx);
         await exclusive(`run ${runId}`, async () => {
-          await events(runs, runId); // 404 before claiming: the claim is a file in the run directory
+          const journal = await events(runs, runId); // 404 before claiming: the claim is a file in the run directory
           // Shared with the supervisor, which resumes interrupted runs too: whoever holds the claim is the only one to spawn.
           const release = await claimLaunch(runs, runId);
           if (!release) throw new HttpError(409, `run ${runId} is already starting`);
@@ -806,7 +807,9 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
             if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
             // A run delivered before blocked runs stopped short ends awaiting-validation with blocked tasks: it goes back to the agents too.
             const blocked = row.status === 'blocked' || (row.status === 'awaiting-validation' && endedBlocked(await events(runs, runId)));
-            if (!blocked && !['paused:auth', 'interrupted', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted, verification-failed or blocked runs resume`);
+            // A run that failed in phase 6 resumes there, once phases 4 and 5 passed: its report is written again without the earlier phases.
+            const phase6 = row.status === 'phase-failed' && phase6Resume(journal) !== null;
+            if (!blocked && !phase6 && !['paused:auth', 'interrupted', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted, verification-failed, blocked or phase 6 failed runs resume`);
             const later = (await listRuns(idx, row.projectId)).find((r) => r.specId === row.specId && r.kind === row.kind && r.n > row.n);
             if (later) throw new HttpError(409, `run ${runId} is behind ${later.runId} of spec ${row.specId}; only the latest run of a spec resumes`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop

@@ -142,6 +142,13 @@ describe('Phase 6 documentation gate', () => {
     expect(JSON.stringify(calls[1]!.pack)).toContain('runbook: Invalid input: expected string');
   });
 
+  it('a runbook the report leaves out (a null field, once parsed) keeps the RUNBOOK on main, so no doc is blanked', async () => {
+    await mainWrites({ 'docs/README.md': GOOD.readme, 'docs/RUNBOOK.md': GOOD.runbook, 'docs/API.md': '# API\n\n### POST /stock\n' });
+    const r = await p6(async () => report({ readme: GOOD.readme }));
+    expect(r.ok).toBe(true);
+    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
+    expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
+  });
   it('blocks when the report step itself fails', async () => {
     const r = await p6(async () => ({ ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false }));
     expect(r.ok).toBe(false);
