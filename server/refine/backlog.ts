@@ -127,12 +127,18 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 /** A follow-on request only adds: no item of the backlog it follows leaves, and every new item cites the request's section. */
 function requestIssues(items: readonly BacklogItem[], previous: BacklogState | null, started: readonly BacklogItem[], request: string): string[] {
   const kept = new Set(items.map((i) => i.key));
-  const known = new Set((previous?.items ?? []).map((i) => i.key));
-  const dropped = [...known].filter((key) => !kept.has(key) && !started.some((s) => s.key === key) && !isAdjustment(key));
-  const uncited = items.filter((i) => !known.has(i.key) && !i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request));
+  const known = new Map((previous?.items ?? []).map((i) => [i.key, i] as const));
+  const dropped = [...known.keys()].filter((key) => !kept.has(key) && !started.some((s) => s.key === key) && !isAdjustment(key));
+  const cites = (i: BacklogItem) => i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request);
+  // A known item whose content the request changes cites the request too; its rank follows the order, so it is not content.
+  const changed = (i: BacklogItem) => {
+    const old = known.get(i.key);
+    return old !== undefined && (old.title !== i.title || old.scope !== i.scope || old.priority !== i.priority || old.dependsOn.join('\n') !== i.dependsOn.join('\n'));
+  };
   return [
     ...(dropped.length > 0 ? [`o pedido só acrescenta: estes itens do backlog anterior saíram: ${dropped.join(', ')}`] : []),
-    ...uncited.map((i) => `o item ${i.key} é novo e não cita a seção "${request}" de briefing.md`),
+    ...items.filter((i) => !known.has(i.key) && !cites(i)).map((i) => `o item ${i.key} é novo e não cita a seção "${request}" de briefing.md`),
+    ...items.filter((i) => changed(i) && !cites(i)).map((i) => `o item ${i.key} mudou de conteúdo ou de dependências e não cita a seção "${request}" de briefing.md`),
   ];
 }
 

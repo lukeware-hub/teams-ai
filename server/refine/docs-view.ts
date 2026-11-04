@@ -1,6 +1,6 @@
 import { estimateTokens } from '../knowledge/context-pack.js';
 import { PACK_TOKEN_CAP } from './fit-pack.js';
-import { docSections } from './sections.js';
+import { docSections, isRequestHeading } from './sections.js';
 
 /** How much of each section a digest keeps, from the most to the least; a digest of headings alone is the last resort. */
 const EXCERPT_CHARS = [1500, 600, 250, 100, 0] as const;
@@ -48,7 +48,7 @@ export function viewDocs<K extends string>(docs: Docs<K>, budgetTokens: number, 
  * `build` writes a pack's feedback from the docs it is given and whether they are a digest. The docs get what the rest of
  * the feedback leaves under `cap`: whole when they fit, so a project that fits today reads the same text, else a digest.
  */
-export function buildWithDocs<K extends string>(docs: Docs<K>, build: (docs: Docs<K>, digested: boolean) => string, cap = PACK_TOKEN_CAP, whole: (heading: string) => boolean = () => false): string {
+export function buildWithDocs<K extends string>(docs: Docs<K>, build: (docs: Docs<K>, digested: boolean) => string, cap = PACK_TOKEN_CAP, whole: (heading: string) => boolean = isRequestHeading): string {
   const blank = Object.fromEntries(Object.entries<string | undefined>(docs).map(([k, v]) => [k, v === undefined ? v : ''])) as Docs<K>;
   const rest = estimateTokens(build(blank, false));
   const view = viewDocs(docs, Math.min(MAX_DOCS_TOKENS, Math.max(MIN_DOCS_TOKENS, cap - MARGIN_TOKENS - rest)), whole);

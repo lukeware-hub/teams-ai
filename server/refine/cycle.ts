@@ -438,7 +438,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   await journal.fact(RefineEvent.FindingsReported, { cycle, findings: kept });
   let frontIndex = 0;
   for (const p of frontReview?.docPatch ?? []) {
-    const c = checkPatch(p, draft.specId, docs, backlogMode);
+    const c = checkPatch(p, draft.specId, docs, backlogMode, request);
     if (!c.ok) {
       discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
       continue;

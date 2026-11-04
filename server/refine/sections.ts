@@ -14,6 +14,9 @@ export interface DocSection {
 /** The heading a follow-on request's section carries: "Pedido pedido-<n>". */
 const REQUEST_HEADING = /^Pedido pedido-\d+$/;
 
+/** Whether a heading is the one a follow-on request's section carries. */
+export const isRequestHeading = (heading: string): boolean => REQUEST_HEADING.test(heading);
+
 /**
  * The document without the sections of follow-on requests. A document without any is returned as it is, so its text keeps the
  * meaning it had: an added request leaves the plans of the items it does not touch as they are.
