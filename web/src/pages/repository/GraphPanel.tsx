@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { runApi, type GraphView } from '../../api.js';
+import { Icon } from '../../components/Icons.js';
 import { action, panel, sectionHeading, sectionTitle } from '../project-shared.js';
 
 const SIZE = 320;
@@ -95,9 +96,11 @@ export function GraphPanel({ projectId }: { projectId: string }) {
   // The body is mounted on the first opening and kept, so a closed panel adds nothing to the page.
   const [opened, setOpened] = useState(false);
   return (
-    <details className={panel} data-testid="repo-graph" onToggle={(e) => e.currentTarget.open && setOpened(true)}>
-      <summary data-testid="graph-summary" className={`${sectionTitle} cursor-pointer`}>
+    <details className={`${panel} group`} data-testid="repo-graph" onToggle={(e) => e.currentTarget.open && setOpened(true)}>
+      <summary data-testid="graph-summary" className={`${sectionTitle} cursor-pointer gap-2`}>
+        <span data-testid="graph-chevron" className="grid flex-none place-items-center text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
         <h2 data-testid="graph-heading" className={sectionHeading}>Grafo do código</h2>
+        <span data-testid="graph-hint" className="hint">Ver, construir e atualizar o grafo</span>
       </summary>
       {opened && <GraphBody projectId={projectId} />}
     </details>
