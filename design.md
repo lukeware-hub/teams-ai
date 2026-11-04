@@ -1542,3 +1542,11 @@ Jev findings are advisory. Its document consistency checks must be recorded in t
 A stage review (§26.5) scores only its own document, and it scores nothing until the owner has answered the confidentiality question. A stage review that fails records its reason and changes nothing.
 
 **Decision on availability.** A full round needs the Jev when the project is not confidential. When the Jev does not answer, the round fails with `Jev indisponível: confira a chave do OpenRouter.` before any agent runs (`server/refine/cycle.ts:306-309`, tested in `test/refine/cycle.test.ts`), and the page says the evaluation does not continue without it. A stage review (§26.5) does not need the Jev: when the Jev does not answer, the review goes on, and the score line says the Jev did not answer.
+
+### 30.7 Backlog step cards
+
+A etapa Backlog tem quatro cartões em largura total, na ordem: `Precisa de você`, `Itens do backlog`, `Planos de implementação` e `Verificação`. O cabeçalho de cada um cabe em uma linha: tile de ícone, título com `InfoTip`, quem preenche (PO, SM ou Dev), chip de estado e chevron.
+
+Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda depende de algo, nesta ordem: o que espera o dono, backlog sem detalhe, planos não atuais, `specs.md` sem aprovação. Um cartão com pergunta aberta também abre. Os outros ficam recolhidos e o dono abre à mão.
+
+O título interno do conteúdo não se repete: a contagem de specs vai no chip do cartão do backlog. Abaixo de 720 px os cartões continuam empilhados, sem mudar de ordem.

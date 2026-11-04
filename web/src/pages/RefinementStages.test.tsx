@@ -72,6 +72,27 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Não preparados');
   });
 
+  it('opens only the card that still needs something, and rings it', () => {
+    renderView(wizard({}), handlersWithSpeckit());
+    const open = ['needs', 'backlog', 'plans', 'checks'].filter((id) => (screen.getByTestId(`step-card-${id}`) as HTMLDetailsElement).open);
+    expect(open).toEqual(['needs']);
+    expect(screen.getByTestId('step-card-needs').getAttribute('data-focus')).toBe('true');
+    expect(screen.getByTestId('step-card-backlog').getAttribute('data-focus')).toBeNull();
+  });
+
+  it('moves the focus to the plans once nothing waits for the owner', () => {
+    renderView(wizard({ status: 'ready', checklist: [] as never }), handlersWithSpeckit());
+    const focused = ['needs', 'backlog', 'plans', 'checks'].filter((id) => screen.getByTestId(`step-card-${id}`).getAttribute('data-focus') === 'true');
+    expect(focused.length).toBe(1);
+  });
+
+  it('puts the spec count in the backlog card chip and repeats no title inside it', () => {
+    renderView(wizard({}), handlersWithSpeckit());
+    expect(screen.getByTestId('step-card-chip-backlog').textContent).toContain('1 spec');
+    expect(screen.queryByTestId('backlog-on-title')).toBeNull();
+    expect(screen.queryByTestId('refinement-final-pending-title')).toBeNull();
+  });
+
   it('says the plans are current once they are prepared', () => {
     renderView(wizard({ speckit: speckit() as never }), handlersWithSpeckit());
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Atuais');
@@ -512,13 +533,13 @@ describe('the button that lets the team resolve everything', () => {
     expect(h.onResolveAll).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the spinner from the click, and the yellow list sits at the top of the step in the notice pattern', () => {
+  it('shows the spinner from the click, and the yellow list sits at the top of the step in the notice pattern', async () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
     const missing = screen.getByTestId('start-missing');
     expect(missing.className).toContain('bg-warn-soft');
     expect(screen.getByTestId('refinement-backlog-heading').nextElementSibling).toBe(screen.getByTestId('step-card-needs'));
-    expect(screen.getByTestId('step-card-needs').querySelector('header')?.nextElementSibling).toBe(missing);
+    expect(screen.getByTestId('step-card-needs').querySelector('summary + div')?.firstElementChild).toBe(missing);
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
     const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;

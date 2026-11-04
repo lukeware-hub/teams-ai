@@ -9,6 +9,12 @@ const item = (key: string, over: Partial<BacklogView['items'][number]> = {}) => 
 const view = (items: BacklogView['items'], epics = [{ key: 'core', title: 'Núcleo' }, { key: 'fin', title: 'Financeiro' }]): BacklogView => ({ enabled: true, project: null, epics, items, cycle: 1 });
 
 describe('BacklogPanel', () => {
+  it('leaves its own title out when the card around it already has one', () => {
+    render(<BacklogPanel backlog={view([item('a')])} evaluating={false} locked={false} hideTitle />);
+    expect(screen.queryByTestId('backlog-on-title')).toBeNull();
+    expect(screen.getByTestId('item-a')).toBeTruthy();
+  });
+
   it('groups the items under their repositories when some item names one, each row keeping its epic', () => {
     const items = [item('cart', { repository: 'shop-api' }), item('pay', { epic: 'fin', repository: 'shop-api', rank: 2 }), item('catalog', { repository: 'shop-web', rank: 3 })];
     render(<BacklogPanel backlog={view(items)} evaluating={false} locked={false} />);

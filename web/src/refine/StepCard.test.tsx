@@ -11,10 +11,17 @@ describe('StepCard', () => {
     expect(screen.getByText('conteúdo')).toBeTruthy();
   });
 
-  it('explains itself with a help tip named after the card', () => {
+  it('explains itself with a help tip', () => {
     render(<StepCard id="backlog" icon="list" title="Backlog" info="As specs por épico."><span /></StepCard>);
     expect(screen.getByTestId('info-tip-button').getAttribute('aria-label')).toBe('As specs por épico.');
-    expect(screen.getByTestId('step-card-backlog').getAttribute('aria-labelledby')).toBe('step-card-title-backlog');
+  });
+
+  it('starts closed unless told to open, and marks the card in focus', () => {
+    render(<><StepCard id="a" icon="file" title="A" info="i"><span /></StepCard><StepCard id="b" icon="file" title="B" info="i" open focus><span /></StepCard></>);
+    expect((screen.getByTestId('step-card-a') as HTMLDetailsElement).open).toBe(false);
+    expect((screen.getByTestId('step-card-b') as HTMLDetailsElement).open).toBe(true);
+    expect(screen.getByTestId('step-card-a').getAttribute('data-focus')).toBeNull();
+    expect(screen.getByTestId('step-card-b').getAttribute('data-focus')).toBe('true');
   });
 
   it('leaves out the owner line and the chip when none is given', () => {

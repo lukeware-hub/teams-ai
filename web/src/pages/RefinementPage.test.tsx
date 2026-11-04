@@ -113,11 +113,9 @@ describe('RefinementPage of a new project', () => {
       renderPage();
       await screen.findByTestId('processing-banner');
       const before = spy.mock.calls.length;
-      // The timer is armed by an effect that may run a moment after the banner: advance until it fires.
-      await waitFor(async () => {
-        await act(async () => { vi.advanceTimersByTime(5_100); });
-        expect(spy.mock.calls.length).toBeGreaterThan(before);
-      }, { timeout: 4_000 });
+      // The timer is armed by an effect that may run a moment after the banner: advance a few times, at most, until it fires.
+      for (let tries = 0; tries < 4 && spy.mock.calls.length <= before; tries++) await act(async () => { vi.advanceTimersByTime(5_100); });
+      expect(spy.mock.calls.length).toBeGreaterThan(before);
     } finally {
       vi.useRealTimers();
     }

@@ -461,7 +461,7 @@ export function RefinementView(p: ViewProps) {
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
   const backlogBlock = (note: ReactNode) => (
     <>
-      <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} />
+      <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} hideTitle />
       {st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} /> : note}
     </>
   );
@@ -1254,7 +1254,7 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      <StepCard id="needs" icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
+      <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
         {startMissing.length > 0 && <p data-testid="start-missing" role="status" className={notice}><b>Falta para iniciar o desenvolvimento:</b> {startMissing.join(' ')}</p>}
         {pendingSummary}
         {!locked && unfiledQuestions(st).length > 0 && (
@@ -1264,16 +1264,16 @@ export function RefinementView(p: ViewProps) {
           </div>
         )}
       </StepCard>
-      <StepCard id="backlog" icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail ? { label: 'Detalhado', tone: 'ok' } : { label: 'Em preparo' }}>
+      <StepCard id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} specs · em preparo` : 'Em preparo' }}>
         {backlogBlock(startLine)}
       </StepCard>
-      <StepCard id="plans" icon="clipboard" tone="violet" title="Planos de implementação" info="Um agente escreve o plano de cada item do backlog, com os testes primeiro. O desenvolvimento só começa com todos os planos atuais." owner="Preparados pelo Dev" chip={speckitRunning ? { label: 'Preparando' } : speckitReady ? { label: 'Atuais', tone: 'ok' } : speckit?.stale ? { label: 'Desatualizados', tone: 'warn' } : { label: 'Não preparados' }}>
+      <StepCard id="plans" open={focusCard === 'plans' || speckitAsked.length > 0} focus={focusCard === 'plans'} icon="clipboard" tone="violet" title="Planos de implementação" info="Um agente escreve o plano de cada item do backlog, com os testes primeiro. O desenvolvimento só começa com todos os planos atuais." owner="Preparados pelo Dev" chip={speckitRunning ? { label: 'Preparando' } : speckitReady ? { label: 'Atuais', tone: 'ok' } : speckit?.stale ? { label: 'Desatualizados', tone: 'warn' } : { label: 'Não preparados' }}>
         {backlogOn && speckitStatus}
         {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
         {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
         {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       </StepCard>
-      <StepCard id="checks" icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : { label: 'Pendente' }}>
+      <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : { label: 'Pendente' }}>
         {verificationDetails}
       </StepCard>
     </div>
@@ -1321,14 +1321,11 @@ export function RefinementView(p: ViewProps) {
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
-            <div data-testid="refinement-final-pending-heading" className="flex flex-wrap items-center justify-between gap-3">
-              <h3 data-testid="refinement-final-pending-title" className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
-              {byDoc.length > 0 && (
-                <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
-                  {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
-                </button>
-              )}
-            </div>
+            {byDoc.length > 0 && (
+              <button type="button" className="secondary h-10 justify-self-start px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
+                {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
+              </button>
+            )}
             {pendingOpen && byDoc.map(({ file, count }) => (
               <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
                 {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
@@ -1342,6 +1339,8 @@ export function RefinementView(p: ViewProps) {
   const startLine = null;
   // What waits for the owner in the first card of the backlog step.
   const openOwner = unfiled.length + pendingTotal;
+  // The one card the owner should look at now: what waits for them, else the first part of the step still unfinished.
+  const focusCard = openOwner > 0 || startMissing.length > 0 ? 'needs' : !st.backlog?.detail ? 'backlog' : !speckitReady ? 'plans' : snap.specsApproved !== true ? 'checks' : 'needs';
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
