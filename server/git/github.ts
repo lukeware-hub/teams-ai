@@ -42,11 +42,33 @@ export async function viewerLogin(cwd: string, exec: Exec): Promise<string | nul
   }
 }
 
+const TRANSIENT = /fatal error|HTTP 5\d\d|timed out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|rate limit|HTTP 429|Something went wrong/i;
+const ATTEMPTS = 4;
+const BACKOFF_MS = 2000;
+const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Idempotent repository bootstrap (spec §7.4). A half-finished `gh repo create --push` (remote
  * created, origin missing or main never pushed) is reconciled instead of reported as "exists".
+ * A momentary GitHub failure is retried from the repository lookup, so a repository the failed call left behind is reconciled.
  */
 export async function ensureRepo(
+  input: { owner?: string; name: string; private: boolean; cwd: string },
+  exec: Exec,
+  sleep: (ms: number) => Promise<void> = sleepMs,
+): Promise<{ fullName: string; url: string; created: boolean }> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await ensureRepoOnce(input, exec);
+    } catch (err) {
+      if (!(err instanceof GitHubError) || !TRANSIENT.test(err.message)) throw err;
+      if (attempt === ATTEMPTS) throw new GitHubError(`${err.message}\nAttempts: ${ATTEMPTS} of ${ATTEMPTS}.`);
+      await sleep(BACKOFF_MS * 2 ** (attempt - 1));
+    }
+  }
+}
+
+async function ensureRepoOnce(
   input: { owner?: string; name: string; private: boolean; cwd: string },
   exec: Exec,
 ): Promise<{ fullName: string; url: string; created: boolean }> {

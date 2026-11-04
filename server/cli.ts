@@ -58,7 +58,7 @@ import { readOwnerDecisions } from './orchestrator/owner-decisions.js';
 import { ensureAgentPlugins } from './skills/plugins.js';
 import { clearPrivateSkills, ensurePinnedSkills } from './skills/store.js';
 import { docsSnapshotDir, isDocsRepo, readClosingRecord, readDocsMarker, readState, type DocsMarker } from './docs/project-state.js';
-import type { DocsRun } from './docs/layout.js';
+import { repoPath, type DocsRun } from './docs/layout.js';
 
 export interface CliIo {
   argv: string[];
@@ -290,6 +290,13 @@ export async function docsRunOf(ws: Workspace, projectDir: string, marker: DocsM
   return (await fs.access(snapshot).then(() => true, () => false)) ? { style: marker.style, snapshot } : undefined;
 }
 
+/** The plan and the task list of a spec: in the snapshot's repository layout for a documentation repository, else the ones the draft holds. */
+export async function planFilesFor(projectDir: string, specId: string, spec: Pick<Spec, 'repository'>, docs?: DocsRun): Promise<{ planFile: string | undefined; taskFile: string | undefined }> {
+  if (!docs) return { planFile: await planFileFor(projectDir, specId), taskFile: await taskFileFor(projectDir, specId) };
+  const service = docs.style === 'microservices' ? spec.repository : undefined;
+  return { planFile: repoPath(docs.style, 'plan', specId, service), taskFile: repoPath(docs.style, 'task', specId, service) };
+}
+
 async function readJson<T>(file: string, parse: (v: unknown) => T): Promise<T> {
   return parse(JSON.parse(await fs.readFile(file, 'utf8')));
 }
@@ -368,10 +375,10 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   }
   const bootstrap = draft ? { docsDir: path.join(projectDir, 'docs'), owner: project.github.owner ?? cfg.github.owner } : undefined;
   const target = new DockerLocalTarget({ exec, get: httpGet, secrets, generated: datastoreCredentialsOf(secrets, cfg.environment.generatedSecrets), serviceHost: cfg.docker.serviceHost, publishBind: cfg.docker.publishBind });
-  const planFile = await planFileFor(projectDir, specId);
-  const taskFile = await taskFileFor(projectDir, specId);
   const marker = await readDocsMarker(ws);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs: await docsRunOf(ws, projectDir, marker) };
+  const docs = await docsRunOf(ws, projectDir, marker);
+  const { planFile, taskFile } = await planFilesFor(projectDir, specId, spec, docs);
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

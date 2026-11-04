@@ -62,6 +62,41 @@ describe('ensureRepo', () => {
     expect(fake.lines('gh').some((l) => l.startsWith('repo create'))).toBe(false);
   });
 
+  describe('when GitHub fails for a moment', () => {
+    const input = { owner: 'acme', name: 'todo-api', private: true, cwd };
+    const missing = () => ({ exitCode: 1, stderr: 'HTTP 404' });
+    const internal = 'remote: fatal error in commit_refs_rules';
+
+    it('tries again and reconciles the repository that the failed create left behind', async () => {
+      let views = 0;
+      const fake = new FakeExec()
+        .onArgs('gh', ['repo', 'view'], () => (++views === 1 ? missing() : { stdout: '{"nameWithOwner":"acme/todo-api","url":"https://github.com/acme/todo-api"}' }))
+        .onArgs('gh', ['repo', 'create'], () => ({ exitCode: 1, stderr: internal }))
+        .onArgs('git', ['remote', 'get-url'], () => ({ stdout: 'u.git' }))
+        .onArgs('git', ['ls-remote'], () => ({ stdout: 'abc\trefs/heads/main' }));
+      const waits: number[] = [];
+      const r = await ensureRepo(input, fake.exec, async (ms) => void waits.push(ms));
+      expect(r).toEqual({ fullName: 'acme/todo-api', url: 'https://github.com/acme/todo-api', created: false });
+      expect(waits).toEqual([2000]);
+      expect(fake.lines('gh').filter((l) => l.startsWith('repo create'))).toHaveLength(1);
+    });
+
+    it('gives up after four attempts and keeps the original error and the attempt count', async () => {
+      const fake = new FakeExec().onArgs('gh', ['repo', 'view'], missing).onArgs('gh', ['repo', 'create'], () => ({ exitCode: 1, stderr: internal }));
+      const waits: number[] = [];
+      const run = ensureRepo(input, fake.exec, async (ms) => void waits.push(ms));
+      await expect(run).rejects.toThrow(/^gh repo create failed: remote: fatal error in commit_refs_rules\nAttempts: 4 of 4\.$/);
+      expect(waits).toEqual([2000, 4000, 8000]);
+    });
+
+    it('does not retry a failure that waiting cannot fix', async () => {
+      const fake = new FakeExec().onArgs('gh', ['repo', 'view'], missing).onArgs('gh', ['repo', 'create'], () => ({ exitCode: 1, stderr: 'HTTP 403: Resource not accessible' }));
+      const waits: number[] = [];
+      await expect(ensureRepo(input, fake.exec, async (ms) => void waits.push(ms))).rejects.toThrow(/^gh repo create failed: HTTP 403/);
+      expect(waits).toEqual([]);
+    });
+  });
+
   it('uses the authenticated user when no owner is given', async () => {
     const fake = new FakeExec()
       .onArgs('gh', ['api', 'user'], () => ({ stdout: '{"login":"me"}' }))
