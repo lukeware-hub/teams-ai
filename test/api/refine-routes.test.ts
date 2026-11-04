@@ -91,4 +91,17 @@ describe('refine routes', () => {
     expect(json).toHaveBeenCalledWith(202, { ok: true });
     expect(log).toHaveBeenCalledWith('refine shop/shop-002: journal down');
   });
+
+  it('answers a request with its session and its mode: backlog for a follow-on, single for a request taken as one spec', async () => {
+    const follow = { state: { extension: { requestId: 'pedido-1' } }, snapshot: async () => ({ projectId: 'shop', specId: 'shop-pedido-1' }) };
+    const single = { state: {}, snapshot: async () => ({ projectId: 'shop', specId: 'shop-001' }) };
+    const addRequest = vi.fn().mockResolvedValueOnce(follow).mockResolvedValueOnce(single);
+    const routes = refineRoutes({ registry: { addRequest } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/projects/:projectId/requests'))!;
+    const json = vi.fn();
+    await route.handler({ params: { projectId: 'shop' }, body: async () => ({ description: 'Exportar em PDF.' }), json } as never);
+    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'backlog', specId: 'shop-pedido-1' }));
+    await route.handler({ params: { projectId: 'shop' }, body: async () => ({ description: 'Exportar.' }), json } as never);
+    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'single', specId: 'shop-001' }));
+  });
 });

@@ -15,10 +15,20 @@ describe('requestTrace', () => {
     expect(requestTrace(state)).toEqual({
       heading: 'Pedido pedido-1',
       specs: [
-        { key: 'login', specId: 'login', citesRequest: false, planned: false, tasked: false },
-        { key: 'export', specId: 'export', citesRequest: true, planned: true, tasked: true },
+        { key: 'login', specId: 'login', citesRequest: false, planned: false, tasked: false, verdict: 'pending' },
+        { key: 'export', specId: 'export', citesRequest: true, planned: true, tasked: true, verdict: 'ok' },
       ],
     });
+  });
+
+  it('gives a spec whose plan failed the verdict failed, and a spec still waiting the verdict pending', () => {
+    const state = {
+      ...emptyRefineState(),
+      extension: { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: 'x' },
+      backlog: { enabled: true, project: null, epics: [{ key: 'core', title: 'Core' }], items: [item('login', 1, []), item('export', 2, [{ doc: 'briefing.md', heading: 'Pedido pedido-1' }])], cycle: 1, keyIds: true },
+      speckit: { status: 'failed', stale: false, steps: [], failures: [{ command: 'plan', itemKey: 'export', kind: 'agent', reason: 'r', detail: 'd' }] },
+    } as never as RefineState;
+    expect(requestTrace(state)?.specs.map((s) => [s.key, s.verdict])).toEqual([['login', 'pending'], ['export', 'failed']]);
   });
 
   it('is absent for a session that is not a request', () => {
