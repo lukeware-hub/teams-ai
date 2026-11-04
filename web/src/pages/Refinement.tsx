@@ -40,7 +40,7 @@ import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
-import { readyChecks, replanRows, requestNodes, requestTrail } from '../refine/request.js';
+import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
@@ -1478,10 +1478,10 @@ export function RefinementView(p: ViewProps) {
           actions={null}
         >
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} />
-          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} />
+          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}
-          <ReadyBar checks={readyChecks(st, snap.specsApproved === true)} trail={requestTrail(snap.trace, st.backlog?.items.length ?? 0)} action={developButton} />
+          <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1649,13 +1649,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const bannerStarts = scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
     <main data-testid="refinement-main" className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <Breadcrumb testId="refinement-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'refinement-breadcrumb-project' }, { label: `${specId} ${snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}`, testId: 'refinement-breadcrumb-spec' }]} />
+      <Breadcrumb testId="refinement-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'refinement-breadcrumb-project' }, { label: snap?.state.extension ? snap.state.extension.requestId : `${specId} ${snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}`, testId: 'refinement-breadcrumb-spec' }]} />
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
       {closingOpen && snap.closing && (
         <ClosingDialog projectId={projectId} specId={specId} summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
-      {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
+      {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !snap.state.extension && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}

@@ -63,8 +63,8 @@ describe('the checks of a request before it starts', () => {
 
 describe('the trail of a request', () => {
   it('counts the specs, their plans and their task lists', () => {
-    const trace = { heading: 'Pedido pedido-1', specs: [{ key: 'a', specId: 'a', citesRequest: true, planned: true, tasked: true }, { key: 'b', specId: 'b', citesRequest: true, planned: true, tasked: false }] };
-    expect(requestTrail(trace, 2)).toBe('Pedido → 2 specs → 2 planos → 1 tarefas');
-    expect(requestTrail(null, 0)).toBe('Pedido → 0 specs → 0 planos → 0 tarefas');
+    const trace = { heading: 'Pedido pedido-1', specs: [{ key: 'a', specId: 'a', citesRequest: true, planned: true, tasked: true, verdict: 'ok' as const }, { key: 'b', specId: 'b', citesRequest: true, planned: true, tasked: false, verdict: 'pending' as const }] };
+    expect(requestTrail(trace)).toBe('Pedido → 2 specs → 2 planos → 1 tarefa');
+    expect(requestTrail(null)).toBe('Pedido → 0 specs → 0 planos → 0 tarefas');
   });
 });

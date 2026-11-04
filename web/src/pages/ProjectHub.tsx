@@ -407,6 +407,7 @@ export function ProjectHubView(p: {
             >
               <label data-testid="project-hub-new-spec-description-label" className={newSpecLabel} htmlFor="new-spec-description">Descreva o que adicionar ou mudar</label>
               <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: o administrador precisa exportar o relatório mensal em PDF. Os agentes leem os documentos e as specs, medem o impacto e replanejam." />
+              <p data-testid="new-spec-helper" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Os agentes leem os documentos e as specs, medem o impacto e replanejam. Você só responde o que eles não decidirem sozinhos.</p>
               <div data-testid="project-hub-new-spec-actions" className="flex flex-wrap justify-end gap-2">
                 <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
                 <ActionButton type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>

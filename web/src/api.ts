@@ -632,7 +632,7 @@ export interface RequestImpact {
 /** The trail of a request: each spec, whether its sources cite the request section, and whether it has its plan and task list. */
 export interface RequestTrace {
   heading: string;
-  specs: Array<{ key: string; specId: string; citesRequest: boolean; planned: boolean; tasked: boolean }>;
+  specs: Array<{ key: string; specId: string; citesRequest: boolean; planned: boolean; tasked: boolean; verdict: 'ok' | 'failed' | 'pending' }>;
 }
 
 export interface Snapshot {

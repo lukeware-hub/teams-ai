@@ -79,19 +79,30 @@ export interface ReadyCheck {
 }
 
 /** The checks the request's "Pronto" bar shows; "Iniciar" waits for the owner whatever they say. */
-export function readyChecks(st: RefineState, specsApproved: boolean): ReadyCheck[] {
+export function readyChecks(st: RefineState, specsApproved: boolean, trace?: RequestTrace | null): ReadyCheck[] {
   const planned = st.speckit?.status === 'done' && !st.speckit.stale;
+  // The plans check counts the specs the request made that have a task list too, as "planos e tarefas N/M".
+  const made = trace?.specs.filter((s) => s.citesRequest) ?? [];
+  const tasked = made.filter((s) => s.tasked).length;
   return [
     { id: 'impacto', label: 'impacto', ok: st.impact?.impact != null && st.impact.issues.length === 0 },
     { id: 'specs', label: 'specs validadas', ok: specsApproved },
-    { id: 'planos', label: 'planos', ok: planned },
+    { id: 'planos', label: made.length > 0 ? `planos e tarefas ${tasked}/${made.length}` : 'planos', ok: planned && tasked === made.length },
     { id: 'perguntas', label: 'sem pergunta aberta', ok: !st.questions.some((q) => q.status === 'pending' && q.blocking) },
   ];
 }
 
-/** The trail the bar shows: what the request made, from its specs to their plans and their task lists. */
-export function requestTrail(trace: RequestTrace | null | undefined, specs: number): string {
-  const planned = trace?.specs.filter((s) => s.planned).length ?? 0;
-  const tasked = trace?.specs.filter((s) => s.tasked).length ?? 0;
-  return `Pedido → ${specs} specs → ${planned} planos → ${tasked} tarefas`;
+/** The trail the bar shows: the specs the request made, and how many of them have a plan and a task list. */
+export function requestTrail(trace: RequestTrace | null | undefined): string {
+  const made = trace?.specs.filter((s) => s.citesRequest) ?? [];
+  const planned = made.filter((s) => s.planned).length;
+  const tasked = made.filter((s) => s.tasked).length;
+  return `Pedido → ${made.length} ${made.length === 1 ? 'spec' : 'specs'} → ${planned} ${planned === 1 ? 'plano' : 'planos'} → ${tasked} ${tasked === 1 ? 'tarefa' : 'tarefas'}`;
+}
+
+/** The additions the team accepted on its own: the document each one changes and the section it adds to. */
+export function acceptedAdditions(patches: ReadonlyArray<{ status: string; auto?: boolean; file: string; replace: string }>): Array<{ file: string; heading: string }> {
+  return patches
+    .filter((p) => p.status === 'accepted' && p.auto === true)
+    .map((p) => ({ file: p.file, heading: p.replace.match(/^#{1,6}\s+(.+)$/m)?.[1]?.trim() ?? 'acréscimo' }));
 }
