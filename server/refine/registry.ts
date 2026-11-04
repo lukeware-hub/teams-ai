@@ -28,6 +28,7 @@ import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
+import { resolveEverything } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
@@ -294,7 +295,8 @@ export class SessionRegistry {
       const title = text.split('\n').find((line) => line.trim() !== '')!.trim().slice(0, 80);
       await session.addRequest({ requestId: draft.specId, title, text });
       await session.enableBacklog();
-      session.evaluate().catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
+      session.evaluate().then(() => resolveEverything(session)).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
       return session;
     });
   }

@@ -1,6 +1,20 @@
 import { ConflictError, type RefineSession } from './session.js';
 import { resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
+import { type PatchRow, isApproval } from './state.js';
+import { additiveOnly } from './scope-guard.js';
+
+/** The documents a request may change without the owner, and only by adding to them: stack and design stay with the owner. */
+const REQUEST_FILES: readonly string[] = ['project.md', 'flow.md', 'briefing.md'];
+
+/**
+ * Whether the team accepts a pending suggestion on its own. Any other session accepts them all, as before; a request's session takes
+ * only additions to its project's own documents, so a removal, a rewording, an adjustment's approval or a stack or design change waits.
+ */
+export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, request: boolean): boolean {
+  if (!request) return true;
+  return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
+}
 
 /** The rounds the team works through before it follows the specs.md on the owner's word. */
 const ROUNDS = 5;
@@ -35,7 +49,7 @@ export async function resolveEverything(s: RefineSession): Promise<void> {
     for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
       // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted, scope changes included.
       await tolerate(() => resolveStages(s));
-      for (const p of s.state.patches.filter((x) => x.status === 'pending')) await tolerate(() => s.accept(p.patchId));
+      for (const p of s.state.patches.filter((x) => x.status === 'pending' && autoAcceptable(x, s.state.extension !== undefined))) await tolerate(() => s.accept(p.patchId));
       // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.

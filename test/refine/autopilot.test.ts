@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
+import { autoAcceptable, resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 
 /** A session stand-in: the state the test sets, and every call the autopilot makes is recorded. */
@@ -85,5 +85,26 @@ describe('startIsClear', () => {
     expect(await startIsClear(ready as unknown as RefineSession)).toBe(true);
     expect(await startIsClear(fake({ status: 'ready' }) as unknown as RefineSession)).toBe(false);
     expect(await startIsClear(fake({ status: 'ready', plansDone: true, questions: [{ questionId: 'q', status: 'pending', blocking: true }] }) as unknown as RefineSession)).toBe(false);
+  });
+});
+
+describe('autoAcceptable: the team accepts on its own what only adds to the project documents of a request', () => {
+  const patch = (over: Record<string, string>) => ({ file: 'briefing.md', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', status: 'pending', ...over }) as never;
+
+  it('accepts every suggestion of a session that is not a request, as before', () => {
+    expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), false)).toBe(true);
+  });
+
+  it('accepts an addition to project.md, flow.md or briefing.md of a request', () => {
+    expect(autoAcceptable(patch({}), true)).toBe(true);
+    expect(autoAcceptable(patch({ file: 'flow.md' }), true)).toBe(true);
+    expect(autoAcceptable(patch({ file: 'project.md' }), true)).toBe(true);
+  });
+
+  it('leaves to the owner a rewording, a change of stack or design, and an adjustment approval', () => {
+    expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), true)).toBe(false);
+    expect(autoAcceptable(patch({ file: 'stack.md' }), true)).toBe(false);
+    expect(autoAcceptable(patch({ file: 'design.md' }), true)).toBe(false);
+    expect(autoAcceptable(patch({ find: '', replace: '## Ajuste aprovado: login-ajuste-1\n\ntexto\n' }), true)).toBe(false);
   });
 });
