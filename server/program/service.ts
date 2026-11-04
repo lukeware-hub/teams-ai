@@ -43,13 +43,15 @@ export interface ProgramDecision {
   decisionId: string;
   /** Who answered: `jev`, `local`, `claude`, or null when none did. */
   backend: string | null;
+  /** Whether any backend was asked; false when the decision was switched off. */
+  attempted: boolean;
   escalated: boolean;
   answers: Array<{ question: string; value: string | number; confidence: number | null }>;
 }
 interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
 
 const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
-  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, escalated: r.escalated,
+  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, attempted: r.attempts.length > 0, escalated: r.escalated,
   answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
 });
 
@@ -141,14 +143,15 @@ export class ProgramService {
     return row?.status === 'interrupted' || row?.status === 'unknown' ? runId : null;
   }
 
-  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many asked nobody answered. */
+  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many were asked and nobody answered (a decision switched off is not counted). */
   async decisions(projectId: string, draftId: string, limit = 100): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     const program = await this.read(projectId, draftId);
     if (program === null) return { decisions: [], unanswered: 0 };
     const runs = runsDirOf(await this.index());
     const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
     const answered = all.filter((d) => d.backend !== null);
-    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered: all.length - answered.length };
+    const unanswered = all.filter((d) => d.backend === null && d.attempted).length;
+    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered };
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */

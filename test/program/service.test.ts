@@ -328,9 +328,11 @@ describe('program service view', () => {
 
   it('lists the decisions of the runs, the newest first, with what each question came to', async () => {
     await write([item('a', 'running', 'a-r1'), item('b', 'running', 'b-r1')]);
-    const decision = (decisionId: string, at: string, answers: unknown, backend: string | null = 'jev') => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend, model: 'm', escalated: false, answers, attempts: [], usage: {}, at } } });
+    const decision = (decisionId: string, at: string, answers: unknown, backend: string | null = 'jev', attempts: unknown[] = []) => ({ type: 'DECISION_MADE', data: { record: { decisionId, backend, model: 'm', escalated: false, answers, attempts, usage: {}, at } } });
+    const jevMissing = [{ backend: 'jev', outcome: 'missing-backend', confidence: null, model: null, usage: null, message: null }];
     await journal('a-r1', [started('d-a'), decision('model-tier', '2026-10-13T10:00:00.000Z', { tier: { type: 'choice', value: 'large', probabilities: {}, confidence: 0.9 } })]);
-    await journal('b-r1', [started('d-b'), decision('pr-risk', '2026-10-13T11:00:00.000Z', null), decision('scope-drift', '2026-10-13T11:30:00.000Z', null, null), decision('failure-cause', '2026-10-13T09:00:00.000Z', { cause: { type: 'noul', value: 0.7, probabilities: { yes: 0.7, no: 0.3 }, confidence: 0.7 } })]);
+    // scope-drift is switched off (no attempts): not a problem; gate-triage was asked and nobody answered: counted.
+    await journal('b-r1', [started('d-b'), decision('pr-risk', '2026-10-13T11:00:00.000Z', null), decision('scope-drift', '2026-10-13T11:30:00.000Z', null, null), decision('gate-triage', '2026-10-13T12:00:00.000Z', null, null, jevMissing), decision('failure-cause', '2026-10-13T09:00:00.000Z', { cause: { type: 'noul', value: 0.7, probabilities: { yes: 0.7, no: 0.3 }, confidence: 0.7 } })]);
     const { decisions: list, unanswered } = await service().decisions('shop', 'd');
     expect(list.map((x) => `${x.key}:${x.decisionId}`)).toEqual(['b:pr-risk', 'a:model-tier', 'b:failure-cause']);
     expect(list[1]!.answers).toEqual([{ question: 'tier', value: 'large', confidence: 0.9 }]);
