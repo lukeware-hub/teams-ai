@@ -79,12 +79,11 @@ export interface ReadyCheck {
 }
 
 /** The checks the request's "Pronto" bar shows; "Iniciar" waits for the owner whatever they say. */
-export function readyChecks(st: RefineState): ReadyCheck[] {
-  const items = st.backlog?.items ?? [];
+export function readyChecks(st: RefineState, specsApproved: boolean): ReadyCheck[] {
   const planned = st.speckit?.status === 'done' && !st.speckit.stale;
   return [
     { id: 'impacto', label: 'impacto', ok: st.impact?.impact != null && st.impact.issues.length === 0 },
-    { id: 'specs', label: 'specs validadas', ok: items.length > 0 && items.every((i) => st.backlog?.specs?.[i.key]?.spec != null) },
+    { id: 'specs', label: 'specs validadas', ok: specsApproved },
     { id: 'planos', label: 'planos', ok: planned },
     { id: 'perguntas', label: 'sem pergunta aberta', ok: !st.questions.some((q) => q.status === 'pending' && q.blocking) },
   ];

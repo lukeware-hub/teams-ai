@@ -1481,7 +1481,7 @@ export function RefinementView(p: ViewProps) {
           <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}
-          <ReadyBar checks={readyChecks(st)} trail={requestTrail(snap.trace, st.backlog?.items.length ?? 0)} action={developButton} />
+          <ReadyBar checks={readyChecks(st, snap.specsApproved === true)} trail={requestTrail(snap.trace, st.backlog?.items.length ?? 0)} action={developButton} />
         </WizardShell>
         {reevaluateDialog}
         {askDialog}

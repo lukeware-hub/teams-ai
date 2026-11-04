@@ -51,8 +51,13 @@ describe('the replan of a request', () => {
 describe('the checks of a request before it starts', () => {
   it('passes the impact, the specs, the plans and the questions when all are in place', () => {
     const ready = { ...base, status: 'ready', speckit: { status: 'done', stale: false, steps: [] }, impact: { inputHash: 'h', impact: { summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] }, issues: [] } } as unknown as RefineState;
-    expect(readyChecks(ready).every((c) => c.ok)).toBe(true);
-    expect(readyChecks(base).find((c) => c.id === 'impacto')?.ok).toBe(false);
+    expect(readyChecks(ready, true).every((c) => c.ok)).toBe(true);
+    expect(readyChecks(base, true).find((c) => c.id === 'impacto')?.ok).toBe(false);
+  });
+
+  it('keeps the specs open while specs.md is not approved, even when every item has its spec', () => {
+    const ready = { ...base, status: 'ready', speckit: { status: 'done', stale: false, steps: [] }, impact: { inputHash: 'h', impact: { summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] }, issues: [] } } as unknown as RefineState;
+    expect(readyChecks(ready, false).find((c) => c.id === 'specs')?.ok).toBe(false);
   });
 });
 
