@@ -108,6 +108,14 @@ export interface PreplanRow {
   cycle: number;
 }
 
+/** A request the owner made in a project already in development: its id is the draft id, its text the draft's brief. */
+export interface ExtensionRequest {
+  requestId: string;
+  title: string;
+  text: string;
+  at: string;
+}
+
 /** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
 export interface BacklogState {
   enabled: boolean;
@@ -201,6 +209,8 @@ export interface RefineState {
   error: string | null;
   runId: string | null;
   backlog: BacklogState | null;
+  /** The owner's request this draft follows up, when it was made in a project already in development. */
+  extension?: ExtensionRequest;
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** The backlog key a continued spec came from, which names its plan file; absent when it came from no backlog. */
@@ -674,6 +684,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
       // An accepted suggestion or an architecture decision keeps the document in the graph: its processing still counts after it.
       if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
+      break;
+    case RefineEvent.RequestReceived:
+      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at) };
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.

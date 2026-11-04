@@ -184,7 +184,7 @@ export class DocsSync {
   private async retireNow(): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
-    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
+    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft), await draftBases(draft));
     if (flushed.sha !== null) await this.push(store);
   }
 

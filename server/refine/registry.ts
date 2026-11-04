@@ -66,6 +66,8 @@ export interface DraftRow {
   specId: string;
   state: RefineStatus;
   registered: boolean;
+  /** Made by a request in a project already in development. */
+  extension?: boolean;
 }
 
 const slug = (v: string, what: string) => {
@@ -73,6 +75,12 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+/** Runs `task` once the last one queued under `key` is done: two requests of one project never race to make a draft. */
+function serialized<T>(queue: Map<string, Promise<unknown>>, key: string, task: () => Promise<T>): Promise<T> {
+  const run = (queue.get(key) ?? Promise.resolve()).then(task);
+  queue.set(key, run.catch(() => undefined));
+  return run;
+}
 /** A spec of a documentation repository takes an alias, which also names its folder; the refusal is in plain words. */
 const aliasOrConflict = (specId: string, fromProjectName = false): void => {
   try {
@@ -103,6 +111,8 @@ const inProject =
 /** Spec (refinement) §5: one live session per spec, opened from disk on demand. */
 export class SessionRegistry {
   private readonly sessions = new Map<string, Promise<RefineSession>>();
+  /** The last request of each project: a request starts only after the one before it made its draft. */
+  private readonly requests = new Map<string, Promise<unknown>>();
 
   private readonly programs: ProgramService;
 
@@ -255,6 +265,45 @@ export class SessionRegistry {
     await this.assertAliasFree(ws, specId);
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description }, await this.mainOf(ws));
     return this.session(draft, ws, 'new-spec');
+  }
+
+  /**
+   * The owner's request in a project already in development: its draft is a follow-on backlog whose brief is the text, and its
+   * evaluation turns the text into specs. A project whose main has no backlog takes one spec instead. One open request at a time.
+   */
+  async addRequest(projectId: string, description: string): Promise<RefineSession> {
+    slug(projectId, 'projectId');
+    const text = cleanDescription(description);
+    if (text === '') throw new RangeError('description is required');
+    return serialized(this.requests, projectId, async () => {
+      const open = (await this.list()).find((row) => row.projectId === projectId && row.extension === true && row.state !== 'started');
+      if (open) throw new ConflictError(`o pedido ${open.specId} ainda não foi iniciado: inicie-o antes de fazer outro`);
+      const ws = await this.ws(projectId);
+      await this.assertMirrorProject(ws);
+      const main = await this.mainOf(ws);
+      // A main without a backlog index (never broken into specs) takes the request as one spec.
+      if ((await main.text('docs/specs.json').catch(() => null)) === null) {
+        const { id } = await this.suggestName('spec', { projectId, name: '', description: text });
+        return this.newSpec(projectId, id, text);
+      }
+      const draft = draftPaths(ws, await this.nextRequestId(ws));
+      await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' }, main);
+      // The text is the spec's brief: enabling the backlog moves it under its own "Nova demanda" heading in the project briefing.
+      await fs.writeFile(draft.briefMd, `${text}\n`);
+      const session = await this.session(draft, ws, 'backlog');
+      const title = text.split('\n').find((line) => line.trim() !== '')!.trim().slice(0, 80);
+      await session.addRequest({ requestId: draft.specId, title, text });
+      await session.enableBacklog();
+      session.evaluate().catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      return session;
+    });
+  }
+
+  /** The draft id of a project's next request: `<project>-pedido-<n>`, one more than the requests it already made. */
+  private async nextRequestId(ws: Workspace): Promise<string> {
+    const drafts = await fs.readdir(path.posix.join(ws.root, 'refine')).catch(() => [] as string[]);
+    const numbers = drafts.flatMap((name) => { const m = new RegExp(`^${ws.projectId}-pedido-(\\d+)$`).exec(name); return m ? [Number(m[1])] : []; });
+    return slug(`${ws.projectId}-pedido-${Math.max(0, ...numbers) + 1}`, 'draftId');
   }
 
   async continueSpec(projectId: string, specId: string, report?: string): Promise<RefineSession> {
@@ -507,7 +556,8 @@ export class SessionRegistry {
         const live = this.sessions.get(`${projectId}/${specId}`);
         const events = live ? (await live).events : await loadEvents(path.posix.join(refine, specId, 'events.ndjson')).then((es) => es.map(currentEvent)).catch(() => null);
         if (!events) continue;
-        out.push({ projectId, specId, state: reduceRefineEvents(events).status, registered: (await this.deps.projectDir(projectId)) !== null });
+        const state = reduceRefineEvents(events);
+        out.push({ projectId, specId, state: state.status, registered: (await this.deps.projectDir(projectId)) !== null, ...(state.extension !== undefined ? { extension: true } : {}) });
       }
     }
     return out;

@@ -52,6 +52,8 @@ export const RefineEvent = {
   QuestionReasked: 'QUESTION_REASKED',
   SecretWritten: 'SECRET_WRITTEN',
   StartedRun: 'REFINE_STARTED_RUN',
+  /** A request in a project already in development: `{requestId, title, text, at}`; its text is the draft's brief. */
+  RequestReceived: 'REFINE_REQUEST_RECEIVED',
   /** Backlog mode: the human asked the agents to break the docs into a prioritized backlog of specs. */
   BacklogEnabled: 'BACKLOG_ENABLED',
   BacklogDerived: 'BACKLOG_DERIVED',

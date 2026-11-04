@@ -144,6 +144,12 @@ describe('backlog events', () => {
   it('leaves a journal without backlog events with no backlog', () => {
     expect(reduceRefineEvents(cycle(1)).backlog).toBeNull();
   });
+  it('a request made in a project already in development marks its draft as the request, with its text and title', () => {
+    const at = '2026-11-04T10:00:00.000Z';
+    const request = { requestId: 'shop-pedido-1', title: 'Exportar relatório', text: 'Exportar o relatório mensal em PDF.', at };
+    expect(reduceRefineEvents([{ type: RefineEvent.RequestReceived, data: request }]).extension).toEqual(request);
+    expect(reduceRefineEvents([]).extension).toBeUndefined();
+  });
   it('enabling is idempotent and only makes an already evaluated session stale', () => {
     const fresh = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(fresh.backlog).toMatchObject({ enabled: true, items: [], project: null });

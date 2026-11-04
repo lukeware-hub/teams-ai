@@ -983,12 +983,19 @@ export class RefineSession {
     if (await this.isArchitectureStale()) await this.redecideArchitecture();
     const why = await this.architectureProblem();
     if (why) throw new ConflictError(why);
-    if (bindRepo && this.state.docsRepo === true) await this.bindDocsRepo();
+    // A follow-on of a bound documentation repository keeps its binding: only a first backlog binds it.
+    if (bindRepo && this.state.docsRepo === true && !(await readDocsMarker(this.deps.ws))?.firstSha) await this.bindDocsRepo();
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), ...(await this.idSchemeOfMain()) });
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await moveBriefingToProject(this.deps.draft);
+  }
+
+  /** A request made in a project already in development: journaled with its title and text; the brief holds the text. */
+  async addRequest(request: { requestId: string; title: string; text: string }): Promise<void> {
+    this.guard();
+    await this.journal.fact(RefineEvent.RequestReceived, { ...request, at: new Date().toISOString() });
   }
 
   /** The id scheme main's specs index holds, so this backlog keeps the ids main already gave; a project without one takes the readable ids. */
