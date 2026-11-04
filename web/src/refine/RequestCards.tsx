@@ -14,11 +14,11 @@ export function RequestCard({ text, heading, interpreted }: { text: string; head
   );
 }
 
-/** One count of the impact card; opening it lists what the count stands for. */
-function CountGroup({ label, items }: { label: string; items: string[] }) {
+/** One count of the impact card, in the singular or the plural its number needs; opening it lists what the count stands for. */
+function CountGroup({ id, one, many, items }: { id: string; one: string; many: string; items: string[] }) {
   return (
-    <details data-testid={`impact-group-${label}`} className="min-w-0">
-      <summary className="count-pill cursor-pointer select-none">{items.length} {label}</summary>
+    <details data-testid={`impact-group-${id}`} className="min-w-0">
+      <summary className="count-pill cursor-pointer select-none">{items.length} {items.length === 1 ? one : many}</summary>
       {items.length > 0 && <ul className="m-0 mt-2 grid list-none gap-1 p-0 text-[0.8125rem] text-ink-soft">{items.map((item) => <li key={item}>{item}</li>)}</ul>}
     </details>
   );
@@ -33,10 +33,10 @@ export function ImpactCard({ impact, issues, addedKeys }: { impact: RequestImpac
     <div className="grid gap-3">
       <p className="m-0 text-[0.9375rem] leading-[1.55] text-ink">{impact.summary}</p>
       <div data-testid="impact-counts" className="flex flex-wrap gap-2">
-        <CountGroup label="novas" items={addedKeys} />
-        <CountGroup label="afetadas" items={impact.affected.filter((a) => a.kind === 'spec').map((a) => `${a.ref}: ${a.effect} (${a.action})`)} />
-        <CountGroup label="documentos" items={impact.affected.filter((a) => a.kind === 'doc').map((a) => `${a.ref}: ${a.effect}`)} />
-        <CountGroup label="riscos" items={impact.risks.map((r) => `${r.severity}: ${r.text}. ${r.mitigation}`)} />
+        <CountGroup id="novas" one="nova" many="novas" items={addedKeys} />
+        <CountGroup id="afetadas" one="afetada" many="afetadas" items={impact.affected.filter((a) => a.kind === 'spec').map((a) => `${a.ref}: ${a.effect} (${a.action})`)} />
+        <CountGroup id="documentos" one="documento" many="documentos" items={impact.affected.filter((a) => a.kind === 'doc').map((a) => `${a.ref}: ${a.effect}`)} />
+        <CountGroup id="riscos" one="risco" many="riscos" items={impact.risks.map((r) => `${r.severity}: ${r.text}. ${r.mitigation}`)} />
       </div>
       {impact.conflicts.length > 0 && <ul className="m-0 grid list-none gap-1 p-0 text-[0.8125rem] text-ink-soft">{impact.conflicts.map((c) => <li key={`${c.a}-${c.b}`}>{c.a} ↔ {c.b}: {c.reason}. {c.resolution}</li>)}</ul>}
       {impact.duplicates.length > 0 && <ul className="m-0 grid list-none gap-1 p-0 text-[0.8125rem] text-ink-soft">{impact.duplicates.map((d) => <li key={d.newKey}>{d.newKey} repete {d.existing}: {d.verdict === 'reuse' ? 'aproveita a existente' : 'é distinta'}. {d.reason}</li>)}</ul>}
@@ -53,7 +53,7 @@ export function ImpactCard({ impact, issues, addedKeys }: { impact: RequestImpac
 export function ReplanCard({ rows }: { rows: ReplanRow[] }) {
   const changed = rows.filter((r) => r.change !== 'mantida' && r.change !== 'sem mudança').length;
   return (
-    <StepCard id="replan" icon="list" tone="accent" title="Replanejamento" info="O backlog depois do pedido: o que é novo, o que sobe ou desce e o que já começou, que fica como está." owner="Montado pelo PO" chip={{ label: `${changed} mudaram` }} open>
+    <StepCard id="replan" icon="list" tone="accent" title="Replanejamento" info="O backlog depois do pedido: o que é novo, o que sobe ou desce e o que já começou, que fica como está." owner="Montado pelo PO" chip={{ label: `${changed} ${changed === 1 ? 'mudou' : 'mudaram'}` }} open>
       <ol data-testid="replan-rows" className="m-0 grid list-none gap-2 p-0">
         {rows.map((r) => (
           <li key={r.key} data-testid={`replan-row-${r.key}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line pb-2 text-[0.875rem]">

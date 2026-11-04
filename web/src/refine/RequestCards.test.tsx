@@ -13,8 +13,8 @@ describe('the cards of a request', () => {
     const { rerender } = render(<ImpactCard impact={null} issues={['o impacto cita a spec x']} addedKeys={[]} />);
     expect(screen.getByTestId('impact-issues').textContent).toContain('o impacto cita a spec x');
     rerender(<ImpactCard impact={{ summary: 'Acrescenta a exportação.', affected: [{ kind: 'spec', ref: 'login', effect: 'ajuste', action: 'adjust' }], conflicts: [], duplicates: [], dependencies: [], risks: [] }} issues={[]} addedKeys={['export']} />);
-    expect(screen.getByTestId('impact-group-novas').textContent).toContain('1 novas');
-    expect(screen.getByTestId('impact-group-afetadas').textContent).toContain('1 afetadas');
+    expect(screen.getByText('1 nova')).toBeTruthy();
+    expect(screen.getByText('1 afetada')).toBeTruthy();
   });
 
   it('lists each spec with what changed for it, and the rows that stay as they were', () => {
