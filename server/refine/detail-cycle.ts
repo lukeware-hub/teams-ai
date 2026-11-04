@@ -352,14 +352,15 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     const request = journal.state.extension;
     const outline = items.map((i) => ({ key: i.key, title: i.title, rank: i.rank, dependsOn: [...i.dependsOn], started: kept.has(i.key), modules: (preplans[i.key]?.preplan?.modules ?? []).map((m) => m.name) }));
     const inputHash = sha256(canonicalJson({ request: request.text, outline }));
-    if (journal.state.impact?.inputHash !== inputHash) {
-      const scope = { known: new Set(items.map((i) => i.key)), kept };
+    // An impact that broke a rule (no usable impact) is measured again on the next run, not kept for an unchanged outline.
+    if (journal.state.impact?.inputHash !== inputHash || journal.state.impact?.impact === null) {
+      const scope = { known: new Set(items.map((i) => i.key)), kept, requestId: request.requestId };
       let issues: string[] = [];
       let impact: Impact | null = null;
       for (let attempt = 1; attempt <= 2 && impact === null; attempt++) {
         const out = await call(() => deps.runAgent<'impact'>({
           kind: 'impact', role: 'sm', cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle,
-          pack: fitPackBudget(impactPack({ specHash: hash, principles: deps.principles(), request: request.text, heading: requestHeading(request.requestId), docs, items: outline, issues })),
+          pack: fitPackBudget(impactPack({ specHash: hash, principles: deps.principles(), request: request.text, requestId: request.requestId, heading: requestHeading(request.requestId), docs, items: outline, issues })),
         }, ctx) as Promise<StepOutcome<ImpactOutput>>);
         const haltImpact = haltedResult();
         if (haltImpact) return haltImpact;

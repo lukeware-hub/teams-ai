@@ -3,6 +3,7 @@ import { Impact, type Impact as ImpactType } from '../../server/contracts/impact
 import { impactPack, validateImpact } from '../../server/refine/impact.js';
 
 const IMPACT: ImpactType = {
+  requestId: 'pedido-1',
   summary: 'O pedido acrescenta a exportação; o login não muda.',
   affected: [{ kind: 'spec', ref: 'export', effect: 'nova spec', action: 'none' }],
   conflicts: [],

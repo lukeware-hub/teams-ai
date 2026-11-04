@@ -6,6 +6,8 @@ const key = z.string().regex(ID_PATTERNS.SLUG);
 
 /** What a request does to the project that exists: what it touches, what it conflicts with, what it repeats, and its risks. */
 export const Impact = z.object({
+  /** The request the impact belongs to: an impact of another request is refused. */
+  requestId: key,
   summary: text(600),
   affected: z.array(z.object({ kind: z.enum(['spec', 'doc', 'architecture', 'decision']), ref: text(200), effect: text(300), action: z.enum(['adjust', 'review', 'none']) })).max(100),
   conflicts: z.array(z.object({ a: key, b: key, reason: text(300), resolution: text(300) })).max(100),

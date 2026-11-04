@@ -1,4 +1,5 @@
 import type { Impact } from '../contracts/impact.js';
+import { FIVE_DOCS } from '../docs/layout.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
@@ -25,10 +26,11 @@ const IMPACT_RULES = [
 ].join('\n');
 
 /** The pack of the impact step: the request word for word, the five documents with its section whole, and the outline with what started. */
-export function impactPack(input: { specHash: string; principles: readonly string[]; request: string; heading: string; docs: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>; items: readonly ImpactItem[]; issues?: readonly string[] }): ContextPackInput {
+export function impactPack(input: { specHash: string; principles: readonly string[]; request: string; requestId: string; heading: string; docs: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>; items: readonly ImpactItem[]; issues?: readonly string[] }): ContextPackInput {
   const outline = input.items.map((i) => `- ${i.key}: ${i.title}${i.started ? ' (started)' : ''}; rank ${i.rank}; depends on ${i.dependsOn.join(', ') || 'nothing'}; modules ${i.modules.join(', ') || 'none'}`).join('\n');
   const feedback = buildWithDocs({ project: input.docs['project.md'], brief: input.docs['briefing.md'], stack: input.docs['stack.md'], flow: input.docs['flow.md'], design: input.docs['design.md'] }, (d, digested) => [
     IMPACT_RULES,
+    `The requestId of your output is "${input.requestId}", exactly.`,
     ...(input.issues?.length ? ['### Your last impact broke these rules, fix every point', input.issues.map((i) => `- ${i}`).join('\n')] : []),
     ...(digested ? [DIGEST_NOTE] : []),
     `### The request, word for word (its section of briefing.md is "${input.heading}")\n${input.request}`,
@@ -46,7 +48,7 @@ export function impactPack(input: { specHash: string; principles: readonly strin
  * The rules of an impact the agent cannot break: every reference names an item of the outline or of main, a dependency forms no
  * cycle, and no started spec is adjusted here. Returns the issues in plain words; none means the impact is usable.
  */
-export function validateImpact(impact: Impact, scope: { known: ReadonlySet<string>; kept: ReadonlySet<string> }): string[] {
+export function validateImpact(impact: Impact, scope: { known: ReadonlySet<string>; kept: ReadonlySet<string>; requestId?: string }): string[] {
   const issues: string[] = [];
   for (const a of impact.affected) {
     if (a.kind === 'spec' && !scope.known.has(a.ref)) issues.push(`o impacto cita a spec ${a.ref}, que o backlog não tem`);
@@ -62,6 +64,11 @@ export function validateImpact(impact: Impact, scope: { known: ReadonlySet<strin
   for (const d of impact.dependencies) {
     for (const k of [d.from, d.to]) if (!scope.known.has(k)) issues.push(`a dependência cita o item ${k}, que o backlog não tem`);
   }
+  for (const a of impact.affected) {
+    if (a.kind === 'doc' && !(FIVE_DOCS as readonly string[]).includes(a.ref)) issues.push(`o impacto cita o documento ${a.ref}, que não é um dos cinco documentos`);
+    if (a.kind === 'architecture' && a.ref !== 'architecture') issues.push(`o impacto cita a arquitetura como ${a.ref}; a arquitetura é uma só`);
+  }
+  if (scope.requestId !== undefined && impact.requestId !== scope.requestId) issues.push(`o impacto é do pedido ${impact.requestId}, não de ${scope.requestId}`);
   if (hasCycle(impact.dependencies)) issues.push('as dependências formam um ciclo: um item não pode depender de si mesmo, direta ou indiretamente');
   return issues;
 }

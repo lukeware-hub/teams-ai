@@ -831,7 +831,7 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
       impactCalls += 1;
       // The first answer depends on an item the backlog does not name: the rule sends it back once.
       const dependencies = impactCalls === 1 ? [{ from: 'caso', to: 'fantasma', reason: 'r' }] : [{ from: 'triagem', to: 'caso', reason: 'a triagem usa o caso' }];
-      return ok({ specHash: H, impact: { summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
     });
     await env.run(agent, 1);
     await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
@@ -840,5 +840,45 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     const impacts = env.events.filter((e) => e.type === RefineEvent.ImpactDerived);
     expect(impacts).toHaveLength(1);
     expect(impacts[0]!.data).toMatchObject({ cycle: 2, issues: [], impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
+  it('measures the impact again on the next run when the last one broke a rule', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      // Both answers of the first run name an item the backlog does not have: that impact is unusable until a later run answers well.
+      const dependencies = impactCalls <= 2 ? [{ from: 'caso', to: 'fantasma', reason: 'r' }] : [];
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    expect(impactCalls).toBe(2);
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(3);
+    expect(env.events.filter((e) => e.type === RefineEvent.ImpactDerived).at(-1)!.data).toMatchObject({ impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
+  it('asks the SM for the impact after the conflicts of the outline', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    const kinds: string[] = [];
+    const agent = fakeAgent(() => outline, (req) => {
+      kinds.push(req.kind);
+      if (req.kind !== 'impact') return undefined;
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    expect(kinds).toContain('conflicts');
+    expect(kinds.indexOf('conflicts')).toBeLessThan(kinds.indexOf('impact'));
   });
 });

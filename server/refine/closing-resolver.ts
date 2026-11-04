@@ -42,7 +42,8 @@ async function resolveOnce(s: RefineSession): Promise<void> {
 /** One round, in the order the checks depend on: patches, then the checklist, then the architecture, then the plans. */
 async function resolveRound(s: RefineSession, failing: string[]): Promise<void> {
   const accepted = await resolveStages(s);
-  if (accepted > 0 || failing.includes('questions')) await s.evaluate();
+  // A round re-evaluates when a patch was accepted, a question is open, or the request's impact is missing or stale: the heal runs the impact step again.
+  if (accepted > 0 || failing.includes('questions') || failing.includes('impact')) await s.evaluate();
   if (s.state.architecture == null || (await s.isArchitectureStale())) {
     await s.decideArchitecture();
     await s.settled();
