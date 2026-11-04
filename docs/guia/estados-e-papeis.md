@@ -27,3 +27,7 @@ Aguardando a vez, pronta para começar, sendo desenvolvida, em testes, em revis�
 - **Técnico** (Scrum Master): confere tecnologias, divide o trabalho em tarefas e acompanha a viabilidade.
 - **Desenvolvimento, Visual (front), Testes, Segurança, Infraestrutura e Ambiente**: executam, testam, revisam e publicam. Cada um só faz o seu papel, e nenhum agente mexe nas suas credenciais.
 - **Orquestrador**: não é um agente. É o programa que valida o trabalho, roda as verificações, abre os pull requests, faz a junção do código e publica. Ele só segue as specs e o backlog.
+
+## Impacto de um pedido (SM)
+
+Num pedido, o SM mede o impacto no backlog que o pedido segue: o que toca, o que conflita, o que repete, do que depende e os riscos. O impacto é conferido antes de ser mostrado; se quebrar uma regra, o SM refaz uma vez. Um item já iniciado nunca é ajustado direto pelo pedido: só por um ajuste aprovado.

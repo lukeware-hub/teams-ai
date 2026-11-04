@@ -94,3 +94,7 @@ O Jev é uma verificação extra dos documentos, feita por outro serviço. Os po
 ## Backlog
 
 Todo projeto novo tem um backlog: o briefing vira várias specs, ordenadas por prioridade. A avaliação dos documentos prontos monta esse backlog; depois dele, o programa executa as specs em ordem. Uma nova spec ou a continuação de uma spec não passam pelo backlog.
+
+## Pedido em projeto em desenvolvimento
+
+Um pedido segue o mesmo refinamento do backlog, com três diferenças. O texto vira a seção "Nova demanda (<id>)" do briefing, e o backlog mantém os ids e a arquitetura já decididos. O SM mede o impacto do pedido no backlog que ele segue. Só acréscimos aos documentos do projeto entram sem você; remoções, reescritas, stack, design e aprovações de ajuste continuam com você.
