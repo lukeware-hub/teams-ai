@@ -112,8 +112,8 @@ function EnvironmentSettings() {
   return (
     <section className={`${panel} gap-3`} aria-labelledby="env-title" data-testid="settings-env-section">
       <div className={sectionTitle} data-testid="settings-env-title-row">
-        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="env-title" data-testid="settings-env-title">Ambiente</h2>
-        <InfoTip label="Ambiente" text={HELP_ENV} />
+        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="env-title" data-testid="settings-env-title">Configuração Global do Ambiente</h2>
+        <InfoTip label="Configuração Global do Ambiente" text={HELP_ENV} />
       </div>
       <p className="m-0 text-[0.875rem] text-ink-soft" data-testid="settings-env-hint">Conexões globais deste computador. Separadas das opções de cada projeto.</p>
       {error ? <p className="error" data-testid="settings-env-error">{error}</p> : null}
@@ -137,6 +137,9 @@ function EnvironmentSettings() {
           </SettingsCollapse>
         </div>
       ) : null}
+      <SettingsCollapse title="Configura para Refinamento">
+        <PlanAgentsPanel />
+      </SettingsCollapse>
     </section>
   );
 }
@@ -275,9 +278,9 @@ function PlanAgentsPanel() {
     }
   };
   return (
-    <section className={`${panel} gap-3`} aria-labelledby="plan-agents-title" data-testid="settings-plan-section">
-      <div className={sectionTitle} data-testid="settings-plan-title-row">
-        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="plan-agents-title" data-testid="settings-plan-title">Preparação dos planos</h2>
+    <>
+      <div className={`${sectionTitle} mb-3`} data-testid="settings-plan-title-row">
+        <h3 className="m-0 flex-[0_1_auto] text-[1rem] font-semibold leading-[1.3]" data-testid="settings-plan-title">Agentes em paralelo</h3>
         <InfoTip label="Agentes em paralelo" text={HELP_PLAN_AGENTS} />
       </div>
       <form
@@ -289,7 +292,7 @@ function PlanAgentsPanel() {
         }}
       >
         <label className="grid gap-1.5" data-testid="settings-plan-field">
-          <span className="text-[0.8125rem] font-semibold text-ink-soft" data-testid="settings-plan-label">Agentes em paralelo</span>
+          <span className="text-[0.8125rem] font-semibold text-ink-soft" data-testid="settings-plan-label">Quantidade de agentes</span>
           <input className="w-full min-w-0" data-testid="settings-plan-input" type="number" min={1} max={5} step={1} value={minAgents} onChange={(e) => setMinAgents(e.target.value)} />
         </label>
         <ActionButton type="submit" className="primary-button" busy={busy} disabled={!valid || value === saved} icon={<Icon name="check" size={16} />}>
@@ -297,7 +300,7 @@ function PlanAgentsPanel() {
         </ActionButton>
       </form>
       {error ? <p className="error" data-testid="settings-plan-error">{error}</p> : null}
-    </section>
+    </>
   );
 }
 
@@ -341,15 +344,13 @@ export function SettingsPage() {
           <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft" data-testid="settings-subtitle">Ajuste o ambiente global e o modelo de cada agente por projeto.</p>
         </div>
       </header>
-      <EnvironmentSettings />
-      <PlanAgentsPanel />
       <ClaudeUsagePanel />
       {error ? <p className="error" data-testid="settings-error">{error}</p> : null}
       {projects === null && !error ? <Loading /> : null}
       {projects?.length === 0 ? (
         <section className={panel} aria-labelledby="agents-title" data-testid="settings-empty-section">
           <div className={sectionTitle} data-testid="settings-empty-title-row">
-            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title" data-testid="settings-empty-title">Projeto</h2>
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="agents-title" data-testid="settings-empty-title">Configurações por Projetos</h2>
           </div>
           <div className={emptyState} data-testid="settings-empty">
             <p data-testid="settings-empty-text">Nenhum projeto cadastrado.</p>
@@ -360,7 +361,7 @@ export function SettingsPage() {
       {projects && projects.length > 0 ? (
         <section className={`${panel} gap-3`} aria-labelledby="project-title" data-testid="settings-project-section">
           <div className={sectionTitle} data-testid="settings-project-title-row">
-            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="project-title" data-testid="settings-project-title">Projeto</h2>
+            <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="project-title" data-testid="settings-project-title">Configurações por Projetos</h2>
           </div>
           <label className="grid max-w-[24rem] gap-1.5" data-testid="settings-project-field">
             <span className="text-[0.8125rem] font-semibold text-ink-soft" data-testid="settings-project-label">Projeto</span>
@@ -394,6 +395,7 @@ export function SettingsPage() {
           </SettingsCollapse>
         </section>
       ) : null}
+      <EnvironmentSettings />
     </main>
   );
 }
