@@ -28,14 +28,15 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
   const sortKey = sort?.key ?? null;
   const direction = sort?.direction ?? 'asc';
 
-  // The search waits for a pause in typing, then goes back to the first page.
+  // The search waits for a pause in typing, then goes back to the first page only when the text changed.
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (text.trim() === query) return;
       setQueryNow(text.trim());
       setPage(1);
     }, 250);
     return () => clearTimeout(timer);
-  }, [text]);
+  }, [text, query]);
 
   useEffect(() => {
     let live = true;
