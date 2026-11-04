@@ -67,7 +67,7 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked
       {busy && repairs > 0 && <p data-testid="specs-check-repairing" className="m-0 mt-[0.6rem] text-ink-soft">Os agentes estão corrigindo o que os revisores apontaram (tentativa {repairs} de {SPECS_REPAIRS}).</p>}
       {!busy && repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected') && (
         <div data-testid="specs-check-gave-up" className="mt-[0.6rem] grid gap-2">
-          <p className="m-0 text-warn">{asked ? `Os agentes tentaram corrigir ${SPECS_REPAIRS} vezes e precisam de uma decisão sua. Responda as perguntas abaixo, ou deixe o time resolver tudo.` : `Os agentes tentaram corrigir ${SPECS_REPAIRS} vezes e não resolveram. Peça ajuda ao time: ele responde as perguntas, corrige os documentos e as specs e prepara os planos, para liberar o início do desenvolvimento.`}</p>
+          <p className="m-0 text-warn">{asked ? `Os agentes tentaram corrigir ${SPECS_REPAIRS} vezes e precisam de uma decisão sua. Responda as perguntas abaixo, ou clique em Preparar backlog.` : `Os agentes tentaram corrigir ${SPECS_REPAIRS} vezes e não resolveram. Clique em Preparar backlog: o time responde as perguntas, corrige os documentos e as specs e prepara os planos, para liberar o início do desenvolvimento.`}</p>
           <div className="flex flex-wrap gap-2">
             {onAsk && <button type="button" data-testid="specs-check-ask" className="primary h-10 px-[0.8rem]" onClick={onAsk}>Pedir ajuda ao time</button>}
             {onApprove && <button type="button" data-testid="specs-check-approve" className="secondary h-10 px-[0.8rem]" onClick={onApprove}>Seguir mesmo assim</button>}

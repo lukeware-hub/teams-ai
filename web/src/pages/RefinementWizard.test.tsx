@@ -454,8 +454,8 @@ describe('the final review', () => {
     open('?etapa=backlog');
     const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsApproved: false });
     expect(handlers.onCheckSpecs).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('specs-check-retry'));
-    expect(handlers.onCheckSpecs).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('specs-check-retry')).toBeNull();
+    expect(screen.getByTestId('prepare-backlog')).toBeTruthy();
   });
 
   it('Continuar on the summary stays open while the specs.md is not approved, and the backlog step shows what it waits for', () => {

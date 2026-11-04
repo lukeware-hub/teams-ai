@@ -12,6 +12,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     speckit: over.plansDone ? { status: 'done', stale: false, steps: [] } : undefined,
     specsMd: over.specsMd === undefined ? { hash: 'h', bytes: 1 } : over.specsMd,
     staleBy: {},
+    graphed: ['project.md', 'briefing.md'],
   };
   const s = {
     state,
@@ -23,6 +24,8 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     approveSpecsAnyway: vi.fn(async () => undefined),
     settled: vi.fn(async () => undefined),
     evaluateStage: vi.fn(async () => undefined),
+    addToGraph: vi.fn(async (file: string) => { (state.graphed as string[]).push(file); }),
+    saveDocs: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
   return s;
@@ -50,8 +53,15 @@ describe('resolveEverything', () => {
   it('follows a specs.md a reviewer still rejects after the rounds, on the owner behalf', async () => {
     const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
     await resolveEverything(s as unknown as RefineSession);
-    expect(s.startSpecs).toHaveBeenCalledTimes(3);
+    expect(s.startSpecs).toHaveBeenCalledTimes(5);
     expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+  });
+
+  it('at the end puts every missing document in the graph and saves the documents in the repositories', async () => {
+    const s = fake({ status: 'ready', plansDone: true });
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.addToGraph.mock.calls.map((c) => c[0])).toEqual(['flow.md', 'stack.md', 'design.md']);
+    expect(s.saveDocs).toHaveBeenCalledTimes(1);
   });
 
   it('goes on to the next step when the session refuses one for the moment it is in', async () => {

@@ -346,7 +346,7 @@ export function RefinementView(p: ViewProps) {
   const [busyDialog, setBusyDialog] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // The owner's button for everything: the team takes the autonomy to answer, decide, repair and prepare, after one confirmation.
-  const resolveAll = () => setAsk({ title: 'Deixar o time resolver tudo', text: 'O time vai responder as perguntas por você, aceitar as sugestões, corrigir os documentos e as specs, preparar os planos e seguir o specs.md se um revisor ainda reprovar. Você libera o início do desenvolvimento sem decidir nada. Isso usa chamadas de agente.', confirmLabel: 'Resolver tudo', tone: 'accent', icon: 'check', onConfirm: () => void p.onResolveAll?.() });
+  const resolveAll = () => setAsk({ title: 'Preparar o backlog', text: 'O time revisa os documentos (PO e SM), aceita as sugestões, responde as perguntas, gera o specs.md e os planos, corrige o que for reprovado, coloca os cinco documentos no Graphify e salva tudo nos repositórios. Só para quando o desenvolvimento puder começar. Isso usa chamadas de agente.', confirmLabel: 'Preparar backlog', tone: 'accent', icon: 'check', onConfirm: () => void p.onResolveAll?.() });
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
   const [step, setStep] = useState<WizardStep>(() => {
@@ -941,7 +941,7 @@ export function RefinementView(p: ViewProps) {
   /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} waitingOn={st.status === 'ready' ? [] : st.checklist.filter((c) => !c.passed).map((c) => c.detail || c.id)} onRetry={() => p.onCheckSpecs?.()} onAsk={resolveAll} onApprove={() => setAsk({ title: 'Seguir com o specs.md reprovado', text: 'O PO ou o SM reprovou este specs.md. Se você seguir, o desenvolvimento pode começar com os pontos que eles apontaram ainda em aberto.', confirmLabel: 'Seguir mesmo assim', tone: 'accent', icon: 'check', onConfirm: () => void p.onApproveSpecs?.() })} />}
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} />}
       {step === 'backlog' && backlogOn && <SpecsAttempts attempts={st.specsAttempts ?? []} />}
       {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
         <div data-testid="specs-questions" className="grid gap-3">
@@ -1240,7 +1240,6 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {resolveBlock}
       {pendingSummary}
       {!locked && unfiledQuestions(st).length > 0 && (
         <div data-testid="round-questions" className="grid gap-3">
@@ -1347,7 +1346,7 @@ export function RefinementView(p: ViewProps) {
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
       <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <>{startMissing.length > 0 && <p data-testid="start-missing" role="status" className="m-0 basis-full text-[0.8125rem] font-semibold leading-normal text-warn">Falta para iniciar o desenvolvimento: {startMissing.join(' ')}</p>}{startMissing.length > 0 && p.onResolveAll && <ActionButton data-testid="resolve-all" className="secondary" disabled={evaluating || serverBusy} onClick={resolveAll} icon={<Icon name="check" size={16} />}>Resolver tudo pelo time</ActionButton>}{prepareButton}{developButton}</>
+    ) : <>{startMissing.length > 0 && <p data-testid="start-missing" role="status" className="m-0 basis-full text-[0.8125rem] font-semibold leading-normal text-warn">Falta para iniciar o desenvolvimento: {startMissing.join(' ')}</p>}<ActionButton data-testid="prepare-backlog" className={startMissing.length > 0 ? 'primary' : 'secondary'} busy={serverBusy || evaluating} disabled={locked || evaluating || serverBusy || !p.onResolveAll} onClick={resolveAll} icon={<Icon name="check" size={16} />}>{serverBusy || evaluating ? 'Preparando…' : 'Preparar backlog'}</ActionButton>{developButton}</>
   ) : step === 'review' ? (
     <>
       {backlogOn || st.repositories === true ? (

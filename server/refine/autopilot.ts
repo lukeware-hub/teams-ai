@@ -1,8 +1,9 @@
 import { ConflictError, type RefineSession } from './session.js';
 import { resolveStages } from './closing-resolver.js';
+import { DOC_STAGES } from './doc-stages.js';
 
 /** The rounds the team works through before it follows the specs.md on the owner's word. */
-const ROUNDS = 3;
+const ROUNDS = 5;
 
 const resolving = new WeakSet<RefineSession>();
 
@@ -39,7 +40,7 @@ export async function resolveEverything(s: RefineSession): Promise<void> {
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
       const backlog = s.state.backlog;
-      if (backlog?.enabled && backlog.detail && s.state.status !== 'ready') await tolerate(() => s.evaluate());
+      if (backlog?.enabled && s.state.status !== 'ready') await tolerate(() => s.evaluate());
       await tolerate(() => s.startSpecs({ autonomous: true }));
       await tolerate(() => s.settled());
       if (s.state.speckit?.status !== 'done' || s.state.speckit.stale) {
@@ -49,6 +50,12 @@ export async function resolveEverything(s: RefineSession): Promise<void> {
     }
     // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision.
     if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
+    // Last: every document goes into the graph, and the documents and specs are saved in the repositories.
+    for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
+      await tolerate(() => s.addToGraph(file));
+      await tolerate(() => s.settled());
+    }
+    await tolerate(() => s.saveDocs());
   } finally {
     resolving.delete(s);
   }

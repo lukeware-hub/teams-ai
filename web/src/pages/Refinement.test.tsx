@@ -736,8 +736,7 @@ describe('the architecture step names what the documentation repository does', (
     render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing, architectureStale: true } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
     expect(screen.queryByTestId('closing-alert')).toBeNull();
     expect(h.onResolveClosing).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('final-resolve-run'));
-    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('final-resolve-run')).toBeNull();
   });
 
   it('an empty backlog is resolved by the agents only when the owner clicks, with no architecture action on the page', () => {
@@ -748,8 +747,7 @@ describe('the architecture step names what the documentation repository does', (
     render(<MemoryRouter><RefinementView snap={architectureStep({ backlog } as never, { docsRepo: true, closing } as never)} busy={false} events={[]} {...h} /></MemoryRouter>);
     expect(screen.queryByTestId('closing-architecture')).toBeNull();
     expect(h.onResolveClosing).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('final-resolve-run'));
-    expect(h.onResolveClosing).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('final-resolve-run')).toBeNull();
   });
 
   it('the architecture button asks for a decision on the click when none exists, and does not move', () => {

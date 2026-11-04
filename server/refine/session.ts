@@ -688,6 +688,11 @@ export class RefineSession {
     if (this.state.stages === true && this.state.repositories === true) await this.continueStage('design.md');
   }
 
+  /** Saves the documents and specs in the documentation repository now, when the session has one. */
+  async saveDocs(): Promise<void> {
+    await this.docs?.publish();
+  }
+
   /** The final review puts a finished document in the graph: one edited since its review is reviewed again first, and the question and suggestion gates do not apply. */
   async addToGraph(file: DocFile): Promise<void> {
     this.guard();
