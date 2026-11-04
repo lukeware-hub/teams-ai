@@ -216,15 +216,16 @@ export interface Snapshot {
  * R11.7.2: the program's entries from each item's status on main (`onMain`, by spec id). A done item starts done; a running
  * or paused one runs again from its freeze; one awaiting validation, or started on main while this draft re-derived it, refuses.
  */
-export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>): ProgramEntry[] {
+export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>, owned: ReadonlySet<string> = new Set()): ProgramEntry[] {
   const specs = buildSpecsIndex(draftId, backlog).specs;
   const idOf = new Map(specs.map((s) => [s.key, s.specId]));
   // The SM's conflict map as each entry's spec ids; no map leaves the field out, so the program runs one at a time.
   const conflictsWith = (key: string) => ({ conflictsWith: backlog.conflicts!.pairs.flatMap((p) => (p.a === key ? [p.b] : p.b === key ? [p.a] : [])).flatMap((k) => idOf.get(k) ?? []) });
   const entries = specs.map((s): ProgramEntry => {
     const status = onMain[s.specId];
-    if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
-    if (status === 'awaiting-validation') throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
+    // A spec the program that runs already owns (a request joins it) is not refused: the program keeps its state.
+    if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status) && !owned.has(s.specId)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
+    if (status === 'awaiting-validation' && !owned.has(s.specId)) throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
     return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(backlog.conflicts ? conflictsWith(s.key) : {}), ...(status === 'done' ? { done: true } : {}) };
   });
   if (entries.every((e) => e.done)) throw new ConflictError('Todas as specs deste backlog já foram entregues; não há nada para iniciar.');
@@ -1701,7 +1702,7 @@ export class RefineSession {
   }
 
   /** R11.4: checks the gate of a backlog start and hands back its items in rank order; `beginStart()` takes the starting lock first. */
-  async freezeProgram(summaryHash?: string): Promise<ProgramEntry[]> {
+  async freezeProgram(summaryHash?: string, owned?: ReadonlySet<string>): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
@@ -1723,7 +1724,7 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    const entries = programEntries(this.deps.draft.specId, backlog, onMain);
+    const entries = programEntries(this.deps.draft.specId, backlog, onMain, owned);
     // A spec main already started keeps the start tag it got then: only the specs this start begins get one.
     await this.closeDocs(entries.filter((e) => !isStarted(onMain[e.specId])).map((e) => e.specId));
     return entries;
@@ -1747,7 +1748,7 @@ export class RefineSession {
     return frozen;
   }
 
-  async markStarted(runId: string): Promise<void> {
+  async markStarted(runId: string | null): Promise<void> {
     // R11.10: a suggestion still pending stays out of the run and moves to the history with the reason.
     for (const p of this.state.patches.filter((x) => x.status === 'pending')) {
       await this.journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: 'não aplicada: a execução começou sem ela' });

@@ -335,11 +335,14 @@ export class SessionRegistry {
   private async startProgram(projectId: string, specId: string, session: RefineSession, summaryHash?: string): Promise<{ runId: string; program: Program }> {
     session.beginStart();
     try {
-      const entries = await session.freezeProgram(summaryHash);
+      // A follow-on request joins the program that runs: its specs queue in that program, which keeps what it already owns.
+      const owner = await this.runningLedger(projectId, specId);
+      const entries = await session.freezeProgram(summaryHash, owner === null ? undefined : await this.specIdsOf(projectId, owner));
       // The first task reads the graph when it starts, so it is built before the program.
       await this.deps.buildGraph?.(projectId);
-      const program = await this.programs.start(projectId, specId, entries);
-      const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
+      const program = owner === null ? await this.programs.start(projectId, specId, entries) : await this.programs.extend(projectId, owner, specId, entries);
+      const runId = program.items.find((i) => entries.some((e) => e.specId === i.specId) && i.runId !== null)?.runId ?? program.items.find((i) => i.runId !== null)?.runId ?? null;
+      if (runId === null && owner !== null) throw new HttpError(409, 'o programa em andamento ainda não tem execução para seguir: tente de novo em instantes');
       if (runId === null) {
         // Nothing was launched (docker or the login are down): drop the ledger so the next start begins clean.
         await fs.rm(programFile(draftPaths(await this.ws(projectId), specId).root), { force: true });
@@ -352,6 +355,21 @@ export class SessionRegistry {
       await session.failStart();
       throw err;
     }
+  }
+
+  /** The ledger of another start of this project whose program runs now: a follow-on request joins it. Null when none runs. */
+  private async runningLedger(projectId: string, specId: string): Promise<string | null> {
+    for (const row of await this.list()) {
+      if (row.projectId !== projectId || row.specId === specId || row.state !== 'started') continue;
+      const program = await this.programs.read(projectId, row.specId);
+      if (program?.status === 'running') return program.draftId;
+    }
+    return null;
+  }
+
+  /** The specs a running program owns, so a request joining it keeps them as they are. */
+  private async specIdsOf(projectId: string, ledger: string): Promise<Set<string>> {
+    return new Set((await this.programs.read(projectId, ledger))?.items.map((i) => i.specId) ?? []);
   }
 
   async program(projectId: string, specId: string): Promise<ProgramView | null> {
