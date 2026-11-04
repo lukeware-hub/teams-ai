@@ -45,6 +45,7 @@ import { renderSpecsMd } from './specs-md.js';
 import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
+import { idSourceOf, specIdOf } from './specs-index.js';
 import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
@@ -831,10 +832,19 @@ export class RefineSession {
     if (this.docs || this.state.docsRepo !== true || !exec) return;
     const marker = await readDocsMarker(this.deps.ws);
     if (!marker) return;
-    this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style) });
+    this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style), frozen: () => this.frozenSpecIds() });
     this.journal.onFact = (e) => this.onFact(e);
     if (atOpen) void this.docs.flush();
     else void this.docs.publish();
+  }
+
+  /** The specs of the backlog that main already started: the documentation store keeps their folders as main has them. */
+  private async frozenSpecIds(): Promise<string[]> {
+    const backlog = this.state.backlog;
+    if (!backlog) return [];
+    const ids = backlog.items.map((item) => specIdOf(idSourceOf(this.deps.draft.specId, backlog), item.key, backlog.keyIds));
+    const onMain = await Promise.all(ids.map(async (specId) => (await readMainSpec(this.deps.draft, specId))?.status));
+    return ids.filter((_, i) => isStarted(onMain[i]));
   }
 
   /** A boundary or a document change is committed at the next tick; nothing counts once the draft starts or syncs. */

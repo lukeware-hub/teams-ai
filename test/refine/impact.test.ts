@@ -39,7 +39,7 @@ describe('the impact of a request', () => {
   });
 
   it('packs the request verbatim with the outline and the started items marked', () => {
-    const pack = impactPack({
+    const pack = impactPack({ requestId: 'pedido-1',
       specHash: 'h',
       principles: [],
       request: 'Exportar o relatório em PDF.',

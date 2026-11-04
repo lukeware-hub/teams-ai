@@ -232,6 +232,9 @@ async function projectDirs(deps: IndexDeps): Promise<Map<string, Array<{ dir: st
 /** A spec whose run started (running, paused, awaiting validation or done): a copy that reached it beats one that did not. */
 const started = (s: Read['specs'][number]): boolean => ['running', 'paused:quota', 'paused:auth', 'awaiting-validation', 'done'].includes(s.status);
 
+/** How far a spec's run got: of the copies of one spec, the most advanced is the one the index shows. */
+export const progressOf = (status: string): number => ({ done: 4, 'awaiting-validation': 3, running: 2, 'paused:quota': 1, 'paused:auth': 1 } as Record<string, number>)[status] ?? 0;
+
 /**
  * One entry per spec. Its own refinement dir speaks for it; a run started from the clone moves only main past `running`, so a copy
  * already delivered beats the stale own one. Another dir's copy only replaces a copy that has not started: a follow-on backlog's
@@ -248,7 +251,7 @@ function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['spe
         out.set(s.specId, s);
         owned.add(s.specId);
       }
-    } else if (!held || (!owned.has(s.specId) && started(s) && !started(held))) out.set(s.specId, s);
+    } else if (!held || (!owned.has(s.specId) && progressOf(s.status) > progressOf(held.status))) out.set(s.specId, s);
   }
   return [...out.values()];
 }

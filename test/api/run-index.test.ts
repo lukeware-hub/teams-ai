@@ -204,7 +204,7 @@ describe('run index', () => {
     expect((await listRuns(deps(), 'hello-app')).map((r) => r.locked)).toEqual([false, false]);
   });
 
-  it('lists a project registered in several dirs once: each spec takes the status of its own refinement dir', async () => {
+  it('lists a project registered in several dirs once: each spec takes its most advanced copy', async () => {
     // A started refinement registers its own dir: the second spec's dir also carries a copy of the first spec.
     const second = path.join(home, 'refine', 'hello-002');
     await fs.cp(HELLO, second, { recursive: true });
@@ -222,7 +222,7 @@ describe('run index', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.dir).toBe(second); // the newest dir carries the latest project docs
     expect(rows[0]!.specs).toEqual([
-      { specId: 'hello-001', status: 'running', activeRunId: null },
+      { specId: 'hello-001', status: 'awaiting-validation', activeRunId: null },
       { specId: 'hello-002', status: 'awaiting-validation', activeRunId: null },
     ]);
   });
