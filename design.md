@@ -1454,6 +1454,26 @@ Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Aç�
 - **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
 - Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
 
+### 27.7 Repositório — tabela de tarefas
+
+Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por spec". Ele lista todas as tarefas do repositório, uma linha por tarefa, sem agrupar por spec.
+
+- **Linha.** Título da tarefa em negrito, com a spec e o responsável em texto de apoio abaixo; à direita, o chip de estado (§11.4) e, só para tarefa que não terminou com sucesso (bloqueada ou falhou), o botão `Detalhe`. Abaixo de 768px a linha vira uma coluna.
+- **Filtro.** Caixa de busca por título, tarefa ou spec, e um filtro de status com os estados da tela de entregas (`Entregue`, `Em desenvolvimento`, `Pendente`, `Bloqueada`, `Falhou`). Sem o filtro, o contador mostra só o total.
+- **Carregar mais.** A lista começa com 10 tarefas. O botão `Carregar mais` soma a próxima página ao fim da lista, e o texto `N de M` mostra quantas já aparecem. Quando todas aparecem, o botão some. Trocar o filtro ou a busca volta para a primeira página.
+- **Detalhe.** Abre um diálogo (§11.3) com o título da tarefa, três dados (`Tarefa`, `Spec`, `O que aconteceu`), o problema e a solução em linguagem simples, e o texto técnico do revisor dobrado em "Ver detalhe técnico". O mesmo bloco aparece na tela da run, então o texto é igual nos dois lugares. Link `Abrir run` no rodapé do diálogo.
+- **Vazio.** "Nenhuma tarefa encontrada." quando o filtro não acha nada.
+
+```
+┌ Tarefas (16) ─────────────── [busca] [Status: todos ▾] ┐
+│ Criar rota /ping                       ● Entregue      │
+│ spec-02 · Desenvolvimento                              │
+│ Validar login                          ● Falhou  [Detalhe]
+│ spec-02 · Desenvolvimento                              │
+│                  10 de 16     [ Carregar mais ]        │
+└────────────────────────────────────────────────────────┘
+```
+
 ## 28. Copy
 
 Brazilian Portuguese, sentence case, short, action-oriented. Technical detail stays inside disclosures. Controls name their action; errors name the problem **and** the recovery. System behavior is stated, not requested.

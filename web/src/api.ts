@@ -3,7 +3,7 @@ import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashb
 import type { GraphView } from '@server/api/repository-graph.js';
 export type { GraphView };
 import type { Page, PageRequest } from '@server/api/paging.js';
-export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, DashboardTaskRow, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 export type { Page, PageRequest } from '@server/api/paging.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
