@@ -134,6 +134,14 @@ describe('Phase 6 documentation gate', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.ReportReady)).toBe(false);
   });
 
+  it('feeds a schema failure back to the next attempt, so the retry knows what to fix', async () => {
+    let n = 0;
+    const r = await p6(async () => (++n === 1 ? { ok: false, failure: 'schema', errors: ['runbook: Invalid input: expected string'], summary, sandboxDisabled: false } : report(GOOD)));
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1]!.pack)).toContain('runbook: Invalid input: expected string');
+  });
+
   it('blocks when the report step itself fails', async () => {
     const r = await p6(async () => ({ ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false }));
     expect(r.ok).toBe(false);

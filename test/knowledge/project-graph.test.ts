@@ -2,12 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -169,6 +169,51 @@ describe('buildLocatedProjectGraph', () => {
     // One update for the project documents and one for the repository; the service has no clone.
     expect(fake.lines('graphify').filter((line) => line.startsWith('update'))).toHaveLength(2);
     expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true);
+  });
+});
+
+describe('buildLocatedProjectGraphOnce', () => {
+  it('builds the graph and reports it built', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const graphify = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    expect(await buildLocatedProjectGraphOnce(graphify, { ws, project: project as Project, newestSpec: undefined })).toBe(true);
+  });
+
+  it('reports false, without building again, while the same project is being built', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    const located: LocatedProject = { ws, project: project as Project, newestSpec: undefined };
+    const first = buildLocatedProjectGraphOnce(graphify, located);
+    expect(await buildLocatedProjectGraphOnce(graphify, located)).toBe(false);
+    expect(await first).toBe(true);
+  });
+
+  it('builds again once the earlier build has failed', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
+    const located: LocatedProject = { ws, project: project as Project, newestSpec: undefined };
+    await expect(buildLocatedProjectGraphOnce(failing, located)).rejects.toThrow('graphify caiu');
+    const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    expect(await buildLocatedProjectGraphOnce(working, located)).toBe(true);
+  });
+});
+
+describe('refreshProjectGraph', () => {
+  it('rebuilds the graph without the caller waiting for it', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    refreshProjectGraph(graphify, { ws, project: project as Project, newestSpec: undefined });
+    await vi.waitFor(() => expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true));
+  });
+
+  it('sends a failed rebuild to the log instead of failing the caller', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
+    const logs: string[] = [];
+    refreshProjectGraph(failing, { ws, project: project as Project, newestSpec: undefined }, (line) => logs.push(line));
+    await vi.waitFor(() => expect(logs).toEqual(['project graph not refreshed: graphify caiu']));
   });
 });
 
