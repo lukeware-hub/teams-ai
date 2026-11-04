@@ -383,7 +383,9 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
   const items = s.backlog?.items ?? [];
   const keys = items.map((i) => i.key);
   const doneSteps = (s.speckit?.steps ?? []).filter((step) => step.basis !== undefined);
-  const stepDone = (command: string) => keys.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
+  // A spec main already started was planned by its own run: the plan and task checks ask only about the items still to start.
+  const unstarted = keys.filter((key) => !isStarted(s.backlog?.specs?.[key]?.spec?.status));
+  const stepDone = (command: string) => unstarted.filter((key) => !doneSteps.some((step) => step.command === command && step.itemKey === key));
   const repos = s.architecture?.decision.repositories.map((r) => r.name) ?? [];
   // A follow-on draft has no document stages: its documents are the ones main holds, and the check reads them as in place.
   const open = s.stages === true ? DOC_STAGES.filter((file) => !(s.doneStages ?? []).includes(file) || !(s.graphed ?? []).includes(file)) : [];

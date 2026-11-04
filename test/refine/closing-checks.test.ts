@@ -111,3 +111,15 @@ describe('closing checks of a repository session', () => {
     expect(failing(asked, true)).toEqual(['questions']);
   });
 });
+
+describe('closing checks of a follow-on request', () => {
+  it('asks no plan and no task list of a spec main already started', () => {
+    const state = greenState();
+    const withStarted = {
+      ...state,
+      backlog: { ...state.backlog!, specs: { ...state.backlog!.specs, cart: { spec: { status: 'running', acceptanceCriteria: [] }, rev: 'r' } } },
+      speckit: { ...state.speckit!, steps: (state.speckit?.steps ?? []).filter((step) => step.itemKey !== 'cart') },
+    } as never;
+    expect(failing(withStarted, true)).toEqual([]);
+  });
+});

@@ -20,6 +20,7 @@ import { repositoryContextOf } from './architecture-step.js';
 import { taskShapeIssues } from './task-shape.js';
 import { planPack, taskPack } from './superpowers-pack.js';
 import type { SpeckitStepFailure } from './state.js';
+import { withoutRequests } from './sections.js';
 
 /** The model and effort of the plan step: the setting the pilot measured for it (plan 107). The role's pin, which sets the builders, does not apply to it. */
 export const PLAN_STEP = { model: 'claude-sonnet-5-5', effort: 'low' } as const;
@@ -52,7 +53,7 @@ interface Run {
 
 /** What a plan reads: its own section of specs.md and the five documents, so an edit re-runs only the plans it changes. */
 export const planBasis = (texts: Record<PlanInput, string>, key: string): string =>
-  sha256([specSectionOf(texts['specs.md'], key), texts['project.md'], texts['flow.md'], texts['briefing.md'], texts['stack.md'], texts['design.md']].join('\n'));
+  sha256([specSectionOf(texts['specs.md'], key), texts['project.md'], texts['flow.md'], withoutRequests(texts['briefing.md']), texts['stack.md'], texts['design.md']].join('\n'));
 
 const criteriaIds = (source: PlanSource, key: string): string[] => criteriaOf(source, key).map((criterion) => criterion.id);
 
