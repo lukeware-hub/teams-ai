@@ -116,7 +116,7 @@ const clickWhenVisible = async (page: Page, selector: string) => {
 };
 
 /** Width the page overflows its viewport by; zero means no horizontal scroll. */
-const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+const overflow = (page: Page) => page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - window.innerWidth));
 
 beforeAll(async () => {
   execSync('npm run build', { cwd: path.resolve('web'), stdio: 'pipe' });
@@ -193,7 +193,7 @@ afterEach(async () => {
 describe('a stopped backlog run, end to end in the browser', () => {
   it('reads as interrupted on the card, the list, the hub and the run page, and runs again once resumed', async () => {
     const runId = await startBacklog();
-    const program = `${base()}/refine/hello-app/${DRAFT}/program`;
+    const program = `${base()}/projects/hello-app#execucao`;
     const runPage = `${base()}/runs/${runId}`;
     const page = await browser.newPage();
     try {
