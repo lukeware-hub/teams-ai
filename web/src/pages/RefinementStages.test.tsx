@@ -60,6 +60,23 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
+  it('splits the step into four cards, each naming who fills it and explaining itself', () => {
+    renderView(wizard({}), handlersWithSpeckit());
+    for (const id of ['needs', 'backlog', 'plans', 'checks']) {
+      const card = screen.getByTestId(`step-card-${id}`);
+      expect(card.querySelector('[data-testid="info-tip-button"]')).toBeTruthy();
+      expect(screen.getByTestId(`step-card-owner-${id}`).textContent).toBeTruthy();
+    }
+    expect(screen.getByTestId('step-card-plans').contains(screen.getByTestId('speckit-idle'))).toBe(true);
+    expect(screen.getByTestId('step-card-needs').contains(screen.getByTestId('start-missing'))).toBe(true);
+    expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Não preparados');
+  });
+
+  it('says the plans are current once they are prepared', () => {
+    renderView(wizard({ speckit: speckit() as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Atuais');
+  });
+
   it('keeps the plan preparation off until the backlog is detailed', () => {
     renderView(project({ stages: true, backlog: backlogOutline as never }), handlersWithSpeckit());
     expect(screen.queryByTestId('speckit-prepare')).toBeNull();
@@ -500,7 +517,8 @@ describe('the button that lets the team resolve everything', () => {
     renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
     const missing = screen.getByTestId('start-missing');
     expect(missing.className).toContain('bg-warn-soft');
-    expect(screen.getByTestId('refinement-backlog-heading').nextElementSibling).toBe(missing);
+    expect(screen.getByTestId('refinement-backlog-heading').nextElementSibling).toBe(screen.getByTestId('step-card-needs'));
+    expect(screen.getByTestId('step-card-needs').querySelector('header')?.nextElementSibling).toBe(missing);
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
     const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;
