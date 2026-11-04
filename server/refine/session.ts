@@ -36,6 +36,7 @@ import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDi
 import { patchChangesScope } from './scope-guard.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
+import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
@@ -207,6 +208,8 @@ export interface Snapshot {
   limits: RefineLimits;
   /** specs.md is written from the current backlog and PO and SM both approved it: the final review may go on. */
   specsApproved: boolean;
+  /** The trail of a follow-on request: its specs and what each has; absent for other sessions. */
+  trace?: RequestTrace | null;
 }
 
 /**
@@ -443,7 +446,7 @@ export class RefineSession {
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(),...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
