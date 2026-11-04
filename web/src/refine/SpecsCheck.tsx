@@ -5,13 +5,18 @@ import { Icon } from '../components/Icons.js';
 type Reviews = Partial<Record<'po' | 'sm', SpecsVerdictView>>;
 type Role = 'po' | 'sm';
 
-const ROLE_LABEL: Record<Role, string> = { po: 'Produto (PO)', sm: 'Técnico (SM)' };
 const SHORT_ROLE: Record<Role, string> = { po: 'PO', sm: 'SM' };
 const VERDICT_LABEL: Record<SpecsVerdictView['verdict'], string> = { approved: 'Aprovado', rejected: 'Reprovado', failed: 'Falhou' };
 
 /** The verdict of this role on the specs.md with this hash; an older text's verdict counts for nothing. */
 export const currentReview = (reviews: Reviews, role: Role, hash: string | undefined): SpecsVerdictView | undefined =>
   hash !== undefined && reviews[role]?.specsHash === hash ? reviews[role] : undefined;
+
+/** What a reviewer said of the current specs.md, as the chip at the end of its checklist row reads it. */
+export function reviewChip(review: SpecsVerdictView | undefined, busy: boolean): { label: string; tone: string } {
+  if (!review) return { label: busy ? 'Analisando' : 'Pendente', tone: '' };
+  return { label: VERDICT_LABEL[review.verdict], tone: review.verdict === 'approved' ? 'ok' : 'warn' };
+}
 
 /** Why the final review cannot go on yet, in plain words; null once specs.md is written and PO and SM approved it. */
 export function specsBlockReason(status: string, hash: string | undefined, reviews: Reviews, running = true, asked = false): string | null {
@@ -45,25 +50,20 @@ export function SpecsCheck({ specsMd, reviews, busy, onRetry, repairs = 0, asked
         <strong data-testid="specs-check-title" className="flex items-center gap-2 text-ink"><Icon name="file" size={18} />specs.md</strong>
         <span data-testid="specs-check-file-status" className="text-[0.75rem] font-semibold text-ink-soft">{fileStatus}</span>
       </div>
-      <ul data-testid="specs-check-reviewers" className="m-0 mt-[0.6rem] grid list-none gap-[0.45rem] p-0">
-        {current.map(({ role, review }) => {
-          const label = review ? VERDICT_LABEL[review.verdict] : busy ? 'Analisando' : 'Pendente';
-          return (
-            <li data-testid={`specs-check-${role}`} key={role} className="grid gap-[0.2rem]">
-              <div className="flex items-center justify-between gap-3">
-                <span data-testid={`specs-check-${role}-label`} className="text-ink">{ROLE_LABEL[role]}</span>
-                <span data-testid={`specs-check-${role}-status`} className={`status-dot ${review?.verdict === 'approved' ? 'ok' : review ? 'warn' : ''}`}>{label}</span>
-              </div>
+      {current.some((c) => c.review?.verdict === 'rejected' || c.review?.verdict === 'failed') && (
+        <ul data-testid="specs-check-reviewers" className="m-0 mt-[0.6rem] grid list-none gap-[0.45rem] p-0">
+          {current.map(({ role, review }) => (
+            <li data-testid={`specs-check-${role}`} key={role} className="grid gap-[0.2rem] empty:hidden">
               {review?.verdict === 'rejected' && (
                 <ul data-testid={`specs-check-${role}-findings`} className="m-0 grid list-none gap-[0.2rem] p-0 text-ink-soft">
-                  {review.findings.map((finding, n) => <li key={n} data-testid={`specs-check-${role}-finding`}>{finding}</li>)}
+                  {review.findings.map((finding, n) => <li key={n} data-testid={`specs-check-${role}-finding`}>{SHORT_ROLE[role]}: {finding}</li>)}
                 </ul>
               )}
-              {review?.verdict === 'failed' && <p data-testid={`specs-check-${role}-reason`} className="m-0 text-ink-soft">{review.reason}</p>}
+              {review?.verdict === 'failed' && <p data-testid={`specs-check-${role}-reason`} className="m-0 text-ink-soft">{SHORT_ROLE[role]}: {review.reason}</p>}
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
       {busy && repairs > 0 && <p data-testid="specs-check-repairing" className="m-0 mt-[0.6rem] text-ink-soft">Os agentes estão corrigindo o que os revisores apontaram (tentativa {repairs} de {SPECS_REPAIRS}).</p>}
       {!busy && repairs >= SPECS_REPAIRS && current.some((c) => c.review?.verdict === 'rejected') && (
         <div data-testid="specs-check-gave-up" className="mt-[0.6rem] grid gap-2">

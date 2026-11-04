@@ -469,8 +469,10 @@ describe('the final review', () => {
     cleanup();
     open('?etapa=backlog');
     show(snap);
-    expect(screen.getByTestId('specs-check-po-status').textContent).toBe('Aprovado');
-    expect(screen.getByTestId('specs-check-sm-finding').textContent).toBe('AC-003 não cobre o objetivo');
+    expect(screen.getByTestId('refinement-checklist-po-status').textContent).toBe('Aprovado');
+    expect(screen.getByTestId('refinement-checklist-sm-status').textContent).toBe('Reprovado');
+    expect(screen.queryByTestId('specs-check-po-label')).toBeNull();
+    expect(screen.getByTestId('specs-check-sm-finding').textContent).toBe('SM: AC-003 não cobre o objetivo');
   });
 
   it('Continuar is enabled once specs.md is approved by both, with no reason shown', () => {

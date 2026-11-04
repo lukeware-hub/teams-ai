@@ -27,7 +27,7 @@ import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
-import { currentReview, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
+import { currentReview, reviewChip, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { SpecsAttempts } from '../refine/SpecsAttempts.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -965,6 +965,12 @@ export function RefinementView(p: ViewProps) {
     </section>
   );
   /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
+  // In the backlog step the verdict of PO and SM on specs.md sits at the end of their checklist rows.
+  const specsChip = (role: 'po' | 'sm') => {
+    if (step !== 'backlog' || !backlogOn) return null;
+    const chip = reviewChip(currentReview(st.specsReview ?? {}, role, st.specsMd?.hash), busy);
+    return <span data-testid={`refinement-checklist-${role}-status`} className={`status-dot ${chip.tone}`}>{chip.label}</span>;
+  };
   const verificationDetails = (
     <>
       {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} />}
@@ -977,11 +983,11 @@ export function RefinementView(p: ViewProps) {
       )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
-          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
+          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span>{specsChip('po')}</summary>
           <Checklist items={st.checklist} role="po" />
         </details>
         <details data-testid="refinement-checklist-sm" className="group">
-          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span></summary>
+          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span>{specsChip('sm')}</summary>
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>

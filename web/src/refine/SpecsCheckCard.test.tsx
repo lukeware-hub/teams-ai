@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SpecsCheck } from './SpecsCheck.js';
+import { reviewChip, SpecsCheck } from './SpecsCheck.js';
 
 describe('the specs.md card', () => {
   it('offers Tentar de novo when nothing was written and nothing runs, and calls the retry', () => {
@@ -10,10 +10,10 @@ describe('the specs.md card', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the file and both reviewers as running, with no retry, while the work runs', () => {
+  it('shows the file as running, with no reviewer rows and no retry, while the work runs', () => {
     render(<SpecsCheck specsMd={null} reviews={{}} busy onRetry={() => undefined} />);
     expect(screen.getByTestId('specs-check-file-status').textContent).toBe('Gerando');
-    expect(screen.getByTestId('specs-check-po-status').textContent).toBe('Analisando');
+    expect(screen.queryByTestId('specs-check-po-label')).toBeNull();
     expect(screen.queryByTestId('specs-check-retry')).toBeNull();
   });
 
@@ -88,5 +88,16 @@ describe('the specs.md button says why nothing started', () => {
   it('says what the documents still lack, since the team reviews them first', () => {
     render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{}} busy={false} onRetry={() => undefined} waitingOn={['1 pergunta obrigatória em aberto']} />);
     expect(screen.getByTestId('specs-check-waiting').textContent).toContain('1 pergunta obrigatória em aberto');
+  });
+});
+
+describe('the verdict chip of a reviewer', () => {
+  it('reads approved, rejected, failed, analysing or pending', () => {
+    const at = (verdict: 'approved' | 'rejected' | 'failed') => ({ specsHash: 'h', verdict, findings: [], reason: null, at: null });
+    expect(reviewChip(at('approved'), false)).toEqual({ label: 'Aprovado', tone: 'ok' });
+    expect(reviewChip(at('rejected'), false)).toEqual({ label: 'Reprovado', tone: 'warn' });
+    expect(reviewChip(at('failed'), false).label).toBe('Falhou');
+    expect(reviewChip(undefined, true).label).toBe('Analisando');
+    expect(reviewChip(undefined, false).label).toBe('Pendente');
   });
 });
