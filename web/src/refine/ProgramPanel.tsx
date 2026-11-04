@@ -10,13 +10,13 @@ import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
 
-const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
+const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam e publicam cada spec. Quando uma spec fica pronta para validação, a próxima segue sem esperar; só você a conclui. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
 
 const ITEM_HELP = {
   pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
   running: 'Os agentes estão executando esta spec agora.',
   completing: 'A spec foi entregue e está sendo concluída.',
-  delivered: 'A run entregou a spec. Ela só fica concluída quando você valida e conclui.',
+  delivered: 'A run entregou a spec e o código já está na main. A próxima spec segue sem esperar; esta só fica concluída quando você valida.',
   waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
   done: 'A spec foi entregue e concluída.',
   partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
@@ -117,6 +117,15 @@ const isInterrupted = (program: ProgramView) => {
   return program.status !== 'finished' && now.length > 0 && now.every((i) => i.interrupted);
 };
 
+/** The specs whose run delivered them and that wait for the owner to validate them. */
+const awaitingOwner = (program: ProgramView) => program.items.filter((i) => i.status === 'delivered').length;
+
+/** Only validations are left: nothing runs, is queued or waits, so the backlog waits for the owner. */
+const onlyValidationsLeft = (program: ProgramView) => awaitingOwner(program) > 0 && !program.items.some((i) => i.status === 'running' || i.status === 'completing' || i.status === 'pending' || i.status === 'waiting');
+
+/** `1 aguarda sua validação` or `2 aguardam sua validação`. */
+const awaitingText = (n: number) => `${n} ${n === 1 ? 'aguarda' : 'aguardam'} sua validação`;
+
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
@@ -124,12 +133,14 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
   const running = program?.status !== 'finished';
   const now = program?.items.filter((i) => i.status === 'running' || i.status === 'completing') ?? [];
   const interrupted = program !== null && isInterrupted(program);
+  const waiting = program !== null && onlyValidationsLeft(program);
+  const awaiting = program ? awaitingOwner(program) : 0;
   return (
     <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status" data-testid="program-status-card">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3" data-testid="program-status-header">
         <div className="flex items-center gap-3" data-testid="program-status-title-row">
-          {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-interrupted"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-status-spinner" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true" data-testid="program-status-icon-done"><Icon name="check" size={18} /></span>}
-          <b className="text-[1rem] text-ink" data-testid="program-status-label">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
+          {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-interrupted"><Icon name="alert" size={18} /></span> : waiting ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-waiting"><Icon name="clock" size={18} /></span> : running ?<span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-status-spinner" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true" data-testid="program-status-icon-done"><Icon name="check" size={18} /></span>}
+          <b className="text-[1rem] text-ink" data-testid="program-status-label">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}${awaiting > 0 ? ` · ${awaitingText(awaiting)}` : ''}`}</b>
         </div>
         {link && <Link to={link} className="link-button shrink-0">Acompanhar no projeto<Icon name="arrow-right" size={16} /></Link>}
       </div>
@@ -159,6 +170,8 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   const interrupted = isInterrupted(program);
   const running = program.status !== 'finished';
+  const waiting = onlyValidationsLeft(program);
+  const awaiting = awaitingOwner(program);
   return (
     <section className={`${panel} gap-4`} data-testid="program-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="program-panel-header">
@@ -168,8 +181,9 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
           <InfoTip label="Execução do backlog" text={HELP} />
         </div>
         <p className="m-0 flex items-center gap-2 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
-          {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
-          <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
+          {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : waiting ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-waiting"><Icon name="clock" size={16} /></span> : running ?<span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
+          <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
+          {awaiting > 0 && <span data-testid="program-panel-awaiting"> · {awaitingText(awaiting)}</span>}
           {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
           {unanswered > 0 && <Tipped text="Os agentes perguntaram e nenhum modelo respondeu. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
         </p>

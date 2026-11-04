@@ -94,6 +94,26 @@ describe('ProgramPanel', () => {
     expect(screen.getByText('aguarda sua validação')).toBeTruthy();
   });
 
+  it('says the backlog waits for the owner, with no spinner, when only validations are left', () => {
+    renderPanel(program([item('a', { status: 'delivered', runId: 'd-a-r1' }), item('b', { rank: 2, status: 'done' }), item('c', { rank: 3, status: 'done' })]));
+    expect(screen.getByTestId('program-panel-progress').textContent).toBe('Aguardando sua validação · 2 de 3 concluídas');
+    expect(screen.getByTestId('program-panel-awaiting').textContent).toContain('1 aguarda sua validação');
+    expect(screen.getByTestId('program-panel-icon-waiting')).toBeTruthy();
+    expect(screen.queryByTestId('program-panel-spinner')).toBeNull();
+  });
+
+  it('keeps the spinner and the running title while another spec runs beside a delivered one', () => {
+    renderPanel(program([item('a', { status: 'delivered', runId: 'd-a-r1' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' })]));
+    expect(screen.getByTestId('program-panel-progress').textContent).toBe('Executando o backlog · 0 de 2 concluídas');
+    expect(screen.getByTestId('program-panel-awaiting').textContent).toContain('1 aguarda sua validação');
+    expect(screen.getByTestId('program-panel-spinner')).toBeTruthy();
+  });
+
+  it('counts the specs awaiting validation in the plural', () => {
+    renderPanel(program([item('a', { status: 'delivered' }), item('b', { rank: 2, status: 'delivered' })]));
+    expect(screen.getByTestId('program-panel-awaiting').textContent).toContain('2 aguardam sua validação');
+  });
+
   it('shows a completing spec as being marked done', () => {
     renderPanel(program([item('a', { status: 'completing', runId: 'd-a-r1', completeRunId: 'd-a-complete-r1' })]));
     expect(screen.getByText('concluindo')).toBeTruthy();
@@ -173,6 +193,20 @@ describe('ProgramStatus', () => {
     rerender(<MemoryRouter><ProgramStatus program={program([item('b', { status: 'running', runId: 'd-b-r1' })])} titles={titles} phases={{}} /></MemoryRouter>);
     expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 1 concluída');
     expect(screen.getByRole('status').querySelector('.loading-spinner')).not.toBeNull();
+  });
+
+  it('says it waits for the owner, with a clock and no spinner, when only validations are left', () => {
+    renderStatus(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'delivered', runId: 'd-b-r1' })]));
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Aguardando sua validação · 1 de 2 concluídas · 1 aguarda sua validação');
+    expect(status.querySelector('.loading-spinner')).toBeNull();
+  });
+
+  it('keeps the spinner while a spec runs beside a delivered one, and counts the validation', () => {
+    renderStatus(program([item('a', { status: 'delivered', runId: 'd-a-r1' }), item('b', { rank: 2, status: 'running', runId: 'd-b-r1' })]), { 'd-b-r1': 1 });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Executando o backlog · 0 de 2 concluídas · 1 aguarda sua validação');
+    expect(status.querySelector('.loading-spinner')).not.toBeNull();
   });
 
   it('does not title a finished program as interrupted', () => {
