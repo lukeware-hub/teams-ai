@@ -8,11 +8,11 @@ import { additiveOnly } from './scope-guard.js';
 const REQUEST_FILES: readonly string[] = ['project.md', 'flow.md', 'briefing.md'];
 
 /**
- * Whether the team accepts a pending suggestion on its own. Any other session accepts them all, as before; a request's session takes
- * only additions to its project's own documents, so a removal, a rewording, an adjustment's approval or a stack or design change waits.
+ * Whether a pending suggestion is accepted without the owner. The team alone, on a follow-on request, takes only additions to its
+ * project's own documents, so a removal, a rewording, an adjustment's approval or a stack or design change waits for the owner.
  */
-export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, request: boolean): boolean {
-  if (!request) return true;
+export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, teamAlone: boolean): boolean {
+  if (!teamAlone) return true;
   return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
 }
 
@@ -41,15 +41,18 @@ const tolerate = async (run: () => Promise<unknown> | null | undefined): Promise
  * The owner's button for everything: with full autonomy the team answers every open question itself, accepts every suggestion,
  * reviews what changed, repairs and settles specs.md and prepares the plans, until nothing keeps the start closed.
  * After the last round a specs.md a reviewer still rejects is followed on the owner's behalf, since the owner chose this path.
+ * A follow-on request the team runs alone (not by the owner's button) keeps that decision, and the save in the repositories, for the owner.
  */
-export async function resolveEverything(s: RefineSession): Promise<void> {
+export async function resolveEverything(s: RefineSession, { byOwner = true }: { byOwner?: boolean } = {}): Promise<void> {
   if (resolving.has(s)) return;
   resolving.add(s);
+  const teamAlone = !byOwner && s.state.extension !== undefined;
+  const allowed = (p: PatchRow) => autoAcceptable(p, teamAlone);
   try {
     for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
-      // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted, scope changes included.
-      await tolerate(() => resolveStages(s));
-      for (const p of s.state.patches.filter((x) => x.status === 'pending' && autoAcceptable(x, s.state.extension !== undefined))) await tolerate(() => s.accept(p.patchId));
+      // The documents: stages outdated by an edit are reviewed again, and the suggestions the rule allows are accepted.
+      await tolerate(() => resolveStages(s, allowed));
+      for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId));
       // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
@@ -62,14 +65,14 @@ export async function resolveEverything(s: RefineSession): Promise<void> {
         await tolerate(() => s.settled());
       }
     }
-    // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision.
-    if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
-    // Last: every document goes into the graph, and the documents and specs are saved in the repositories.
+    // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision with his button.
+    if (byOwner && !s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
+    // Last: every document goes into the graph, and the owner's run saves the documents and specs in the repositories.
     for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
       await tolerate(() => s.addToGraph(file));
       await tolerate(() => s.settled());
     }
-    await tolerate(() => s.saveDocs());
+    if (byOwner) await tolerate(() => s.saveDocs());
   } finally {
     resolving.delete(s);
   }

@@ -77,6 +77,34 @@ describe('resolveEverything', () => {
     await Promise.all([resolveEverything(s as unknown as RefineSession), resolveEverything(s as unknown as RefineSession)]);
     expect(s.decideAnswer).toHaveBeenCalledTimes(1);
   });
+
+  it('a follow-on request the team runs alone leaves the specs.md approval and the save in the repositories to the owner', async () => {
+    const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    expect(s.approveSpecsAnyway).not.toHaveBeenCalled();
+    expect(s.saveDocs).not.toHaveBeenCalled();
+    expect(s.addToGraph.mock.calls.map((c) => c[0])).toEqual(['flow.md', 'stack.md', 'design.md']);
+  });
+
+  it('a follow-on request the team runs alone accepts only the additions and leaves a rewording to the owner', async () => {
+    const s = fake({ patches: [
+      { patchId: 'add', status: 'pending', reason: '', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', file: 'briefing.md' },
+      { patchId: 'reword', status: 'pending', reason: '', find: 'a', replace: 'b', file: 'briefing.md' },
+    ] });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    expect(s.accept).toHaveBeenCalledWith('add');
+    expect(s.accept).not.toHaveBeenCalledWith('reword');
+  });
+
+  it('a follow-on request the owner runs follows the specs.md and saves the documents, as his button says', async () => {
+    const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+    expect(s.saveDocs).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('startIsClear', () => {

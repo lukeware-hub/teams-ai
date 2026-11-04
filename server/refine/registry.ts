@@ -300,7 +300,7 @@ export class SessionRegistry {
       await session.addRequest({ requestId: draft.specId, title, text, before });
       await session.enableBacklog();
       // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
-      session.evaluate().then(() => resolveEverything(session)).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      session.evaluate().then(() => resolveEverything(session, { byOwner: false })).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
       return session;
     });
   }
