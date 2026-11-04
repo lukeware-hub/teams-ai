@@ -115,7 +115,7 @@ export class ProgramService {
       await writeProgram(root, extendProgram(program, entries, requestDraftId, this.now()));
       await writeFileAtomic(joinedFile(await this.deps.draftRoot(projectId, requestDraftId)), `${JSON.stringify({ ledger: ownerDraftId })}\n`);
       await this.deps.register(root);
-      return (await this.tick(projectId, ownerDraftId)) ?? (await readProgram(root))!;
+      return (await this.tickNow(projectId, ownerDraftId)) ?? (await readProgram(root))!;
     });
   }
 
@@ -191,7 +191,7 @@ export class ProgramService {
       const program = await readProgram(root);
       if (program === null) throw new RangeError(`no program for ${projectId}/${owner}`);
       await writeProgram(root, prioritizeItem(program, specId, this.now()));
-      return (await this.tick(projectId, owner)) ?? (await readProgram(root))!;
+      return (await this.tickNow(projectId, owner)) ?? (await readProgram(root))!;
     });
   }
 
@@ -203,7 +203,7 @@ export class ProgramService {
       const program = await readProgram(root);
       if (program === null) throw new RangeError(`no program for ${projectId}/${owner}`);
       await writeProgram(root, retryItem(program, specId, this.now()));
-      return (await this.tick(projectId, owner)) ?? (await readProgram(root))!;
+      return (await this.tickNow(projectId, owner)) ?? (await readProgram(root))!;
     });
   }
 
@@ -211,6 +211,11 @@ export class ProgramService {
   async tick(projectId: string, draftId: string): Promise<Program | null> {
     const owner = await this.ledgerOf(projectId, draftId);
     if (owner !== draftId) return this.tick(projectId, owner);
+    return this.locked(`${projectId}/${draftId}`, () => this.tickNow(projectId, draftId));
+  }
+
+  /** The reconciliation itself, for a caller that already holds the ledger's lock: the program it reads is the one it writes back. */
+  private async tickNow(projectId: string, draftId: string): Promise<Program | null> {
     const key = `${projectId}/${draftId}`;
     if (this.ticking.has(key)) return null;
     const root = await this.deps.draftRoot(projectId, draftId);

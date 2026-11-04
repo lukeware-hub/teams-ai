@@ -15,7 +15,7 @@ describe('extendProgram: a follow-on request joins the program that runs', () =>
       ['cart', 3, 'pending', 'shop-pedido-1'],
     ]);
     expect(joined.items.find((i) => i.specId === 'login')!.runId).toBe('shop-001-login-r1');
-    expect(joined.history).toEqual([{ at: NOW.toISOString(), requestId: 'shop-pedido-1', added: ['export'], reranked: ['cart'] }]);
+    expect(joined.history).toEqual([{ at: NOW.toISOString(), requestId: 'pedido-1', draftId: 'shop-pedido-1', added: ['export'], reranked: ['cart'] }]);
   });
 
   it('reopens a finished program when the request adds work to it', () => {

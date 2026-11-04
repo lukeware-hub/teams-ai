@@ -465,7 +465,7 @@ describe('program service: a follow-on request joins the program that runs', () 
       ['login', null, 'running'],
       ['export', 'shop-pedido-1', 'pending'],
     ]);
-    expect(owner!.history).toEqual([expect.objectContaining({ requestId: 'shop-pedido-1', added: ['export'] })]);
+    expect(owner!.history).toEqual([expect.objectContaining({ requestId: 'pedido-1', draftId: 'shop-pedido-1', added: ['export'] })]);
   });
 
   it('two requests that join at the same time both reach the ledger', async () => {
@@ -481,5 +481,19 @@ describe('program service: a follow-on request joins the program that runs', () 
     const owner = await svc.read('shop', 'shop-001');
     expect(owner!.history).toHaveLength(2);
     expect(owner!.items.map((i) => i.specId).sort()).toEqual(['export', 'login', 'report']);
+  });
+
+  it('a join made while a tick runs keeps the ledger the tick writes back', async () => {
+    await fs.mkdir(path.join(root, 'shop-001'), { recursive: true });
+    await fs.mkdir(path.join(root, 'shop-pedido-1'), { recursive: true });
+    const svc = service(undefined, true, perDraft);
+    await svc.start('shop', 'shop-001', [entry('login', 1)]);
+    await Promise.all([
+      svc.tick('shop', 'shop-001'),
+      svc.extend('shop', 'shop-001', 'shop-pedido-1', [entry('login', 1), entry('export', 2)]),
+    ]);
+    const owner = await svc.read('shop', 'shop-001');
+    expect(owner!.items.map((i) => i.specId).sort()).toEqual(['export', 'login']);
+    expect(owner!.history).toHaveLength(1);
   });
 });

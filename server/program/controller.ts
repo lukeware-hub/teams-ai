@@ -52,7 +52,8 @@ export interface Program {
   items: ProgramItem[];
   updatedAt: string;
   /** The follow-on requests that joined this program, oldest first: what each added and re-ordered. */
-  history?: Array<{ at: string; requestId: string; added: string[]; reranked: string[] }>;
+  /** Each request that joined the program: its request id ("pedido-<n>"), its draft, and what it added and moved. */
+  history?: Array<{ at: string; requestId: string; draftId: string; added: string[]; reranked: string[] }>;
 }
 
 export type RunOutcome =
@@ -140,7 +141,9 @@ export function extendProgram(program: Program, entries: readonly ProgramEntry[]
   }
   p.items.sort((a, b) => a.rank - b.rank);
   if (added.length > 0 || reranked.length > 0) p.status = 'running';
-  p.history = [...(p.history ?? []), { at, requestId: requestDraftId, added, reranked }];
+  // The draft id ends with the request's "-pedido-<n>": the request id is that part of it.
+  const requestId = requestDraftId.slice(requestDraftId.lastIndexOf('-pedido-') + 1);
+  p.history = [...(p.history ?? []), { at, requestId, draftId: requestDraftId, added, reranked }];
   p.updatedAt = at;
   return p;
 }
