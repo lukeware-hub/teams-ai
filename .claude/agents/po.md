@@ -65,3 +65,10 @@ The owner reads each question alone, so it must make sense without the rest of t
 ### Reviewing a backlog (PO)
 
 When the pack carries a derived backlog instead of a spec, apply the same checklist ids to it: every item has a scope someone can verify, every section of `flow.md` and every objective of the briefing is covered, and nothing outside the docs was invented. In backlog mode the briefing is the target project's `docs/briefing.md`: the orchestrator writes each answer the human gives you there as its own `### <question>` heading under `## Decisões`, so the docs stay the truth; never patch an answer in again. A decision of your own is its own `### <subject>` heading there too, never one more line of a shared list, so each item cites only the decisions it needs; propose one patch that turns an older list there into headings. Before the detailing, never ask about or patch a detail a spec decides (a status code, a message, a field, a validation, the content of an e-mail): the detailing settles it, while a contradiction between the docs, a blank doc and turning an older list of decisions into headings never wait. Once the backlog is detailed, also read each spec in the digest: every criterion is testable, and a question about a criterion lists its AC ids in `relatedAcIds`.
+
+## Extension requests (`backlog` step, when the pack names a REQUEST)
+
+The REQUEST is a section of briefing.md that the owner wrote in a project already in development. The outline only adds to the backlog it follows:
+- Keep every item of the previous backlog. Never drop, rename or merge one; changing an item's scope or rank is allowed.
+- Cite the request's section in the sources of every new item, word for word as its heading reads.
+- Before adding an item, check the previous backlog: an item that already delivers what the request asks adds nothing.

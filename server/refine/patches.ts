@@ -1,6 +1,7 @@
 import { createPatch } from 'diff';
 import { DOC_REL, type DocFile } from './draft.js';
 import { changesNothing, joinsListItems, writesOrchestratorId } from './scope-guard.js';
+import { changesSection } from './sections.js';
 
 export interface DocPatchIn {
   file: string;
@@ -34,11 +35,13 @@ export function docOf(file: string, specId: string, projectBriefing = false): Do
 export const COVERED_REASON = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
 /** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once; a change that says nothing new, writes an orchestrator id or joins two list items is refused too. */
-export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false): PatchCheck {
+export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false, request?: string): PatchCheck {
   const file = docOf(p.file, specId, projectBriefing);
   if (!file) return { ok: false, reason: `unknown file ${p.file}` };
   const text = docs[file];
   if (text === undefined) return { ok: false, reason: `document not loaded: ${file}` };
+  // The owner wrote the request: no agent changes its words, only the owner can.
+  if (request !== undefined && changesSection(text, request, p.find)) return { ok: false, reason: 'o texto do pedido é do dono: os agentes não o alteram' };
   const n = count(text, p.find);
   if (n === 0) return { ok: false, reason: `find not found in ${file}` };
   if (n > 1) return { ok: false, reason: `find occurs ${n} times in ${file}` };

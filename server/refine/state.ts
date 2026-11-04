@@ -108,6 +108,9 @@ export interface PreplanRow {
   cycle: number;
 }
 
+/** The section of briefing.md a request's text sits under: the draft that follows the request is named after it. */
+export const requestHeading = (requestId: string): string => `Nova demanda (${requestId})`;
+
 /** A request the owner made in a project already in development: its id is the draft id, its text the draft's brief. */
 export interface ExtensionRequest {
   requestId: string;

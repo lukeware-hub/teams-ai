@@ -11,6 +11,12 @@ export interface DocSection {
   line: number;
 }
 
+/** Whether a change's find lies inside the section that has `heading`: a change of the text under that heading. */
+export function changesSection(doc: string, heading: string, find: string): boolean {
+  if (find === '') return false;
+  return docSections(doc).some((s) => s.heading === heading && s.text.includes(find));
+}
+
 const NUMBERED = /^%%\s*(\d+\.\s+\S.*?)\s*$/;
 const MARKDOWN = /^(#{1,6})\s+(\S.*?)\s*$/;
 const FENCE = /^\s*```/;

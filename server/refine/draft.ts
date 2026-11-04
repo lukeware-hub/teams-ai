@@ -13,6 +13,7 @@ import { mergeDoc, mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
 import { renderDecisions } from './decisions.js';
+import { requestHeading } from './state.js';
 
 export type RouteReport = (criteria: Spec['acceptanceCriteria'], report: string, confidential: boolean) => Promise<ReportRouting | null>;
 
@@ -172,7 +173,7 @@ export async function moveBriefingToProject(d: Draft): Promise<void> {
     const demoted = demoteHeadings(brief.trim());
     if (briefing === null) await fs.rename(source, briefingPath(d));
     else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(demoted)) {
-      await writeFileAtomic(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## Nova demanda (${d.specId})\n\n${demoted}`));
+      await writeFileAtomic(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## ${requestHeading(d.specId)}\n\n${demoted}`));
     }
   }
   // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.

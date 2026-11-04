@@ -41,7 +41,7 @@ import { PATCH_FILES, patchOwners, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { planMove } from './moves.js';
-import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
+import { applyRefineEvent, nextStuck, requestHeading, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
 import { scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
 
 export type RunAgent = <K extends StepKind>(
@@ -250,6 +250,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   }
 
   const backlogMode = journal.state.backlog?.enabled === true;
+  // A follow-on draft names the briefing section its request sits under: the outline must keep what it follows and cite it.
+  const request = journal.state.extension ? requestHeading(journal.state.extension.requestId) : undefined;
   let derived: { project: Project; spec: Spec | null };
   let backlog: BacklogState | null = null;
   let criteria: readonly AcceptanceCriterion[] = [];
@@ -276,7 +278,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state) })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state), request })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -288,7 +290,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await failAgent('O backlog', out);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true, request);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
@@ -543,7 +545,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
-      const c = checkPatch(p, draft.specId, docs, backlogMode);
+      const c = checkPatch(p, draft.specId, docs, backlogMode, request);
       if (c.ok && c.file === 'design.md') {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });
         continue;

@@ -176,3 +176,29 @@ describe('renderBacklogMd', () => {
     expect(md).toMatch(/não edite/);
   });
 });
+
+describe('a follow-on request only adds to the backlog it follows', () => {
+  const REQUEST = 'Nova demanda (shop-pedido-1)';
+  const cited = (key: string) => item(key, { sources: [{ doc: 'briefing.md', heading: REQUEST }] });
+  const base = [item('login'), item('cart', { dependsOn: ['login'] })];
+
+  it('keeps every item of the backlog it follows, and cites the request in each new item', () => {
+    const out = postProcessBacklog(raw([item('login'), item('cart', { dependsOn: ['login'] }), cited('export')]), previous(base), {}, [], [], undefined, false, REQUEST);
+    expect(out.ok).toBe(true);
+  });
+
+  it('refuses an outline that drops an item of the backlog it follows', () => {
+    const out = postProcessBacklog(raw([item('login'), cited('export')]), previous(base), {}, [], [], undefined, false, REQUEST);
+    expect(out).toEqual({ ok: false, issues: [expect.stringContaining('cart')] });
+  });
+
+  it('refuses a new item that does not cite the request section', () => {
+    const out = postProcessBacklog(raw([item('login'), item('cart', { dependsOn: ['login'] }), item('export')]), previous(base), {}, [], [], undefined, false, REQUEST);
+    expect(out).toEqual({ ok: false, issues: [expect.stringContaining('export')] });
+  });
+
+  it('puts the request rule in the pack only when the draft follows a request', () => {
+    expect(backlogPack(input({ request: REQUEST })).feedback).toContain(`REQUEST (mandatory): this draft follows up the owner's request, the section "${REQUEST}" of briefing.md.`);
+    expect(backlogPack(input()).feedback).not.toContain('REQUEST (mandatory)');
+  });
+});
