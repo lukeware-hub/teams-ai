@@ -180,7 +180,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
           <h2 className={`${sectionHeading} ml-1`} data-testid="program-panel-title">Specs do backlog</h2>
           <InfoTip label="Execução do backlog" text={HELP} />
         </div>
-        <p className="m-0 flex items-center gap-2 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
+        <p className="m-0 flex flex-wrap items-center gap-2 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
           {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : waiting ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-waiting"><Icon name="clock" size={16} /></span> : running ?<span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
           <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
           {awaiting > 0 && <span data-testid="program-panel-awaiting"> · {awaitingText(awaiting)}</span>}
