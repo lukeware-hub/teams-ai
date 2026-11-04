@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { newSpecPath, projectPath, refinePath } from '../routes.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -317,7 +318,7 @@ export function ProjectsView(p: {
                     Excluir
                     {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
                   </button>
-                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={`/projects/${pr.projectId}?novaSpec=1`}>
+                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={newSpecPath(pr.projectId)}>
                     Nova spec
                     <Icon name="plus" size={14} />
                   </Link>
@@ -325,7 +326,7 @@ export function ProjectsView(p: {
                     Graphify
                     <Icon name="code" size={14} />
                   </button>
-                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={`/projects/${pr.projectId}`}>
+                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={projectPath(pr.projectId)}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>
@@ -351,7 +352,7 @@ export function ProjectsView(p: {
                     Excluir
                     <Icon name="trash" size={14} />
                   </button>
-                  <Link className={action.secondary} data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={`/refine/${d.projectId}/${d.specId}`}>
+                  <Link className={action.secondary} data-testid={`refine-${d.projectId}-${d.specId}`} aria-label={`Abrir refinamento de ${d.projectId} / ${d.specId}`} to={refinePath(d.projectId, d.specId)}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>
@@ -446,7 +447,7 @@ export function Projects() {
     setError(null);
     try {
       const { sessionId } = await fn();
-      navigate(`/refine/${sessionId}`);
+      navigate(refinePath(...(sessionId.split('/') as [string, string])));
     } catch (e) {
       setError((e as Error).message);
     }

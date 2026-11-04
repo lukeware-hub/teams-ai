@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { runPath } from '../routes.js';
 import { Link } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineState } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -110,14 +111,6 @@ export function useBacklogTitles(projectId: string, specId: string) {
   return titles;
 }
 
-/** A running backlog's status card with the way to its execution screen; nothing when the spec has no backlog or it finished. */
-export function BacklogBanner({ projectId, specId }: { projectId: string; specId: string }) {
-  const { program, phases } = useProgram(projectId, specId, true);
-  const titles = useBacklogTitles(projectId, specId);
-  if (!program || program.status === 'finished') return null;
-  return <ProgramStatus program={program} titles={titles} phases={phases} link={`/refine/${projectId}/${specId}/program`} />;
-}
-
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
@@ -133,7 +126,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
           {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-interrupted"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-status-spinner" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true" data-testid="program-status-icon-done"><Icon name="check" size={18} /></span>}
           <b className="text-[1rem] text-ink" data-testid="program-status-label">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
         </div>
-        {link && <Link to={link} className="link-button shrink-0">Abrir a execução do backlog<Icon name="arrow-right" size={16} /></Link>}
+        {link && <Link to={link} className="link-button shrink-0">Acompanhar no projeto<Icon name="arrow-right" size={16} /></Link>}
       </div>
       {program && <progress data-testid="program-status-progress" className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />}
       {now.length > 0 && (
@@ -144,7 +137,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
               <p key={i.specId} className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid={`program-status-now-${i.key}`}>
                 <span className={i.interrupted ? 'size-2 flex-none rounded-full bg-warn' : 'size-2 flex-none rounded-full bg-accent-text motion-safe:animate-pulse'} aria-hidden="true" data-testid={`program-status-dot-${i.key}`} />
                 <span data-testid={`program-status-text-${i.key}`}>{i.interrupted ? 'Interrompida: ' : 'Agora: '}<b className="font-semibold text-ink" data-testid={`program-status-item-${i.key}`}>{titles[i.key] ?? i.key}</b>{i.runId && phases[i.runId] !== undefined && ` · ${phaseTitle(phases[i.runId]!)}`}{i.pause && ` · ${pauseText(i.pause)}`}</span>
-                {runId && <>· <Link to={`/runs/${runId}`}>Acompanhar a run</Link></>}
+                {runId && <>· <Link to={runPath(runId)}>Acompanhar a run</Link></>}
               </p>
             );
           })}
@@ -178,7 +171,7 @@ export function ProgramPanel({ program, titles, onPrioritize }: { program: Progr
             <span className="font-mono text-[0.8125rem] text-ink-faint tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
             <div className="grid min-w-0 gap-1" data-testid={`program-panel-body-${i.key}`}>
               <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
-              {i.runId && <Link to={`/runs/${i.runId}`} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
+              {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
               {i.pause && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-item-pause-${i.key}`}>{pauseText(i.pause)}</p>}
               {i.status === 'waiting' && i.retryAt && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-panel-retry-${i.key}`}>tenta de novo às {hhmm(new Date(i.retryAt))}</p>}
               {i.prs && i.prs.length > 0 && (

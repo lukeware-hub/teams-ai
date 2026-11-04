@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Breadcrumb } from '../components/Breadcrumb.js';
+import { projectPath } from '../routes.js';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError, runApi, type RepoDashboard, type RepoDetailView } from '../api.js';
 import { usePolling } from '../usePolling.js';
@@ -65,16 +67,14 @@ export function RepositoryPage() {
       <section className={panel} data-testid="repo-missing">
         <h1 data-testid="repository-missing-title" className="m-0 text-[1.25rem] font-semibold">Repositório não encontrado</h1>
         <p data-testid="repository-missing-hint" className="hint">A arquitetura do projeto não nomeia {repoId}.</p>
-        <Link to={`/projects/${encodeURIComponent(projectId)}`}>Voltar ao projeto</Link>
+        <Link to={projectPath(projectId)}>Voltar ao projeto</Link>
       </section>
     );
   }
 
   return (
     <div className="grid min-w-0 gap-4" data-testid="repo-page">
-      <nav data-testid="repository-breadcrumb" aria-label="Migalhas" className="hint">
-        <Link to="/">Projetos</Link> › <Link to={`/projects/${encodeURIComponent(projectId)}`}>{projectId}</Link> › <span data-testid="repository-breadcrumb-current">{detail.name}</span>
-      </nav>
+      <Breadcrumb testId="repository-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'repository-breadcrumb-project' }, { label: detail.name, testId: 'repository-breadcrumb-current' }]} />
       <RepoHeader detail={detail} projectId={projectId} deploy={dashboard?.lastDeploy ?? null} />
       {dashboard === undefined && <p data-testid="repository-indicators-loading" className="hint" role="status">Carregando os indicadores…</p>}
       {dashboard === null && <p data-testid="repository-indicators-empty" className="hint">sem dados: os indicadores deste repositório não puderam ser lidos.</p>}

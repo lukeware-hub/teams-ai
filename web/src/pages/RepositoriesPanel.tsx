@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { repoPath } from '../routes.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import type { RepoCardView } from '../api.js';
@@ -38,7 +39,7 @@ export function RepositoriesPanel({ projectId, repositories }: { projectId: stri
               <p data-testid={`repositories-panel-card-responsibility-${repo.name}`} className="m-0 text-[0.8125rem] text-ink-soft">{repo.responsibility}</p>
               <p data-testid={`repositories-panel-card-counts-${repo.name}`} className="m-0 text-[0.8125rem] text-ink-soft">{`${repo.specs} specs · ${repo.plans} planos · ${repo.tasks} tarefas`}</p>
               <p data-testid={`repositories-panel-card-progress-${repo.name}`} className="m-0 text-[0.8125rem] text-ink-soft">{`Tarefas: ${repo.tasksDone} de ${repo.tasks} concluídas`}</p>
-              <Link className="link-button mt-auto self-end" to={`/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(repo.name)}`}>Abrir painel</Link>
+              <Link className="link-button mt-auto self-end" to={repoPath(projectId, repo.name)}>Abrir painel</Link>
             </li>
           ))}
         </ul>

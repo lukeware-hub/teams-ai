@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { runPath, validationPath } from '../../routes.js';
 import type { DashboardSpec, DashboardTask, SpecState } from '../../api.js';
 import { ROLE_LABEL } from '../../run/roles.js';
 import { panel, sectionHeading, sectionTitle } from '../project-shared.js';
@@ -37,7 +38,7 @@ function Group({ state, specs, tasks }: { state: SpecState; specs: DashboardSpec
             <span data-testid={`delivery-spec-progress-${spec.specId}`} className="hint">{`${spec.delivered} de ${spec.total} tarefas`}</span>
             {spec.validationRunId && (
               // The summary toggles the spec; the link only opens the validation page.
-              <Link data-testid={`delivery-validate-${spec.specId}`} className="link-button ml-auto" to={`/runs/${encodeURIComponent(spec.validationRunId)}/validation`} onClick={(e) => e.stopPropagation()}>
+              <Link data-testid={`delivery-validate-${spec.specId}`} className="link-button ml-auto" to={validationPath(spec.validationRunId)} onClick={(e) => e.stopPropagation()}>
                 Validar entrega
               </Link>
             )}
@@ -62,7 +63,7 @@ function TaskList({ specId, tasks }: { specId: string; tasks: DashboardTask[] })
             {t.attempts > 0 && <span data-testid={`delivery-task-attempts-${t.taskId}`} className="hint">{`${t.attempts} tentativa${t.attempts === 1 ? '' : 's'}`}</span>}
             {t.pr !== null && <span data-testid={`delivery-task-pr-${t.taskId}`} className="hint">{`PR #${t.pr}`}</span>}
             {t.runId && (
-              <Link to={`/runs/${encodeURIComponent(t.runId)}?task=${encodeURIComponent(t.taskId)}`}>Abrir run</Link>
+              <Link to={`${runPath(t.runId)}?task=${encodeURIComponent(t.taskId)}`}>Abrir run</Link>
             )}
           </div>
           {t.reason && <p data-testid={`delivery-task-reason-${t.taskId}`} className="m-0 text-ink-soft">{t.reason}</p>}

@@ -1,7 +1,9 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { Breadcrumb } from '../components/Breadcrumb.js';
+import { afterStartPath, newSpecPath, projectPath, runPath, validationPath } from '../routes.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
-import { runApi, startedPath, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
+import { runApi, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
@@ -751,18 +753,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const repoUrl = detail.repoUrl === undefined ? prs.find((p) => p.url)?.url?.replace(/\/pull\/\d+.*$/, '') ?? null : detail.repoUrl;
   return (
     <main data-testid="run-main" className={RUN_UI.page}>
-      <nav data-testid="run-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
-        <Link to="/projects" aria-label="Voltar para projetos">
-          <Icon name="home" size={16} />
-          <span data-testid="run-breadcrumb-home-label">Projetos</span>
-        </Link>
-        <span data-testid="run-breadcrumb-sep-projects" aria-hidden="true">›</span>
-        <Link to={`/projects/${detail.projectId}`}>{detail.projectId}</Link>
-        <span data-testid="run-breadcrumb-sep-project" aria-hidden="true">›</span>
-        <span data-testid="run-breadcrumb-spec">{detail.specId}</span>
-        <span data-testid="run-breadcrumb-sep-spec" aria-hidden="true">›</span>
-        <strong data-testid="run-breadcrumb-run">{runLabel(detail.runId)}</strong>
-      </nav>
+      <Breadcrumb testId="run-breadcrumb" trail={[{ label: detail.projectId, to: projectPath(detail.projectId), testId: 'run-breadcrumb-project' }, { label: detail.specId, testId: 'run-breadcrumb-spec' }, { label: runLabel(detail.runId), testId: 'run-breadcrumb-run' }]} />
       <header data-testid="run-header" className={RUN_UI.head}>
         <div data-testid="run-header-main" className="min-w-0">
           <h1 data-testid="run-title" className={RUN_UI.title}>{detail.runId}</h1>
@@ -800,7 +791,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
               <Icon name="arrow-right" size={16} />
             </span>
           ) : detail.report ? (
-            <Link className={`link-button ${RUN_UI.action}`} data-testid="validation-link" to={`/runs/${detail.runId}/validation`}>
+            <Link className={`link-button ${RUN_UI.action}`} data-testid="validation-link" to={validationPath(detail.runId)}>
               Validação
               <Icon name="arrow-right" size={16} />
             </Link>
@@ -815,7 +806,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
         {detail.locked ? (
           <p className="hint" data-testid="locked-notice">
-            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={`/projects/${detail.projectId}?novaSpec=1`}>nova spec no projeto</Link>.
+            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={newSpecPath(detail.projectId)}>nova spec no projeto</Link>.
           </p>
         ) : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
@@ -939,7 +930,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                   </span>
                                 ) : null}
                                 {detail.report ? (
-                                  <Link className="link-button" to={`/runs/${detail.runId}/validation`}>
+                                  <Link className="link-button" to={validationPath(detail.runId)}>
                                     Ver relatório
                                     <Icon name="arrow-right" size={16} />
                                   </Link>
@@ -1287,7 +1278,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       .then(async (r) => {
         // Straight to the new run; the program page only when the run does not appear in time.
         const started = r.queued ? await awaitNewRun(detail.projectId, detail.specId, detail.runId) : r.runId;
-        navigate(started ? `/runs/${started}` : startedPath(detail.projectId, r));
+        navigate(started ? runPath(started) : afterStartPath(detail.projectId));
       })
       .catch((e: Error) => {
         setReprocessing(false);

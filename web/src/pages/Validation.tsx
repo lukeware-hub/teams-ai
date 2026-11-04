@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Breadcrumb } from '../components/Breadcrumb.js';
+import { projectPath, refinePath, runPath } from '../routes.js';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { runApi, type AcceptanceCriterion, type GapCause, type GapDecision, type GapItem, type GapsReport, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -356,18 +358,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
   const raw = stop && !causes.some((c) => c.reason === stop.raw) ? stop.raw : '';
   return (
     <main data-testid="validation-main" className={`${RUN_UI.page} ${CODE}`}>
-      <nav data-testid="validation-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
-        <Link to="/projects" aria-label="Voltar para projetos">
-          <Icon name="home" size={16} />
-          <span data-testid="validation-breadcrumb-home">Projetos</span>
-        </Link>
-        <span data-testid="validation-breadcrumb-sep-projects" aria-hidden="true">›</span>
-        <strong data-testid="validation-breadcrumb-project">{detail.projectId}</strong>
-        <span data-testid="validation-breadcrumb-sep-project" aria-hidden="true">›</span>
-        <Link to={`/runs/${detail.runId}`}>{detail.runId}</Link>
-        <span data-testid="validation-breadcrumb-sep-run" aria-hidden="true">›</span>
-        <span data-testid="validation-breadcrumb-current">Validação</span>
-      </nav>
+      <Breadcrumb testId="validation-breadcrumb" trail={[{ label: detail.projectId, to: projectPath(detail.projectId), testId: 'validation-breadcrumb-project' }, { label: detail.specId, testId: 'validation-breadcrumb-spec' }, { label: detail.runId, to: runPath(detail.runId), testId: 'validation-breadcrumb-run' }, { label: 'Validação', testId: 'validation-breadcrumb-current' }]} />
       <header data-testid="validation-header" className={RUN_UI.head}>
         <div data-testid="validation-header-title" className="min-w-0">
           <h1 data-testid="validation-title" className={RUN_UI.title}>Validação</h1>
@@ -382,7 +373,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
           <p data-testid="validation-subtitle" className="mt-3 mb-0 max-w-[60ch] text-[0.875rem] text-ink-soft">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
         </div>
         <div data-testid="validation-actions" className={RUN_UI.actions}>
-          <Link className={`link-button ${RUN_UI.action}`} to={`/runs/${detail.runId}`}>
+          <Link className={`link-button ${RUN_UI.action}`} to={runPath(detail.runId)}>
             Execução
             <Icon name="arrow-left" size={16} />
           </Link>
@@ -545,7 +536,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                     <h2 data-testid="validation-decision-title">Sua decisão</h2>
                     <InfoTip text="Concluir finaliza a entrega e marca a especificação como concluída. Relatar problema reabre o refinamento com o seu relato, para os agentes corrigirem." />
                   </div>
-                  {completing ? <p data-testid="completing-note" className={`hint ${RUN_UI.asideNote}`}>Concluindo a especificação. Acompanhe em <Link to={`/runs/${completing}`}>{completing}</Link>.</p> : note ? <p data-testid="actions-note" className={`hint ${RUN_UI.asideNote}`}>{note}</p> : null}
+                  {completing ? <p data-testid="completing-note" className={`hint ${RUN_UI.asideNote}`}>Concluindo a especificação. Acompanhe em <Link to={runPath(completing)}>{completing}</Link>.</p> : note ? <p data-testid="actions-note" className={`hint ${RUN_UI.asideNote}`}>{note}</p> : null}
                   {actionError ? <p data-testid="action-error" className={`error ${RUN_UI.asideNote}`}>{actionError}</p> : null}
                   <textarea className="m-0 mt-1 mb-[0.9rem] w-full resize-y px-[0.8rem] py-[0.65rem] text-[0.875rem] leading-normal disabled:cursor-not-allowed disabled:bg-surface-muted" data-testid="problem-text" aria-label="Descrição do problema" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="O que deu errado? O refinamento será reaberto com este relato." disabled={!enabled} />
                   <div data-testid="validation-decision-actions" className="grid gap-2 [&_button]:w-full">
@@ -672,7 +663,7 @@ function ValidationRun({ runId }: { runId: string }) {
       onRecheckService={() => { setServiceStatus(null); void checkService(); }}
       onStartService={() => guarded(() => runApi.deployAgain(detail.projectId, detail.specId).then((started) => setDeployRun(started.runId)))}
       onReport={(text) =>
-        guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(`/refine/${detail.projectId}/${detail.specId}`)))
+        guarded(() => runApi.reportProblem(detail.projectId, detail.specId, text).then(() => navigate(refinePath(detail.projectId, detail.specId))))
       }
       onComplete={() => guarded(() => runApi.complete(detail.projectId, detail.specId).then((started) => setCompletion(started.runId)))}
       onAcceptGap={(gap) => guarded(() => runApi.acceptGap(detail.runId, gap).then(() => load()))}

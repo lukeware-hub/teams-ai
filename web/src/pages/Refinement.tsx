@@ -9,6 +9,8 @@ import { visibleInterval } from '../visibleInterval.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
+import { Breadcrumb } from '../components/Breadcrumb.js';
+import { afterStartPath, executionPath, projectPath } from '../routes.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { OptionGroup } from '../components/OptionGroup.js';
@@ -1571,16 +1573,14 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
   const { program, phases } = useProgram(projectId, specId, following);
-  const programPath = `/refine/${projectId}/${specId}/program`;
   useEffect(() => {
     if (!snap) return;
     const fresh = events.filter((e) => e.seq > applied.current);
     if (fresh.length === 0) return;
     applied.current = fresh[fresh.length - 1].seq;
     const next = applyBatch(snap, fresh);
-    // A started backlog opens its execution screen, which follows every spec with its own run link.
-    const started = fresh.filter((e) => e.type === 'REFINE_STARTED_RUN').pop();
-    if (started) navigate(next.state.backlog?.enabled ? programPath : `/runs/${String(started.data.runId)}`);
+    // A started execution moves on to the project, which follows it.
+    if (fresh.some((e) => e.type === 'REFINE_STARTED_RUN')) navigate(afterStartPath(projectId), { replace: true });
     // The status moves at once; a document the server changed is read again on top of it.
     setSnap(next);
     if (next.docsDirty) load();
@@ -1611,7 +1611,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.
   const startWith = (summaryHash?: string) => act(() => {
     setStarting(true);
-    return refineApi.start(projectId, specId, summaryHash).then(({ runId, program: started }) => navigate(started ? programPath : `/runs/${runId}`)).finally(() => setStarting(false));
+    return refineApi.start(projectId, specId, summaryHash).then(() => navigate(afterStartPath(projectId), { replace: true })).finally(() => setStarting(false));
   });
   const startRun = startWith();
   const repositorySession = snap.state.repositories === true;
@@ -1622,7 +1622,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const bannerStarts = scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
     <main data-testid="refinement-main" className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <header data-testid="refinement-breadcrumb" className="refine-breadcrumb"><Link to="/projects" aria-label="Voltar para projetos"><Icon name="home" size={18} /><span data-testid="refinement-breadcrumb-home-label">Projetos</span></Link><span data-testid="refinement-breadcrumb-sep-1">›</span><strong data-testid="refinement-breadcrumb-project">{projectId}</strong><span data-testid="refinement-breadcrumb-sep-2">›</span><span data-testid="refinement-breadcrumb-spec">{specId} {snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}</span></header>
+      <Breadcrumb testId="refinement-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'refinement-breadcrumb-project' }, { label: `${specId} ${snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}`, testId: 'refinement-breadcrumb-spec' }]} />
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
       {closingOpen && snap.closing && (
         <ClosingDialog projectId={projectId} specId={specId} summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
@@ -1648,7 +1648,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           <span className="text-[0.75rem] leading-[1.35]">Você pode seguir: responder, rejeitar e editar continuam disponíveis.</span>
         </ProcessBox>
       )}
-      {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={programPath} />}
+      {following && <ProgramStatus program={program} titles={Object.fromEntries(snap.state.backlog!.items.map((i) => [i.key, i.title]))} phases={phases} link={executionPath(projectId)} />}
       {(error || snap.state.status === 'error') && (
         <div data-testid="refinement-error" className="error mx-auto w-[min(100%,48rem)] text-center" role="alert">
           <p data-testid="refinement-error-text">{errorText(error ?? snap.state.error)}</p>

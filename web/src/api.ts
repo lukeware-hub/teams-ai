@@ -256,7 +256,6 @@ export interface RunDetail {
 const R = '/api';
 export type StartedRun = { runId: string; queued?: undefined } | { queued: true; draftId: string };
 /** Where a started spec is followed: its run, or the execution screen of the program that queued it. */
-export const startedPath = (projectId: string, r: StartedRun) => (r.queued ? `/refine/${projectId}/${r.draftId}/program` : `/runs/${r.runId}`);
 /** The query string of one table page: page, size, search, facet and sort. */
 export function pageQuery(req: PageRequest): string {
   const params = new URLSearchParams({ page: String(req.page), size: String(req.size), q: req.q, facet: req.facet });

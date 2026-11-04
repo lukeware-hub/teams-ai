@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { runPath } from '../../routes.js';
 import { useNavigate } from 'react-router-dom';
 import { runApi, type LastDeploy, type RepoDetailView, type ServiceStatus } from '../../api.js';
 import { usePolling } from '../../usePolling.js';
@@ -65,7 +66,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
     setStarting(true);
     setStartFailed(false);
     runApi.deployAgain(projectId, deploy.specId).then(
-      (r) => navigate(`/runs/${encodeURIComponent(r.runId)}`),
+      (r) => navigate(runPath(r.runId)),
       () => {
         setStarting(false);
         setStartFailed(true);

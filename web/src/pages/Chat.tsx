@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { newSpecPath, refinePath } from '../routes.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { chatApi, runApi, type ChatCorrection, type ChatMessage, type ChatUsage, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -62,7 +63,7 @@ function Correction({ projectId, correction }: { projectId: string; correction: 
   return (
     <p data-testid="chat-correction" className={notice}>
       {correction.specId ? (
-        <>Abri uma spec de correção, “{correction.title}”. <Link to={`/refine/${projectId}/${correction.specId}`}>Abrir para revisar e iniciar</Link>.</>
+        <>Abri uma spec de correção, “{correction.title}”. <Link to={refinePath(projectId, correction.specId)}>Abrir para revisar e iniciar</Link>.</>
       ) : (
         <>Não consegui abrir a spec de correção “{correction.title}”: {correction.error}</>
       )}
@@ -205,7 +206,7 @@ export function ChatPage() {
               <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => { setProjectId(e.target.value); setRecall(null); }}>
                 {projects.map((p) => <option data-testid={`chat-project-option-${p.projectId}`} key={p.projectId} value={p.projectId}>{p.name}</option>)}
               </Select>
-              <button data-testid="chat-new-spec" type="button" className="secondary" disabled={!projectId} onClick={() => navigate(`/projects/${projectId}?novaSpec=1`)}>
+              <button data-testid="chat-new-spec" type="button" className="secondary" disabled={!projectId} onClick={() => navigate(newSpecPath(projectId))}>
                 Nova spec
                 <Icon name="plus" size={16} />
               </button>

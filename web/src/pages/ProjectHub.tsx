@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, startedPath, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { refineApi, runApi, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -10,7 +10,9 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
 import { GraphPanel } from './repository/GraphPanel.js';
-import { BacklogBanner } from '../refine/ProgramPanel.js';
+import { BacklogExecution } from '../refine/BacklogExecution.js';
+import { Breadcrumb } from '../components/Breadcrumb.js';
+import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
 
@@ -45,14 +47,7 @@ const SPEC_GROUPS: ReadonlyArray<{ title: string; statuses: readonly string[] }>
 function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
   return (
     <main data-testid="project-hub-skeleton">
-      <nav data-testid="project-hub-skeleton-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
-        <Link to="/projects" aria-label="Voltar para projetos">
-          <Icon name="home" size={16} />
-          <span data-testid="project-hub-skeleton-breadcrumb-home">Projetos</span>
-        </Link>
-        <span data-testid="project-hub-skeleton-breadcrumb-separator" aria-hidden="true">›</span>
-        <strong data-testid="project-hub-skeleton-breadcrumb-project">{projectId}</strong>
-      </nav>
+      <Breadcrumb testId="project-hub-skeleton-breadcrumb" trail={[{ label: projectId, testId: 'project-hub-skeleton-breadcrumb-project' }]} />
       {error ? <p data-testid="project-hub-skeleton-error" className="error m-0" role="alert">{error}</p> : (
         <Skeleton>
           <div data-testid="project-hub-skeleton-header" className={header}>
@@ -178,7 +173,7 @@ export function ProjectHubView(p: {
         <div data-testid="project-hub-not-found-state" className={emptyState}>
           <Icon name="search" size={24} />
           <p data-testid="project-hub-not-found-text">Esse projeto não foi encontrado.</p>
-          <Link className="link-button" to="/projects">Voltar para Projetos<Icon name="arrow-left" size={16} /></Link>
+          <Link className="link-button" to={PROJECTS}>Voltar para Projetos<Icon name="arrow-left" size={16} /></Link>
         </div>
       </main>
     );
@@ -194,14 +189,7 @@ export function ProjectHubView(p: {
   const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
     <main data-testid="project-hub-main">
-      <nav data-testid="project-hub-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">
-        <Link to="/projects" aria-label="Voltar para projetos">
-          <Icon name="home" size={16} />
-          <span data-testid="project-hub-breadcrumb-home">Projetos</span>
-        </Link>
-        <span data-testid="project-hub-breadcrumb-separator" aria-hidden="true">›</span>
-        <strong data-testid="project-hub-breadcrumb-project">{pr.projectId}</strong>
-      </nav>
+      <Breadcrumb testId="project-hub-breadcrumb" trail={[{ label: pr.projectId, testId: 'project-hub-breadcrumb-project' }]} />
       <header data-testid="project-hub-header" className={header}>
         <div data-testid="project-hub-header-title" className="min-w-0">
           <h1 data-testid="project-hub-title" className={title}>{pr.name || pr.projectId}</h1>
@@ -241,7 +229,9 @@ export function ProjectHubView(p: {
           <span data-testid="project-hub-stat-cost-label" className={statLabel}>custo total</span>
         </div>
       </div>
-      {(p.backlogs ?? []).map((specId) => <BacklogBanner key={specId} projectId={pr.projectId} specId={specId} />)}
+      <section id="execucao" data-testid="project-hub-execution" className="grid gap-5 empty:hidden scroll-mt-4" aria-label="Execução do backlog">
+        {(p.backlogs ?? []).map((specId) => <BacklogExecution key={specId} projectId={pr.projectId} specId={specId} />)}
+      </section>
       <section data-testid="project-hub-runs-card" className={`${panel} @container`}>
         <div data-testid="project-hub-runs-section" className={section}>
           <div data-testid="project-hub-runs-title-row" className={sectionTitle}>
@@ -271,7 +261,7 @@ export function ProjectHubView(p: {
                     {runsView.rows.length === 0 ? <tr data-testid="project-hub-runs-empty-row"><td data-testid="project-hub-runs-empty-cell" colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
                     {runsView.rows.map((r) => (
                       <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
-                        <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={`/runs/${r.runId}`} title={r.runId}>{runName(r)}</Link></td>
+                        <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={runPath(r.runId)} title={r.runId}>{runName(r)}</Link></td>
                         <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
                         <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
                         <td data-testid={`project-hub-run-status-${r.runId}`} className={responsiveCell} data-label="Status">{chip(r.status)}</td>
@@ -378,7 +368,7 @@ export function ProjectHubView(p: {
               {p.docs.map((d) => (
                 <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2" key={d.file} data-testid={`project-doc-${d.file}`}>
                   {refineSpec ? (
-                    <Link className="link-button min-w-0 flex-1 justify-between" to={`/refine/${pr.projectId}/${refineSpec}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
+                    <Link className="link-button min-w-0 flex-1 justify-between" to={`${refinePath(pr.projectId, refineSpec)}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
                       <span data-testid={`project-hub-doc-name-${d.file}`} className="wrap-anywhere">{d.file}</span>
                       <Icon name="arrow-right" size={16} />
                     </Link>
@@ -479,13 +469,13 @@ export function ProjectHubView(p: {
                       </button>
                     ) : null}
                     {s.activeRunId ? (
-                      <Link className={action.primary} data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={`/runs/${s.activeRunId}`}>
+                      <Link className={action.primary} data-testid={`open-${s.specId}`} aria-label={`Abrir execução de ${s.specId}`} to={runPath(s.activeRunId)}>
                         Abrir execução
                         <Icon name="arrow-right" size={14} />
                       </Link>
                     ) : s.status === 'awaiting-validation' ? (
                       s.lastRunId ? (
-                        <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={`/runs/${s.lastRunId}/validation`}>
+                        <Link className={action.primary} data-testid={`validate-${s.specId}`} aria-label={`Validar ${s.specId}`} to={validationPath(s.lastRunId)}>
                           Validar
                           <Icon name="arrow-right" size={14} />
                         </Link>
@@ -496,7 +486,7 @@ export function ProjectHubView(p: {
                       )
                     ) : s.status === 'done' ? (
                       s.lastRunId ? (
-                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={`/runs/${s.lastRunId}/validation`}>
+                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
                           Ver validação
                           <Icon name="arrow-right" size={14} />
                         </Link>
@@ -535,7 +525,7 @@ export function ProjectHubView(p: {
                       Excluir
                       <Icon name="trash" size={14} />
                     </button>
-                    <Link className={action.primary} data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={`/refine/${pr.projectId}/${d.specId}`}>
+                    <Link className={action.primary} data-testid={`refine-${d.specId}`} aria-label={`Abrir refinamento de ${d.specId}`} to={refinePath(pr.projectId, d.specId)}>
                       Abrir
                       <Icon name="arrow-right" size={14} />
                     </Link>
@@ -673,7 +663,7 @@ export function ProjectHub() {
     setError(null);
     try {
       const { sessionId } = await fn();
-      navigate(`/refine/${sessionId}`);
+      navigate(refinePath(...(sessionId.split('/') as [string, string])));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -693,9 +683,9 @@ export function ProjectHub() {
       error={error}
       deleteError={deleteError}
       onStart={(specId) => act(async () => {
-        // A spec the running program owns is prioritized there: follow it on the program's execution screen.
+        // A spec the running program owns is prioritized there: the project follows it in its execution section.
         const r = await runApi.startRun(projectId, specId);
-        if (r.queued) navigate(startedPath(projectId, r));
+        if (r.queued) navigate(afterStartPath(projectId), { replace: true });
       })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
       onStop={(runId) => act(() => runApi.stopRun(runId))()}
@@ -703,7 +693,7 @@ export function ProjectHub() {
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
       onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}
-      onValidate={(specId) => void act(async () => navigate(`/runs/${(await runApi.deployAgain(projectId, specId)).runId}/validation`))()}
+      onValidate={(specId) => void act(async () => navigate(validationPath((await runApi.deployAgain(projectId, specId)).runId)))()}
       onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => (async () => {
         setDeleteError(null);

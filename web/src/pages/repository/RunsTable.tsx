@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { runPath } from '../../routes.js';
 import { runApi, type DashboardRunRow } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { chip, money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
@@ -33,7 +34,7 @@ export function RunsTable({ projectId, repo }: { projectId: string; repo: string
               {view.rows.map((r) => (
                 <tr key={r.runId} className={responsiveRow} data-testid={`run-${r.runId}`}>
                   <td data-testid={`runs-table-run-cell-${r.runId}`} className={responsiveCell} data-label="Run">
-                    <Link to={`/runs/${encodeURIComponent(r.runId)}`} className="wrap-anywhere">{r.runId}</Link>
+                    <Link to={runPath(r.runId)} className="wrap-anywhere">{r.runId}</Link>
                   </td>
                   <td data-testid={`runs-table-kind-${r.runId}`} className={responsiveCell} data-label="Tipo">{RUN_KIND_LABEL[r.kind] ?? r.kind}</td>
                   <td data-testid={`runs-table-state-${r.runId}`} className={responsiveCell} data-label="Estado">{chip(r.status)}</td>

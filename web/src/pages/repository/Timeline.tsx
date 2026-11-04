@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { runPath } from '../../routes.js';
 import { runApi, type TimelineEntry } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
@@ -24,7 +25,7 @@ export function Timeline({ projectId, repo }: { projectId: string; repo: string 
                 <span data-testid={`timeline-event-time-${e.runId}-${(view.page - 1) * view.size + i}`} className="hint tabular-nums">{when(e.at)}</span>
                 {e.role && <span data-testid={`timeline-event-role-${e.runId}-${(view.page - 1) * view.size + i}`} className="count-pill">{ROLE_LABEL[e.role] ?? e.role}</span>}
                 <span data-testid={`timeline-event-text-${e.runId}-${(view.page - 1) * view.size + i}`} className={e.tone === 'bad' ? 'tone-bad rounded px-1' : e.tone === 'good' ? 'tone-good rounded px-1' : ''}>{e.text}</span>
-                <Link to={`/runs/${encodeURIComponent(e.runId)}`}>{e.runId}</Link>
+                <Link to={runPath(e.runId)}>{e.runId}</Link>
               </li>
             ))}
           </ol>

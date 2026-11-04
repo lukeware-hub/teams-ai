@@ -100,7 +100,7 @@ export function SpecTree({ backlog, evaluating = false, note, locked }: { backlo
         ))}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`} data-testid="spec-tree-gap-count">{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
-      {shown === 'items' && locked !== undefined ? <div data-testid="coverage-list-items"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
+      {shown === 'items' && locked !== undefined ? <div data-testid="coverage-list-items" className="[&>div]:my-0 [&>div]:gap-[0.6rem]"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
         <ul data-testid={`coverage-list-${shown}`} className="m-0 grid list-none rounded-md border border-line bg-surface px-[0.8rem] py-[0.2rem] text-[0.8125rem] leading-snug text-ink-soft">
           {rows.length > 0 ? rows : <li className="py-[0.45rem]" data-testid="spec-tree-empty">Nenhum item ainda.</li>}
         </ul>

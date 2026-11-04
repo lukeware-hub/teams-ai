@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { runPath } from '../../routes.js';
 import { runApi, type DashboardItem, type DashboardTable } from '../../api.js';
 import { Pagination, TableFilters, usePagedTable } from '../../components/DataTable.js';
 import { panel, sectionHeading, sectionTitle } from '../project-shared.js';
@@ -32,7 +33,7 @@ function ItemsCard({ title, table, projectId, repo, testId }: { title: string; t
           {view.rows.map((item, i) => (
             <li data-testid={`${testId}-item-${item.kind}-${item.runId ?? ''}-${item.taskId ?? ''}`} key={`${item.kind}-${item.runId ?? ''}-${item.taskId ?? ''}-${i}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 border-t border-line py-2 first:border-t-0">
               <span data-testid={`${testId}-item-text-${item.kind}-${item.runId ?? ''}-${item.taskId ?? ''}`} className="wrap-anywhere">{item.text}</span>
-              {item.runId && <Link to={`/runs/${encodeURIComponent(item.runId)}${item.taskId ? `?task=${encodeURIComponent(item.taskId)}` : ''}`} className="whitespace-nowrap">Abrir run</Link>}
+              {item.runId && <Link to={`${runPath(item.runId)}${item.taskId ? `?task=${encodeURIComponent(item.taskId)}` : ''}`} className="whitespace-nowrap">Abrir run</Link>}
             </li>
           ))}
         </ul>

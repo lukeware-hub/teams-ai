@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { PROJECTS, executionPath } from './routes.js';
 import { api } from './api.js';
 import { Loading } from './components/Loading.js';
 import { AppShell } from './components/AppShell.js';
@@ -10,7 +11,6 @@ import { OnboardingGate, StatusRedirect } from './pages/OnboardingGate.js';
 import { ProjectHub } from './pages/ProjectHub.js';
 import { RepositoryPage } from './pages/RepositoryPage.js';
 import { Projects } from './pages/Projects.js';
-import { ProgramPage } from './pages/Program.js';
 import { RefinementPage } from './pages/Refinement.js';
 import { RunPage } from './pages/Run.js';
 import { SettingsPage } from './pages/Settings.js';
@@ -20,10 +20,26 @@ export function Home() {
   const [to, setTo] = useState<string | null>(null);
   useEffect(() => {
     void api.status()
-      .then((s) => setTo(s.allOk ? '/projects' : '/onboarding'))
+      .then((s) => setTo(s.allOk ? PROJECTS : '/onboarding'))
       .catch(() => setTo('/onboarding'));
   }, []);
   return to ? <Navigate to={to} replace /> : <main data-testid="home-loading"><Loading /></main>;
+}
+
+/** The old execution address: the project follows the execution now. */
+export function ExecutionRedirect() {
+  const { projectId = '' } = useParams();
+  return <Navigate to={executionPath(projectId)} replace />;
+}
+
+export function NotFound() {
+  return (
+    <main data-testid="not-found" className="grid gap-3">
+      <h1>Página não encontrada</h1>
+      <p>Esse endereço não existe.</p>
+      <Link className="link-button justify-self-start" to={PROJECTS}>Voltar para projetos</Link>
+    </main>
+  );
 }
 
 export function App() {
@@ -42,8 +58,9 @@ export function App() {
             <Route path="/projects/:projectId/:repoId" element={<RepositoryPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
             <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
-            <Route path="/refine/:projectId/:specId/program" element={<ProgramPage />} />
+            <Route path="/refine/:projectId/:specId/program" element={<ExecutionRedirect />} />
             <Route path="/runs/:runId/validation" element={<ValidationPage />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </LicenseGuard>
       </AppShell>

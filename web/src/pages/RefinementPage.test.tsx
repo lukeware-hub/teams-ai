@@ -289,7 +289,7 @@ describe('RefinementPage journal replay', () => {
     await waitFor(() => expect(screen.getAllByTestId('accept-sm-c1-0')).toHaveLength(1));
   });
 
-  it('opens the execution screen when the backlog starts', async () => {
+  it('moves to the project when the execution starts', async () => {
     const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
     const ready = snapshot(1);
     journal.events = [event(2, 'REFINE_STARTED_RUN', { runId: 'hello-app--base--run-1' })];
@@ -298,11 +298,11 @@ describe('RefinementPage journal replay', () => {
       <MemoryRouter initialEntries={['/refine/hello-app/hello-001']}>
         <Routes>
           <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
-          <Route path="/refine/:projectId/:specId/program" element={<p>tela da execução</p>} />
+          <Route path="/projects/:projectId" element={<p>área do projeto</p>} />
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByText('tela da execução')).toBeTruthy();
+    expect(await screen.findByText('área do projeto')).toBeTruthy();
   });
 
   it('counts the running evaluation from the start the journal recorded', async () => {
