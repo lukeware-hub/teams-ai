@@ -76,6 +76,13 @@ async function markRefining(draft: Draft, specId: string, spec: Spec | null): Pr
 }
 
 /** The highest criterion number in the target project's specs (main's, copied into the draft, and the generated ones). */
+/** The criterion ids the five documents already use, with their own meaning: the specs' ids must never reuse them. */
+export function criterionIdsInDocs(docs: Readonly<Record<string, string>>): Set<string> {
+  // A line of the unfilled template ("- AC-001 (smoke): Given <state>, ...") is an example, not a criterion the owner wrote.
+  const written = (text: string) => text.split('\n').filter((line) => !/<[^>]+>/.test(line)).join('\n');
+  return new Set(Object.values(docs).flatMap((text) => [...written(text).matchAll(/\bAC-\d{3}\b/g)].map((m) => m[0])));
+}
+
 export async function maxCriterionInDraft(draft: Draft): Promise<number> {
   const root = path.posix.join(draft.docs, 'specs');
   const dirs = await fs.readdir(root).catch(() => [] as string[]);
@@ -133,7 +140,9 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const items = [...input.backlog.items].sort((a, b) => a.rank - b.rank);
   const specs: Record<string, SpecRow> = { ...input.backlog.specs };
   const preplans: Record<string, PreplanRow> = { ...input.backlog.preplans };
-  let highWater = Math.max(input.backlog.acHighWater ?? 0, await maxCriterionInDraft(draft));
+  // The documents already number criteria of their own (the briefing's AC-001 to AC-006): the specs number above them, so an id never means two things.
+  const docIds = criterionIdsInDocs(docs);
+  let highWater = Math.max(input.backlog.acHighWater ?? 0, await maxCriterionInDraft(draft), ...[...docIds].map(acNum));
   let stopped = null as { reason: string; detail?: string; kind?: FailureKind } | null;
   /** The run's stop, read through a call so each check sees its current value. */
   const haltedResult = (): DetailResult | null => (stopped ? { ok: false, ...stopped } : null);
@@ -239,7 +248,10 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const acceptSpec = async (item: Item, entry: ItemSpec | undefined, review: boolean): Promise<Verdict> => {
     if (!entry) return { issues: ['o agente não devolveu a spec deste item'], detail: ['the answer has no spec for this item'] };
     const inputHash = specHash.get(item.key)!;
-    const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: previous.get(item.key) ?? null, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) }, repository: item.repository });
+    // A spec whose ids collide with an id the documents use is numbered again, above them.
+    const before = previous.get(item.key) ?? null;
+    const colliding = before?.acceptanceCriteria.some((c) => docIds.has(c.id)) === true;
+    const processed = () => postProcessItemSpec(entry, { specId: idOf(item.key), previous: colliding ? null : before, highWater, provenance: { backlogKey: item.key, inputHash, docsHash: hash, sources: sourceHashes(item, docs) }, repository: item.repository });
     if (review && decider) {
       const dry = processed();
       if (!dry.ok) return { issues: dry.issues, detail: dry.detail };

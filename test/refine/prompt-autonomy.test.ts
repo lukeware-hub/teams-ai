@@ -39,3 +39,11 @@ describe('namesItem', () => {
     expect(namesItem('baseline sem item', 'base')).toBe(false);
   });
 });
+
+describe('criterionIdsInDocs', () => {
+  it('collects every criterion id the documents already use, whole ids only', async () => {
+    const { criterionIdsInDocs } = await import('../../server/refine/detail-cycle.js');
+    const ids = criterionIdsInDocs({ briefing: 'AC-001 e AC-006 do briefing', flow: 'sem ids', stack: 'XAC-0010 não conta; AC-012 conta' });
+    expect([...ids].sort()).toEqual(['AC-001', 'AC-006', 'AC-012']);
+  });
+});

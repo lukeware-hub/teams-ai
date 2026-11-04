@@ -150,7 +150,9 @@ describe('backlog detailing in the refinement cycle', () => {
       expect((await readdir(itemDir(key))).sort()).toEqual(['preplan.json', 'spec.json', 'spec.md']);
     }
     expect(new Set(ids).size).toBe(8);
-    expect(journal.state.backlog?.acHighWater).toBe(8);
+    // The briefing already uses AC-001 for something else, so the specs are numbered above it: no id means two things.
+    expect(ids).not.toContain('AC-001');
+    expect(journal.state.backlog?.acHighWater).toBe(9);
 
     from = agent.calls.length;
     await run(agent, 3);

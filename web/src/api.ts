@@ -557,6 +557,8 @@ export interface RefineState {
   specsReview?: Partial<Record<'po' | 'sm', SpecsVerdictView>>;
   /** The automatic repairs of specs.md since it was last approved. */
   specsRepairs?: number;
+  /** What the team tried on a rejected specs.md and what came of each try. */
+  specsAttempts?: SpecsAttemptView[];
   /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
   architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
@@ -737,3 +739,14 @@ export const chatApi = {
   ask: (projectId: string, text: string) => jsonPost(`/chat/${encodeURIComponent(projectId)}/messages`, { text }).then((r) => json<{ message: ChatMessage | null }>(r)),
   clear: (projectId: string) => fetch(chatUrl(projectId), { method: 'DELETE', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
 };
+
+/** One automatic repair of specs.md, as the page shows it. */
+export interface SpecsAttemptView {
+  n: number;
+  hash: string;
+  items: string[];
+  points: number;
+  redone: string[];
+  failed: Array<{ item: string; issues: string[] }>;
+  after?: Partial<Record<'po' | 'sm', { verdict: string; findings: string[] }>>;
+}

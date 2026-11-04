@@ -27,6 +27,7 @@ import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.j
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
 import { currentReview, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
+import { SpecsAttempts } from '../refine/SpecsAttempts.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
@@ -941,6 +942,7 @@ export function RefinementView(p: ViewProps) {
   const verificationDetails = (
     <>
       {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} waitingOn={st.status === 'ready' ? [] : st.checklist.filter((c) => !c.passed).map((c) => c.detail || c.id)} onRetry={() => p.onCheckSpecs?.()} onAsk={resolveAll} onApprove={() => setAsk({ title: 'Seguir com o specs.md reprovado', text: 'O PO ou o SM reprovou este specs.md. Se você seguir, o desenvolvimento pode começar com os pontos que eles apontaram ainda em aberto.', confirmLabel: 'Seguir mesmo assim', tone: 'accent', icon: 'check', onConfirm: () => void p.onApproveSpecs?.() })} />}
+      {step === 'backlog' && backlogOn && <SpecsAttempts attempts={st.specsAttempts ?? []} />}
       {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
         <div data-testid="specs-questions" className="grid gap-3">
           <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>

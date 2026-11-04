@@ -34,6 +34,16 @@ export interface PatchRow extends PendingPatch {
   auto?: boolean;
 }
 /** A finding one role reported on a document it does not own; kept only when its quote is in that document. */
+/** One automatic repair of specs.md: the items the reviewers named, the ones the agents did again, what failed, and what the reviewers said of the new text. */
+export interface SpecsAttempt {
+  n: number;
+  hash: string;
+  items: string[];
+  points: number;
+  redone: string[];
+  failed: Array<{ item: string; issues: string[] }>;
+  after?: Partial<Record<'po' | 'sm', { verdict: string; findings: string[] }>>;
+}
 export interface FindingRow {
   cycle: number;
   role: 'po' | 'sm' | 'front';
@@ -215,6 +225,8 @@ export interface RefineState {
   specsFeedback?: Record<string, string[]>;
   /** The automatic repairs of specs.md since it was last approved. */
   specsRepairs?: number;
+  /** What the team tried on a rejected specs.md and what came of it, so the owner can read why it did not settle. */
+  specsAttempts?: SpecsAttempt[];
   /** The text of specs.md the team already asked the owner about, so it asks once per text. */
   specsAsked?: string;
   /** The text of specs.md the owner chose to follow with although a reviewer rejected it. */
@@ -414,6 +426,14 @@ const docName = (file: unknown): DocFile => (file === 'brief.md' ? 'briefing.md'
 const docNames = <T>(rows: Record<string, T> | null | undefined): Record<DocFile, T> | null =>
   rows ? (Object.fromEntries(Object.entries(rows).filter(([k]) => !(k === 'brief.md' && 'briefing.md' in rows)).map(([k, v]) => [docName(k), v])) as Record<DocFile, T>) : null;
 
+/** An item the agents detailed again for the reviewers' findings: the attempt notes that it was redone, and what failed when it did not come out right. */
+function noteRepairedItem(s: RefineState, key: string, issues: readonly string[]): void {
+  const attempt = s.specsAttempts?.at(-1);
+  if (!attempt || !s.specsFeedback?.[key]) return;
+  if (!attempt.redone.includes(key)) attempt.redone.push(key);
+  if (issues.length > 0) attempt.failed.push({ item: key, issues: [...issues] });
+}
+
 /** Marks each stage the owner moved on from after an edited document, until that stage is reviewed again. */
 function markStaleStages(s: RefineState, edited: DocFile): void {
   const index = DOC_STAGES.indexOf(edited);
@@ -484,7 +504,11 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.specsReview.po?.verdict === 'approved' && s.specsReview.sm?.verdict === 'approved' && s.specsReview.po.specsHash === s.specsReview.sm.specsHash) {
         s.specsRepairs = 0;
         delete s.specsFeedback;
+        delete s.specsAttempts;
       }
+      // What the reviewers said of the text a repair made.
+      const attempt = s.specsAttempts?.at(-1);
+      if (attempt) attempt.after = { ...attempt.after, [String(d.role)]: { verdict: String(d.verdict), findings: (d.findings as string[]) ?? [] } };
       break;
     case RefineEvent.SpecsQuestionsAsked:
       s.specsAsked = String(d.specsHash);
@@ -497,6 +521,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.SpecsFeedback:
       s.specsFeedback = d.feedback as Record<string, string[]>;
       s.specsRepairs = (s.specsRepairs ?? 0) + 1;
+      s.specsAttempts = [...(s.specsAttempts ?? []), { n: (s.specsAttempts?.length ?? 0) + 1, hash: String(d.specsHash), items: Object.keys(s.specsFeedback), points: Object.values(s.specsFeedback).reduce((sum, list) => sum + list.length, 0), redone: [], failed: [] }];
       break;
     case RefineEvent.EvaluationStarted:
       s.evaluation = { startedAt: e.at ?? '', endedAt: null };
@@ -678,6 +703,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         const row: SpecRow = { inputHash: String(d.inputHash), specId: String(d.specId), rev: (d.rev as string | null) ?? null, spec: (d.spec as Spec | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, specs: { ...s.backlog.specs, [String(d.key)]: row }, acHighWater: Math.max(s.backlog.acHighWater ?? 0, Number(d.highWater ?? 0)) };
       }
+      noteRepairedItem(s, String(d.key), (d.issues as string[]) ?? []);
       markSpeckitStale(s);
       break;
     case RefineEvent.PreplanDerived:
@@ -685,6 +711,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         const row: PreplanRow = { inputHash: String(d.inputHash), specRev: String(d.specRev), preplan: (d.preplan as Preplan | null) ?? null, issues: (d.issues as string[]) ?? [], cycle: Number(d.cycle) };
         s.backlog = { ...s.backlog, preplans: { ...s.backlog.preplans, [String(d.key)]: row } };
         // The item was detailed again with what the reviewers said: that feedback is spent.
+        noteRepairedItem(s, String(d.key), (d.issues as string[]) ?? []);
         if (s.specsFeedback && row.preplan) delete s.specsFeedback[String(d.key)];
       }
       markSpeckitStale(s);

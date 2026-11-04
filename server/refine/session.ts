@@ -240,9 +240,9 @@ export function namesItem(text: string, key: string): boolean {
 }
 
 /** The automatic repairs of a rejected specs.md before the owner is asked. */
-const MAX_SPECS_REPAIRS = 2;
+const MAX_SPECS_REPAIRS = 4;
 /** The rounds in which the PO decides alone, with the owner's autonomy, before the text is followed anyway. */
-const MAX_SPECS_DECIDES = 2;
+const MAX_SPECS_DECIDES = 3;
 const MAX_CHAIN_CYCLES = 4;
 
 /** What the architecture pack asks the graph for: the system's repositories and the links between them. */
