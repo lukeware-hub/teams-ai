@@ -25,9 +25,9 @@ Um pedido é um **backlog de acompanhamento** (follow-on): o mesmo motor de refi
 - Projeto cuja main não tem `specs.json` (nunca teve backlog) recebe o pedido como uma spec única, sem análise de impacto nem replanejamento.
 - Com alguma spec iniciada não há mapa de conflitos do SM (`detail-cycle`): os itens novos rodam um de cada vez.
 - Um pedido por projeto de cada vez: o segundo espera o primeiro iniciar.
-- "Pedido já coberto por um item" depende do impacto; o validador não prova isso sozinho.
+- "Pedido já coberto por um item" é checado no fechamento, a partir do veredito do impacto; o validador sozinho não prova isso.
 - Colisão de chave com uma spec de main já retirada não é checada.
-- A tela do pedido (fase 9) depende da aprovação dos wireframes (`design.md` §31).
+- A tela do pedido segue os wireframes aprovados (`design.md` §31); a conferência com um pedido real depende de autorização do dono.
 
 ## Rastreio
 

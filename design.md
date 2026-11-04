@@ -1557,7 +1557,7 @@ O título interno do conteúdo não se repete: a contagem de specs vai no chip d
 
 A lista de specs por repositório não fica solta no cartão do backlog: ela abre ao clicar no chip `specs` da `Cobertura`, e o mesmo clique a fecha.
 
-## 31. Pedido em projeto em desenvolvimento (proposta, aguarda aprovação)
+## 31. Pedido em projeto em desenvolvimento (aprovada pelo dono e implementada)
 
 Estado: proposta. Nenhuma tela desta seção foi implementada. A aprovação do dono vem antes do código: é a regra de frontend do projeto.
 
