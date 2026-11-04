@@ -387,16 +387,22 @@ describe('the final review', () => {
     expect(scores).toContain('briefing.mdsem nota');
   });
 
-  it('hides the pending items until the owner shows them, opens the stage from there, and sends the general questions to the backlog step', () => {
+  it('keeps the pendências off the summary and shows them all in the backlog step, opened, with a link to each document', () => {
     open('?etapa=revisao');
     show(reviewSnap());
-    expect(screen.queryByTestId('pending-project.md')).toBeNull();
-    // The questions of the PO and the SM are answered in the backlog step, not on the summary.
+    // The summary no longer carries the pendências or the questions: both live in the backlog step.
+    expect(screen.queryByTestId('final-pending')).toBeNull();
+    expect(screen.queryByTestId('pending-toggle')).toBeNull();
     expect(screen.queryByTestId('answer-po-c1-0')).toBeNull();
-    expect(screen.getByTestId('pending-questions-backlog').textContent).toContain('Backlog');
-    fireEvent.click(screen.getByTestId('pending-toggle'));
+    cleanup();
+    open('?etapa=backlog');
+    show(reviewSnap());
     expect(screen.getByTestId('pending-toggle').textContent).toBe('Ocultar pendências');
     expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
+    expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('pending-toggle'));
+    expect(screen.queryByTestId('pending-project.md')).toBeNull();
+    fireEvent.click(screen.getByTestId('pending-toggle'));
     fireEvent.click(screen.getByTestId('pending-project.md'));
     expect(window.location.search).toContain('etapa=project.md');
     expect(screen.getByTestId('doc-project.md')).toBeTruthy();
@@ -411,8 +417,8 @@ describe('the final review', () => {
     expect(handlers.onAnswer).toHaveBeenCalledWith('po-c1-0', '8080', false);
   });
 
-  it('the final review lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
-    open('?etapa=revisao');
+  it('the backlog step lists the questions of the whole round the guard dropped, and the owner can ask one again', () => {
+    open('?etapa=backlog');
     const handlers = { ...on(), onReask: vi.fn() };
     show(reviewSnap({ droppedQuestions: [{ questionId: 'po-c1-5', role: 'po', text: 'Quem aprova a conta?', cycle: 1, blocking: false, relatedAcIds: [], matchedQuestionId: 'po-c0-0', matchedText: 'Quem aprova?', matchedAnswer: 'O gerente' }] }), handlers);
     expect(screen.getByTestId('dropped-repeats').textContent).toContain('Resolvida com "O gerente"');

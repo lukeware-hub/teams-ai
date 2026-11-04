@@ -337,7 +337,7 @@ export function RefinementView(p: ViewProps) {
   const [docs, setDocs] = useState(snap.docs);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
-  const [pendingOpen, setPendingOpen] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(true);
   const [architectureNote, setArchitectureNote] = useState<string | null>(null);
   const [prepareClick, setPrepareClick] = useState<{ at: number; inputHash?: string } | null>(null);
   const [busyDialog, setBusyDialog] = useState(false);
@@ -1177,9 +1177,6 @@ export function RefinementView(p: ViewProps) {
     );
   };
   const finalScreen = () => {
-    const unfiled = unfiledQuestions(st);
-    const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
-    const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
     const autoApplied = st.patches.filter((x) => x.auto === true).length;
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
@@ -1227,30 +1224,6 @@ export function RefinementView(p: ViewProps) {
               );
             })}
           </div>
-          <div className="grid gap-3" data-testid="final-pending">
-            <div data-testid="refinement-final-pending-heading" className="flex flex-wrap items-center justify-between gap-3">
-              <h3 data-testid="refinement-final-pending-title" className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
-              {byDoc.length > 0 && (
-                <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
-                  {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
-                </button>
-              )}
-            </div>
-            {pendingOpen && byDoc.map(({ file, count }) => (
-              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
-                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
-                <Icon name="arrow-right" size={16} />
-              </button>
-            ))}
-            {unfiled.length > 0 && (
-              <button type="button" className="link-button justify-self-start" data-testid="pending-questions-backlog" onClick={() => goTo('backlog')}>
-                {unfiled.length === 1 ? '1 pergunta do PO ou do SM espera você no Backlog' : `${unfiled.length} perguntas do PO e do SM esperam você no Backlog`}
-                <Icon name="arrow-right" size={16} />
-              </button>
-            )}
-            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
-            {byDoc.length === 0 && unfiled.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
-          </div>
         </div>
         <div data-testid="refinement-final-quality" className="min-w-0 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6">{qualityBlock(`grid min-w-0 grid-cols-[minmax(0,1fr)] content-start ${qualityStyles}`)}</div>
       </div>
@@ -1262,6 +1235,7 @@ export function RefinementView(p: ViewProps) {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
       {resolveBlock}
+      {pendingSummary}
       {!locked && unfiledQuestions(st).length > 0 && (
         <div data-testid="round-questions" className="grid gap-3">
           <p data-testid="round-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">Todas as perguntas do PO e do SM que esperam você ficam aqui, nesta etapa.</p>
@@ -1313,6 +1287,30 @@ export function RefinementView(p: ViewProps) {
     if (speckitReason && !speckitAsked.some((q) => q.blocking)) startMissing.push(speckitReason);
     if (specsReason && st.status === 'ready' && specsAsked.length === 0) startMissing.push(`${specsReason}.`);
   }
+  // The summary of everything that waits for the owner, shown in the backlog step: each document's open items, the questions and the repeats the guard dropped.
+  const unfiled = unfiledQuestions(st);
+  const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
+  const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
+  const pendingSummary = (
+    <div className="grid gap-3" data-testid="final-pending">
+            <div data-testid="refinement-final-pending-heading" className="flex flex-wrap items-center justify-between gap-3">
+              <h3 data-testid="refinement-final-pending-title" className="m-0 text-[1rem] font-semibold text-ink">Pendências</h3>
+              {byDoc.length > 0 && (
+                <button type="button" className="secondary h-10 px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
+                  {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
+                </button>
+              )}
+            </div>
+            {pendingOpen && byDoc.map(({ file, count }) => (
+              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
+                <Icon name="arrow-right" size={16} />
+              </button>
+            ))}
+            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+            {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
+          </div>
+  );
   const startLine = null;
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
