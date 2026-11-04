@@ -41,7 +41,7 @@ import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
-import { decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
+import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { preparePlans } from './plan-prepare.js';
@@ -1278,11 +1278,47 @@ export class RefineSession {
         return;
       }
       await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
+      // What the reviewers said about the documents themselves is fixed there first: redoing an item cannot fix a document.
+      await this.repairDocuments(ctl, specs);
       await this.timedChain(ctl);
       const next = this.specsOf();
       if (!next || this.specsSettled(next.hash)) return;
       specs = next;
       repaired = true;
+    }
+  }
+
+  /** The PO fixes, in the documents, the findings that are about them: merged repeats, open points closed as assumptions, wrong citations. Only changes that add no scope are accepted; the others wait as suggestions. */
+  private async repairDocuments(ctl: AbortController, specs: { text: string; hash: string }): Promise<void> {
+    const findings = SPECS_REVIEWERS.flatMap((role) => {
+      const review = this.state.specsReview?.[role];
+      return review?.specsHash === specs.hash && review.verdict === 'rejected' ? review.findings.filter(aboutADocument).map((text) => ({ role, text })) : [];
+    });
+    if (findings.length === 0) return;
+    await this.journal.fact(RefineEvent.EvaluationStarted, {});
+    try {
+      const cycle = this.state.cycle;
+      const out = (await this.deps.runAgent<'refine'>(
+        { kind: 'refine', role: 'po', pack: fitPackBudget(specsDocsPack({ specHash: specs.hash, findings })), cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: cycle },
+        { journal: this.journal, stepDir: this.deps.draft.steps, specHash: specs.hash, signal: ctl.signal },
+      )) as StepOutcome<z.infer<typeof RefineOutput>>;
+      if (!out.ok) return;
+      const docs = await this.docsNow();
+      let n = 0;
+      const files = new Set<DocFile>();
+      for (const p of out.value.docPatch) {
+        const check = checkPatch(p, this.deps.draft.specId, docs);
+        if (!check.ok) continue;
+        files.add(check.file);
+        await this.journal.fact(RefineEvent.PatchProposed, { patchId: patchIdOf('po', cycle, 300 + n++), role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
+      }
+      const before = this.state.patches.filter((x) => x.auto === true).length;
+      for (const file of files) await this.acceptSafePatches(file);
+      await this.journal.fact(RefineEvent.SpecsDocsRepaired, { count: this.state.patches.filter((x) => x.auto === true).length - before, proposed: n });
+    } catch {
+      // The repair of the documents is one try among several: a failure leaves the others to go on.
+    } finally {
+      await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
   }
 

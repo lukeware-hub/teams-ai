@@ -1090,6 +1090,43 @@ describe('refine api', () => {
     expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThanOrEqual(4);
   });
 
+  it('a finding about a document is fixed in that document by the PO inside the automatic repair, not only in the items', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    // A plain sentence in stack.md, so the PO's change adds no scope.
+    const stackText = `${(await snapshot()).docs['stack.md'] as string}\nO contrato dos endpoints aparece em três seções.\n`;
+    expect((await call('PUT', `${url}/docs/stack.md`, { text: stackText })).status).toBe(200);
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const find = 'O contrato dos endpoints aparece em três seções.';
+    // The PO rejects the text with a finding about stack.md; the PO then rewrites that line in stack.md, and the new text is approved.
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['stack.md › Contrato dos endpoints: a seção aparece três vezes com redações diferentes.'] }, { verdict: 'approved', findings: [] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }];
+    script['refine/po'] = [{ checklist: [], questions: [], docPatch: [{ file: 'docs/stack.md', find, replace: 'O contrato dos endpoints aparece em uma única seção.', reason: 'seção única' }] }, review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
+    await settle();
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    const after = await snapshot();
+    expect(after.docs['stack.md']).toContain('O contrato dos endpoints aparece em uma única seção.');
+    expect(after.specsApproved).toBe(true);
+  });
+
   it('two concurrent start requests spawn exactly one run', async () => {
     await specDraft();
     script['derive/po'] = [derived];

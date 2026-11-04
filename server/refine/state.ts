@@ -43,6 +43,8 @@ export interface SpecsAttempt {
   redone: string[];
   failed: Array<{ item: string; issues: string[] }>;
   after?: Partial<Record<'po' | 'sm', { verdict: string; findings: string[] }>>;
+  /** The changes the PO made to the documents in this attempt, for the findings that were about them. */
+  documents?: number;
 }
 export interface FindingRow {
   cycle: number;
@@ -515,6 +517,11 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.questions = [...s.questions, ...(d.questions as Question[]).map((q) => ({ ...q, status: 'pending' as const, answer: null }))];
       s.status = computeStatus(s);
       break;
+    case RefineEvent.SpecsDocsRepaired: {
+      const attempt = s.specsAttempts?.at(-1);
+      if (attempt) attempt.documents = Number(d.count ?? 0);
+      break;
+    }
     case RefineEvent.SpecsOwnerApproved:
       s.specsOwnerApproved = String(d.specsHash);
       break;

@@ -32,4 +32,9 @@ describe('SpecsAttempts', () => {
     expect(repeatedPoints([attempt(1, [open + ' hoje']), attempt(2, [open + ' ainda'])], 1)).toHaveLength(1);
     expect(repeatedPoints([attempt(1, ['Um ponto']), attempt(2, ['Outro ponto'])], 1)).toHaveLength(0);
   });
+
+  it('says how many changes the PO made to the documents in a try', () => {
+    render(<SpecsAttempts attempts={[attempt(1, ['x'], { documents: 2 })]} />);
+    expect(screen.getByTestId('specs-attempt-1-documents').textContent).toBe('O PO corrigiu 2 trechos dos documentos.');
+  });
 });

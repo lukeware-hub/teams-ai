@@ -98,6 +98,7 @@ export const RefineEvent = {
   SpecsFeedback: 'REFINE_SPECS_FEEDBACK',
   SpecsQuestionsAsked: 'REFINE_SPECS_QUESTIONS_ASKED',
   SpecsOwnerApproved: 'REFINE_SPECS_OWNER_APPROVED',
+  SpecsDocsRepaired: 'REFINE_SPECS_DOCS_REPAIRED',
   /** The owner authorized the development on the summary with this hash: `{summaryHash}`. */
   DevelopmentAuthorized: 'REFINE_DEVELOPMENT_AUTHORIZED',
   /** The architecture step started on the five documents at this hash: `{docsHash}`. */

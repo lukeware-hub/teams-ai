@@ -749,4 +749,6 @@ export interface SpecsAttemptView {
   redone: string[];
   failed: Array<{ item: string; issues: string[] }>;
   after?: Partial<Record<'po' | 'sm', { verdict: string; findings: string[] }>>;
+  /** The changes the PO made to the documents in this try. */
+  documents?: number;
 }

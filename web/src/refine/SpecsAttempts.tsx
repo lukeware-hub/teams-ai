@@ -25,6 +25,7 @@ export function SpecsAttempts({ attempts }: { attempts: readonly SpecsAttemptVie
             <li key={a.n} data-testid={`specs-attempt-${a.n}`} className="grid gap-[0.2rem] text-ink-soft">
               <b className="text-ink">Tentativa {a.n}</b>
               <span>Os revisores apontaram {a.points === 1 ? '1 ponto' : `${a.points} pontos`} em {a.items.join(', ')}. O time refez {a.redone.length > 0 ? a.redone.join(', ') : 'nada'}.</span>
+              {a.documents !== undefined && a.documents > 0 && <span data-testid={`specs-attempt-${a.n}-documents`}>O PO corrigiu {a.documents === 1 ? '1 trecho' : `${a.documents} trechos`} dos documentos.</span>}
               {a.failed.map((f) => <span key={f.item} className="text-warn">O agente não conseguiu refazer {f.item}: {f.issues.join('; ')}</span>)}
               {verdicts.length > 0 && <span>Depois: {verdicts.join(' · ')}.</span>}
               {repeated > 0 && <span data-testid={`specs-attempt-${a.n}-repeated`} className="text-warn">{repeated === 1 ? 'Um ponto voltou' : `${repeated} pontos voltaram`} sem mudar.</span>}

@@ -56,3 +56,21 @@ export function decideQuestionPack(input: { specHash: string; question: string }
   ].join('\n');
   return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 30_000 };
 }
+
+/** The files a finding can open with when it is about a document and not about specs.md. */
+const DOC_NAMES = /^[\[(\s]*(project|briefing|stack|flow|design)\.md/i;
+
+/** Whether a reviewer's finding is about one of the five documents, so redoing a backlog item cannot fix it. */
+export const aboutADocument = (finding: string): boolean => DOC_NAMES.test(finding);
+
+/** What the PO does with the findings that are about the documents: fix them there, so the specs are derived from sound documents. */
+export function specsDocsPack(input: { specHash: string; findings: ReadonlyArray<{ role: SpecsReviewer; text: string }> }): ContextPackInput {
+  const feedback = [
+    'The PO and the SM rejected specs.md, and these findings are about the documents themselves, so redoing a backlog item cannot fix them:',
+    ...input.findings.map((f) => `- ${f.role.toUpperCase()}: ${f.text}`),
+    '',
+    'Fix each one in the right document (docs/project.md, briefing.md, stack.md, flow.md, design.md, which you can read) with a docPatch: merge a section that appears more than once into a single one, close an open point by writing the decision the documents lean towards as `Assumption: <claim>. Reason: <why>.`, correct a wrong citation. Change nothing the owner decided, and add no feature.',
+    'Return no question and an empty checklist. Write everything in Brazilian Portuguese.',
+  ].join('\n');
+  return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 30_000 };
+}
