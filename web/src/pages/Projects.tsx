@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { newSpecPath, projectPath, refinePath } from '../routes.js';
+import { projectPath, refinePath } from '../routes.js';
+import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
@@ -104,6 +105,7 @@ export function ProjectsView(p: {
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
   // The project whose code graph is open in a dialog.
   const [graphOf, setGraphOf] = useState<string | null>(null);
+  const [newSpecOf, setNewSpecOf] = useState<string | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<{ projectId: string; specId: string } | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectRow | null>(null);
   const [deleteStep, setDeleteStep] = useState<'loading' | 'repos' | 'confirm'>('loading');
@@ -318,10 +320,10 @@ export function ProjectsView(p: {
                     Abrir
                     <Icon name="arrow-right" size={14} />
                   </Link>
-                  <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={newSpecPath(pr.projectId)}>
+                  <button type="button" className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`new-spec-${pr.projectId}`} aria-label={`Nova spec no projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; setNewSpecOf(pr.projectId); }}>
                     Nova spec
                     <Icon name="plus" size={14} />
-                  </Link>
+                  </button>
                   <button type="button" className={action.secondary} data-testid={`graph-project-${pr.projectId}`} aria-label={`Ver o grafo do código do projeto ${pr.projectId}`} onClick={(e) => { opener.current = e.currentTarget; setGraphOf(pr.projectId); }}>
                     Graphify
                     <Icon name="code" size={14} />
@@ -397,6 +399,7 @@ export function ProjectsView(p: {
               : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
         </ConfirmDialog>
       ) : null}
+      {newSpecOf ? <NewSpecDialog projectId={newSpecOf} openRequest={p.drafts.find((d) => d.projectId === newSpecOf && d.extension === true && d.state !== 'started')?.specId} returnFocus={opener.current} onClose={() => setNewSpecOf(null)} /> : null}
       {graphOf ? (
         <Dialog title={`Grafo do código · ${graphOf}`} returnFocus={opener.current} onClose={() => setGraphOf(null)}>
           <div className="grid gap-3 p-5">

@@ -1627,3 +1627,26 @@ Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pe
 ### 31.3 Responsivo
 
 Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.
+
+## 32. Nova spec em modal
+
+Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução concluída) abre o mesmo modal grande, na própria tela, sem levar à página do projeto.
+
+### 32.1 Composição
+
+- Usa o `Dialog` em tamanho grande: 56 rem de largura no máximo e 90% da altura da janela.
+- Cabeçalho com o título `Nova spec · <projeto>` e o botão de fechar.
+- Corpo com um rótulo, uma caixa de texto alta (pelo menos 14 rem), uma frase que diz o que os agentes farão e, quando houver, o erro.
+- Rodapé com `Cancelar` (secundário) e `Criar spec` (primário, com seta), alinhados à direita.
+
+### 32.2 Comportamento
+
+- `Criar spec` fica desativado com o campo vazio e mostra o estado de envio sem permitir um segundo clique.
+- Ao confirmar, a tela abre `/refine/<projeto>/<spec>`, onde os agentes organizam a spec no padrão das outras.
+- Um erro aparece dentro do modal e o texto digitado é mantido.
+- Fechar com texto digitado pede confirmação antes de descartar.
+- Se já existe um pedido aberto e não iniciado, o modal mostra o aviso e o botão `Continuar` no lugar do campo.
+
+### 32.3 Responsivo
+
+Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.
