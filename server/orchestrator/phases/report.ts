@@ -113,6 +113,7 @@ export async function runPhase6(deps: Phase6Deps): Promise<{ ok: boolean; report
     }
     if (out.failure === 'quota' || out.failure === 'auth') { if (await pauseForFailure(deps, out.failure)) return { ok: false, report: { ...base, exploratoryScript: [], summary: PAUSED_AUTH }, reason: PAUSED_AUTH }; continue; }
     error = out.errors?.join('; ') ?? 'report step failed';
+    docsErrors = out.errors ?? [];
   }
   if (!docsOk && !error) error = 'report step failed';
   if (!docsOk) { const reason = `Phase 6 blocked: ${error}`; await deps.journal.fact(OrchEvent.PhaseFailed, { phase: 6, reason }); return { ok: false, report: { ...base, exploratoryScript: script, summary: reason }, reason }; }

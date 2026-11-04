@@ -253,11 +253,11 @@ export const DocsPatch = z.object({ file: z.enum(['docs/README.md', 'docs/RUNBOO
 /** The three docs the orchestrator commits: each as a whole file, or as `docPatches` over the current file on main. */
 const docsFields = {
   /** Markdown for docs/README.md: a project overview the orchestrator commits with the report; omitted when `docPatches` change the current one. */
-  readme: z.string().optional(),
+  readme: z.string().optional().catch(undefined),
   /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
-  runbook: z.string().optional(),
+  runbook: z.string().optional().catch(undefined),
   /** Markdown for docs/API.md listing every endpoint the spec features name. */
-  apiDocs: z.string().optional(),
+  apiDocs: z.string().optional().catch(undefined),
   docPatches: z.array(DocsPatch).optional(),
 };
 

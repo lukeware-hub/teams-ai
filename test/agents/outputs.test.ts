@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Plan } from '../../server/contracts/plan.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeServicesPlan } from '../fixtures/contracts.js';
-import { BlockOptionsOutput, ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
+import { BlockOptionsOutput, ConvergeOutput, DevOutput, EnvironmentVariable, OUTPUT_SCHEMAS, PlanOutput, RefineOutput, ReportOutput, ReviewOutput, SecurityOutput, ServicesPlanOutput, STEP_KINDS, blockingFindings, toJsonSchema } from '../../server/agents/outputs.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 
@@ -307,6 +307,16 @@ describe('ServicesPlanOutput', () => {
     const { service: _, ...loose } = plan.tasks[0]!;
     expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [loose, ...plan.tasks.slice(1)] }).success).toBe(false);
     expect(ServicesPlanOutput.safeParse({ ...plan, tasks: [{ ...plan.tasks[0]!, id: 'T1' }, ...plan.tasks.slice(1)] }).success).toBe(false);
+  });
+});
+
+describe('report docs fields', () => {
+  it('a null doc field counts as absent, so the report step is not failed for writing null', () => {
+    const base = { specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 's' };
+    const parsed = ReportOutput.parse({ ...base, readme: '# App', runbook: null, apiDocs: null });
+    expect(parsed).toMatchObject({ readme: '# App' });
+    expect(parsed.runbook ?? undefined).toBeUndefined();
+    expect(parsed.apiDocs ?? undefined).toBeUndefined();
   });
 });
 

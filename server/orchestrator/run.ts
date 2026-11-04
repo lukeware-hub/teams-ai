@@ -33,6 +33,7 @@ import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step
 import { nextRunnable, runProgress, tasksToBlock, type RunProgress } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
+import { phase6Resume } from './phase6-resume.js';
 import { effectivePlan } from './gate-fix.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
@@ -822,7 +823,23 @@ export class Run {
     return { ok: true };
   }
 
+  /** A run that failed in phase 6 writes its report again: phases 0 to 5 already passed, and the journal says so. */
+  private async resumePhase6(result: 'awaiting-validation'): Promise<ExecuteResult> {
+    const events = this.journal.events;
+    if (events.findLastIndex((e) => e.type === OrchEvent.RunFinished) > events.findLastIndex((e) => e.type === RunEvent.RunReopened)) await this.journal.fact(RunEvent.RunReopened, { manual: true });
+    const plan = await this.loadPlan();
+    if (plan === null) return this.finish('phase-failed', 'the plan is not on main, so phase 6 has nothing to report');
+    this.plan = plan;
+    await this.loadServiceContext(plan);
+    const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
+    if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
+    if (!p6.ok) return this.finish('phase-failed', p6.reason);
+    return this.finish(result);
+  }
+
   async execute(): Promise<ExecuteResult> {
+    const resumed = phase6Resume(this.journal.events);
+    if (resumed !== null) return this.resumePhase6(resumed);
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
     // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
@@ -939,6 +956,7 @@ export class Run {
       }
       if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
       error = out.errors?.join('; ') ?? error;
+      docsErrors = out.errors ?? [];
     }
     if (!readme) return this.finish('phase-failed', error);
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
