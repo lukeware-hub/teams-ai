@@ -104,6 +104,17 @@ describe('program controller', () => {
     expect(status(p)).toEqual({ a: 'done' });
   });
 
+  it('keeps the dependents of a failed spec blocked even while another spec is delivered', async () => {
+    // The fake numbers runs across specs: b is the second one started, so its run is d-b-r2.
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-b-r2': { kind: 'failed', reason: 'boom' } });
+    let p = newProgram('d', [mapped('a', 1), mapped('b', 2, ['a']), entry('c', 3, ['b']), mapped('d', 4, ['a']), entry('e', 5, ['c'])], NOW);
+    p = await tick(p, fx, save); // start a
+    p = await tick(p, fx, save); // a delivered: b and d start beside it
+    p = await tick(p, fx, save); // b fails: c blocks, and e blocks through c; d goes on
+    expect(status(p)).toEqual({ a: 'delivered', b: 'failed', c: 'blocked', d: 'running', e: 'blocked' });
+    expect(calls).toEqual(['start d-a', 'start d-b', 'start d-d']);
+  });
+
   it('keeps the delivering run\'s cost on a delivered item (R11.6)', async () => {
     const { fx, finished } = world({ 'd-a-r1': { kind: 'delivered', costUsd: 1.5 } });
     let p = newProgram('d', [entry('a', 1)], NOW);
