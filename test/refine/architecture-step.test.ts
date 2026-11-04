@@ -102,3 +102,31 @@ describe('architecture check', () => {
     expect(checkDecision(output(bad), 'hello-app', DOCS).join(' ')).toContain('não existe em stack.md');
   });
 });
+
+describe('a decision that follows an architecture only adds to it', () => {
+  const output = (arch: Architecture): ArchitectureOutput => ({ ...arch, specHash: 'x', questions: [] }) as ArchitectureOutput;
+
+  it('keeps the style, every repository and every integration of the decision it follows', () => {
+    expect(checkDecision(output(MICROSERVICES), 'hello-app', DOCS, MICROSERVICES)).toEqual([]);
+  });
+
+  it('refuses a decision that drops a repository of the one it follows', () => {
+    const dropped = { ...MICROSERVICES, repositories: [MICROSERVICES.repositories[0]!], integrations: [] };
+    expect(checkDecision(output(dropped), 'hello-app', DOCS, MICROSERVICES).join(' ')).toContain('o repositório hello-web da arquitetura decidida saiu');
+  });
+
+  it('refuses a decision that drops an integration of the one it follows', () => {
+    const dropped = { ...MICROSERVICES, integrations: [] };
+    expect(checkDecision(output(dropped), 'hello-app', DOCS, MICROSERVICES).join(' ')).toContain('a integração hello-web → hello-api da arquitetura decidida saiu');
+  });
+
+  it('refuses a decision that changes the style of the one it follows', () => {
+    expect(checkDecision(output(MONOLITH), 'hello-app', DOCS, MICROSERVICES).join(' ')).toContain('o estilo microservices');
+  });
+
+  it('puts the decision it follows in the pack, so the agent keeps what is decided', () => {
+    const pack = architecturePack({ specHash: 'x', principles: [], docs: DOCS, graphContext: '', existingServices: [], answers: [], previous: MICROSERVICES });
+    expect(pack.feedback).toContain('### Architecture already decided');
+    expect(pack.feedback).toContain('hello-api');
+  });
+});

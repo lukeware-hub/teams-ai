@@ -957,15 +957,17 @@ export class RefineSession {
     const graphContext = this.deps.docGraphContext ? await this.deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), ARCHITECTURE_QUESTION, GRAPH_CONTEXT_TOKENS) : '';
     const answers = this.state.questions.filter((q) => q.origin === 'architecture' && q.status === 'answered' && q.answer).map((q) => `${q.text}: ${q.answer}`);
     const existingServices = this.state.derived?.project.services ?? [];
+    // A follow-on request starts from the architecture its project already decided, and only adds to it.
+    const previous = this.state.extension ? this.state.architecture?.decision : undefined;
     let issues: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const pack = fitPackBudget(architecturePack({ specHash: hash, principles: [], docs, graphContext, existingServices, answers, issues }));
+      const pack = fitPackBudget(architecturePack({ specHash: hash, principles: [], docs, graphContext, existingServices, answers, issues, previous }));
       const out = (await this.deps.runAgent<'architecture'>(
         { kind: 'architecture', role: 'sm', pack, cwd: draft.root, phase: 'refine', taskId: null, attempt },
         { journal: this.journal, stepDir: draft.steps, specHash: hash, signal },
       )) as StepOutcome<ArchitectureOutput>;
       if (!out.ok) throw ownerFailure('A arquitetura', out.failure, out.errors, TRY_AGAIN);
-      issues = checkDecision(out.value, draft.projectId, docs);
+      issues = checkDecision(out.value, draft.projectId, docs, previous);
       if (issues.length === 0) return out.value;
     }
     throw new RulesOpenError(issues);
