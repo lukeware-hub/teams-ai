@@ -9,8 +9,8 @@ const view = (over: Partial<GraphView> = {}): GraphView => ({
   links: 2,
   communities: 2,
   top: [
-    { id: 'a', label: 'A', file: 'a.ts', community: 'core', edges: 2 },
-    { id: 'b', label: 'B', file: 'b.ts', community: 'core', edges: 1 },
+    { id: 'a', label: 'A', repo: 'p', file: 'docs/a.md', line: 4, community: 'core', edges: 2, url: 'https://github.com/acme/p/blob/abc/docs/a.md#L4' },
+    { id: 'b', label: 'B', repo: 'p', file: 'docs/b.md', line: null, community: 'core', edges: 1, url: null },
   ],
   topLinks: [{ source: 'a', target: 'b' }],
   usage: { graph: 4, grep: 1, none: 0, recent: [] },
@@ -73,5 +73,24 @@ describe('GraphPanel', () => {
     await waitFor(() => expect(screen.getByTestId('graph-counts')).toBeTruthy());
     expect(build).toHaveBeenCalledTimes(2);
     expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('makes a node with a file a link that opens it in a new tab, and leaves one without a file as plain text', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    render(<GraphPanel projectId="p" />);
+    open();
+    await waitFor(() => expect(screen.getByTestId('graph-top')).toBeTruthy());
+    const chip = screen.getByTestId('graph-top-link');
+    expect(chip.getAttribute('href')).toBe('https://github.com/acme/p/blob/abc/docs/a.md#L4');
+    expect(chip.getAttribute('target')).toBe('_blank');
+    expect(chip.getAttribute('rel')).toContain('noreferrer');
+    expect(screen.getAllByTestId('graph-top-link')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('graph-map-toggle'));
+    const dot = screen.getByTestId('graph-node-link');
+    expect(dot.getAttribute('href')).toBe('https://github.com/acme/p/blob/abc/docs/a.md#L4');
+    expect(dot.getAttribute('target')).toBe('_blank');
+    expect(dot.querySelector('title')!.textContent).toBe('A · docs/a.md:4 (2 ligações)');
+    expect(screen.getAllByTestId('graph-node')).toHaveLength(1);
+    expect(screen.getByTestId('graph-node').querySelector('title')!.textContent).toBe('B · docs/b.md (1 ligações) · sem arquivo no GitHub');
   });
 });

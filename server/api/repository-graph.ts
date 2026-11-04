@@ -67,7 +67,7 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
 }
 
 const lineOf = (location: string | undefined): number | null => {
-  const line = Number(/^L(d+)/.exec(location ?? '')?.[1]);
+  const line = Number(/^L(\d+)/.exec(location ?? '')?.[1]);
   return line > 0 ? line : null;
 };
 

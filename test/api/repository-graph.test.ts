@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraphView, graphUsage } from '../../server/api/repository-graph.js';
+import { buildGraphView, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
 
 const used = (taskId: string, step: string, source: string, nodes: number): StoredEvent =>
@@ -39,5 +39,41 @@ describe('graph view', () => {
   it('keeps the usage even when the graph is not available', () => {
     const view = buildGraphView(null, [{ runId: 'r1', events: [used('t1', 'dev', 'grep', 0)] }]);
     expect(view.usage.grep).toBe(1);
+  });
+});
+
+describe('graph view nodes', () => {
+  const raw = JSON.stringify({
+    nodes: [
+      { id: 'a', label: 'A', repo: 'shop', source_file: 'docs/a.md', source_location: 'L12', community_name: 'core' },
+      { id: 'b', label: 'B', repo: 'shop', source_file: 'docs/b.md', source_location: 'x', community_name: 'core' },
+      { id: 'i', label: 'A', repo: 'project-info', source_file: 'a.md', source_location: 'L1', community_name: 'core' },
+    ],
+    links: [
+      { source: 'a', target: 'b' },
+      { source: 'a', target: 'i' },
+    ],
+  });
+
+  it('leaves out the project description nodes, and the links that touch them', () => {
+    const view = buildGraphView(raw, []);
+    expect(view.nodes).toBe(2);
+    expect(view.links).toBe(1);
+    expect(view.top.map((n) => n.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('carries the repository tag and the line of each node, and no link yet', () => {
+    const [a, b] = ['a', 'b'].map((id) => buildGraphView(raw, []).top.find((n) => n.id === id)!);
+    expect(a).toMatchObject({ repo: 'shop', file: 'docs/a.md', line: 12, url: null });
+    expect(b!.line).toBeNull();
+  });
+
+  it('fills in each link from the resolver, and a node whose lookup fails keeps none', async () => {
+    const view = await linkNodes(buildGraphView(raw, []), async (n) => {
+      if (n.id === 'b') throw new Error('git down');
+      return `https://github.com/acme/shop/blob/c/${n.file}`;
+    });
+    expect(view.top.find((n) => n.id === 'a')!.url).toBe('https://github.com/acme/shop/blob/c/docs/a.md');
+    expect(view.top.find((n) => n.id === 'b')!.url).toBeNull();
   });
 });

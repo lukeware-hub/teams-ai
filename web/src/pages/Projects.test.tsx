@@ -287,7 +287,7 @@ describe('ProjectsView', () => {
 describe('the Graphify button of a project card', () => {
   afterEach(() => vi.restoreAllMocks());
   it('opens the project code graph in a dialog and closes it with Escape', async () => {
-    const spy = vi.spyOn(runApi, 'projectGraph').mockResolvedValue({ available: true, nodes: 7, links: 10, communities: 1, top: [{ id: 'a', label: 'A', file: 'a.ts', community: 'c', edges: 3 }], topLinks: [], usage: { graph: 2, grep: 0, none: 0, recent: [] } });
+    const spy = vi.spyOn(runApi, 'projectGraph').mockResolvedValue({ available: true, nodes: 7, links: 10, communities: 1, top: [{ id: 'a', label: 'A', repo: 'hello-app', file: 'a.ts', line: 1, community: 'c', edges: 3, url: null }], topLinks: [], usage: { graph: 2, grep: 0, none: 0, recent: [] } });
     const o = on();
     render(
       <MemoryRouter>
