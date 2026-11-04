@@ -57,8 +57,8 @@ describe('patches', () => {
 });
 
 describe("the owner's request is not changed by an agent", () => {
-  const briefing = '# Briefing\n\n## Objectives\n\nVender.\n\n## Nova demanda (shop-pedido-1)\n\nExportar o relatório em PDF.\n';
-  const REQUEST = 'Nova demanda (shop-pedido-1)';
+  const briefing = '# Briefing\n\n## Objectives\n\nVender.\n\n## Pedido pedido-1\n\nExportar o relatório em PDF.\n';
+  const REQUEST = 'Pedido pedido-1';
 
   it('refuses a change inside the request section', () => {
     const check = checkPatch({ file: 'briefing.md', find: 'Exportar o relatório em PDF.', replace: 'Exportar em CSV.', reason: 'r' }, 'shop-001', { 'briefing.md': briefing }, true, REQUEST);

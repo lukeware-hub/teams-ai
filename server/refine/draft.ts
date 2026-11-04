@@ -13,7 +13,6 @@ import { mergeDoc, mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import type { ReportRouting } from '../decide/decisions/report-routing.js';
 import { renderDecisions } from './decisions.js';
-import { requestHeading } from './state.js';
 
 export type RouteReport = (criteria: Spec['acceptanceCriteria'], report: string, confidential: boolean) => Promise<ReportRouting | null>;
 
@@ -158,14 +157,20 @@ export const draftExists = async (d: Draft): Promise<boolean> =>
  */
 /** Shifts every markdown heading in `text` down one level, so an appended brief's own sections (## Type, ## Objectives...)
  * never collide with the target briefing's own `##` structure once they sit under its "## Nova demanda" heading. */
-function demoteHeadings(text: string): string {
+export function demoteHeadings(text: string): string {
   return text
     .split('\n')
     .map((line) => (/^#{1,5} /.test(line) ? `#${line}` : line))
     .join('\n');
 }
 
-export async function moveBriefingToProject(d: Draft): Promise<void> {
+/** Drops the control characters a pasted text can carry; tabs and line breaks stay. */
+export function stripControls(text: string): string {
+  return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+}
+
+/** Moves the draft's brief under `heading` in the project briefing: its own name for a spec, the request's heading for a request. */
+export async function moveBriefingToProject(d: Draft, heading = `Nova demanda (${d.specId})`): Promise<void> {
   const source = (await exists(d.briefMd)) ? d.briefMd : legacyBriefPath(d);
   const brief = await fs.readFile(source, 'utf8').catch(() => null);
   if (brief !== null) {
@@ -173,7 +178,7 @@ export async function moveBriefingToProject(d: Draft): Promise<void> {
     const demoted = demoteHeadings(brief.trim());
     if (briefing === null) await fs.rename(source, briefingPath(d));
     else if (brief.trim() !== briefTemplate().trim() && !briefing.includes(demoted)) {
-      await writeFileAtomic(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## ${requestHeading(d.specId)}\n\n${demoted}`));
+      await writeFileAtomic(briefingPath(d), withNewline(`${briefing.trimEnd()}\n\n## ${heading}\n\n${demoted}`));
     }
   }
   // Only the single-spec files go; anything else in the spec directory stays, and the directory goes once empty.

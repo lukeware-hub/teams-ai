@@ -14,7 +14,7 @@ const base = {
     items: [item('login', 1), item('export', 2), item('cart', 3, ['login', 'export'])],
     specs: { login: { spec: { status: 'running' } }, export: { spec: { status: 'planned' } }, cart: { spec: { status: 'planned' } } },
   },
-  extension: { requestId: 'shop-pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: 'x', before: [{ key: 'login', rank: 1, dependsOn: [] }, { key: 'cart', rank: 2, dependsOn: ['login'] }] },
+  extension: { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: 'x', before: [{ key: 'login', rank: 1, dependsOn: [] }, { key: 'cart', rank: 2, dependsOn: ['login'] }] },
 } as unknown as RefineState;
 
 describe('the trail of a request', () => {
@@ -63,7 +63,7 @@ describe('the checks of a request before it starts', () => {
 
 describe('the trail of a request', () => {
   it('counts the specs, their plans and their task lists', () => {
-    const trace = { heading: 'Nova demanda (shop-pedido-1)', specs: [{ key: 'a', specId: 'a', citesRequest: true, planned: true, tasked: true }, { key: 'b', specId: 'b', citesRequest: true, planned: true, tasked: false }] };
+    const trace = { heading: 'Pedido pedido-1', specs: [{ key: 'a', specId: 'a', citesRequest: true, planned: true, tasked: true }, { key: 'b', specId: 'b', citesRequest: true, planned: true, tasked: false }] };
     expect(requestTrail(trace, 2)).toBe('Pedido → 2 specs → 2 planos → 1 tarefas');
     expect(requestTrail(null, 0)).toBe('Pedido → 0 specs → 0 planos → 0 tarefas');
   });

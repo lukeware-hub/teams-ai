@@ -11,8 +11,8 @@ export interface DocSection {
   line: number;
 }
 
-/** The heading a follow-on request's section carries: "Nova demanda (<project>-pedido-<n>)". */
-const REQUEST_HEADING = /^Nova demanda \([a-z0-9-]+-pedido-\d+\)$/;
+/** The heading a follow-on request's section carries: "Pedido pedido-<n>". */
+const REQUEST_HEADING = /^Pedido pedido-\d+$/;
 
 /**
  * The document without the sections of follow-on requests. A document without any is returned as it is, so its text keeps the

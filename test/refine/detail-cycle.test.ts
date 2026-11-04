@@ -821,9 +821,9 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
   it('journals the impact once for the outline, and asks the SM again once when it breaks a rule', async () => {
     const env = await setup();
     // A follow-on request: its section is in the brief, and every new item cites it besides its flow section.
-    const REQUEST = 'Nova demanda (big-pedido-1)';
+    const REQUEST = 'Pedido pedido-1';
     await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
-    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'big-pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
     const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
     let impactCalls = 0;
     const agent = fakeAgent(() => outline, (req) => {

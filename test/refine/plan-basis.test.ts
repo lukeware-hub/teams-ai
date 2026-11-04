@@ -3,7 +3,7 @@ import { sha256 } from '../../server/contracts/hash.js';
 import { planBasis } from '../../server/refine/plan-prepare.js';
 
 const BRIEF = '# Briefing\n\nO usuário entra com e-mail.\n';
-const REQUEST = '## Nova demanda (shop-pedido-1)\n\nExportar o relatório em PDF.\n';
+const REQUEST = '## Pedido pedido-1\n\nExportar o relatório em PDF.\n';
 const docs = (briefing: string) => ({ 'project.md': 'P', 'flow.md': 'F', 'briefing.md': briefing, 'stack.md': 'S', 'design.md': 'D', 'specs.md': '' }) as never;
 
 describe('planBasis', () => {

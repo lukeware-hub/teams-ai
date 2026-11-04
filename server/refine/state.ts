@@ -109,8 +109,8 @@ export interface PreplanRow {
   cycle: number;
 }
 
-/** The section of briefing.md a request's text sits under: the draft that follows the request is named after it. */
-export const requestHeading = (requestId: string): string => `Nova demanda (${requestId})`;
+/** The section of briefing.md a follow-on request's text sits under: "Pedido <requestId>", as the approved screens name it. */
+export const requestHeading = (requestId: string): string => `Pedido ${requestId}`;
 
 /** A request the owner made in a project already in development: its id is the draft id, its text the draft's brief. */
 export interface ExtensionRequest {
@@ -119,7 +119,9 @@ export interface ExtensionRequest {
   text: string;
   at: string;
   /** The outline the request follows as main had it when the request was made: what it adds, moves and keeps is read against it. */
-  before?: Array<{ key: string; rank: number; dependsOn: string[] }>;
+  before?: Array<{ key: string; specId?: string; title?: string; rank: number; dependsOn: string[] }>;
+  /** The id scheme of main when the request was made: the request's specs keep the ids main gave them. */
+  idBase?: string;
 }
 
 /** Backlog mode: the docs broken into epics and ranked items (browser-safe, shared with the web reducer). */
@@ -708,7 +710,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.RequestReceived:
-      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}) };
+      s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
       break;
     case RefineEvent.ImpactDerived:
       s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[] };

@@ -23,12 +23,12 @@ import { answerFloor } from './auto-floor.js';
 import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, stripControls, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
 import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
-import { outlineOfIndex, type SpecsIndex } from './specs-index.js';
+import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
 import { resolveEverything } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
@@ -77,6 +77,11 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+/** The draft id of a project's request: `<project>-pedido-<n>`, the project part cut so the id has at most 40 characters. */
+export const requestDraftId = (projectId: string, number: number): string => {
+  const suffix = `-pedido-${number}`;
+  return slug(`${projectId.slice(0, 40 - suffix.length).replace(/-+$/, '')}${suffix}`, 'draftId');
+};
 /** Runs `task` once the last one queued under `key` is done: two requests of one project never race to make a draft. */
 function serialized<T>(queue: Map<string, Promise<unknown>>, key: string, task: () => Promise<T>): Promise<T> {
   const run = (queue.get(key) ?? Promise.resolve()).then(task);
@@ -275,11 +280,11 @@ export class SessionRegistry {
    */
   async addRequest(projectId: string, description: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
-    const text = cleanDescription(description);
+    const text = cleanDescription(stripControls(description));
     if (text === '') throw new RangeError('description is required');
     return serialized(this.requests, projectId, async () => {
       const open = (await this.list()).find((row) => row.projectId === projectId && row.extension === true && row.state !== 'started');
-      if (open) throw new ConflictError(`o pedido ${open.specId} ainda não foi iniciado: inicie-o antes de fazer outro`);
+      if (open) throw new ConflictError(`o pedido ${open.specId} ainda não foi iniciado (/refine/${projectId}/${open.specId}): inicie-o antes de fazer outro`);
       const ws = await this.ws(projectId);
       await this.assertMirrorProject(ws);
       const main = await this.mainOf(ws);
@@ -290,14 +295,17 @@ export class SessionRegistry {
         return this.newSpec(projectId, id, text);
       }
       // The outline as main has it now: the replan view reads what the request adds, moves and keeps against it.
-      const before = outlineOfIndex(JSON.parse(indexText) as SpecsIndex).items.map((i) => ({ key: i.key, rank: i.rank, dependsOn: [...i.dependsOn] }));
-      const draft = draftPaths(ws, await this.nextRequestId(ws));
+      const index = JSON.parse(indexText) as SpecsIndex;
+      const outline = outlineOfIndex(index).items;
+      const before = index.specs.map((s, i) => ({ key: outline[i]!.key, specId: s.specId, title: s.title, rank: outline[i]!.rank, dependsOn: [...outline[i]!.dependsOn] }));
+      const number = await this.nextRequestNumber(ws);
+      const draft = draftPaths(ws, requestDraftId(projectId, number));
       await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' }, main);
       // The text is the spec's brief: enabling the backlog moves it under its own "Nova demanda" heading in the project briefing.
       await fs.writeFile(draft.briefMd, `${text}\n`);
       const session = await this.session(draft, ws, 'backlog');
       const title = text.split('\n').find((line) => line.trim() !== '')!.trim().slice(0, 80);
-      await session.addRequest({ requestId: draft.specId, title, text, before });
+      await session.addRequest({ requestId: `pedido-${number}`, title, text, before, idBase: idSchemeOf(index)?.idBase });
       await session.enableBacklog();
       // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
       session.evaluate().then(() => resolveEverything(session, { byOwner: false })).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
@@ -305,11 +313,11 @@ export class SessionRegistry {
     });
   }
 
-  /** The draft id of a project's next request: `<project>-pedido-<n>`, one more than the requests it already made. */
-  private async nextRequestId(ws: Workspace): Promise<string> {
+  /** The number of a project's next request, one more than the requests it already made. */
+  private async nextRequestNumber(ws: Workspace): Promise<number> {
     const drafts = await fs.readdir(path.posix.join(ws.root, 'refine')).catch(() => [] as string[]);
-    const numbers = drafts.flatMap((name) => { const m = new RegExp(`^${ws.projectId}-pedido-(\\d+)$`).exec(name); return m ? [Number(m[1])] : []; });
-    return slug(`${ws.projectId}-pedido-${Math.max(0, ...numbers) + 1}`, 'draftId');
+    const numbers = drafts.flatMap((name) => { const m = /-pedido-(\d+)$/.exec(name); return m ? [Number(m[1])] : []; });
+    return Math.max(0, ...numbers) + 1;
   }
 
   async continueSpec(projectId: string, specId: string, report?: string): Promise<RefineSession> {

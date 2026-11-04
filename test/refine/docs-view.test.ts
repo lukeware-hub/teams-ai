@@ -65,7 +65,7 @@ describe('buildWithDocs', () => {
 
 describe('a section kept whole in a digest', () => {
   it("keeps the owner's request section verbatim, while the other sections of the document are cut", () => {
-    const request = 'Nova demanda (shop-pedido-1)';
+    const request = 'Pedido pedido-1';
     const text = 'y'.repeat(3000);
     const briefing = `# Briefing\n\n${'x'.repeat(5000)}\n\n## ${request}\n\n${text}\n`;
     expect(viewDocs({ brief: briefing }, 200).docs.brief).not.toContain(text);

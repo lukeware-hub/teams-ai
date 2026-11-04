@@ -90,7 +90,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${P}/projects/:projectId/requests`,
       handler: wrap(async ({ params, body, json }) => {
         const b = await body();
-        json(200, await idOf(await registry.addRequest(params.projectId!, str(b, 'description'))));
+        const session = await registry.addRequest(params.projectId!, str(b, 'description'));
+        json(200, { ...(await idOf(session)), mode: session.state.extension ? 'backlog' : 'single' });
       }),
     },
     {

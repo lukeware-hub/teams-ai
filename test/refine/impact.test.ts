@@ -42,8 +42,8 @@ describe('the impact of a request', () => {
       specHash: 'h',
       principles: [],
       request: 'Exportar o relatório em PDF.',
-      heading: 'Nova demanda (shop-pedido-1)',
-      docs: { 'briefing.md': '# Briefing\n\n## Nova demanda (shop-pedido-1)\n\nExportar o relatório em PDF.\n' },
+      heading: 'Pedido pedido-1',
+      docs: { 'briefing.md': '# Briefing\n\n## Pedido pedido-1\n\nExportar o relatório em PDF.\n' },
       items: [
         { key: 'login', title: 'Entrar', rank: 1, dependsOn: [], started: true, modules: ['auth'] },
         { key: 'export', title: 'Exportar', rank: 2, dependsOn: ['login'], started: false, modules: ['report'] },

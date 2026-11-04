@@ -4,9 +4,9 @@ import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from './RequestCards.js
 
 describe('the cards of a request', () => {
   it("shows the owner's words whole, under the section they sit in", () => {
-    render(<RequestCard text={'Exportar o relatório.\n\nEm PDF.'} heading="Nova demanda (shop-pedido-1)" interpreted />);
+    render(<RequestCard text={'Exportar o relatório.\n\nEm PDF.'} heading="Pedido pedido-1" interpreted />);
     expect(screen.getByTestId('request-text').textContent).toBe('Exportar o relatório.\n\nEm PDF.');
-    expect(screen.getByText('salvo em briefing.md › Nova demanda (shop-pedido-1)')).toBeTruthy();
+    expect(screen.getByText('salvo em briefing.md › Pedido pedido-1')).toBeTruthy();
   });
 
   it('says why an impact that did not close is not shown, and counts the one that did', () => {

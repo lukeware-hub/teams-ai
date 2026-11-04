@@ -178,7 +178,7 @@ describe('renderBacklogMd', () => {
 });
 
 describe('a follow-on request only adds to the backlog it follows', () => {
-  const REQUEST = 'Nova demanda (shop-pedido-1)';
+  const REQUEST = 'Pedido pedido-1';
   const cited = (key: string) => item(key, { sources: [{ doc: 'briefing.md', heading: REQUEST }] });
   const base = [item('login'), item('cart', { dependsOn: ['login'] })];
 

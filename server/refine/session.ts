@@ -40,7 +40,7 @@ import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
@@ -312,7 +312,7 @@ export class RefineSession {
     // A graph extraction cut by a restart is failed, so the stage does not wait forever; Continuar tries again.
     if (journal.state.graphing) await journal.fact(RefineEvent.DocGraphFailed, { file: journal.state.graphing, reason: 'A extração foi interrompida quando o servidor reiniciou.' });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
-    if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
+    if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft, journal.state.extension ? requestHeading(journal.state.extension.requestId) : undefined);
     // A continued spec carries its JSON from main before any cycle has derived one.
     if (!journal.state.derived) journal.state.derived = await readDerived(deps.draft);
     const session = new RefineSession(deps, journal);
@@ -995,13 +995,13 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), ...(await this.idSchemeOfMain()) });
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
-    await moveBriefingToProject(this.deps.draft);
+    await moveBriefingToProject(this.deps.draft, this.state.extension ? requestHeading(this.state.extension.requestId) : undefined);
   }
 
   /** A request made in a project already in development: journaled with its title and text; the brief holds the text. */
-  async addRequest(request: { requestId: string; title: string; text: string; before?: ExtensionRequest['before'] }): Promise<void> {
+  async addRequest(request: { requestId: string; title: string; text: string; before?: ExtensionRequest['before']; idBase?: string }): Promise<void> {
     this.guard();
-    await this.journal.fact(RefineEvent.RequestReceived, { ...request, at: new Date().toISOString() });
+    await this.journal.fact(RefineEvent.RequestReceived, { ...request, heading: requestHeading(request.requestId), at: new Date().toISOString() });
   }
 
   /** The id scheme main's specs index holds, so this backlog keeps the ids main already gave; a project without one takes the readable ids. */

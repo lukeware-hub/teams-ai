@@ -29,12 +29,12 @@ describe('discarding a draft puts back the documents it changed', () => {
       stepKey: 'docs',
       scope: 'refine',
       label: 'request',
-      files: { 'docs/briefing.md': `${MAIN_BRIEFING}\n## Nova demanda (shop-pedido-1)\n\nExportar.\n` },
+      files: { 'docs/briefing.md': `${MAIN_BRIEFING}\n## Pedido pedido-1\n\nExportar.\n` },
       bases: { 'docs/briefing.md': MAIN_BRIEFING },
     });
     await retireAliases(store, 'shop-pedido-1', [], { 'docs/briefing.md': MAIN_BRIEFING });
     const briefing = await git(store.dir, ['show', 'HEAD:docs/briefing.md']);
     expect(briefing).toBe(MAIN_BRIEFING.trimEnd());
-    expect(briefing).not.toContain('Nova demanda');
+    expect(briefing).not.toContain('Pedido pedido-1');
   });
 });

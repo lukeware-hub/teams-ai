@@ -45,12 +45,12 @@ describe('a request in a project already in development', () => {
   it('starts a follow-on backlog whose brief is the text, and names its specs after main', async () => {
     const s = await rig.registry.addRequest(PROJECT, 'Exportar o relatório mensal em PDF.');
     try {
-      expect(s.state.extension).toMatchObject({ requestId: 'hello-app-pedido-1', text: 'Exportar o relatório mensal em PDF.' });
+      expect(s.state.extension).toMatchObject({ requestId: 'pedido-1', text: 'Exportar o relatório mensal em PDF.' });
       expect(s.state.backlog).toMatchObject({ enabled: true, idBase: 'shop-001' });
-      expect(s.state.extension?.before).toEqual([{ key: 'login', rank: 1, dependsOn: [] }]);
+      expect(s.state.extension?.before).toEqual([{ key: 'login', specId: 'shop-001-login', title: 'Entrar', rank: 1, dependsOn: [] }]);
       const draft = draftPaths(rig.ws, 'hello-app-pedido-1');
       const briefing = await fs.readFile(path.join(draft.docs, 'briefing.md'), 'utf8');
-      expect(briefing).toContain('## Nova demanda (hello-app-pedido-1)');
+      expect(briefing).toContain('## Pedido pedido-1');
       expect(briefing).toContain('Exportar o relatório mensal em PDF.');
     } finally {
       await s.settled();

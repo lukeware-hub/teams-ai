@@ -146,7 +146,7 @@ describe('backlog events', () => {
   });
   it('a request made in a project already in development marks its draft as the request, with its text and title', () => {
     const at = '2026-11-04T10:00:00.000Z';
-    const request = { requestId: 'shop-pedido-1', title: 'Exportar relatório', text: 'Exportar o relatório mensal em PDF.', at };
+    const request = { requestId: 'pedido-1', title: 'Exportar relatório', text: 'Exportar o relatório mensal em PDF.', at };
     expect(reduceRefineEvents([{ type: RefineEvent.RequestReceived, data: request }]).extension).toEqual(request);
     expect(reduceRefineEvents([]).extension).toBeUndefined();
   });
