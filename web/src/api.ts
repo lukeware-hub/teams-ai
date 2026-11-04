@@ -621,6 +621,8 @@ export interface Snapshot {
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
   /** The seq of the last journal event the state holds. */
   seq?: number;
+  /** The server holds a process of its own: an evaluation, the plans, a check of specs.md or a graph extraction. */
+  busy?: boolean;
   /** The round after which Reavaliar stops. */
   limits?: { max: number };
   /** The closing summary of a repository session: the checks, the repositories, the assumptions, and the hash the owner authorizes. */

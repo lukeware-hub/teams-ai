@@ -232,6 +232,52 @@ describe('RefinementPage live', () => {
   });
 });
 
+describe('RefinementPage while the server holds a process', () => {
+  const stageWithPatch = (over: Record<string, unknown> = {}): Snapshot => {
+    const s = snapshot(5);
+    return { ...s, state: { ...s.state, status: 'answering', error: null, mode: 'new-project', stages: true, patches: [{ ...patch, file: 'flow.md', status: 'pending', decision: null }], ...over } as never };
+  };
+  const renderIt = () => render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
+
+  it('shows the process in green at the top, blocks the accept button, and explains on a click without sending it', async () => {
+    journal.events = [];
+    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageWithPatch(), busy: true });
+    renderIt();
+    expect(await screen.findByTestId('busy-process')).toBeTruthy();
+    const button = await screen.findByTestId('accept-sm-c1-0');
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(button);
+    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
+    expect(accept).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('busy-dialog-ok'));
+    await waitFor(() => expect(screen.queryByTestId('busy-dialog-ok')).toBeNull());
+  });
+
+  it('shows no banner and sends the accept when no process is open', async () => {
+    journal.events = [];
+    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageWithPatch());
+    renderIt();
+    const button = await screen.findByTestId('accept-sm-c1-0');
+    expect(screen.queryByTestId('busy-process')).toBeNull();
+    fireEvent.click(button);
+    await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
+  });
+
+  it('turns a refusal from the server into the notice, with no jump to the top of the page', async () => {
+    journal.events = [];
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as never;
+    vi.spyOn(refineApi, 'accept').mockRejectedValue(new Error('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.'));
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageWithPatch());
+    renderIt();
+    fireEvent.click(await screen.findByTestId('accept-sm-c1-0'));
+    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+});
+
 describe('RefinementPage journal replay', () => {
   it('applies only the events after the snapshot, so a reload after a failed cycle shows each patch once', async () => {
     journal.events = [event(1, 'REFINE_CYCLE_STARTED', { cycle: 1, draftHash: 'h' }), event(2, 'PATCH_PROPOSED', patch), event(3, 'REFINE_CYCLE_FAILED', { cycle: 1, reason: 'sm refine failed' })];

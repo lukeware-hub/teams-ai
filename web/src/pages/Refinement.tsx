@@ -68,6 +68,15 @@ const errorText = (text: string | null) => text
 const AUTOSAVE_MS = 1500;
 /** Whether an evaluation is open in the journal: it spans a stage's review, its score and its graph extraction, so the page shows the work from the first event to the last. */
 const evaluationOpen = (st: Pick<Snapshot['state'], 'evaluation'>): boolean => st.evaluation != null && st.evaluation.endedAt === null;
+/** The notice a click gets while a process is open: it says to wait, and the page frees itself when the process ends. */
+function BusyDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <ConfirmDialog title="Aguarde o processo terminar" confirmLabel="Entendi" tone="accent" icon="check" confirmTestId="busy-dialog-ok" onConfirm={onClose} onCancel={onClose}>
+      Tem um processo em aberto. Aguarde ele finalizar: os botões liberam sozinhos, sem precisar recarregar a página.
+    </ConfirmDialog>
+  );
+}
+
 const isBusyError = (e: Error) => e.message.startsWith('Já tem uma avaliação em andamento');
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 
@@ -331,6 +340,7 @@ export function RefinementView(p: ViewProps) {
   const [pendingOpen, setPendingOpen] = useState(false);
   const [architectureNote, setArchitectureNote] = useState<string | null>(null);
   const [prepareClick, setPrepareClick] = useState<{ at: number; inputHash?: string } | null>(null);
+  const [busyDialog, setBusyDialog] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
   // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
@@ -392,6 +402,8 @@ export function RefinementView(p: ViewProps) {
     try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
   };
   const evaluating = busy || st.status === 'evaluating';
+  // The server holds a process of its own (the plans, the specs, a check) that the page may not have seen start: the decisions on suggestions wait for it, with a notice on the click.
+  const serverBusy = snap.busy === true && !st.graphing;
   const locked = evaluating || st.status === 'started';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
@@ -735,6 +747,7 @@ export function RefinementView(p: ViewProps) {
         <span data-testid="refinement-docs-autosave-note" className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
       </div>
       {askDialog}
+      {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
     </section>
   );
   // A new project offers one step at a time: the start, or the evaluation, never two primary actions.
@@ -844,7 +857,7 @@ export function RefinementView(p: ViewProps) {
             </div>
             <pre data-testid={`refinement-patch-diff-${x.patchId}`} className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
             <div data-testid={`refinement-patch-actions-${x.patchId}`} className="grid grid-cols-2 items-center gap-2">
-            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good" data-testid={`accept-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onAccept(x.patchId))} icon={<Icon name="check" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`accept-${x.patchId}`} aria-disabled={locked || serverBusy} disabled={deciding !== null} onClick={() => (locked || serverBusy ? setBusyDialog(true) : decide(x.patchId, () => p.onAccept(x.patchId)))} icon={<Icon name="check" size={16} />}>
               Aceitar
             </ActionButton>
             <input
@@ -855,7 +868,7 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad" data-testid={`reject-${x.patchId}`} disabled={locked || deciding !== null} onClick={() => decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null))} icon={<Icon name="close" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`reject-${x.patchId}`} aria-disabled={locked || serverBusy} disabled={deciding !== null} onClick={() => (locked || serverBusy ? setBusyDialog(true) : decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null)))} icon={<Icon name="close" size={16} />}>
               Rejeitar
             </ActionButton>
             </div>
@@ -1417,6 +1430,7 @@ export function RefinementView(p: ViewProps) {
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
+        {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
       </div>
     );
   }
@@ -1448,6 +1462,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyNotice, setBusyNotice] = useState(false);
+  const [busyDialog, setBusyDialog] = useState(false);
   const [starting, setStarting] = useState(false);
   const [closingOpen, setClosingOpen] = useState(false);
   const applied = useRef(0);
@@ -1490,7 +1505,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     load();
   }, [reopened]);
   // The stream is the way the page follows the work. As a safety net the page also reads the snapshot on its own while its tab is visible: every few seconds while work is open, and every fifteen otherwise.
-  const working = snap ? snap.state.status === 'evaluating' || evaluationOpen(snap.state) || Boolean(snap.state.graphing) : false;
+  const working = snap ? snap.state.status === 'evaluating' || evaluationOpen(snap.state) || Boolean(snap.state.graphing) || snap.busy === true : false;
   const loaded = snap !== null;
   useEffect(() => {
     if (!loaded) return;
@@ -1537,8 +1552,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     setError(null);
     setBusyNotice(false);
     return f().then(() => true, (e: Error) => {
-      if (isBusyError(e)) setBusyNotice(true);
-      else setError(e.message);
+      // A refused click during a process is explained in a dialog right where the owner is, not by a jump to the top of the page.
+      if (isBusyError(e)) {
+        setBusyNotice(true);
+        setBusyDialog(true);
+        return false;
+      }
+      setError(e.message);
       window.scrollTo?.({ top: 0, behavior: 'smooth' });
       return false;
     });
@@ -1567,11 +1587,17 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {snap.busy === true && !(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && !snap.state.graphing && (
+        <ProcessBox title="O time está trabalhando" tone="good" testId="busy-process">
+          <span className="text-[0.75rem] leading-[1.35]">Tem um processo em aberto. Os botões de aceitar e rejeitar ficam bloqueados até ele terminar, e liberam sozinhos.</span>
+        </ProcessBox>
+      )}
       {busyNotice && (snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && (
         <ProcessBox title="Processando" since={snap.state.evaluation?.startedAt ?? null} tone="good" testId="busy-notice">
           <span data-testid="refinement-busy-notice-text" className="text-[0.75rem] leading-[1.35]">Já existe uma avaliação em andamento. Aguarde o fim dela para avaliar de novo.</span>
         </ProcessBox>
       )}
+      {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
       {snap.state.graphing && (
         <ProcessBox title={`Adicionando ${snap.state.graphing} ao Graphify`} tone="accent" testId="graphing-box">
           <span className="text-[0.75rem] leading-[1.35]">Você pode seguir: responder, rejeitar e editar continuam disponíveis.</span>
