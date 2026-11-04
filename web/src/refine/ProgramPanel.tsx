@@ -202,7 +202,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
                 {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
               </span>
-              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
+              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums max-lg:ml-auto lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
                 {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
               </span>
             </div>
