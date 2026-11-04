@@ -16,7 +16,9 @@ describe('BacklogExecution', () => {
     vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 3, decisions: [{ at: '2026-10-13T12:00:00.000Z', key: 'base', runId: 'd-base-r1', decisionId: 'model-tier', backend: 'jev', escalated: false, answers: [{ question: 'tier', value: 'large', confidence: 0.91 }] }] });
     vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
     render(<MemoryRouter><BacklogExecution projectId="p" specId="d" /></MemoryRouter>);
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Agora: Fundação · 2 · Plano'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Executando o backlog · 0 de 1 concluída'));
+    expect(screen.getByTestId('program-panel-phase-base').textContent).toBe('2 · Plano');
+    expect((screen.getByTestId('program-panel-progress-bar') as HTMLProgressElement).max).toBe(1);
     expect(within(screen.getByTestId('program-item-base')).getByText('em execução')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'd' })).toBeNull();
     const timeline = await screen.findByText('model-tier');
@@ -60,7 +62,8 @@ describe('BacklogExecution', () => {
     vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
     render(<MemoryRouter><BacklogExecution projectId="p" specId="d" /></MemoryRouter>);
     await waitFor(() => expect(screen.getByRole('status').textContent).toContain('Backlog interrompido · 0 de 1 concluída'));
-    expect(screen.getByRole('status').textContent).toContain('Interrompida: Fundação · 2 · Plano');
+    expect(screen.getByTestId('program-panel-phase-base').textContent).toBe('2 · Plano');
+    expect(screen.queryByTestId('program-status-card')).toBeNull();
     expect(within(screen.getByTestId('program-item-base')).getByText('interrompida')).toBeTruthy();
   });
 });
