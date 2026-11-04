@@ -25,13 +25,17 @@ export function parseStep(value: string | null): WizardStep | null {
   return (DOC_STAGES as readonly string[]).includes(value ?? '') ? (value as DocFile) : null;
 }
 
-/** The step named in the address, else the first document not done, else the review. A project that records no stages starts at the first document. */
-export function initialStep(st: Pick<State, 'stages' | 'doneStages'>, param: string | null): WizardStep {
+/** The step named in the address, else the first document not done, else the furthest step reached after the review. A project that records no stages starts at the first document. */
+export function initialStep(st: Pick<State, 'stages' | 'doneStages' | 'reviewClosed' | 'repositories' | 'architecture' | 'specsMd' | 'speckit'>, param: string | null): WizardStep {
   const named = parseStep(param);
   if (named) return named;
   if (st.stages !== true) return DOC_STAGES[0];
   const done = new Set(st.doneStages ?? []);
-  return DOC_STAGES.find((file) => !done.has(file)) ?? 'review';
+  const pending = DOC_STAGES.find((file) => !done.has(file));
+  if (pending) return pending;
+  if (st.architecture != null || st.specsMd != null || st.speckit != null) return 'backlog';
+  if (st.reviewClosed === true) return st.repositories === true ? 'architecture' : 'backlog';
+  return 'review';
 }
 
 export const prevStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) - 1] ?? null;

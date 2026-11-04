@@ -28,6 +28,14 @@ describe('initialStep', () => {
     expect(initialStep(state({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] }), null)).toBe('review');
   });
 
+  it('opens the furthest step reached once every document is done', () => {
+    const all = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+    expect(initialStep(state({ doneStages: all, reviewClosed: true }), null)).toBe('backlog');
+    expect(initialStep(state({ doneStages: all, reviewClosed: true, repositories: true }), null)).toBe('architecture');
+    expect(initialStep(state({ doneStages: all, repositories: true, architecture: { docsHash: 'h', decision: {} } }), null)).toBe('backlog');
+    expect(initialStep(state({ doneStages: all, specsMd: { hash: 'h', bytes: 1 } }), null)).toBe('backlog');
+  });
+
   it('opens the first document of a project that records no stages', () => {
     expect(initialStep(state({ stages: undefined, doneStages: undefined }), null)).toBe('flow.md');
   });
