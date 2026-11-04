@@ -40,7 +40,7 @@ const PILL = {
   interrupted: 'status-pill tone-warn',
 } as const;
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
-const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
 /** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
 const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
