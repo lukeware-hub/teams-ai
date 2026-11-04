@@ -10,7 +10,7 @@ import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
 
-const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
+const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila. O custo de cada spec soma todas as suas execuções, inclusive tentativas, conclusão e deploy.';
 
 const ITEM_HELP = {
   pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
@@ -170,7 +170,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
         <p className="m-0 flex items-center gap-2 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
           {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
           <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
-          {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+          {totalCost > 0 && <span className="whitespace-nowrap" data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
           {unanswered > 0 && <Tipped text="Os agentes perguntaram e nenhum modelo respondeu. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
         </p>
       </div>
@@ -199,7 +199,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
               <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
               <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
-                {i.costUsd != null ? <Tipped text="Soma do custo de todas as execuções desta spec: tentativas, conclusão e deploy."><span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span></Tipped> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
+                {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
               </span>
               <span className="flex lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}

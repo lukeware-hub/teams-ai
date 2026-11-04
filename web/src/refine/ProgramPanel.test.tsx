@@ -72,10 +72,10 @@ describe('ProgramPanel', () => {
     expect(row.queryByRole('button', { name: /Use Retomar/ })).toBeNull();
   });
 
-  it('shows the cost of a spec in total, explained by its info button', () => {
+  it('shows the cost of a spec in total, and the panel explains that it adds up every run', () => {
     renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', costUsd: 1 })]));
     expect(screen.getByTestId('program-item-cost-a').textContent).toBe('US$ 1.00');
-    expect(within(screen.getByTestId('program-panel-cost-a')).getByRole('button', { name: 'Soma do custo de todas as execuções desta spec: tentativas, conclusão e deploy.' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /soma todas as suas execuções/ })).toBeTruthy();
   });
 
   it('offers to run a queued spec now, and marks one already prioritized', () => {
