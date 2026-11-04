@@ -476,12 +476,11 @@ export function RefinementView(p: ViewProps) {
   // The agents start only when the owner clicks a button: opening or reloading a page never calls them.
   const stageStep = newProject ? stageAction(st) : null;
   // The note sits under the coverage of the spec tree; without a tree it sits under the backlog panel.
-  const backlogBlock = (note: ReactNode) => (
-    <>
-      <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} hideTitle />
-      {st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} /> : note}
-    </>
-  );
+  const backlogBlock = (note: ReactNode) => {
+    const panel = <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} hideTitle />;
+    // A detailed backlog opens its list of specs from the coverage chip; before that the list stands alone.
+    return st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} locked={locked} /> : <>{panel}{note}</>;
+  };
   // What the plan preparation covers: each backlog item, or the single spec as one item.
   const speckitList = useMemo(() => planItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);
   const itemTitles = new Map(speckitList.map((i) => [i.key, i.title]));

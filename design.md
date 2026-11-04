@@ -1550,3 +1550,5 @@ A etapa Backlog tem quatro cartões em largura total, na ordem: `Precisa de voc�
 Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda depende de algo, nesta ordem: o que espera o dono, backlog sem detalhe, planos não atuais, `specs.md` sem aprovação. Um cartão com pergunta aberta também abre. Os outros ficam recolhidos e o dono abre à mão.
 
 O título interno do conteúdo não se repete: a contagem de specs vai no chip do cartão do backlog. Abaixo de 720 px os cartões continuam empilhados, sem mudar de ordem.
+
+A lista de specs por repositório não fica solta no cartão do backlog: ela abre ao clicar no chip `specs` da `Cobertura`, e o mesmo clique a fecha.

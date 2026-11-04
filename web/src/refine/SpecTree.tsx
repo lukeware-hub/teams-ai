@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { coverageGaps, coverageMatrix } from '@server/refine/coverage';
 import type { AcceptanceCriterion, BacklogView } from '../api.js';
 import { Icon } from '../components/Icons.js';
+import { BacklogPanel } from './BacklogPanel.js';
 import { InfoTip } from '../components/InfoTip.js';
 
 const HELP = 'Cada seção do flow.md deve ser coberta por um item; cada item tem uma spec com critérios de aceite; cada critério é coberto por tarefas do pré-plano. O que falta aparece em vermelho e impede o refinamento de ficar pronto.';
@@ -31,8 +32,8 @@ function EpicGroup({ testId, title, total, children }: { testId: string; title: 
   );
 }
 
-/** The detailed backlog as a coverage tree: épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
-export function SpecTree({ backlog, evaluating = false, note }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode }) {
+/** The detailed backlog as a coverage tree (`locked`, when given, makes the specs chip open the backlog list): épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
+export function SpecTree({ backlog, evaluating = false, note, locked }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode; locked?: boolean }) {
   const [shown, setShown] = useState<Kind | null>(null);
   const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
   const gaps = useMemo(() => coverageGaps(backlog as never), [backlog]);
@@ -97,7 +98,7 @@ export function SpecTree({ backlog, evaluating = false, note }: { backlog: Backl
         ))}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`} data-testid="spec-tree-gap-count">{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
-      {shown && (
+      {shown === 'specs' && locked !== undefined ? <div data-testid="coverage-list-specs"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
         <ul data-testid={`coverage-list-${shown}`} className="m-0 grid list-none rounded-md border border-line bg-surface px-[0.8rem] py-[0.2rem] text-[0.8125rem] leading-snug text-ink-soft">
           {rows.length > 0 ? rows : <li className="py-[0.45rem]" data-testid="spec-tree-empty">Nenhum item ainda.</li>}
         </ul>
