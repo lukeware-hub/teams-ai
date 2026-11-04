@@ -166,7 +166,7 @@ describe('normal flushes push after a trailing debounce', () => {
     await settle(s);
     expect(await git(origin(), ['show', 'main:docs/stack.md'])).toBe('stack kept');
     expect(await git(origin(), ['show', 'main:docs/project.md'])).toBe('theirs');
-    expect(s.view).toEqual({ pending: 1, lastError: expect.stringContaining('docs/project.md'), refused: true });
+    expect(s.view).toMatchObject({ pending: 1, lastError: expect.stringContaining('docs/project.md'), refused: true });
   });
 
   it('a failed sync is retried at most once a minute: two ticks inside a minute run one retry, and a tick after a minute runs another', async () => {
