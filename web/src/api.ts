@@ -1,5 +1,7 @@
 import type { Divergence } from '@server/refine/checklist';
 import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashboard.js';
+import type { GraphView } from '@server/api/repository-graph.js';
+export type { GraphView };
 import type { Page, PageRequest } from '@server/api/paging.js';
 export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 export type { Page, PageRequest } from '@server/api/paging.js';
@@ -303,6 +305,7 @@ export const runApi = {
   repository: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}`).then((r) => json<RepoDetailView>(r)),
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
+  repositoryGraph: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/graph`).then((r) => json<GraphView>(r)),
   repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),
   repositoryDashboardTable: <T,>(projectId: string, repo: string, table: DashboardTable, req: PageRequest) =>

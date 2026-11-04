@@ -40,6 +40,11 @@ export function workspacePaths(cfg: Config, projectId: string, home?: string): W
   };
 }
 
+/** The graph file inside a graph directory, the path an agent gives to graphify query. */
+export function graphFile(dir: string): string {
+  return path.posix.join(dir.replace(/\\/g, '/'), 'graphify-out', 'graph.json');
+}
+
 /** Where a service's code lives: the project's own repository for null, else `services/<service>` beside it. */
 export function serviceWorkspace(ws: Workspace, service: string | null): Workspace {
   if (service === null) return ws;

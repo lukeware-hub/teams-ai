@@ -75,3 +75,10 @@ describe('agent prompts', () => {
     for (const role of ROLES) expect(readFileSync(path.join(AGENTS_DIR, `${role}.md`), 'utf8')).not.toMatch(/pt-BR|Brazilian|Portuguese/);
   });
 });
+
+describe('code graph rule', () => {
+  it('tells every agent to query the code graph before it edits, reviews or plans', () => {
+    expect(GLOBAL_RULES).toContain('9. Code graph.');
+    expect(GLOBAL_RULES).toContain('graphify query');
+  });
+});

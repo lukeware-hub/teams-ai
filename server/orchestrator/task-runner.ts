@@ -348,7 +348,9 @@ export class TaskRunner {
     const planFile = this.deps.packBase().planFile;
     const plan = planFile && taskPlanIds(task.def).length ? { file: planFile, ids: taskPlanIds(task.def) } : undefined;
     const env: Record<string, string> = this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {};
-    const pack = devPack(this.deps.packBase(), task.def, { code: await this.deps.code(this.worktree, task.def), handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
+    const code = await this.deps.code(this.worktree, task.def);
+    await this.recordCode('dev', code);
+    const pack = devPack(this.deps.packBase(), task.def, { code, handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
     const { docsRoot, taskFile } = this.deps.packBase();
     let sources: string[];
     try {
@@ -682,6 +684,11 @@ export class TaskRunner {
       : full;
   }
 
+  /** Journals where a step's code context came from, so the graph's use is visible. */
+  private recordCode(step: 'dev' | 'review', code: CodeContext): Promise<unknown> {
+    return this.deps.journal.fact(OrchEvent.CodeContextUsed, { taskId: this.taskId, step, source: code.source, nodes: (code.nodes?.length ?? 0) + (code.affected?.length ?? 0) });
+  }
+
   private async review(): Promise<void> {
     if (this.junit.length === 0) this.junit = this.junitFromJournal();
     const changed = await changedFiles(this.worktree, 'origin/main', this.deps.exec);
@@ -696,6 +703,7 @@ export class TaskRunner {
     await this.deps.journal.fact(OrchEvent.ReviewProfileChosen, { taskId: this.taskId, risk: risk.risk, profile, source: risk.source, forcedBy: profile === risk.profile ? null : 'scope-drift' });
     const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
+    await this.recordCode('review', code);
     const diff = await this.boundedDiff();
     // The last two rounds of findings, so the reviewer does not reverse its own requests.
     const priorFindings = this.deps.journal.events.filter((e) => e.type === OrchEvent.ReviewChanges && e.data.taskId === this.taskId).slice(-2).flatMap((e) => e.data.findings as ReviewOutput['findings']);

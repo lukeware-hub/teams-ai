@@ -29,6 +29,8 @@ export const OrchEvent = {
   SecurityChanges: 'SECURITY_CHANGES',
   ReviewProfileChosen: 'REVIEW_PROFILE_CHOSEN',
   ScopeDriftScored: 'SCOPE_DRIFT_SCORED',
+  /** Where the code context of a task step came from (graph, grep or none), so the graph's use by the agents can be seen. */
+  CodeContextUsed: 'CODE_CONTEXT_USED',
   PlanChosen: 'PLAN_CHOSEN',
   /** R11.4: the real plan's acceptance-criterion coverage differs from the backlog pre-plan it was shown, even if the plan is still valid. */
   PreplanDeviation: 'PREPLAN_DEVIATION',

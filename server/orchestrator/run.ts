@@ -45,7 +45,7 @@ import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../en
 import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
-import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, mergedByPriorRuns, nextRunId, runDir, sameVersionRunEvents, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
+import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, graphFile, mergedByPriorRuns, nextRunId, runDir, sameVersionRunEvents, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { StoredEvent } from '../store/event-store.js';
 import type { DeployTarget } from '../deploy/target.js';
 import { E2E_GATE, runE2e } from '../exec/e2e.js';
@@ -600,7 +600,7 @@ export class Run {
         const cov = await g.coverage(graphDir(ws, null), tracked).catch(() => null);
         if (cov && cov.ratio >= MIN_COVERAGE) {
           const q = await g.query(graphDir(ws, null), `${task.title} ${task.description}`, 2000);
-          return { source: 'graph', nodes: q.nodes, truncated: q.truncated };
+          return { source: 'graph', nodes: q.nodes, truncated: q.truncated, graphFile: graphFile(graphDir(ws, null)) };
         }
       }
       return { source: 'grep', grep: await grepFallback(worktree, terms, this.deps.exec) };
@@ -614,7 +614,7 @@ export class Run {
       const out = graphDir(this.wsOf(view), branch);
       await g.update(worktree, out).catch(() => undefined);
       const affected = (await Promise.all(changed.map((f) => g.affected(out, f, depth).catch(() => [])))).flat();
-      return { source: 'graph', affected };
+      return { source: 'graph', affected, graphFile: graphFile(out) };
     };
   }
 

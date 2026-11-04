@@ -61,6 +61,14 @@ describe('buildContextPack', () => {
     expect(pack.text.indexOf('## Change set under review')).toBeGreaterThan(pack.text.indexOf('## Feedback'));
   });
 
+  it('gives the agent the graph file to query when the code context has one', () => {
+    const code = { source: 'graph' as const, nodes: [], graphFile: '/ws/graph/main/graphify-out/graph.json' };
+    const text = buildContextPack({ ...base, code }).text;
+    expect(text).toContain('Graph file: /ws/graph/main/graphify-out/graph.json');
+    expect(text).toContain('graphify query "<question>" --graph /ws/graph/main/graphify-out/graph.json');
+    expect(buildContextPack({ ...base, code: { source: 'graph', nodes: [] } }).text).not.toContain('Graph file:');
+  });
+
   it("names a task's service in its section, and nothing for a task of the project repository", () => {
     expect(buildContextPack({ ...base, task: { ...base.task!, service: 'orders' } }).text).toContain('- service: orders');
     expect(buildContextPack(base).text).not.toContain('- service:');

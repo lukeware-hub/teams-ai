@@ -110,6 +110,7 @@ describe('TaskRunner: implementing', () => {
     expect(types()).toEqual([
       'fact:TASK_PLANNED', 'fact:TASK_STATE_CHANGED', 'fact:TASK_STATE_CHANGED',
       `intent:${Intent.WorktreeCreate}`, `confirm:${Intent.WorktreeCreate}`,
+      `fact:${OrchEvent.CodeContextUsed}`,
       `intent:${Intent.Commit}`, `confirm:${Intent.Commit}`, `fact:${OrchEvent.DevCommitted}`, 'fact:TASK_STATE_CHANGED',
     ]);
     const sha = await headSha(r.worktree);

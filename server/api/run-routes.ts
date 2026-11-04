@@ -17,7 +17,7 @@ import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
 import { buildProjectGraph } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
-import { expandHome, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { expandHome, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { pairDecisions, readOwnerDecisions, recordOwnerDecisions } from '../orchestrator/owner-decisions.js';
 import { execCommand, type Exec } from '../exec/command.js';
@@ -45,6 +45,7 @@ import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews } from './repository-dashboard.js';
+import { buildGraphView } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
 import { RUN_TABLE, SPEC_TABLE, specPageRow } from './project-pages.js';
 import { VALIDATION_TABLES, validationPage, withoutTableRows } from './validation-tables.js';
@@ -516,6 +517,17 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/repositories/:repo/dashboard`,
       handler: async ({ params, json }) => {
         json(200, buildDashboard(await dashboardInput(params)));
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/graph`,
+      handler: async ({ params, json }) => {
+        const input = await dashboardInput(params);
+        const idx = await index();
+        const ws = workspacePaths(idx.cfg, params.projectId!, deps.home);
+        const raw = await fs.readFile(graphFile(path.posix.join(ws.graph, 'project')), 'utf8').catch(() => null);
+        json(200, buildGraphView(raw, input.runs));
       },
     },
     {

@@ -19,6 +19,8 @@ export interface CodeContext {
   affected?: AffectedNode[];
   grep?: Array<{ file: string; line: number; text: string }>;
   truncated?: boolean;
+  /** The graph file the agent can query with graphify. */
+  graphFile?: string;
 }
 
 export interface ContextPackInput {
@@ -132,7 +134,7 @@ function render(input: ContextPackInput): Map<Section, string> {
       const affected = (input.code.affected ?? []).map((a) => `- ${a.label} [${a.relation}] — ${a.file}${a.line ? `:${a.line}` : ''}`);
       out.set(
         'code',
-        `## Code context (graph${input.code.truncated ? ', truncated — ask for more with graphify query' : ''})\n${nodes.join('\n') || '- no nodes'}${affected.length ? `\n### Impact radius\n${affected.join('\n')}` : ''}`,
+        `## Code context (graph${input.code.truncated ? ', truncated' : ''})\n${nodes.join('\n') || '- no nodes'}${affected.length ? `\n### Impact radius\n${affected.join('\n')}` : ''}${input.code.graphFile ? `\nGraph file: ${input.code.graphFile}\nAsk for more with: graphify query "<question>" --graph ${input.code.graphFile}` : ''}`,
       );
     } else {
       out.set('code', `## Code context (grep; code graph unavailable or too thin)\n${(input.code.grep ?? []).map((g) => `- ${g.file}:${g.line}: ${g.text}`).join('\n') || '- no matches'}`);
