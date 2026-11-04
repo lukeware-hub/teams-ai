@@ -1,7 +1,7 @@
 /**
  * R11.4: the program controller. It takes a refined backlog from `planned` to delivered, in rank and dependency order,
  * up to `MAX_PARALLEL` specs at once. Two specs run together only when the SM's conflict map says they touch different
- * code, and never before the first spec (the project's foundation) is done; the clone and the deploy stack are guarded by
+ * code, and never before the first spec (the project's foundation) is delivered; the clone and the deploy stack are guarded by
  * file locks in the runs themselves. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents wait while it is repaired (R11.14, bounded by MAX_REPAIRS) and are blocked once it stays failed; everything independent of it keeps going.
@@ -9,7 +9,7 @@
  * A spec whose code is already on main when it fails for good (a deploy) ends `partial`, and its dependents still run.
  */
 
-/** `delivered`: its run delivered it and the owner validates it; the program completes nothing on its own. */
+/** `delivered`: its run delivered it, its code is on main, and the owner validates it; the program completes nothing on its own. */
 export type ItemStatus = 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
 
 export interface ProgramItem {
@@ -153,8 +153,8 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
 }
 
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
-/** Its code is on main: a partial spec counts as delivered, so its dependents and the next free slot go ahead. */
-const isDelivered = (status: ItemStatus | undefined) => status === 'done' || status === 'partial';
+/** Its code is on main: a delivered or partial spec lets its dependents and the next free slot go ahead. */
+const isDelivered = (status: ItemStatus | undefined) => status === 'delivered' || status === 'done' || status === 'partial';
 /** Not settled yet: it still runs or will run, so its dependents wait and the program goes on. */
 const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', 'delivered', ...IN_FLIGHT]);
 /** Two items may run together only when both carry a conflict map and neither names the other. */
@@ -304,8 +304,8 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     }
   }
 
-  // Fill the free slots: prioritized items first, then by rank, each with its dependencies done and no conflict in flight.
-  // Until one spec is done, one runs alone: the first spec lays the project's foundation.
+  // Fill the free slots: prioritized items first, then by rank, each with its dependencies delivered and no conflict in flight.
+  // Until one spec is delivered, one runs alone: the first spec lays the project's foundation.
   for (;;) {
     const inFlight = p.items.filter((i) => IN_FLIGHT.has(i.status));
     const slots = p.items.some((i) => isDelivered(i.status)) ? MAX_PARALLEL : 1;
