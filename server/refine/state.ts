@@ -395,8 +395,11 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
 const impactCheck = (s: RefineState): ClosingCheck => {
   // An impact made on an outline the backlog has since moved past is stale: the next detail run measures it again.
   const stale = s.impact?.cycle !== undefined && s.impact.cycle !== s.backlog?.cycle;
-  const ok = s.impact?.impact != null && s.impact.issues.length === 0 && !stale;
-  const detail = ok ? 'o impacto do pedido foi analisado e não quebra regra' : stale ? 'o impacto ficou para trás: o backlog mudou depois dele' : s.impact ?`o impacto não fechou: ${s.impact.issues.join('; ')}` : 'o impacto do pedido ainda não foi analisado';
+  // A new item that repeats a spec the backlog already delivers is not added: the request is covered by that spec.
+  const before = new Set((s.extension?.before ?? []).map((i) => i.key));
+  const covered = (s.impact?.impact?.duplicates ?? []).filter((d) => d.verdict === 'reuse' && !before.has(d.newKey));
+  const ok = s.impact?.impact != null && s.impact.issues.length === 0 && !stale && covered.length === 0;
+  const detail = ok ? 'o impacto do pedido foi analisado e não quebra regra' : stale ? 'o impacto ficou para trás: o backlog mudou depois dele' : covered.length > 0 ? `o pedido já é entregue por ${covered.map((d) => d.existing).join(', ')}: ${covered.map((d) => d.newKey).join(', ')} não deve ser um item novo` : s.impact ?`o impacto não fechou: ${s.impact.issues.join('; ')}` : 'o impacto do pedido ainda não foi analisado';
   return { id: 'impact', ok, detail };
 };
 

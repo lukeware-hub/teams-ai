@@ -68,6 +68,7 @@ export function validateImpact(impact: Impact, scope: { known: ReadonlySet<strin
     if (a.kind === 'doc' && !(FIVE_DOCS as readonly string[]).includes(a.ref)) issues.push(`o impacto cita o documento ${a.ref}, que não é um dos cinco documentos`);
     if (a.kind === 'architecture' && a.ref !== 'architecture') issues.push(`o impacto cita a arquitetura como ${a.ref}; a arquitetura é uma só`);
   }
+  if (impact.summary.split(/[.!?](?:\s|$)/).filter((sentence) => sentence.trim() !== '').length > 2) issues.push('o resumo do impacto tem mais de duas frases');
   if (scope.requestId !== undefined && impact.requestId !== scope.requestId) issues.push(`o impacto é do pedido ${impact.requestId}, não de ${scope.requestId}`);
   if (hasCycle(impact.dependencies)) issues.push('as dependências formam um ciclo: um item não pode depender de si mesmo, direta ou indiretamente');
   return issues;
