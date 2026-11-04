@@ -574,3 +574,22 @@ describe('saving what the owner typed', () => {
     }
   });
 });
+
+describe('the status of the verification list on the summary', () => {
+  const all = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+  const reviewSnap = (over: Record<string, unknown> = {}) => base({ readiness: scored({ 'flow.md': 0.53 }), questions: [], patches: [], ...over });
+
+  it('counts only the five documents: a session whose stages are all current is not outdated, even when the specs changed', () => {
+    open('?etapa=revisao');
+    show(reviewSnap({ stale: true, cycle: 3, doneStages: all, graphed: all, staleBy: {} }));
+    expect(screen.queryByText('Desatualizada')).toBeNull();
+    expect(screen.getByText('Atual')).toBeTruthy();
+  });
+
+  it('says outdated when a finished stage was outdated by an edit', () => {
+    open('?etapa=revisao');
+    show(reviewSnap({ stale: true, cycle: 3, doneStages: all, graphed: all, staleBy: { 'stack.md': 'briefing.md' } }));
+    expect(screen.getByText('Desatualizada')).toBeTruthy();
+  });
+});
+

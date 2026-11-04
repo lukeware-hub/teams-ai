@@ -493,7 +493,7 @@ export function RefinementView(p: ViewProps) {
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
       ? { label: 'Não avaliada', tone: '' }
-      : st.stale && !allStagesCurrent(st)
+      : (st.stages === true ? DOC_STAGES.some((doc) => (st.doneStages ?? []).includes(doc) && stageOutdated(st, doc)) : st.stale && !allStagesCurrent(st))
         ? { label: 'Desatualizada', tone: 'warn' }
         : { label: 'Atual', tone: 'ok' };
   const green = allGreen(st.checklist);
