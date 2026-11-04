@@ -222,15 +222,15 @@ export function ProjectHubView(p: {
         </div>
         <div data-testid="project-hub-stat-runs" className={`${stat} border-line bg-surface shadow-card`}>
           <span data-testid="project-hub-stat-runs-value" className={`${statValue} text-ink`}>{agentRuns}</span>
-          <span data-testid="project-hub-stat-runs-label" className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}</span>
+          <span data-testid="project-hub-stat-runs-label" className={statLabel}>{plural(agentRuns, 'execução', 'execuções')}<InfoTip label="Execuções" text="Rodadas dos agentes. Deploy e conclusão não entram nesta conta." /></span>
         </div>
         <div data-testid="project-hub-stat-active" className={`${stat} ${activeRuns.length > 0 ? 'border-good-line bg-good-soft shadow-card' : 'border-line bg-surface shadow-card'}`}>
           <span data-testid="project-hub-stat-active-value" className={`${statValue} ${activeRuns.length > 0 ? 'text-good' : 'text-ink'}`}>{activeRuns.length}</span>
-          <span data-testid="project-hub-stat-active-label" className={statLabel}>em andamento</span>
+          <span data-testid="project-hub-stat-active-label" className={statLabel}>em andamento<InfoTip label="Em andamento" text="Execuções rodando agora, pausadas por cota ou por login, ou finalizando." /></span>
         </div>
         <div data-testid="project-hub-stat-cost" className={`${stat} border-line bg-surface shadow-card`}>
           <span data-testid="project-hub-stat-cost-value" className={`${statValue} text-ink`}>{money(totalCost)}</span>
-          <span data-testid="project-hub-stat-cost-label" className={statLabel}>custo total</span>
+          <span data-testid="project-hub-stat-cost-label" className={statLabel}>custo total<InfoTip label="Custo total" text="Soma do custo estimado das chamadas aos modelos de IA em todas as execuções do projeto. É um aviso: o custo nunca para o trabalho." /></span>
         </div>
       </div>
       <section id="execucao" data-testid="project-hub-execution" className="grid gap-5 empty:hidden scroll-mt-4" aria-label="Execução do backlog">
@@ -241,6 +241,7 @@ export function ProjectHubView(p: {
           <div data-testid="project-hub-runs-title-row" className={sectionTitle}>
             <span data-testid="project-hub-runs-icon" className={sectionIcon}><Icon name="code" size={14} /></span>
             <h2 data-testid="project-hub-runs-title" className={sectionHeading}>Execuções</h2>
+            <InfoTip label="Execuções" text="Cada linha é uma rodada dos agentes sobre uma spec. Abra uma para ver as tarefas, as fases, o terminal e o custo." />
           </div>
           {p.runs.length === 0 ? (
             <p data-testid="project-hub-runs-empty" className={empty}>Nenhuma execução registrada ainda. Use Iniciar execução em uma spec para começar.</p>
@@ -366,6 +367,7 @@ export function ProjectHubView(p: {
               <div data-testid="project-hub-docs-title-row" className={sectionTitle}>
                 <span data-testid="project-hub-docs-icon" className={sectionIcon}><Icon name="download" size={14} /></span>
                 <h2 data-testid="project-hub-docs-title" className={sectionHeading}>Documentos</h2>
+                <InfoTip label="Documentos" text="Os cinco documentos do projeto: fluxo, projeto, briefing, stack e design. Baixe para ler ou guardar." />
               </div>
             </div>
             <ul data-testid="project-hub-docs-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">

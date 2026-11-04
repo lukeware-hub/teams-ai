@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { InfoTip } from '../../components/InfoTip.js';
 import { runPath } from '../../routes.js';
 import { runApi, type DashboardItem, type DashboardTable } from '../../api.js';
 import { Pagination, TableFilters, usePagedTable } from '../../components/DataTable.js';
@@ -22,6 +23,7 @@ function ItemsCard({ title, table, projectId, repo, testId }: { title: string; t
     <section className={panel} data-testid={testId}>
       <div data-testid={`${testId}-heading-row`} className={sectionTitle}>
         <h2 data-testid={`${testId}-heading`} className={sectionHeading}>{`${title} (${view.total})`}</h2>
+        <InfoTip label={title} text={title === 'Falhas' ? 'Tarefas que falharam. Abra a run para ver o motivo.' : 'Tarefas que não puderam seguir. Abra a run para ver o motivo e o que fazer.'} />
       </div>
       <TableFilters view={view} subject={title.toLowerCase()} placeholder="Buscar por tarefa, run ou motivo" facetName="Tipo" />
       {!view.loaded ? (

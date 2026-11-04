@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { InfoTip } from '../../components/InfoTip.js';
 import { runPath, validationPath } from '../../routes.js';
 import type { DashboardSpec, DashboardTask, SpecState } from '../../api.js';
 import { ROLE_LABEL } from '../../run/roles.js';
@@ -12,6 +13,7 @@ export function DeliveryBoard({ specs, tasks }: { specs: DashboardSpec[]; tasks:
     <section className={panel} data-testid="repo-board">
       <div data-testid="delivery-board-title" className={sectionTitle}>
         <h2 data-testid="delivery-board-heading" className={sectionHeading}>Entregas por spec</h2>
+        <InfoTip label="Entregas por spec" text="Cada spec do repositório com as suas tarefas. Abra a run de uma tarefa para ver os detalhes; a spec que espera a sua validação tem o botão Validar." />
       </div>
       {specs.length === 0 ? (
         <p data-testid="delivery-board-empty" className="hint">sem dados: nenhuma spec neste repositório.</p>

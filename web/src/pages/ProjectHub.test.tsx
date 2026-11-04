@@ -586,6 +586,12 @@ describe('the backlog banner on the project page', () => {
     await screen.findByTestId('program-panel');
     await waitFor(() => expect(screen.queryByTestId('project-hub-spec-planned-hello-003')).toBeNull());
   });
+  it('explains the counters and the runs with info buttons', async () => {
+    servePages(runs, project!.specs);
+    render(view({}));
+    for (const name of [/^Custo total: /, /^Em andamento: /, /^Execuções: Rodadas dos agentes\./]) expect((await screen.findAllByRole('button', { name })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('button', { name: /^Execuções: Cada linha é uma rodada/ })).length).toBe(1);
+  });
   afterEach(() => vi.restoreAllMocks());
 });
 

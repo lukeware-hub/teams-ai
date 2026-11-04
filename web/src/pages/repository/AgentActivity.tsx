@@ -1,4 +1,5 @@
 import { runApi, type RoleActivity } from '../../api.js';
+import { InfoTip } from '../../components/InfoTip.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
 import { money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
@@ -10,6 +11,7 @@ export function AgentActivity({ projectId, repo }: { projectId: string; repo: st
     <section className={panel} data-testid="repo-agents">
       <div data-testid="agent-activity-title" className={sectionTitle}>
         <h2 data-testid="agent-activity-heading" className={sectionHeading}>Atividade por agente</h2>
+        <InfoTip label="Atividade por agente" text="O trabalho de cada agente neste repositório: quantas tarefas fez, em quantos arquivos mexeu e quando agiu pela última vez." />
       </div>
       {!view.loaded ? (
         <p data-testid="agent-activity-loading" className="hint" role="status">Carregando a atividade…</p>

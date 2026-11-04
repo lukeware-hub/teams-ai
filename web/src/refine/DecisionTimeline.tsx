@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { refineApi, type ProgramDecision } from '../api.js';
 import { Icon } from '../components/Icons.js';
+import { InfoTip } from '../components/InfoTip.js';
 import { panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
 
@@ -27,6 +28,7 @@ export function DecisionTimeline({ decisions, titles }: { decisions: ProgramDeci
       <div className={sectionTitle} data-testid="decision-timeline-title">
         <span className="grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink" aria-hidden="true" data-testid="decision-timeline-icon"><Icon name="list" size={14} /></span>
         <h2 className={`${sectionHeading} ml-1`} data-testid="decision-timeline-heading">Decisões dos agentes</h2>
+        <InfoTip label="Decisões dos agentes" text="Quando um agente precisa decidir algo, ele consulta o Jev e os modelos. Aqui ficam as respostas mais recentes: quem respondeu, a spec e a confiança de cada resposta." />
       </div>
       <ol className="m-0 grid max-h-96 list-none gap-2 overflow-y-auto p-0" data-testid="decision-timeline-list">
           {decisions.map((d, i) => (

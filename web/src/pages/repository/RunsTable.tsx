@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { InfoTip } from '../../components/InfoTip.js';
 import { runPath } from '../../routes.js';
 import { runApi, type DashboardRunRow } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
@@ -12,6 +13,7 @@ export function RunsTable({ projectId, repo }: { projectId: string; repo: string
     <section className={panel} data-testid="repo-runs">
       <div data-testid="runs-table-title" className={sectionTitle}>
         <h2 data-testid="runs-table-heading" className={sectionHeading}>Runs</h2>
+        <InfoTip label="Runs" text="As rodadas dos agentes que mexeram neste repositório, com as tarefas mescladas em cada uma." />
       </div>
       {!view.loaded ? (
         <p data-testid="runs-table-loading" className="hint" role="status">Carregando as runs…</p>

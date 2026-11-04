@@ -25,7 +25,7 @@ export function RepositoriesPanel({ projectId, repositories }: { projectId: stri
           <div data-testid="repositories-panel-title" className={sectionTitle}>
             <span data-testid="repositories-panel-icon" className="grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink"><Icon name="code" size={14} /></span>
             <h2 data-testid="repositories-panel-heading" className={sectionHeading}>{`Repositórios (${repositories.length})`}</h2>
-            <InfoTip label="Repositórios" text="Cada repositório da arquitetura, com as suas specs, planos e tarefas." />
+            <InfoTip label="Repositórios" text="Cada repositório da arquitetura, com as suas specs, planos e tarefas. A etiqueta mostra em que etapa ele está, e Abrir painel mostra as entregas, as execuções e as falhas dele." />
           </div>
         </div>
         <ul data-testid="repositories-panel-list" className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:grid-cols-3">
