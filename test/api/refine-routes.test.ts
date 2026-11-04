@@ -100,8 +100,8 @@ describe('refine routes', () => {
     const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/projects/:projectId/requests'))!;
     const json = vi.fn();
     await route.handler({ params: { projectId: 'shop' }, body: async () => ({ description: 'Exportar em PDF.' }), json } as never);
-    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'backlog', specId: 'shop-pedido-1' }));
+    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'backlog', sessionId: 'shop/shop-pedido-1' }));
     await route.handler({ params: { projectId: 'shop' }, body: async () => ({ description: 'Exportar.' }), json } as never);
-    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'single', specId: 'shop-001' }));
+    expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'single', sessionId: 'shop/shop-001' }));
   });
 });
