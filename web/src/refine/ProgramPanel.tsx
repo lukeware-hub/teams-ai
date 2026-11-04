@@ -40,7 +40,7 @@ const PILL = {
   interrupted: 'status-pill tone-warn',
 } as const;
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
-const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_9rem_5.5rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
 /** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
 const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
@@ -198,12 +198,12 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
               <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
-              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
-                {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
-              </span>
               <span className="flex lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
                 {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
+              </span>
+              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
+                {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
               </span>
             </div>
           </li>

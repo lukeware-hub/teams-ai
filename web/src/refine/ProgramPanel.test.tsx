@@ -76,6 +76,7 @@ describe('ProgramPanel', () => {
     renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', costUsd: 1 })]));
     expect(screen.getByTestId('program-item-cost-a').textContent).toBe('US$ 1.00');
     expect(screen.getByRole('button', { name: /soma todas as suas execuções/ })).toBeTruthy();
+    expect(screen.getByTestId('program-panel-action-a').compareDocumentPosition(screen.getByTestId('program-panel-cost-a')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('offers to run a queued spec now, and marks one already prioritized', () => {
