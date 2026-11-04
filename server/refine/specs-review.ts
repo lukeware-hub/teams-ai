@@ -6,6 +6,9 @@ import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 export const SPECS_REVIEWERS = ['po', 'sm'] as const;
 export type SpecsReviewer = (typeof SPECS_REVIEWERS)[number];
 
+/** The owner gave the team full autonomy, so a written assumption is a settled decision, not an open point. */
+const ASSUMPTION_RULE = 'A line written as `Assumption: <claim>. Reason: <why>.` in a document is a decision the owner delegated to the team and is settled: never reject because an assumption is unconfirmed, because it is listed in an open-points section, or because a spec treats it as a fact. Reject only a real conflict between documents, a requirement no spec covers, or a question with no assumption yet.';
+
 const CHECKS: Record<SpecsReviewer, string> = {
   po: 'Check that every objective, persona, flow step and requirement of project.md, briefing.md and flow.md is covered by a spec in specs.md with testable acceptance criteria, and that specs.md states nothing the documents do not.',
   sm: 'Check that every constraint of stack.md and design.md is respected by the specs and pre-plans in specs.md, that each pre-plan task can be done, that the dependencies between items hold, and that no open question remains.',
@@ -15,7 +18,7 @@ const CHECKS: Record<SpecsReviewer, string> = {
 export function specsReviewPack(input: { role: SpecsReviewer; specHash: string; specsMd: string; docs: { projectMd: string; briefMd: string; stackMd: string; flowMd: string; designMd: string } }): ContextPackInput {
   const feedback = buildWithDocs({ project: input.docs.projectMd, brief: input.docs.briefMd, stack: input.docs.stackMd, flow: input.docs.flowMd, design: input.docs.designMd, specs: input.specsMd }, (d, digested) =>
     [
-      `${CHECKS[input.role]} Return verdict "approved" only when no check fails; otherwise return "rejected" with one finding per failed check, each naming the section it concerns. Write the findings in Brazilian Portuguese. Do not edit any file.`,
+      `${CHECKS[input.role]} Return verdict "approved" only when no check fails; otherwise return "rejected" with one finding per failed check, each naming the section it concerns. Write the findings in Brazilian Portuguese. Do not edit any file. ${ASSUMPTION_RULE}`,
       ...(digested ? [DIGEST_NOTE] : []),
       `### project.md\n${d.project}`,
       `### briefing.md\n${d.brief}`,
@@ -58,7 +61,7 @@ export function decideQuestionPack(input: { specHash: string; question: string }
 }
 
 /** The files a finding can open with when it is about a document and not about specs.md. */
-const DOC_NAMES = /^[\[(\s]*(project|briefing|stack|flow|design)\.md/i;
+const DOC_NAMES = /^[\[(\s]*(docs\/)?(project|briefing|stack|flow|design)\.md/i;
 
 /** Whether a reviewer's finding is about one of the five documents, so redoing a backlog item cannot fix it. */
 export const aboutADocument = (finding: string): boolean => DOC_NAMES.test(finding);
