@@ -44,7 +44,7 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
         ) : (
           <form
             data-testid="new-spec-form"
-            className="grid gap-3"
+            className="grid content-start gap-3"
             onSubmit={(e) => {
               e.preventDefault();
               void submit();
