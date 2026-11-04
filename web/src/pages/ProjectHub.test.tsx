@@ -567,6 +567,25 @@ describe('the backlog banner on the project page', () => {
     expect(banner.compareDocumentPosition(runsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(runsHeading.compareDocumentPosition(screen.getByTestId('project-specs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+  const running: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] };
+  const spyProgram = (program: ProgramView) => {
+    servePages(runs, project!.specs);
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 0, decisions: [] });
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
+  };
+  it('lists the planned specs in the specs card when no backlog runs', async () => {
+    spyProgram({ ...running, status: 'finished' });
+    render(view({ backlogs: ['hello-001'] }));
+    expect(await screen.findByTestId('project-hub-spec-planned-hello-003')).toBeTruthy();
+  });
+  it('leaves the planned specs out of the specs card while the backlog runs, since its panel lists them', async () => {
+    spyProgram(running);
+    render(view({ backlogs: ['hello-001'] }));
+    await screen.findByTestId('program-panel');
+    await waitFor(() => expect(screen.queryByTestId('project-hub-spec-planned-hello-003')).toBeNull());
+  });
   afterEach(() => vi.restoreAllMocks());
 });
 

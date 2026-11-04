@@ -22,7 +22,7 @@ describe('BacklogExecution', () => {
     expect(within(screen.getByTestId('program-item-base')).getByText('em execução')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'd' })).toBeNull();
     const timeline = await screen.findByText('model-tier');
-    expect(screen.getByText(/3 consultas ficaram sem resposta/)).toBeTruthy();
+    expect(screen.getByTestId('program-panel-unanswered').textContent).toBe('3 consultas sem resposta');
     expect(timeline.closest('li')!.textContent).toMatch(/Jev.*Fundação.*tier: large \(91%\)/);
   });
   it('says in words why a spec failed or waits, who has to act and what to do, keeping the raw reason in a detail', async () => {
@@ -65,5 +65,31 @@ describe('BacklogExecution', () => {
     expect(screen.getByTestId('program-panel-phase-base').textContent).toBe('2 · Plano');
     expect(screen.queryByTestId('program-status-card')).toBeNull();
     expect(within(screen.getByTestId('program-item-base')).getByText('interrompida')).toBeTruthy();
+  });
+  const setup = (decisions: { unanswered: number; decisions: never[] }) => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
+    vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
+    vi.spyOn(refineApi, 'programDecisions').mockResolvedValue(decisions);
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
+  };
+  it('leaves out the decisions panel while no decision was answered, and says the unanswered asks in the panel header', async () => {
+    setup({ unanswered: 29, decisions: [] });
+    render(<MemoryRouter><BacklogExecution projectId="p" specId="d" /></MemoryRouter>);
+    expect((await screen.findByTestId('program-panel-unanswered')).textContent).toBe('29 consultas sem resposta');
+    expect(screen.queryByTestId('decision-timeline')).toBeNull();
+  });
+  it('shows no unanswered chip when every ask was answered', async () => {
+    setup({ unanswered: 0, decisions: [] });
+    render(<MemoryRouter><BacklogExecution projectId="p" specId="d" /></MemoryRouter>);
+    await screen.findByTestId('program-panel');
+    expect(screen.queryByTestId('program-panel-unanswered')).toBeNull();
+  });
+  it('tells the page when its backlog shows and when it goes away', async () => {
+    setup({ unanswered: 0, decisions: [] });
+    const onRunning = vi.fn();
+    const { unmount } = render(<MemoryRouter><BacklogExecution projectId="p" specId="d" onRunning={onRunning} /></MemoryRouter>);
+    await waitFor(() => expect(onRunning).toHaveBeenLastCalledWith('d', true));
+    unmount();
+    expect(onRunning).toHaveBeenLastCalledWith('d', false);
   });
 });

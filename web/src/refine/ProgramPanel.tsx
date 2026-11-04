@@ -153,7 +153,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
 }
 
 /** Every spec of the backlog in run order: its rank, title and run, where it stands, what it cost and what can be done. */
-export function ProgramPanel({ program, titles, phases = {}, onPrioritize }: { program: ProgramView; titles: Record<string, string>; phases?: Record<string, number>; onPrioritize?: (specId: string) => unknown }) {
+export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onPrioritize }: { program: ProgramView; titles: Record<string, string>; phases?: Record<string, number>; unanswered?: number; onPrioritize?: (specId: string) => unknown }) {
   const done = program.items.filter((i) => i.status === 'done').length;
   const total = program.items.length;
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
@@ -171,6 +171,7 @@ export function ProgramPanel({ program, titles, phases = {}, onPrioritize }: { p
           {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
           <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
           {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+          {unanswered > 0 && <Tipped text="Os agentes perguntaram e nenhum modelo respondeu. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
         </p>
       </div>
       <progress data-testid="program-panel-progress-bar" className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />

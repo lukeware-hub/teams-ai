@@ -130,7 +130,11 @@ export function ProjectHubView(p: {
   const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status);
   const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), (status) => LABEL[status] ?? status);
   const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
-  const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
+  // While a backlog runs its panel lists the planned specs, so the specs card leaves them out.
+  const [running, setRunning] = useState<string[]>([]);
+  const trackRunning = (specId: string, on: boolean) => setRunning((r) => (on === r.includes(specId) ? r : on ? [...r, specId] : r.filter((id) => id !== specId)));
+  const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
+  const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => listed(s) && groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
   const groupedSpecs = groupSpecs(specsView.rows);
   const [specDraft, setSpecDraft] = useState('');
   const [specDescription, setSpecDescription] = useState('');
@@ -230,7 +234,7 @@ export function ProjectHubView(p: {
         </div>
       </div>
       <section id="execucao" data-testid="project-hub-execution" className="grid gap-5 empty:hidden scroll-mt-4" aria-label="Execução do backlog">
-        {(p.backlogs ?? []).map((specId) => <BacklogExecution key={specId} projectId={pr.projectId} specId={specId} />)}
+        {(p.backlogs ?? []).map((specId) => <BacklogExecution key={specId} projectId={pr.projectId} specId={specId} onRunning={trackRunning} />)}
       </section>
       <section data-testid="project-hub-runs-card" className={`${panel} @container`}>
         <div data-testid="project-hub-runs-section" className={section}>

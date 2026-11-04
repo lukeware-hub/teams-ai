@@ -21,16 +21,14 @@ export function useDecisions(projectId: string, specId: string, live: boolean) {
 }
 
 /** Who decided what in the runs of the program, newest first: the decision, who answered and what each question came to. */
-export function DecisionTimeline({ decisions, unanswered = 0, titles }: { decisions: ProgramDecision[]; unanswered?: number; titles: Record<string, string> }) {
+export function DecisionTimeline({ decisions, titles }: { decisions: ProgramDecision[]; titles: Record<string, string> }) {
   return (
     <section className={`${panel} gap-3`} data-testid="decision-timeline">
       <div className={sectionTitle} data-testid="decision-timeline-title">
         <span className="grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink" aria-hidden="true" data-testid="decision-timeline-icon"><Icon name="list" size={14} /></span>
         <h2 className={`${sectionHeading} ml-1`} data-testid="decision-timeline-heading">Decisões dos agentes</h2>
       </div>
-      {unanswered > 0 && <p className="hint m-0" data-testid="decision-timeline-unanswered">{unanswered} {unanswered === 1 ? 'consulta ficou' : 'consultas ficaram'} sem resposta de nenhum modelo e não aparece{unanswered === 1 ? '' : 'm'} aqui.</p>}
-      {decisions.length === 0 ? <p className="hint m-0" data-testid="decision-timeline-empty">Nenhuma decisão respondida ainda.</p> : (
-        <ol className="m-0 grid max-h-96 list-none gap-2 overflow-y-auto p-0" data-testid="decision-timeline-list">
+      <ol className="m-0 grid max-h-96 list-none gap-2 overflow-y-auto p-0" data-testid="decision-timeline-list">
           {decisions.map((d, i) => (
             <li key={`${d.runId}-${d.at}-${i}`} className="grid gap-0.5 border-b border-line pb-2 text-[0.8125rem] last:border-b-0" data-testid={`decision-timeline-item-${d.runId}-${d.decisionId}`}>
               <span className="flex flex-wrap items-baseline gap-x-2" data-testid="decision-timeline-meta">
@@ -42,8 +40,7 @@ export function DecisionTimeline({ decisions, unanswered = 0, titles }: { decisi
               {d.answers.length > 0 && <span className="font-mono text-[0.75rem] text-ink-soft wrap-anywhere" data-testid="decision-timeline-answers">{d.answers.map(said).join(' · ')}</span>}
             </li>
           ))}
-        </ol>
-      )}
+      </ol>
     </section>
   );
 }
