@@ -65,7 +65,7 @@ const REPLAN_COLUMNS = 'sm:grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,8rem)_4rem_m
 export function ReplanCard({ rows }: { rows: ReplanRow[] }) {
   const changed = rows.filter((r) => r.change !== 'mantida' && r.change !== 'sem mudança').length;
   return (
-    <StepCard id="replan" icon="list" tone="accent" title="Replanejamento" info="O backlog depois do pedido: o que é novo, o que sobe ou desce e o que já começou, que fica como está." owner="Montado pelo PO" chip={{ label: `${changed} ${changed === 1 ? 'mudou' : 'mudaram'}` }} wrapChip open>
+    <StepCard id="replan" icon="list" tone="accent" title="Replanejamento" info="O backlog depois do pedido: o que é novo, o que sobe ou desce e o que já começou, que fica como está." owner="Montado pelo PO" chip={{ label: `${changed} ${changed === 1 ? 'mudou' : 'mudaram'}` }} open>
       <ol data-testid="replan-rows" className="m-0 grid list-none gap-2 p-0">
         <li aria-hidden="true" className={`hidden gap-x-3 text-[0.75rem] uppercase tracking-[0.06em] text-ink-soft sm:grid ${REPLAN_COLUMNS}`}><span>antes</span><span>spec</span><span>estado</span><span>novo #</span><span>mudança</span></li>
         {rows.map((r) => (

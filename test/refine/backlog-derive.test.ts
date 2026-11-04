@@ -192,14 +192,19 @@ describe('a follow-on request only adds to the backlog it follows', () => {
     expect(out).toEqual({ ok: false, issues: [expect.stringContaining('cart')] });
   });
 
-  it('refuses a new item that does not cite the request section', () => {
+  const sourcesOf = (out: ReturnType<typeof postProcessBacklog>, key: string) => (out.ok ? out.value.backlog.items.find((i) => i.key === key)!.sources : []);
+
+  it('cites the request itself in a new item that does not, instead of asking the owner', () => {
     const out = postProcessBacklog(raw([item('login'), item('cart', { dependsOn: ['login'] }), item('export')]), previous(base), {}, [], [], undefined, false, REQUEST);
-    expect(out).toEqual({ ok: false, issues: [expect.stringContaining('export')] });
+    expect(out.ok).toBe(true);
+    expect(sourcesOf(out, 'export')).toContainEqual({ doc: 'briefing.md', heading: REQUEST });
   });
 
-  it('asks a known item whose dependencies the request changes to cite the request too', () => {
+  it('cites the request itself in a known item whose dependencies the request changes, and leaves the others alone', () => {
     const out = postProcessBacklog(raw([item('login'), item('cart')]), previous(base), {}, [], [], undefined, false, REQUEST);
-    expect(out).toEqual({ ok: false, issues: [expect.stringContaining('mudou de conteúdo ou de dependências')] });
+    expect(out.ok).toBe(true);
+    expect(sourcesOf(out, 'cart')).toContainEqual({ doc: 'briefing.md', heading: REQUEST });
+    expect(sourcesOf(out, 'login')).not.toContainEqual({ doc: 'briefing.md', heading: REQUEST });
   });
 
   it('puts the request rule in the pack only when the draft follows a request', () => {

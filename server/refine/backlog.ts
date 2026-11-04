@@ -124,22 +124,20 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 }
 
 /** The orchestrator, not the agent, owns key stability, validity and rank, keeps every started item (R11.7.5) and adds the adjustments the owner approved (R11.7.4). */
-/** A follow-on request only adds: no item of the backlog it follows leaves, and every new item cites the request's section. */
-function requestIssues(items: readonly BacklogItem[], previous: BacklogState | null, started: readonly BacklogItem[], request: string): string[] {
-  const kept = new Set(items.map((i) => i.key));
+/** An item is touched by the request when it is new or its content changed; its rank follows the order, so it is not content. */
+const touchedBy = (old: BacklogItem | undefined, i: BacklogItem) => old === undefined || old.title !== i.title || old.scope !== i.scope || old.priority !== i.priority || old.dependsOn.join('\n') !== i.dependsOn.join('\n');
+
+/** The request is the source of every item it touches, so the orchestrator cites it instead of asking the owner. */
+function citeRequest(items: readonly BacklogItem[], previous: BacklogState | null, request: string): BacklogItem[] {
   const known = new Map((previous?.items ?? []).map((i) => [i.key, i] as const));
-  const dropped = [...known.keys()].filter((key) => !kept.has(key) && !started.some((s) => s.key === key) && !isAdjustment(key));
-  const cites = (i: BacklogItem) => i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request);
-  // A known item whose content the request changes cites the request too; its rank follows the order, so it is not content.
-  const changed = (i: BacklogItem) => {
-    const old = known.get(i.key);
-    return old !== undefined && (old.title !== i.title || old.scope !== i.scope || old.priority !== i.priority || old.dependsOn.join('\n') !== i.dependsOn.join('\n'));
-  };
-  return [
-    ...(dropped.length > 0 ? [`o pedido só acrescenta: estes itens do backlog anterior saíram: ${dropped.join(', ')}`] : []),
-    ...items.filter((i) => !known.has(i.key) && !cites(i)).map((i) => `o item ${i.key} é novo e não cita a seção "${request}" de briefing.md`),
-    ...items.filter((i) => changed(i) && !cites(i)).map((i) => `o item ${i.key} mudou de conteúdo ou de dependências e não cita a seção "${request}" de briefing.md`),
-  ];
+  return items.map((i) => (touchedBy(known.get(i.key), i) && !i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request) ? { ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: request }] } : i));
+}
+
+/** A follow-on request only adds: no item of the backlog it follows leaves. */
+function requestIssues(items: readonly BacklogItem[], previous: BacklogState | null, started: readonly BacklogItem[]): string[] {
+  const kept = new Set(items.map((i) => i.key));
+  const dropped = (previous?.items ?? []).map((i) => i.key).filter((key) => !kept.has(key) && !started.some((s) => s.key === key) && !isAdjustment(key));
+  return dropped.length > 0 ? [`o pedido só acrescenta: estes itens do backlog anterior saíram: ${dropped.join(', ')}`] : [];
 }
 
 export function postProcessBacklog(out: { project: unknown; backlog: unknown }, previous: BacklogState | null, docs: Partial<BacklogDocs>, approved: readonly string[] = [], started: readonly BacklogItem[] = [], repositories?: readonly string[], docsRepo?: boolean, request?: string): BacklogCheck {
@@ -150,11 +148,12 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
     ...(backlog.success ? [] : backlog.error.issues.map((i) => plainIssue('backlog', i, valueAt(out.backlog, i.path)))),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
-  const items = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
+  const kept = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
+  const items = request === undefined ? kept : citeRequest(kept, previous, request);
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories, docsRepo });
   if (rules.length > 0) return { ok: false, issues: rules };
   if (request !== undefined) {
-    const issues = requestIssues(items, previous, started, request);
+    const issues = requestIssues(items, previous, started);
     if (issues.length > 0) return { ok: false, issues };
   }
   // A started item the agent dropped stays as it was, with only the dependencies still in the outline.
