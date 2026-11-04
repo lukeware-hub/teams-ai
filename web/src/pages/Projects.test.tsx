@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runApi } from '../api.js';
 import { MemoryRouter } from 'react-router-dom';
 import { ProjectsView } from './Projects.js';
 
@@ -280,5 +281,25 @@ describe('ProjectsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Limpar filtro' }));
     expect(filter.value).toBe('');
     expect(shown()).toEqual(['Hello app', 'Soap shop']);
+  });
+});
+
+describe('the Graphify button of a project card', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('opens the project code graph in a dialog and closes it with Escape', async () => {
+    const spy = vi.spyOn(runApi, 'projectGraph').mockResolvedValue({ available: true, nodes: 7, links: 10, communities: 1, top: [{ id: 'a', label: 'A', file: 'a.ts', community: 'c', edges: 3 }], topLinks: [], usage: { graph: 2, grep: 0, none: 0, recent: [] } });
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
+      </MemoryRouter>,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('graph-project-hello-app'));
+    expect(screen.getByRole('dialog', { name: /Grafo do código · hello-app/ })).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('graph-counts').textContent).toContain('7 nós'));
+    expect(spy).toHaveBeenCalledWith('hello-app');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('graph-counts')).toBeNull();
   });
 });

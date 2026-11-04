@@ -45,7 +45,7 @@ RUN set -eu; \
   chmod 755 /opt/teams-ai-bin/gh; \
   rm /tmp/gh.tar.gz
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
-RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.67
+RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.102
 # agent-reach is the browser and search CLI the agents call (role settings allow it); pinned to a commit, installed from the repository, not PyPI.
 RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install https://github.com/Panniantong/agent-reach/archive/94f06c1969dfc1834001269d79d3ad0972d9dee6.zip
 

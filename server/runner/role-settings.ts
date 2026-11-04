@@ -77,15 +77,17 @@ export const FULL_ACCESS_ALLOW = ['Bash', 'WebSearch', 'WebFetch'] as const;
 /** The web tools a step with full access gets on top of its role's tools. */
 export const FULL_ACCESS_TOOLS = ['WebSearch', 'WebFetch'] as const;
 // `find` is deliberately absent (audit H3): `-exec` runs any command; use ls/grep.
+// Global rule 9: every role queries the code graph, so every role may run these read-only graphify commands.
+const GRAPH_BASH = ['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)'];
 const ROLE_ALLOW: Record<Role, readonly string[]> = {
-  sm: ['Skill', ...WEB_ALLOW],
-  po: ['Skill', ...WEB_ALLOW],
-  front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
-  dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
-  test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...WEB_ALLOW],
-  sec: ['Skill', ...WEB_ALLOW],
-  devops: ['Skill', ...EDIT_TOOLS, ...WEB_ALLOW],
-  env: [...WEB_ALLOW],
+  sm: ['Skill', ...GRAPH_BASH, ...WEB_ALLOW],
+  po: ['Skill', ...GRAPH_BASH, ...WEB_ALLOW],
+  front: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...GRAPH_BASH, ...WEB_ALLOW],
+  dev: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...GRAPH_BASH, ...WEB_ALLOW],
+  test: ['Skill', ...EDIT_TOOLS, ...SUITE_BASH, ...GRAPH_BASH, ...WEB_ALLOW],
+  sec: ['Skill', ...GRAPH_BASH, ...WEB_ALLOW],
+  devops: ['Skill', ...EDIT_TOOLS, ...GRAPH_BASH, ...WEB_ALLOW],
+  env: [...GRAPH_BASH, ...WEB_ALLOW],
 };
 
 export interface RoleSettingsInput {

@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
+import { Dialog } from '../components/Dialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Skeleton } from '../components/Loading.js';
+import { GraphBody } from './repository/GraphPanel.js';
 import { action, chip, emptyState, plural, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const toolbar = 'flex flex-wrap items-center gap-x-4 gap-y-2';
@@ -99,6 +101,8 @@ export function ProjectsView(p: {
   const unregistered = openDrafts.filter((d) => !d.registered && matches(d.projectId, d.specId));
   const total = plural(p.projects.length, 'projeto', 'projetos');
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
+  // The project whose code graph is open in a dialog.
+  const [graphOf, setGraphOf] = useState<string | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<{ projectId: string; specId: string } | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectRow | null>(null);
   const [deleteStep, setDeleteStep] = useState<'loading' | 'repos' | 'confirm'>('loading');
@@ -317,6 +321,10 @@ export function ProjectsView(p: {
                     Nova spec
                     <Icon name="plus" size={14} />
                   </Link>
+                  <button type="button" className={action.secondary} data-testid={`graph-project-${pr.projectId}`} aria-label={`Ver o grafo do código do projeto ${pr.projectId}`} onClick={(e) => { opener.current = e.currentTarget; setGraphOf(pr.projectId); }}>
+                    Graphify
+                    <Icon name="code" size={14} />
+                  </button>
                   <Link className={`${action.secondary} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`open-project-${pr.projectId}`} aria-label={`Abrir projeto ${pr.projectId}`} aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} to={`/projects/${pr.projectId}`}>
                     Abrir
                     <Icon name="arrow-right" size={14} />
@@ -387,6 +395,13 @@ export function ProjectsView(p: {
               ? 'Marque para apagar também os repositórios no GitHub. Os arquivos locais são apagados de qualquer forma.'
               : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
         </ConfirmDialog>
+      ) : null}
+      {graphOf ? (
+        <Dialog title={`Grafo do código · ${graphOf}`} returnFocus={opener.current} onClose={() => setGraphOf(null)}>
+          <div className="grid gap-3 p-5">
+            <GraphBody projectId={graphOf} />
+          </div>
+        </Dialog>
       ) : null}
     </main>
   );

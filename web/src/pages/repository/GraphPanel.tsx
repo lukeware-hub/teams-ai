@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { runApi, type GraphView } from '../../api.js';
 import { action, panel, sectionHeading, sectionTitle } from '../project-shared.js';
 
@@ -29,23 +29,17 @@ function GraphMap({ view }: { view: GraphView }) {
   );
 }
 
-/** The project's code graph, closed by default: nothing is fetched until the owner opens it, and the map is drawn only on request. */
-export function GraphPanel({ projectId }: { projectId: string }) {
+/** What the graph says about the project and how the agents used it; it loads when it appears, and the owner can build it. */
+export function GraphBody({ projectId }: { projectId: string }) {
   const [view, setView] = useState<GraphView | null | undefined>(undefined);
   const [map, setMap] = useState(false);
-  // The body exists only after the first opening, so a closed panel adds nothing to the page.
-  const [opened, setOpened] = useState(false);
-  const requested = useRef(false);
   const [building, setBuilding] = useState(false);
   // Why the last build failed, in the server's words.
   const [buildError, setBuildError] = useState<string | null>(null);
 
-  const onToggle = (open: boolean) => {
-    if (!open || requested.current) return;
-    requested.current = true;
-    setOpened(true);
+  useEffect(() => {
     runApi.projectGraph(projectId).then(setView, () => setView(null));
-  };
+  }, [projectId]);
 
   const build = () => {
     setBuilding(true);
@@ -64,11 +58,8 @@ export function GraphPanel({ projectId }: { projectId: string }) {
   );
 
   return (
-    <details className={panel} data-testid="repo-graph" onToggle={(e) => onToggle(e.currentTarget.open)}>
-      <summary data-testid="graph-summary" className={`${sectionTitle} cursor-pointer`}>
-        <h2 data-testid="graph-heading" className={sectionHeading}>Grafo do código</h2>
-      </summary>
-      {opened && view === undefined && <p data-testid="graph-loading" className="hint" role="status">Carregando o grafo…</p>}
+    <>
+      {view === undefined && <p data-testid="graph-loading" className="hint" role="status">Carregando o grafo…</p>}
       {view === null && <p data-testid="graph-error" className="hint">Não foi possível ler o grafo. Tente de novo mais tarde.</p>}
       {view && !view.available && (
         <div className="grid justify-items-start gap-3">
@@ -95,6 +86,20 @@ export function GraphPanel({ projectId }: { projectId: string }) {
           {buildButton('Atualizar grafo')}
         </div>
       )}
+    </>
+  );
+}
+
+/** The project's code graph as a panel, closed by default: nothing is fetched until the owner opens it. */
+export function GraphPanel({ projectId }: { projectId: string }) {
+  // The body is mounted on the first opening and kept, so a closed panel adds nothing to the page.
+  const [opened, setOpened] = useState(false);
+  return (
+    <details className={panel} data-testid="repo-graph" onToggle={(e) => e.currentTarget.open && setOpened(true)}>
+      <summary data-testid="graph-summary" className={`${sectionTitle} cursor-pointer`}>
+        <h2 data-testid="graph-heading" className={sectionHeading}>Grafo do código</h2>
+      </summary>
+      {opened && <GraphBody projectId={projectId} />}
     </details>
   );
 }

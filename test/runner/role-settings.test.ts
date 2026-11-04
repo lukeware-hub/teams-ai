@@ -58,10 +58,10 @@ describe('buildRoleSettings', () => {
     // `mkdir -p reports && npm test` is denied unless every segment matches a rule (todo-api-r10: T3 blocked on it).
     expect(buildRoleSettings('dev', { allowedDomains: [] }).permissions.allow).toContain('Bash(mkdir:*)');
     expect(buildRoleSettings('devops', { allowedDomains: [], stacks: ['node'] }).permissions.allow).not.toContain('Bash(npm:*)');
-    // Every role may run only the Agent Reach CLI from Bash, besides its own rules.
-    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
-    expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
-    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+    // Besides its own rules, every role may run only the Agent Reach CLI and the graphify queries from Bash.
+    expect(buildRoleSettings('sm', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('po', { allowedDomains: [] }).permissions.allow).toEqual(['Skill', 'Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
+    expect(buildRoleSettings('env', { allowedDomains: [] }).permissions.allow).toEqual(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)', 'WebSearch', 'WebFetch', 'Bash(agent-reach:*)']);
   });
 
   it('lets every role search and read the web, with no domain wildcard, and a bare Bash only for a step with full access', () => {
@@ -209,5 +209,13 @@ describe('sandbox.enabled', () => {
     const s = buildRoleSettings('dev', { allowedDomains: ['registry.npmjs.org'], stacks: ['node'], sandboxEnabled: false });
     expect(s.sandbox).toEqual({ enabled: false, failIfUnavailable: true, allowUnsandboxedCommands: false, network: { allowedDomains: ['registry.npmjs.org'] } });
     expect(s.permissions.allow).toContain('Bash(npm:*)');
+  });
+
+  it('lets every role run the read-only graphify queries that global rule 9 asks for', () => {
+    for (const role of ROLES) {
+      const { allow, deny } = buildRoleSettings(role, { allowedDomains: [] }).permissions;
+      expect(allow, role).toEqual(expect.arrayContaining(['Bash(graphify query:*)', 'Bash(graphify explain:*)', 'Bash(graphify path:*)']));
+      expect(deny.some((d) => d.startsWith('Bash(graphify')), role).toBe(false);
+    }
   });
 });
