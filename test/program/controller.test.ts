@@ -62,22 +62,57 @@ describe('program controller', () => {
     expect(calls).toEqual(['start d-b']);
   });
 
-  // A delivered item is validated by the owner: the program completes nothing itself, and the next item waits.
-  it('waits for the owner to validate a delivered item, then starts the next', async () => {
+  // A delivered item's code is on main: its dependents go ahead, and only the owner's validation completes it.
+  it('starts the next item once the first is delivered, and completes the first only when the owner validates it', async () => {
     const { fx, calls, finished } = world({ 'd-a-r1': { kind: 'delivered' } });
     let p = newProgram('d', [entry('a', 1), entry('b', 2, ['a'])], NOW);
     p = await tick(p, fx, save); // start a
-    p = await tick(p, fx, save); // delivered: waits for the owner
-    expect(status(p)).toEqual({ a: 'delivered', b: 'pending' });
-    p = await tick(p, fx, save); // still waiting
-    expect(status(p)).toEqual({ a: 'delivered', b: 'pending' });
-    expect(calls).toEqual(['start d-a']);
-    finished.add('d-a'); // the owner completes the spec
-    p = await tick(p, fx, save);
-    expect(status(p).a).toBe('done');
-    p = await tick(p, fx, save); // b starts
+    p = await tick(p, fx, save); // a delivered: b starts without waiting for the owner
+    expect(status(p)).toEqual({ a: 'delivered', b: 'running' });
     expect(calls).toEqual(['start d-a', 'start d-b']);
-    expect(p.items[1]!.status).toBe('running');
+    expect(calls.some((c) => c.startsWith('complete'))).toBe(false);
+    finished.add('d-a'); // the owner validates it
+    p = await tick(p, fx, save);
+    expect(status(p)).toEqual({ a: 'done', b: 'running' });
+  });
+
+  it('runs two compatible dependents of a delivered spec together', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' } });
+    let p = newProgram('d', [mapped('a', 1), mapped('b', 2, ['a']), mapped('c', 3, ['a'])], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-a', 'start d-b', 'start d-c']);
+  });
+
+  it('starts a dependent that conflicts with a delivered spec: a delivered spec holds no slot', async () => {
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' } });
+    let p = newProgram('d', [mapped('a', 1), mapped('x', 2, ['a'], ['a'])], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(calls).toEqual(['start d-a', 'start d-x']);
+  });
+
+  it('keeps the program running while a delivered spec waits for the owner, and finishes once it is validated', async () => {
+    const { fx, finished } = world({ 'd-a-r1': { kind: 'delivered' } });
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p = await tick(p, fx, save);
+    p = await tick(p, fx, save);
+    expect(p.status).toBe('running');
+    finished.add('d-a');
+    p = await tick(p, fx, save);
+    expect(p.status).toBe('finished');
+    expect(status(p)).toEqual({ a: 'done' });
+  });
+
+  it('keeps the dependents of a failed spec blocked even while another spec is delivered', async () => {
+    // The fake numbers runs across specs: b is the second one started, so its run is d-b-r2.
+    const { fx, calls } = world({ 'd-a-r1': { kind: 'delivered' }, 'd-b-r2': { kind: 'failed', reason: 'boom' } });
+    let p = newProgram('d', [mapped('a', 1), mapped('b', 2, ['a']), entry('c', 3, ['b']), mapped('d', 4, ['a']), entry('e', 5, ['c'])], NOW);
+    p = await tick(p, fx, save); // start a
+    p = await tick(p, fx, save); // a delivered: b and d start beside it
+    p = await tick(p, fx, save); // b fails: c blocks, and e blocks through c; d goes on
+    expect(status(p)).toEqual({ a: 'delivered', b: 'failed', c: 'blocked', d: 'running', e: 'blocked' });
+    expect(calls).toEqual(['start d-a', 'start d-b', 'start d-d']);
   });
 
   it('keeps the delivering run\'s cost on a delivered item (R11.6)', async () => {
