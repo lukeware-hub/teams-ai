@@ -27,7 +27,7 @@ import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
 import { usageRoutes } from './api/usage-routes.js';
 import { createClaudeUsage } from './usage/claude-usage.js';
-import { jevCostUsd } from './usage/jev-cost.js';
+import { jevTotalUsd, recordJevCost, seedJevLedger } from './usage/jev-ledger.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
@@ -115,6 +115,8 @@ async function prepareSkills(exec: Exec, env: NodeJS.ProcessEnv, stderr: (line: 
 async function startUiReal(port: number, io: CliIo): Promise<{ port: number; close(): Promise<void> }> {
   if (!(await hasScript(io.env))) throw new Error('the web UI needs util-linux `script` on PATH (apt install bsdutils)');
   const cfg = loadConfig(await fs.readFile(path.join(expandHome('~/.teams-ai'), 'config.json'), 'utf8').then(JSON.parse).catch(() => ({})));
+  // Before any Jev call of this process: the journals' past cost is written once, then the ledger takes over.
+  await seedJevLedger(cfg);
   const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
@@ -212,7 +214,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       guard,
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
-        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
+        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}) }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
@@ -223,10 +225,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         ...settingsRoutes({}),
         ...usageRoutes({
           claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }),
-          jev: async () => {
-            const { paths } = (await readUserConfig()).cfg;
-            return jevCostUsd(expandHome(paths.workspaces), expandHome(paths.runs));
-          },
+          jev: async () => jevTotalUsd((await readUserConfig()).cfg),
         }),
       ],
       staticDir: hasDist ? staticDir : null,
@@ -336,6 +335,7 @@ export const chooseSpecId = (explicit: string | undefined, fromRun: string | nul
 export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; resumeRun?: string; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local'; sendBack?: boolean }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
+  await seedJevLedger(cfg);
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
   const ws = workspacePaths(cfg, project.projectId);
   const fromRun = opts.resumeRun ? await specForRun(ws, opts.resumeRun) : null;

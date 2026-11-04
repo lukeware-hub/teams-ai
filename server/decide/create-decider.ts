@@ -4,6 +4,7 @@ import { ClaudeEscalateBackend, type EscalationRunner } from './claude-escalate.
 import { Decider } from './decider.js';
 import { JevOpenRouterBackend } from './jev-openrouter.js';
 import { LocalLogprobsBackend } from './local-logprobs.js';
+import { recordJevCost } from '../usage/jev-ledger.js';
 import type { BackendName, DecisionBackend, DecisionRecord } from './types.js';
 
 export interface CreateDeciderDeps {
@@ -40,6 +41,7 @@ export function createDecider(deps: CreateDeciderDeps): Decider {
       maxTries: o.maxTries,
       backoffMs: o.backoffMs,
       sleep: deps.sleep ?? defaultSleep,
+      onCost: (costUsd) => void recordJevCost(deps.cfg, costUsd).catch(() => {}),
     });
   }
   return new Decider({

@@ -26,6 +26,8 @@ export interface JevDeps {
   maxTries: number;
   backoffMs: number;
   sleep: (ms: number) => Promise<void>;
+  /** Gets the charge of every answered request, valid or not, so the total counts what was billed. */
+  onCost?: (costUsd: number) => void;
 }
 
 export type JevQuestion =
@@ -73,6 +75,8 @@ const ResponseWire = z.object({
     cost: z.number().nonnegative().optional(),
   }),
 });
+
+const CostWire = z.object({ usage: z.object({ cost: z.number().nonnegative().optional() }).optional() });
 
 function checkDistribution(id: string, probs: Record<string, number>, expectedKeys: readonly string[]): string | null {
   for (const k of Object.keys(probs)) if (!expectedKeys.includes(k)) return `${id}: probability for unknown key "${k}"`;
@@ -156,6 +160,8 @@ export class JevOpenRouterBackend implements DecisionBackend {
         } catch {
           return { ok: false, reason: 'invalid', message: `HTTP ${res.status} with a body that is not JSON` };
         }
+        const billed = CostWire.safeParse(json);
+        if (billed.success && billed.data.usage?.cost !== undefined) this.deps.onCost?.(billed.data.usage.cost);
         const mapped = fromJevResponse(json, input.questions);
         if (!mapped.ok) return { ok: false, reason: 'invalid', message: mapped.message };
         return { ok: true, answers: mapped.answers, model: mapped.model, usage: mapped.usage };

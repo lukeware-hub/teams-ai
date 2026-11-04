@@ -13,6 +13,7 @@ export interface ProbeDeps {
   fetch: typeof fetch;
   hostEnv?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  onJevCost?: (costUsd: number) => void;
 }
 
 const TIMEOUT = 30_000;
@@ -95,7 +96,7 @@ export async function ghToken(d: ProbeDeps, token: string): Promise<ProbeResult>
 }
 
 export async function openrouterKey(d: ProbeDeps, key: string, model = 'typesafe/jev-1.13'): Promise<ProbeResult> {
-  const jev = new JevOpenRouterBackend({ fetch: d.fetch, apiKey: key, baseUrl: 'https://openrouter.ai/api', model, timeoutMs: d.timeoutMs ?? TIMEOUT, maxTries: 1, backoffMs: 0, sleep: async () => {} });
+  const jev = new JevOpenRouterBackend({ fetch: d.fetch, apiKey: key, baseUrl: 'https://openrouter.ai/api', model, timeoutMs: d.timeoutMs ?? TIMEOUT, maxTries: 1, backoffMs: 0, sleep: async () => {}, onCost: d.onJevCost });
   const r = await jev.evaluate({ state: 'The onboarding probe checks the key.', questions: { probe: { type: 'noul', instructions: 'Is this sentence in English?' } }, escalateTo: 'test' });
   if (r.ok) return { ok: true, detail: `${r.model} · $${r.usage.costUsd ?? 0}` };
   return { ok: false, detail: redactSecrets(r.message, [key]) };

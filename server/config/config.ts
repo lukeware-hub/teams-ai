@@ -264,6 +264,8 @@ export const Config = z.object({
       workspaces: linuxPath.default('~/.teams-ai/workspaces'),
       secrets: linuxPath.default('~/.teams-ai/secrets'),
       runs: linuxPath.default('~/.teams-ai/runs'),
+      /** The running total of what the Jev charged: one line per charge. */
+      usage: linuxPath.default('~/.teams-ai/usage'),
       /** Scanner downloads and the trivy DB shared by the security gates of every task (R11.13 slice 4). */
       gateCache: linuxPath.default('~/.teams-ai/gate-cache'),
     })
