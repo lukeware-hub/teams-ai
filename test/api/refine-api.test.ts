@@ -30,6 +30,7 @@ let fakeAgent: RunAgent;
 let hangAgent: boolean;
 let agentStarted: boolean;
 let spawns: Array<{ args: string[]; logFile: string }>;
+let graphBuilds: string[];
 let registered: string[];
 const base = () => `http://127.0.0.1:${api.port}`;
 const call = (method: string, p: string, body?: unknown) =>
@@ -98,6 +99,7 @@ beforeEach(async () => {
   hangAgent = false;
   agentStarted = false;
   spawns = [];
+  graphBuilds = [];
   registered = [];
   spawnShouldFail = false;
   registerShouldFail = false;
@@ -140,6 +142,9 @@ beforeEach(async () => {
       usage: null,
     }),
     projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
+    buildGraph: async (projectId) => {
+      graphBuilds.push(projectId);
+    },
     control,
     runsDir: async () => `${home}/runs`,
     register: async (dir) => {
@@ -436,6 +441,8 @@ describe('refine api', () => {
     spawnShouldFail = true;
     await preparePlans(url);
     const failed = await startRun(url);
+    // The graph is built when the development is authorized, before the run launches.
+    expect(graphBuilds).toEqual(['hello-app']);
     expect(failed.status).toBe(500);
     expect(JSON.stringify(await failed.json())).toMatch(/nenhuma run/);
     await expect(fs.access(`${home}/ws/hello-app/refine/hello-app-001/program.json`)).rejects.toThrow();

@@ -7,7 +7,7 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -152,6 +152,23 @@ describe('projectMainDocs', () => {
   it('has no documents when the repository is not there, instead of failing the chat', async () => {
     const located: LocatedProject = { ws: workspacePaths({ paths: { workspaces: os.tmpdir(), runs: path.join(os.tmpdir(), 'runs') } } as unknown as Config, 'nao-clonado'), project: project as Project, newestSpec: undefined };
     expect(await projectMainDocs(located)).toEqual([]);
+  });
+});
+
+describe('buildLocatedProjectGraph', () => {
+  it('fails for a project that is not located', async () => {
+    const graphify = new Graphify({ exec: new FakeExec().exec, readFile: async () => null });
+    await expect(buildLocatedProjectGraph(graphify, null)).rejects.toThrow('project not found');
+  });
+
+  it('builds the repository and only the services whose clone is present', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    await buildLocatedProjectGraph(graphify, { ws, project: project as Project, newestSpec: undefined });
+    // One update for the project documents and one for the repository; the service has no clone.
+    expect(fake.lines('graphify').filter((line) => line.startsWith('update'))).toHaveLength(2);
+    expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true);
   });
 });
 

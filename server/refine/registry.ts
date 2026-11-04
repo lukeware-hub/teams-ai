@@ -52,6 +52,8 @@ export interface RegistryDeps {
   ghExec?: Exec;
   /** Directory of a registered block A project, or null when the id is not registered. */
   projectDir: (projectId: string) => Promise<string | null>;
+  /** Builds the project's code graph when the owner authorizes the development; it must not reject. Absent in tests that predate it. */
+  buildGraph?: (projectId: string) => Promise<void>;
   control: RunControlDeps;
   runsDir: () => Promise<string>;
   register: (dir: string) => Promise<void>;
@@ -283,6 +285,8 @@ export class SessionRegistry {
     session.beginStart();
     try {
       const entries = await session.freezeProgram(summaryHash);
+      // The first task reads the graph when it starts, so it is built before the program.
+      await this.deps.buildGraph?.(projectId);
       const program = await this.programs.start(projectId, specId, entries);
       const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
       if (runId === null) {

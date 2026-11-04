@@ -52,6 +52,15 @@ export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, proje
   await graphify.merge([...repos, { dir: infoGraph, name: 'project-info' }], path.posix.join(ws.graph, 'project'));
 }
 
+/** The project's graph built from main as it is now: the repository is fetched, then every service whose clone is present is built and merged. */
+export async function buildLocatedProjectGraph(graphify: Graphify, located: LocatedProject | null): Promise<void> {
+  if (!located) throw new Error('project not found');
+  // A failed fetch keeps the last copy of main, so the graph still builds.
+  await fetchRepo(located.ws.repo).catch(() => undefined);
+  const present = await Promise.all((located.project.services ?? []).map(async (service) => ((await fs.access(serviceWorkspace(located.ws, service).repo).then(() => true, () => false)) ? service : null)));
+  await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectMainDocs(located));
+}
+
 /** One code graph of the project: each cloned repository's graph built again, then merged with the project's own description. */
 export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[], docs: readonly MainDoc[] = []): Promise<void> {
   for (const repo of [ws, ...cloned.map((service) => serviceWorkspace(ws, service))]) await graphify.update(repo.repo, graphDir(repo, null));

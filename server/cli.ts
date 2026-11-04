@@ -13,7 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
+import { buildLocatedProjectGraph, locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -149,6 +149,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     exec: withGitAuth(execCommand, expandHome(cfg.paths.secrets)),
     ghExec: withGhAuth(withGitAuth(execCommand, expandHome(cfg.paths.secrets)), expandHome(cfg.paths.secrets)),
     projectDir: projectDirOf,
+    // A graph that fails to build only costs the agents the graph; the run falls back to grep.
+    buildGraph: async (projectId) => buildLocatedProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)).catch((err) => io.stderr(`project graph not built: ${err instanceof Error ? err.message : String(err)}`)),
     control: defaultRunControl(repoRoot),
     runsDir: async () => runsDir({ cfg: (await readUserConfig()).cfg, isAlive: () => false }),
     register: (dir) => addProject(dir).then(() => undefined),

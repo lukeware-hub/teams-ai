@@ -15,7 +15,7 @@ import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
-import { buildProjectGraph, locateProject, projectMainDocs } from '../knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildProjectGraph, locateProject } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
@@ -550,8 +550,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         if (!located) throw new HttpError(404, `unknown project ${projectId}`);
         rebuilding.add(projectId);
         try {
-          const present = await Promise.all((located.project.services ?? []).map(async (service) => ((await fs.access(serviceWorkspace(located.ws, service).repo).then(() => true, () => false)) ? service : null)));
-          await buildProjectGraph(deps.graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectMainDocs(located));
+          await buildLocatedProjectGraph(deps.graphify, located);
         } catch (err) {
           throw new HttpError(500, `não foi possível construir o grafo: ${(err as Error).message}`);
         } finally {
