@@ -255,6 +255,22 @@ describe('Run', () => {
     await run.close();
   }, 180_000);
 
+  it('records one cost alert when the run passes its dollar limit, never stops it, and stays silent below the limit', async () => {
+    const d = await withAgents(deps(happy));
+    d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), budgets: { observeOnly: false, perRunCostUsd: 0.0001 } });
+    const run = await Run.create(d);
+    expect(await run.execute()).toBe('complete');
+    const alerts = run.journal.events.filter((e) => e.type === OrchEvent.RunCostAlert);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.data).toMatchObject({ capUsd: 0.0001 });
+    expect(Number(alerts[0]!.data.costUsd)).toBeGreaterThan(0.0001);
+    await run.close();
+    const quiet = await Run.create(await withAgents(deps(happy)));
+    await quiet.execute();
+    expect(quiet.journal.events.some((e) => e.type === OrchEvent.RunCostAlert)).toBe(false);
+    await quiet.close();
+  }, 180_000);
+
   it('journals a task over its budget once in observe mode, also across a resume', async () => {
     let reviews = 0;
     const script: Script = async (req) => (req.kind === 'review' && reviews++ === 0 ? { ok: false, failure: 'auth', errors: ['not logged in'], summary: summary({ isError: true }), sandboxDisabled: false } : happy(req));

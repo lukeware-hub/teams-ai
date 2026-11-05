@@ -152,6 +152,8 @@ export const Config = z.object({
       /** Caps a task by what it costs instead of by tokens: `perTaskTokens` counts a cache read like an output token (R11.13 slice 8). */
       perTaskCostUsd: z.number().positive().optional(),
       perRunTokens: positive.default(15_000_000),
+      /** A run that spends more than this records one alert; cost only warns and never stops a run (owner decision). */
+      perRunCostUsd: z.number().positive().default(3),
       /** First run only measures; caps are enforced once calibrated (spec §8.5). */
       observeOnly: z.boolean().default(true),
     })

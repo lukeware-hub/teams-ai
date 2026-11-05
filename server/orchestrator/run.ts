@@ -232,6 +232,7 @@ export class Run {
   private readonly inflight = new Map<string, Promise<void>>();
   /** The tasks, and the run as null, whose spent budget observe mode journaled already. */
   private readonly budgetNoted: Set<string | null>;
+  private costAlerted: boolean;
   private readonly deps: RunDeps;
 
   private constructor(
@@ -249,6 +250,7 @@ export class Run {
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
     this.budgetNoted = new Set(journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => (e.data.taskId as string | null) ?? null));
+    this.costAlerted = journal.events.some((e) => e.type === OrchEvent.RunCostAlert);
     this.rebuildAccounting();
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
@@ -1064,6 +1066,11 @@ export class Run {
           this.budgetNoted.add(null);
           await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: null, tokens: runTokens, cap: cfg.budgets.perRunTokens });
         }
+      }
+      const runCostUsd = this.accounting.total().costUsd;
+      if (runCostUsd > cfg.budgets.perRunCostUsd && !this.costAlerted) {
+        this.costAlerted = true;
+        await this.journal.fact(OrchEvent.RunCostAlert, { costUsd: runCostUsd, capUsd: cfg.budgets.perRunCostUsd });
       }
       for (const id of tasksToBlock(this.journal.state)) {
         const t = this.journal.state.tasks.get(id)!;

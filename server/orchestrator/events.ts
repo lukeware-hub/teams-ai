@@ -49,6 +49,7 @@ export const OrchEvent = {
   /** The SM's question and choices for a block, asked of the owner on the run screen. */
   DecisionRequested: 'DECISION_REQUESTED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
+  RunCostAlert: 'RUN_COST_ALERT',
   RunFinished: 'RUN_FINISHED',
   RepoBootstrapped: 'REPO_BOOTSTRAPPED',
   /** The delta handed to the next Dev attempt (gate failures, findings, conflicts, spec-gap answer). */
