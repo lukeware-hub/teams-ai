@@ -40,9 +40,9 @@ function Overview({ data }: { data: CostOverview }) {
     <>
       <div data-testid="costs-indicators" className={stats}>
         <Indicator id="total" label="Total" help={HELP.total} value={money(total.costUsd)} detail={tokens(total.tokens)} />
-        <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(byStage.refinement.costUsd)} detail={ofTotal(byStage.refinement.costUsd, total.costUsd)} />
-        <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(byStage.development.costUsd)} detail={ofTotal(byStage.development.costUsd, total.costUsd)} />
-        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(byStage.chat.costUsd)} detail={ofTotal(byStage.chat.costUsd, total.costUsd)} />
+        <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(byStage.refinement.costUsd)} detail={ofTotal(byStage.refinement.costUsd, total.costUsd)} share={shareOf(byStage.refinement.costUsd, total.costUsd)} />
+        <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(byStage.development.costUsd)} detail={ofTotal(byStage.development.costUsd, total.costUsd)} share={shareOf(byStage.development.costUsd, total.costUsd)} />
+        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(byStage.chat.costUsd)} detail={ofTotal(byStage.chat.costUsd, total.costUsd)} share={shareOf(byStage.chat.costUsd, total.costUsd)} />
       </div>
       {total.steps === 0 ? (
         <div className={emptyState}>

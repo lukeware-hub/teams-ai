@@ -1717,7 +1717,8 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 ### 33.4 Componentes
 
 - **Painel:** cabeçalho de §11.2 (ícone em bloco, rótulo pequeno, título e um chip de estado).
-- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio.
+- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio. Os indicadores de etapa e de chat trazem a barra de participação logo abaixo da linha de apoio.
+- **Títulos de painel:** todo painel de custos tem um botão de informação ao lado do título, com o texto de §33.6. O conteúdo do painel começa no topo (`content-start`), sem espaço extra acima quando ele divide a linha com outro painel.
 - **Barra de participação:** rótulo à esquerda, trilho de 6 px (§11.17), preenchimento `accent` liso, valor e percentual escritos à direita. A etapa vem sempre escrita ao lado da barra: a cor nunca é a única pista.
 - **Chips de período:** família única de chips (§3.9). Selecionado: `accent-soft` com texto `accent-ink` e `aria-pressed="true"`. Os chips quebram linha; não há rolagem horizontal.
 - **Tabelas:** §11.16. Números à direita, em algarismos tabulares. Abaixo de 44 rem viram cartões (`responsiveTable`).
@@ -1746,7 +1747,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 
 ### 33.7 Formato
 
-- Dinheiro: `US$ 39,67` (vírgula decimal, pt-BR, sempre com `US$` antes do valor).
+- Dinheiro: `US$ 39,6700` (vírgula decimal, pt-BR, sempre quatro casas decimais, sempre com `US$` antes do valor). O mesmo formato vale em todas as telas e na API, que arredonda a quatro casas.
 - Tokens: forma compacta pt-BR (`5,7 mi tokens`).
 - Percentual sem casas decimais, com `%`.
 - Frases curtas, em sentença normal, sem jargão de sistema.

@@ -8,7 +8,7 @@ import { Loading } from '../components/Loading.js';
 import { PROJECTS, projectPath } from '../routes.js';
 import { emptyState, panel, plural, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
 import { type Option, ErrorBlock, EscalationNote, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
-import { money, ofTotal, sumMoney, tokens, unpricedNote } from './costs/format.js';
+import { money, ofTotal, shareOf, sumMoney, tokens, unpricedNote } from './costs/format.js';
 import { AGENT_LABEL, CHAT_AGENT, HELP, labelOf } from './costs/labels.js';
 import { StagePanel } from './costs/StagePanel.js';
 import { StepsPanel } from './costs/StepsPanel.js';
@@ -66,9 +66,9 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
     <>
       <div data-testid="costs-indicators" className={stats}>
         <Indicator id="total" label="Total" help={HELP.total} value={money(total.costUsd)} detail={tokens(total.tokens)} />
-        <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(refinement.total.costUsd)} detail={ofTotal(refinement.total.costUsd, total.costUsd)} />
-        <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(development.total.costUsd)} detail={ofTotal(development.total.costUsd, total.costUsd)} />
-        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(chat.costUsd)} detail={ofTotal(chat.costUsd, total.costUsd)} />
+        <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(refinement.total.costUsd)} detail={ofTotal(refinement.total.costUsd, total.costUsd)} share={shareOf(refinement.total.costUsd, total.costUsd)} />
+        <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(development.total.costUsd)} detail={ofTotal(development.total.costUsd, total.costUsd)} share={shareOf(development.total.costUsd, total.costUsd)} />
+        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(chat.costUsd)} detail={ofTotal(chat.costUsd, total.costUsd)} share={shareOf(chat.costUsd, total.costUsd)} />
       </div>
       {total.steps === 0 ? (
         <div className={emptyState}>

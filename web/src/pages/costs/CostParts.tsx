@@ -29,7 +29,7 @@ export function PanelTitle({ icon, title, help }: { icon: IconName; title: strin
 }
 
 /** One figure of the stat strip: its label and explanation, the value, and a line beneath it. */
-export function Indicator({ id, label, help, value, detail }: { id: string; label: string; help?: string; value: string; detail: string }) {
+export function Indicator({ id, label, help, value, detail, share }: { id: string; label: string; help?: string; value: string; detail: string; share?: number }) {
   return (
     <div data-testid={`costs-indicator-${id}`} className={`${stat} border-line bg-surface shadow-card`}>
       <span className={`${statLabel} inline-flex items-center gap-1`}>
@@ -38,6 +38,7 @@ export function Indicator({ id, label, help, value, detail }: { id: string; labe
       </span>
       <strong className={`${statValue} text-ink`}>{value}</strong>
       <span className="text-[0.8125rem] text-ink-soft">{detail}</span>
+      {share === undefined ? null : <ShareBar share={share} />}
     </div>
   );
 }
