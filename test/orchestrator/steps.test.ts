@@ -746,19 +746,12 @@ describe('runAgentStep', () => {
     expect(seen.map((s) => s.model)).toEqual(['claude-opus-5-5']);
   });
 
-  it('starts the next Opus step on Sonnet while Opus is paused', async () => {
-    const first = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
-    const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
+  it('a next automatic Opus step stays on Opus while Opus is out of quota, and never starts on Sonnet', async () => {
+    const first = await seeing('opus', undefined, async () => quota());
     const seen: string[] = [];
-    first.d.runStep = (async (req: { model: string }) => { seen.push(req.model); return ok; }) as unknown as AgentStepDeps['runStep'];
+    first.d.runStep = (async (req: { model: string }) => { seen.push(req.model); return quota(); }) as unknown as AgentStepDeps['runStep'];
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'opus' }, first.d);
-    expect(seen).toEqual(['claude-sonnet-5-5']);
-  });
-
-  it('pauses the whole run when the lower model is out of quota too', async () => {
-    const { d, seen } = await seeing('opus', undefined, async () => quota());
-    expect(seen.map((s) => s.model)).toEqual(['opus', 'claude-sonnet-5-5']);
-    expect(d.breaker.canStart()).toBe(false);
+    expect(seen).toEqual(['opus']);
   });
 
   it('does not move a Sonnet step to a lower model on quota failure', async () => {

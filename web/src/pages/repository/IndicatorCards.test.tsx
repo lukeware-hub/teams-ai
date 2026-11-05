@@ -14,13 +14,13 @@ describe('IndicatorCards', () => {
     const row = within(screen.getByTestId('repo-cards'));
     expect(row.getAllByTestId(/^card-/)).toHaveLength(7);
     expect(row.getAllByTestId(/^card-/).at(-1)!.getAttribute('data-testid')).toBe('card-cost');
-    expect(within(screen.getByTestId('card-cost')).getByText('US$ 0.74')).toBeTruthy();
+    expect(within(screen.getByTestId('card-cost')).getByText('US$ 0,7416')).toBeTruthy();
     expect(within(screen.getByTestId('card-cost')).getByText('40 runs deste repositório')).toBeTruthy();
   });
 
   it('reads the cost of a repository with no run as zero, and a single run in the singular', () => {
     render(<IndicatorCards dashboard={dashboard(0, 1)} />);
-    expect(within(screen.getByTestId('card-cost')).getByText('US$ 0.00')).toBeTruthy();
+    expect(within(screen.getByTestId('card-cost')).getByText('US$ 0,0000')).toBeTruthy();
     expect(within(screen.getByTestId('card-cost')).getByText('1 run deste repositório')).toBeTruthy();
   });
 

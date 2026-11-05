@@ -1,7 +1,7 @@
-import { AgentSetting, Config, defaultAgentSetting, isSlot, PLAN_AGENTS_MAX, SETTING_KEYS, storedSettingOf, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type Role, type SettingKey } from '../config/config.js';
+import { AgentSetting, automaticModelsOf, Config, defaultAgentSetting, isSlot, PLAN_AGENTS_MAX, SETTING_KEYS, storedSettingOf, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type AutomaticModels, type Role, type SettingKey } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { effortFor } from '../runner/model-policy.js';
-import { readUserConfig, setAgentSetting, setAgentsDecide, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
+import { readUserConfig, setAgentSetting, setAgentsDecide, setAutomaticModels, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
 import { configProblem } from './onboarding-routes.js';
 
@@ -13,6 +13,7 @@ const P = '/api/settings/agents';
 const T = '/api/settings/step-timeout';
 const S = '/api/settings/plan-agents';
 const D = '/api/settings/agents-decide';
+const A = '/api/settings/automatic';
 const MINUTE_MS = 60_000;
 
 const slugOf = (id: string): string => {
@@ -61,6 +62,18 @@ const agentsOf = (input: unknown): number => {
     throw new HttpError(400, `agents must be a whole number from 1 to ${PLAN_AGENTS_MAX}`);
   }
   return agents;
+};
+
+/** `{tiers: {small, medium, large}, architecture, laterCycle}` from the Settings page: each a model the agents accept. */
+const automaticOf = (input: unknown): AutomaticModels => {
+  const body = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
+  const tiers = typeof body.tiers === 'object' && body.tiers !== null ? (body.tiers as Record<string, unknown>) : {};
+  const modelOf = (value: unknown): string => {
+    const parsed = AgentSetting.shape.model.safeParse(value);
+    if (!parsed.success) throw new HttpError(400, 'model must be claude-haiku-5-5, claude-sonnet-5-5 or claude-opus-5-5');
+    return parsed.data;
+  };
+  return { tiers: { small: modelOf(tiers.small), medium: modelOf(tiers.medium), large: modelOf(tiers.large) }, architecture: modelOf(body.architecture), laterCycle: modelOf(body.laterCycle) };
 };
 
 /** The model and effort an automatic role uses by default: its role profile model, at the effort the model allows when nothing is asked. */
@@ -135,6 +148,23 @@ export function settingsRoutes(deps: SettingsDeps): Route[] {
         const timeoutMinutes = minutesOf(await body());
         await setStepTimeout(projectId, timeoutMinutes * MINUTE_MS, deps.home).catch(configProblem);
         json(200, { timeoutMinutes });
+      },
+    },
+    {
+      method: 'GET',
+      path: A,
+      handler: async ({ json }) => {
+        const { cfg } = await readUserConfig(deps.home).catch(configProblem);
+        json(200, automaticModelsOf(cfg.routing));
+      },
+    },
+    {
+      method: 'PUT',
+      path: A,
+      handler: async ({ body, json }) => {
+        const models = automaticOf(await body());
+        const cfg = await setAutomaticModels(models, deps.home).catch(configProblem);
+        json(200, automaticModelsOf(cfg.routing));
       },
     },
     {

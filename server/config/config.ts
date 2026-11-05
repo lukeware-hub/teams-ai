@@ -34,6 +34,11 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
 const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus, architecture: MODELS.opus };
 
+/** The architecture steps: the Settings screen sets their model as one. */
+export const ARCHITECTURE_KINDS = ['tech-spec', 'plan', 'services-plan', 'architecture'] as const satisfies readonly StepKind[];
+/** The refinement steps from the second cycle on: the Settings screen sets their model as one. */
+export const LATER_CYCLE_KINDS = ['refine', 'derive', 'coverage', 'backlog', 'answer'] as const satisfies readonly StepKind[];
+
 const positive = z.number().int().min(1);
 /** The most agents that prepare the plans at once. */
 export const PLAN_AGENTS_MAX = 5;
@@ -301,6 +306,20 @@ export type Config = z.infer<typeof Config>;
 /** The model `routing.stepModels` gives a step; a services plan is a plan, so it falls back to the plan's model. */
 export const stepModelFor = (routing: Config['routing'], kind: StepKind): string | undefined =>
   routing.stepModels[kind] ?? (kind === 'services-plan' ? routing.stepModels.plan : undefined);
+
+/** The models of the automatic choice, shared by every project: the three task sizes, the architecture steps and the later refinement cycles. */
+export interface AutomaticModels {
+  tiers: { small: string; medium: string; large: string };
+  architecture: string;
+  laterCycle: string;
+}
+
+/** Reads the automatic models from the routing settings; a group with no model left in the file shows its default. */
+export const automaticModelsOf = (routing: Config['routing']): AutomaticModels => ({
+  tiers: { small: routing.models.small, medium: routing.models.medium, large: routing.models.large },
+  architecture: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? MODELS.opus,
+  laterCycle: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? MODELS.sonnet,
+});
 
 /** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */
 export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets']['step'] {

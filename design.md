@@ -1766,3 +1766,39 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 ### 33.10 Fora desta tela
 
 Limite de gasto, mudança de comportamento dos runs, série temporal, exportação.
+
+## 34. Configurações — modelos por agente, chat, graphify e automático
+
+Tela `/settings`, dentro do que já existe. Nenhuma forma nova de tela: as linhas seguem o padrão da lista de agentes.
+
+### 34.1 Modelos e esforço, por projeto
+
+A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm só modelo fixo: não há `Automático`. `Graphify` não mostra esforço, porque o graphify não recebe esforço. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
+
+### 34.2 Modelos automáticos, globais
+
+Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Configuração Global do Ambiente`. Ele mostra cinco escolhas, usadas pelos papéis em `Automático` em todos os projetos deste computador:
+
+| Linha | Usada em |
+|---|---|
+| Tarefa pequena | tarefa de tamanho pequeno no modo de roteamento |
+| Tarefa média | tarefa de tamanho médio |
+| Tarefa grande | tarefa de tamanho grande |
+| Arquitetura | passos de tech-spec, plano, services-plan e arquitetura |
+| Refinamento, ciclos seguintes | passos de refinamento a partir do segundo ciclo |
+
+Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro. Não há campo de esforço: o modo automático define o esforço por modelo.
+
+```
+Modelos automáticos                                    (i)
+Usados pelos papéis em Automático, em todos os projetos.
+Tarefa pequena                  [ Haiku 5.5   v ]
+Tarefa média                    [ Sonnet 5.5  v ]
+Tarefa grande                   [ Sonnet 5.5  v ]
+Arquitetura                     [ Opus 5.5    v ]
+Refinamento, ciclos seguintes   [ Sonnet 5.5  v ]
+```
+
+### 34.3 Fora desta tela
+
+A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqui. Ela segue a configuração do arquivo.

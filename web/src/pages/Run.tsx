@@ -10,6 +10,7 @@ import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { OptionGroup } from '../components/OptionGroup.js';
+import { money } from './costs/format.js';
 import { STATUS_HELP } from './project-shared.js';
 import { Loading } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
@@ -66,7 +67,6 @@ const TEST_LINK_ICON = 'flex-none text-ink-faint group-hover:text-accent-text';
 const META = 'col-span-full text-[0.75rem] tabular-nums';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
-const money = (n: number) => `US$ ${n.toFixed(4)}`;
 /** The run's own part of its id (`run-2`, `complete-run-1`), for legacy ids too; the whole id when it does not parse. */
 const runLabel = (runId: string) => {
   const r = parseRunId(runId);

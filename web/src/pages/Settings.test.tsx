@@ -25,8 +25,11 @@ const envStatus = (over: Partial<Status['items']> = {}): Status => ({
   allOk: false,
 });
 
+const automatic = { tiers: { small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-sonnet-5-5' } as const;
+
 function mockEnv() {
   vi.spyOn(settingsApi, 'planAgents').mockResolvedValue({ agents: 5 });
+  vi.spyOn(settingsApi, 'automatic').mockResolvedValue(automatic);
   vi.spyOn(api, 'status').mockResolvedValue(envStatus());
   vi.spyOn(api, 'organizations').mockResolvedValue({ organizations: ['acme'], owner: 'acme' });
   vi.spyOn(usageApi, 'claude').mockResolvedValue({ available: false, reason: 'not-logged-in' });
@@ -84,6 +87,20 @@ describe('SettingsPage', () => {
     const environment = await screen.findByRole('heading', { name: 'Configuração Global do Ambiente' });
     expect(usage.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(projects.compareDocumentPosition(environment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows the automatic models once for every project and saves a change to the architecture model', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue({ ...automatic, architecture: 'claude-sonnet-5-5' } as never);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const select = (await screen.findByLabelText('Arquitetura')) as HTMLSelectElement;
+    expect(select.value).toBe('claude-opus-5-5');
+    expect(screen.getByLabelText('Tarefa pequena')).toBeTruthy();
+    expect(screen.getByLabelText('Refinamento, ciclos seguintes')).toBeTruthy();
+    fireEvent.change(select, { target: { value: 'claude-sonnet-5-5' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...automatic, architecture: 'claude-sonnet-5-5' }));
   });
 
   it('shows the chat and graphify settings beside the agents, on a fixed model with no automatic choice, and graphify without effort', async () => {

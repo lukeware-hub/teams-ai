@@ -358,7 +358,7 @@ describe('Run', () => {
     };
     // 60k tokens is over perTaskTokens, but the task cost US$ 0.5 against a US$ 1 cap.
     expect((await capped(0.5)).some((t) => t.includes('budget'))).toBe(false);
-    expect((await capped(2)).some((t) => t.includes('Task cost budget exceeded: US$ 2.00 used, cap US$ 1.00'))).toBe(true);
+    expect((await capped(2)).some((t) => t.includes('Task cost budget exceeded: US$ 2.0000 used, cap US$ 1.0000'))).toBe(true);
   }, 180_000);
 
   it('blocks a task that spends its attempts and reports it', async () => {

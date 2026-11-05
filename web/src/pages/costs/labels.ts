@@ -92,4 +92,7 @@ export const HELP = {
   jev: 'Custo do Jev que não pode ser ligado a um projeto, como validações de documentos de projetos apagados.',
   unread: 'Alguns registros não puderam ser lidos: o total pode estar abaixo do real.',
   chat: 'Custo das respostas do chat. Respostas que falharam não têm custo registrado.',
+  projects: 'Quanto cada projeto gastou em cada etapa. Clique no nome do projeto para ver os detalhes dele.',
+  agents: 'Quanto cada agente custou, dentro da etapa em que trabalhou. A barra mostra a parte dele no total.',
+  models: 'Quanto cada modelo de IA custou. A barra mostra a parte dele no total.',
 };

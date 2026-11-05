@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
+import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type AutomaticModels, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -27,6 +27,22 @@ const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlo
 const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
 const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto, com rede no shell só para pacotes e pesquisa na web livre. Com Sim, o botão Reprocessar não aparece na execução.';
 const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos agentes.';
+const HELP_AUTOMATIC = 'Modelos que os papéis em Automático usam, em todos os projetos deste computador. Tarefa pequena, média e grande seguem o tamanho de cada tarefa. Arquitetura são os passos de tech-spec, plano e arquitetura. Refinamento, ciclos seguintes são os passos de refinamento a partir do segundo ciclo. Cada escolha salva ao mudar.';
+const AUTOMATIC_LOAD_ERROR = 'Não foi possível carregar os modelos automáticos.';
+type AutomaticKey = 'small' | 'medium' | 'large' | 'architecture' | 'laterCycle';
+const AUTOMATIC_ROWS: Array<{ key: AutomaticKey; label: string }> = [
+  { key: 'small', label: 'Tarefa pequena' },
+  { key: 'medium', label: 'Tarefa média' },
+  { key: 'large', label: 'Tarefa grande' },
+  { key: 'architecture', label: 'Arquitetura' },
+  { key: 'laterCycle', label: 'Refinamento, ciclos seguintes' },
+];
+const modelOfRow = (models: AutomaticModels, key: AutomaticKey): AgentModel => (key === 'architecture' || key === 'laterCycle' ? models[key] : models.tiers[key]);
+const withModel = (models: AutomaticModels, key: AutomaticKey, model: AgentModel): AutomaticModels => {
+  if (key === 'architecture') return { ...models, architecture: model };
+  if (key === 'laterCycle') return { ...models, laterCycle: model };
+  return { ...models, tiers: { ...models.tiers, [key]: model } };
+};
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
@@ -313,6 +329,57 @@ function PlanAgentsPanel() {
   );
 }
 
+function AutomaticModelsCard() {
+  const [models, setModels] = useState<AutomaticModels | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    let active = true;
+    settingsApi.automatic().then((r) => {
+      if (active) setModels(r);
+    }).catch(() => {
+      if (active) setError(AUTOMATIC_LOAD_ERROR);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const change = (key: AutomaticKey, model: AgentModel) => {
+    if (!models) return;
+    const next = withModel(models, key, model);
+    setModels(next);
+    setError(null);
+    queue.current = queue.current.then(() => settingsApi.setAutomatic(next)).then(setModels).catch(() => {
+      setError(SAVE_ERROR);
+      void settingsApi.automatic().then(setModels).catch(() => undefined);
+    });
+  };
+  return (
+    <section className={`${panel} gap-3`} aria-labelledby="automatic-title" data-testid="settings-automatic-section">
+      <div className={sectionTitle} data-testid="settings-automatic-title-row">
+        <h2 className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="automatic-title" data-testid="settings-automatic-title">Modelos automáticos</h2>
+        <InfoTip label="Modelos automáticos" text={HELP_AUTOMATIC} />
+      </div>
+      {error ? <p className="error" data-testid="settings-automatic-error">{error}</p> : null}
+      {models === null && !error ? <Loading /> : null}
+      {models ? (
+        <ul className={`${rows} [&>li]:border-accent-line`} data-testid="settings-automatic-list">
+          {AUTOMATIC_ROWS.map(({ key, label }) => (
+            <li key={key} className={row} data-testid={`settings-automatic-${key}`}>
+              <span className={rowId}>{label}</span>
+              <div className={rowActions}>
+                <Select wrapperClassName="w-full md:w-[10rem]" aria-label={label} value={modelOfRow(models, key)} onChange={(e) => change(key, e.target.value as AgentModel)}>
+                  {AGENT_MODELS.map((m) => <option key={m} value={m}>{MODEL_LABELS[m]}</option>)}
+                </Select>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   const [projects, setProjects] = useState<Array<Pick<ProjectRow, 'projectId' | 'name'>> | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -404,6 +471,7 @@ export function SettingsPage() {
           </SettingsCollapse>
         </section>
       ) : null}
+      <AutomaticModelsCard />
       <EnvironmentSettings />
     </main>
   );

@@ -188,7 +188,7 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('stop-hello-002-r1'));
     expect(o.stop).toHaveBeenCalledWith('hello-002-r1');
     expect(screen.queryByTestId('stop-hello-001-r1')).toBeNull();
-    expect(screen.getByText('US$ 3.33')).toBeTruthy();
+    expect(screen.getByText('US$ 3,3300')).toBeTruthy();
   });
   it('a request is made from the description alone: the agents name and split the specs', async () => {
     const o = on();
@@ -357,10 +357,10 @@ describe('ProjectHubView', () => {
     );
     servePages(before, project.specs);
     const { rerender } = render(hub(before));
-    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0.03'));
+    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0,0300'));
     servePages(after, project.specs);
     rerender(hub(after));
-    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0.96'));
+    await waitFor(() => expect(screen.getByTestId('project-hub-run-cost-hello-002-r1').textContent).toBe('US$ 0,9600'));
   });
   it('lists every run of the project, ten a page', async () => {
     const o = on();

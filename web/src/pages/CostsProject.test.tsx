@@ -76,11 +76,11 @@ describe('CostsProjectPage', () => {
     vi.spyOn(costsApi, 'steps').mockResolvedValue({ total: 0, matched: 0, page: 1, size: 10, pages: 1, facets: [], list: [] });
     renderAt();
     const refinement = await screen.findByTestId('costs-stage-refinement');
-    expect(within(refinement).getAllByText(usd('3,10')).length).toBeGreaterThan(0);
-    expect(within(refinement).queryByText(usd('20,10'))).toBeNull();
+    expect(within(refinement).getAllByText(usd('3,1000')).length).toBeGreaterThan(0);
+    expect(within(refinement).queryByText(usd('20,1000'))).toBeNull();
     const development = screen.getByTestId('costs-stage-development');
-    expect(within(development).getAllByText(usd('20,10')).length).toBeGreaterThan(0);
-    expect(within(development).queryByText(usd('3,10'))).toBeNull();
+    expect(within(development).getAllByText(usd('20,1000')).length).toBeGreaterThan(0);
+    expect(within(development).queryByText(usd('3,1000'))).toBeNull();
   });
 
   it('shows the spec table with a refinement and a development column', async () => {

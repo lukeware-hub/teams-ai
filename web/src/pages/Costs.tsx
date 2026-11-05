@@ -53,12 +53,12 @@ function Overview({ data }: { data: CostOverview }) {
         <>
           <ProjectsPanel data={data} />
           <div className="grid gap-4 lg:grid-cols-2">
-            <section className={panel} data-testid="costs-agents">
-              <PanelTitle icon="user" title="Por agente" />
+            <section className={`${panel} content-start`} data-testid="costs-agents">
+              <PanelTitle icon="user" title="Por agente" help={HELP.agents} />
               <ShareList rows={data.agents.map((a) => shareRow(a, `${labelOf(STAGE_LABEL, a.stage)} · ${labelOf(AGENT_LABEL, a.key)}`, `${a.stage}/${a.key}`))} />
             </section>
-            <section className={panel} data-testid="costs-models">
-              <PanelTitle icon="code" title="Por modelo" />
+            <section className={`${panel} content-start`} data-testid="costs-models">
+              <PanelTitle icon="code" title="Por modelo" help={HELP.models} />
               <ShareList rows={data.models.map((m) => shareRow(m, labelOf(MODEL_LABEL, m.key), m.key))} />
             </section>
           </div>
@@ -75,8 +75,8 @@ function Overview({ data }: { data: CostOverview }) {
 
 function ProjectsPanel({ data }: { data: CostOverview }) {
   return (
-    <section className={panel} data-testid="costs-projects">
-      <PanelTitle icon="folder" title="Por projeto" />
+    <section className={`${panel} content-start`} data-testid="costs-projects">
+      <PanelTitle icon="folder" title="Por projeto" help={HELP.projects} />
       <div className={tableWrap}>
         <table className={table}>
           <thead className={responsiveHead}>

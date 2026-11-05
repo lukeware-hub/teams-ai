@@ -6,7 +6,7 @@ import { Tipped } from '../components/InfoTip.js';
 export const CONTINUABLE = new Set(['awaiting-validation']);
 export const ACTIVE = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 export const RECENT_RUNS = 5;
-export const money = (n: number) => `US$ ${n.toFixed(2)}`;
+export { money } from './costs/format.js';
 // Thousands split by a narrow space: a dot or a comma would read as a decimal point next to the US$ amounts.
 export const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
