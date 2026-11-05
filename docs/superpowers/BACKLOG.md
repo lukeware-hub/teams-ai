@@ -212,3 +212,26 @@ Found while answering whether to install the agents-migration language skills. E
 - [x] **[minor] Descartar um rascunho de repositório de documentos deixava o pedido no store.** Correção: o descarte restaura a cópia da main do briefing que o pedido gravou no store, antes de aposentar os aliases. Teste: `test/docs/retire-restores-docs.test.ts`.
 - [x] **[minor] Cada nova spec refazia os planos de todo o projeto.** `planBasis` fazia hash do briefing inteiro, então um pedido deixava todos os planos desatualizados. Correção: a base do plano ignora as seções de pedido, e só as specs novas ou alteradas são preparadas. Teste: `test/refine/plan-basis.test.ts`.
 - [x] **[important] Duas mudanças simultâneas num programa podiam perder uma.** `ProgramService` lia e gravava o ledger sem trava, então um tick e uma entrada podiam se sobrescrever. Correção: cada mudança do ledger roda sob uma trava por ledger. Teste: `test/program/service.test.ts` ("two requests that join at the same time both reach the ledger").
+
+## A fazer: branches locais removidos (2026-11-05)
+
+Os branches locais `feat/cost-dashboard`, `fix/deploy-fixture-network` e `fix/dev-rules-upfront` foram apagados. O upstream de cada um já tinha sido apagado no GitHub. Os commits continuam acessíveis pelo hash enquanto o reflog guardar: `git branch <nome> <hash>` recria o branch. Pontas: `feat/cost-dashboard` em `5c6ea508`, `fix/deploy-fixture-network` em `27d337fb`, `fix/dev-rules-upfront` em `32eca016`.
+
+### Painel de custos (`feat/cost-dashboard`)
+
+- [ ] **[important] Trazer para a main os commits `6b326ee2`, `d4a5df2a` e `3538bbf3`.** Recontagem das chamadas ao retomar, escalação sem custo e layout de celular. Resolver os conflitos mantendo o lado da main (alerta de custo, `stepModelFor`, modelo real em `server/usage/cost-facts.ts`).
+- [ ] **[important] Corrigir `bad97715` antes de trazê-lo.** `server/decide/claude-escalate.ts:81` cobra uma falha de ambiente (`failure === 'environment'`) que nunca chegou ao modelo. Anexar o uso só quando a falha não for de ambiente, com teste em `test/usage/cost-facts.test.ts`.
+- [ ] **[minor] Texto da nota de escalações sem custo.** `server/usage/cost-report.ts:97` conta toda chamada Claude sem custo, mas `web/src/pages/costs/CostParts.tsx:147-152` diz que são falhas de execuções antigas. Ajustar o texto ou a contagem.
+- [ ] **[minor] Lista de passos no celular.** `web/src/pages/CostsProject.tsx:90` esconde `StepsPanel` com `max-md:hidden`, mas o componente continua montado e busca a lista. Não montar nem buscar no celular.
+- [ ] **[minor] Papel e modelo da escalação retomada.** `server/orchestrator/accounting-replay.ts:44-58` grava o papel `system1` e o modelo `claude`. O caminho ao vivo (`server/runner/step.ts:393`) grava o papel e o modelo reais. Verificar se o orçamento por papel é afetado.
+- [ ] **[important] Não trazer a reversão de dinheiro e painéis.** Os commits `012519b2` e `1468199f` revertem as quatro casas decimais, o `ShareBar` e os ícones de ajuda que já estão na main (#54). Descartar essas partes.
+- [ ] **[minor] Documentação do painel.** `docs/superpowers/FEATURES.md` e a seção de design §34 do branch estão desatualizados. Reescrever na main, a partir do estado atual do código.
+
+### Configurações de modelos (`fix/deploy-fixture-network`)
+
+- [ ] **[minor] Confirmar com o dono que nada precisa voltar.** Os modelos automáticos sem esforço (`a1c860b6`) e a remoção do esforço do chat e do graphify foram superados pelo commit `2837fa87` (#56) da main. Só reabrir se o dono quiser o modelo automático sem esforço.
+
+### Fallback de cota e código morto (`fix/dev-rules-upfront`)
+
+- [ ] **[minor] Código morto do disjuntor de cota.** `server/budget/quota-breaker.ts:47` (`pauseModel`) e `:52` (`modelPaused`) não têm chamador em produção, só teste. Remover ou ligar a um chamador real.
+- [ ] **[important] Esforço manual sem teto de política.** Segundo o revisor, um ajuste manual pula `effortFor` em `server/orchestrator/steps.ts` (linha 676 no branch). Um Opus manual com esforço `max` roda sem limite. Verificar na main se isso acontece e confirmar com o dono se é intencional; se não for, aplicar o teto.
