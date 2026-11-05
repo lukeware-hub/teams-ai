@@ -72,6 +72,9 @@ const errorText = (text: string | null) => text
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
 /** The pause after the last keystroke before a stage document is saved on its own. */
 const AUTOSAVE_MS = 1500;
+
+/** The card each step of a request opens on the page: the owner's words, the impact, the replan, and the ready bar. */
+const REQUEST_STEP_TARGET: Record<string, string> = { pedido: 'step-card-request', impacto: 'step-card-impact', specs: 'step-card-replan', pronto: 'request-ready' };
 /** Whether an evaluation is open in the journal: it spans a stage's review, its score and its graph extraction, so the page shows the work from the first event to the last. */
 const evaluationOpen = (st: Pick<Snapshot['state'], 'evaluation'>): boolean => st.evaluation != null && st.evaluation.endedAt === null;
 /** The notice a click gets while a process is open: it says to wait, and the page frees itself when the process ends. */
@@ -1471,7 +1474,7 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
         <WizardShell
-          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" />}
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
           stepKey="request"
           meta={usageLine}
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
