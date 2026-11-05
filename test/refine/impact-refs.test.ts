@@ -11,6 +11,12 @@ describe('the references of an impact', () => {
     expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'readme.md', effect: 'x', action: 'none' }] }), scope)).toEqual([expect.stringContaining('readme.md')]);
   });
 
+  it('accepts a section named after a comma, as briefing.md, Pedido pedido-1', () => {
+    expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'briefing.md, Pedido pedido-1', effect: 'acrescenta o pedido', action: 'none' }] }), scope)).toEqual([]);
+    expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'stack.md, Contrato dos endpoints', effect: 'x', action: 'none' }] }), scope)).toEqual([]);
+    expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'readme.md, Pedido pedido-1', effect: 'x', action: 'none' }] }), scope)).toEqual([expect.stringContaining('readme.md')]);
+  });
+
   it('accepts the folder of one of the five documents, as docs/briefing.md', () => {
     expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'docs/briefing.md', effect: 'acrescenta o pedido', action: 'none' }] }), scope)).toEqual([]);
     expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'docs/readme.md', effect: 'x', action: 'none' }] }), scope)).toEqual([expect.stringContaining('docs/readme.md')]);
