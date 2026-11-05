@@ -29,15 +29,15 @@ afterEach(async () => {
 });
 
 /** A run whose T2 blocked and took T3 with it; the SM answers each fix-tasks step with the next list. */
-async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult }> = {}): Promise<PhaseDeps> {
+async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult; tasks: Array<{ def: PlanTask; state: string }>; commands: Record<string, string> }> = {}): Promise<PhaseDeps> {
   remote = await makeRemote({ 'README.md': '#\n' });
   journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: HASH });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T2', reason: 'the Dev found no way to reach the payment API' });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T3', reason: 'a dependency is blocked' });
   packs = [];
   return {
-    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}) } as never),
-    tasks: () => [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
+    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}), ...(over.commands ? { commands: over.commands } : {}) } as never),
+    tasks: () => over.tasks ?? [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
     gates: async () => ({ results: [{ ...gate, junit: over.junit ?? gate.junit }, ...(over.blocking ? [over.blocking] : [])], blockingFailure: over.blocking ?? null }),
     packBase: () => ({ spec, project: makeProject(), specHash: HASH, assumptions: [], budgetTokens: 8000 }),
     runAgent: async (req: AgentStepRequest<'fix-tasks'>) => { packs.push(String(req.pack.feedback)); return { ok: true, value: { specHash: HASH, tasks: answers.shift()! }, summary }; },
@@ -111,6 +111,25 @@ describe('Phase 4 with blocked work', () => {
     expect(res.ok).toBe(false);
     expect(packs).toHaveLength(1);
     if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1']);
+  });
+
+  describe('a criterion proven only by a post-deploy suite', () => {
+    const commands = { install: 'npm ci', format: 'npm run format:check', lint: 'npm run lint', typecheck: 'npm run typecheck', test: 'npm test', build: 'npm run build', run: 'npm start', healthcheck: 'curl -fsS http://localhost:3000/health', smoke: 'go test ./smoke/...' };
+    const e2eTask = (paths: string[]) => makePlanTask({ id: 'T4-e2e', criteriaRefs: ['AC-002'], affectedPaths: paths });
+    const run = (paths: string[]) => setup([[fix()]], { commands, tasks: [{ def: t1, state: 'merged' }, { def: e2eTask(paths), state: 'merged' }] });
+
+    it('defers it instead of planning fix tasks that cannot create unit evidence', async () => {
+      const res = await runPhase4(await run(['smoke/smoke_test.go']), 1);
+      expect(res.ok).toBe(true);
+      expect(packs).toHaveLength(0);
+      if (res.ok) expect(res.matrix.map((r) => [r.criterion, r.status])).toEqual([['AC-001', 'passed'], ['AC-002', 'deferred']]);
+    });
+
+    it('still asks for a fix when the task also changes code outside the post-deploy suite', async () => {
+      const res = await runPhase4(await run(['smoke/smoke_test.go', 'src/app.ts']), 1);
+      expect(res.ok).toBe(false);
+      expect(journal.events.find((e) => e.type === OrchEvent.VerificationFailed)!.data.uncoveredAcs).toEqual(['AC-002']);
+    });
   });
 
   it('ends round 2 failed with the blocked criterion counted, so nothing is deployed', async () => {

@@ -124,6 +124,22 @@ export async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: {
   return { reason: `fix-tasks rejected twice: ${feedback ?? 'no answer'}` };
 }
 
+/** Paths of the post-deploy suites a plan names: the e2e suite's folder and every path its smoke command mentions. */
+export function postDeployPaths(plan: Plan): string[] {
+  const clean = (p: string) => p.replace(/^\.\//, '').replace(/\/?(\.\.\.|\*+)$/, '').replace(/\/$/, '');
+  const suite = plan.delivery?.e2eSuite ? clean(plan.delivery.e2eSuite) : '';
+  const suiteDir = suite.includes('/') ? suite.slice(0, suite.lastIndexOf('/')) : suite;
+  const smoke = (plan.commands.smoke ?? '').split(/\s+/).filter((t) => t.includes('/') && !t.startsWith('-') && !t.includes('://')).map(clean);
+  return [suiteDir, ...smoke].filter((p) => p !== '');
+}
+
+/** A task that only changes post-deploy suites gets its criteria evidence from Phase 5, not from the unit gates. */
+export function onlyPostDeploy(plan: Plan, task: PlanTask): boolean {
+  const paths = postDeployPaths(plan);
+  const inside = (p: string) => paths.some((f) => p === f || p.startsWith(`${f}/`));
+  return paths.length > 0 && task.affectedPaths.every(inside);
+}
+
 export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Result> {
   const repos: ServiceRepo[] = deps.services?.repos ?? (deps.plan && deps.gates ? [{ service: null, plan: deps.plan, ws: deps.ws, firstSpec: deps.firstSpec, gates: deps.gates }] : []);
   if (repos.length === 0 || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
@@ -179,7 +195,8 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
     if (fail && !blocking) [blocking, failing] = [fail, repo];
   }
   const junit = dedupeJunit(results.flatMap((r) => r.junit ?? []));
-  const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit);
+  const planOf = (task: PlanTask) => (repos.find((r) => r.service === (task.service ?? null)) ?? repos[0]!).plan;
+  const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit, (task) => onlyPostDeploy(planOf(task), task));
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
   const uncoveredAcs = matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion);
   if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
