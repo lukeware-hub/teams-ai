@@ -1480,11 +1480,13 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
           actions={null}
         >
+          <div className="grid gap-4">
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}
           <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          </div>
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1502,8 +1504,10 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
-          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          <div className="grid gap-4">
+            {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
+            {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          </div>
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
