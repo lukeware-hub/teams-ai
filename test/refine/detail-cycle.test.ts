@@ -842,7 +842,7 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     expect(impacts[0]!.data).toMatchObject({ cycle: 2, issues: [], impact: { summary: 'O pedido acrescenta a exportação.' } });
   });
 
-  it('keeps a usable impact of an unchanged outline, restamped with the new cycle, and does not ask the SM again', async () => {
+  it('keeps a usable impact of an unchanged outline without asking the SM again or journaling it twice', async () => {
     const env = await setup();
     const REQUEST = 'Pedido pedido-1';
     await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
@@ -858,7 +858,9 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     await env.run(agent, 1);
     await env.run(agent, 2);
     expect(impactCalls).toBe(1);
-    expect(env.events.filter((e) => e.type === RefineEvent.ImpactDerived).at(-1)!.data).toMatchObject({ cycle: 2, impact: { summary: 'O pedido acrescenta a exportação.' } });
+    const impacts = env.events.filter((e) => e.type === RefineEvent.ImpactDerived);
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]!.data).toMatchObject({ backlogCycle: expect.any(Number), impact: { summary: 'O pedido acrescenta a exportação.' } });
   });
 
   it('measures the impact again on the next run when the last one broke a rule', async () => {

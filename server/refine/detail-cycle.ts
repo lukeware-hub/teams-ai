@@ -355,7 +355,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     // A usable impact of an unchanged outline is kept, restamped with this cycle so the closing sees it current; one that broke a rule is measured again.
     const previousImpact = journal.state.impact;
     if (previousImpact?.inputHash === inputHash && previousImpact.impact != null) {
-      if (previousImpact.cycle !== cycle) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact: previousImpact.impact, issues: [] });
+      if (previousImpact.backlogCycle !== input.backlog.cycle) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact: previousImpact.impact, issues: [], backlogCycle: input.backlog.cycle });
     } else {
       const scope = { known: new Set(items.map((i) => i.key)), kept, requestId: request.requestId };
       let issues: string[] = [];
@@ -371,7 +371,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
         issues = validateImpact(out.value.impact, scope);
         if (issues.length === 0) impact = out.value.impact;
       }
-      if (impact !== null || issues.length > 0) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact, issues });
+      if (impact !== null || issues.length > 0) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact, issues, backlogCycle: input.backlog.cycle });
     }
   }
   return { ok: true, backlog: { ...input.backlog, specs, preplans, acHighWater: highWater, ...(conflicts ? { conflicts } : {}) } };
