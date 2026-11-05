@@ -1754,7 +1754,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 
 - Acima de 1024 px: os painéis lado a lado.
 - De 768 a 1023 px: um painel por linha.
-- Abaixo de 768 px: barra inferior do §25; indicadores em duas colunas; tabelas viram cartões. Nenhuma rolagem horizontal da página, nem em 360 px.
+- Abaixo de 768 px: barra inferior do §25; indicadores em duas colunas; a lista de specs e a tabela de steps somem da tela e uma frase explica que aparecem no computador. Os totais e os agrupamentos continuam. Nenhuma rolagem horizontal da página, nem em 360 px.
 
 ### 33.9 Acessibilidade
 

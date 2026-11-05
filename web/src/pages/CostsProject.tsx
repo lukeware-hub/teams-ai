@@ -81,8 +81,14 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
             <StagePanel id="refinement" title="Refinamento" help={HELP.refinement} costs={refinement} />
             <StagePanel id="development" title="Desenvolvimento" help={HELP.development} costs={development} development />
           </div>
-          <SpecPanel specs={specs} />
-          <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />
+          {/* The long lists stay on larger screens; on a phone the totals and breakdowns above carry the view. */}
+          <div className="max-md:hidden">
+            <SpecPanel specs={specs} />
+          </div>
+          <p className="m-0 hint md:hidden">A lista de specs e de steps aparece no computador. No celular, os totais e os agrupamentos acima mostram o custo.</p>
+          <div className="max-md:hidden">
+            <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />
+          </div>
         </>
       )}
       <footer data-testid="costs-chat" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.8125rem] text-ink-soft">
