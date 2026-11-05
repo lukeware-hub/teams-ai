@@ -1123,10 +1123,10 @@ describe('TaskRunner: gate fixes and repeated attempts', () => {
     await r.advance(); // Dev commits
     await r.advance(); // gates fail
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
-    await r.advance(); // Dev changes nothing: the SM answers once, the repeat fails the attempt
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev', 'spec-gap', 'dev']);
+    await r.advance(); // Dev changes nothing: the SM answers once, the repeat blocks the task
+    expect(agentCalls.map((c) => c.kind).slice(0, 4)).toEqual(['dev', 'dev', 'spec-gap', 'dev']);
     expect(gateRuns).toBe(1);
-    expect(state()).toMatchObject({ state: 'implementing', attempts: 2 });
+    expect(state()).toMatchObject({ state: 'blocked', attempts: 1 });
   });
 });
 
