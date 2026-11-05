@@ -1,4 +1,3 @@
-import { CHAT_MODEL } from '../chat/service.js';
 import type { ChatMessage, ChatUsage } from '../chat/store.js';
 import type { StoredEvent } from '../store/event-store.js';
 import type { CostFact, CostStage, CostTokens } from './cost-types.js';
@@ -75,7 +74,7 @@ export function factsOfChat(projectId: string, messages: ReadonlyArray<ChatMessa
       kind: 'resposta',
       role: 'po',
       provider: 'claude',
-      model: CHAT_MODEL,
+      model: m.usage.model ?? null,
       at: m.at,
       costUsd: num(m.usage.costUsd),
       tokens: tokensOf(m.usage),

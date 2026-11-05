@@ -117,6 +117,14 @@ describe('Phase 6 documentation gate', () => {
     expect(r.report.tokens.byRole.sm.costUsd).toBe(0.28);
   });
 
+  it('puts the run metrics from the journal in the report, so each rerun can be compared with the last', async () => {
+    await journal.fact(OrchEvent.StepFinished, { stepId: 's1', kind: 'dev', taskId: 'T1', attempt: 1, ok: true, costUsd: 2 });
+    await journal.fact(OrchEvent.StepFinished, { stepId: 's2', kind: 'dev', taskId: 'T900-fix-1', attempt: 1, ok: true, costUsd: 1 });
+    const r = await runPhase6({ ...deps(async () => report(GOOD)), runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
+    expect(r.report.metrics).toMatchObject({ costUsd: 3, fixCostUsd: 1, tasks: 2 });
+    expect(r.report.metrics!.fixCostShare).toBeCloseTo(1 / 3);
+  });
+
   it('feeds validator errors back and accepts the corrected docs', async () => {
     let n = 0;
     const r = await p6(async () => report(++n === 1 ? { readme: '# App', runbook: GOOD.runbook } : GOOD));

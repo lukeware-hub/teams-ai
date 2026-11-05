@@ -5,6 +5,8 @@ import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase4, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
+import { eventsFile } from '../../server/orchestrator/workspace.js';
+import { EventStore } from '../../server/store/event-store.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
@@ -29,15 +31,15 @@ afterEach(async () => {
 });
 
 /** A run whose T2 blocked and took T3 with it; the SM answers each fix-tasks step with the next list. */
-async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult }> = {}): Promise<PhaseDeps> {
+async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult; tasks: Array<{ def: PlanTask; state: string }>; commands: Record<string, string> }> = {}): Promise<PhaseDeps> {
   remote = await makeRemote({ 'README.md': '#\n' });
   journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: HASH });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T2', reason: 'the Dev found no way to reach the payment API' });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T3', reason: 'a dependency is blocked' });
   packs = [];
   return {
-    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}) } as never),
-    tasks: () => [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
+    journal, ws: { repo: remote.repo }, spec, exec: execCommand, firstSpec: false, plan: makePlan(spec, { tasks: [t1, t2, t3], ...(over.delivery ? { delivery: over.delivery } : {}), ...(over.commands ? { commands: over.commands } : {}) } as never),
+    tasks: () => over.tasks ?? [{ def: t1, state: 'merged' }, { def: t2, state: 'blocked' }, { def: t3, state: 'blocked' }],
     gates: async () => ({ results: [{ ...gate, junit: over.junit ?? gate.junit }, ...(over.blocking ? [over.blocking] : [])], blockingFailure: over.blocking ?? null }),
     packBase: () => ({ spec, project: makeProject(), specHash: HASH, assumptions: [], budgetTokens: 8000 }),
     runAgent: async (req: AgentStepRequest<'fix-tasks'>) => { packs.push(String(req.pack.feedback)); return { ok: true, value: { specHash: HASH, tasks: answers.shift()! }, summary }; },
@@ -111,6 +113,64 @@ describe('Phase 4 with blocked work', () => {
     expect(res.ok).toBe(false);
     expect(packs).toHaveLength(1);
     if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1']);
+  });
+
+  describe('a criterion proven only by a post-deploy suite', () => {
+    const commands = { install: 'npm ci', format: 'npm run format:check', lint: 'npm run lint', typecheck: 'npm run typecheck', test: 'npm test', build: 'npm run build', run: 'npm start', healthcheck: 'curl -fsS http://localhost:3000/health', smoke: 'go test ./smoke/...' };
+    const e2eTask = (paths: string[]) => makePlanTask({ id: 'T4-e2e', criteriaRefs: ['AC-002'], affectedPaths: paths });
+    const run = (paths: string[]) => setup([[fix()]], { commands, tasks: [{ def: t1, state: 'merged' }, { def: e2eTask(paths), state: 'merged' }] });
+
+    it('defers it instead of planning fix tasks that cannot create unit evidence', async () => {
+      const res = await runPhase4(await run(['smoke/smoke_test.go']), 1);
+      expect(res.ok).toBe(true);
+      expect(packs).toHaveLength(0);
+      if (res.ok) expect(res.matrix.map((r) => [r.criterion, r.status])).toEqual([['AC-001', 'passed'], ['AC-002', 'deferred']]);
+    });
+
+    it('defers it too when a script and the README support the suite task (live: hello-word AC-014)', async () => {
+      const support = makePlanTask({ id: 'T5-script', criteriaRefs: ['AC-002'], affectedPaths: ['scripts/stop-service.sh', 'README.md'] });
+      const deps = await setup([[fix()]], { commands, tasks: [{ def: t1, state: 'merged' }, { def: e2eTask(['smoke/smoke_test.go']), state: 'merged' }, { def: support, state: 'merged' }] });
+      const res = await runPhase4(deps, 1);
+      expect(res.ok).toBe(true);
+      expect(packs).toHaveLength(0);
+    });
+
+    it('still asks for a fix when the task also changes code outside the post-deploy suite', async () => {
+      const res = await runPhase4(await run(['smoke/smoke_test.go', 'src/app.ts']), 1);
+      expect(res.ok).toBe(false);
+      expect(journal.events.find((e) => e.type === OrchEvent.VerificationFailed)!.data.uncoveredAcs).toEqual(['AC-002']);
+    });
+  });
+
+  describe('a failure an earlier run of this spec already tried to fix', () => {
+    /** Writes the journal of an earlier run of the same spec version: a fix round, then the same criterion still uncovered. */
+    async function earlierRun(deps: PhaseDeps, uncoveredAcs: string[]): Promise<void> {
+      const runs = path.join(remote.root, 'runs');
+      Object.assign(deps.ws, { projectId: 'shop', runs });
+      const id = `${spec.specId}-r1`;
+      const s = await EventStore.open({ file: eventsFile(deps.ws, id), runId: id, specHash: HASH });
+      await s.append({ type: 'RUN_STARTED', data: { runId: id, specId: spec.specId, projectId: 'shop' } });
+      await s.append({ type: 'FIX_TASKS_PLANNED', data: { tasks: [], round: 1 } });
+      await s.append({ type: 'VERIFICATION_FAILED', data: { round: 2, failedTests: [], uncoveredAcs, matrix: [], gate: null } });
+      await s.close();
+    }
+
+    it('plans no new fix tasks and names the repeated cause, so the SM and the Dev are not paid for it again', async () => {
+      const deps = await setup([[fix()]]);
+      await earlierRun(deps, ['AC-002']);
+      const res = await runPhase4(deps, 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) { expect(res.fixTasks).toBeUndefined(); expect(res.reason).toMatch(/^verification failed again with the same cause as an earlier run.*AC-002/); }
+      expect(packs).toHaveLength(0);
+    });
+
+    it('still plans the fix when the earlier run failed on other criteria', async () => {
+      const deps = await setup([[fix()]]);
+      await earlierRun(deps, ['AC-001']);
+      const res = await runPhase4(deps, 1);
+      if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1']);
+      expect(packs).toHaveLength(1);
+    });
   });
 
   it('ends round 2 failed with the blocked criterion counted, so nothing is deployed', async () => {

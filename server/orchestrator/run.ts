@@ -8,7 +8,7 @@ import { Accounting } from '../budget/accounting.js';
 import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -233,6 +233,7 @@ export class Run {
   private readonly inflight = new Map<string, Promise<void>>();
   /** The tasks, and the run as null, whose spent budget observe mode journaled already. */
   private readonly budgetNoted: Set<string | null>;
+  private costAlerted: boolean;
   private readonly deps: RunDeps;
 
   private constructor(
@@ -250,6 +251,7 @@ export class Run {
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
     this.budgetNoted = new Set(journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => (e.data.taskId as string | null) ?? null));
+    this.costAlerted = journal.events.some((e) => e.type === OrchEvent.RunCostAlert);
     replayAccounting(this.journal.events, this.accounting);
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
@@ -371,7 +373,7 @@ export class Run {
   }
 
   /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
-  private async manualSettings(): Promise<Partial<Record<Role, AgentSetting>>> {
+  private async manualSettings(): Promise<Partial<Record<SettingKey, AgentSetting>>> {
     const projectId = this.deps.project.projectId;
     return manualAgentSettings(this.deps.agentSettings ? await this.deps.agentSettings(projectId) : this.deps.cfg.agentSettings[projectId]);
   }
@@ -1040,6 +1042,11 @@ export class Run {
           this.budgetNoted.add(null);
           await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: null, tokens: runTokens, cap: cfg.budgets.perRunTokens });
         }
+      }
+      const runCostUsd = this.accounting.total().costUsd;
+      if (runCostUsd > cfg.budgets.perRunCostUsd && !this.costAlerted) {
+        this.costAlerted = true;
+        await this.journal.fact(OrchEvent.RunCostAlert, { costUsd: runCostUsd, capUsd: cfg.budgets.perRunCostUsd });
       }
       for (const id of tasksToBlock(this.journal.state)) {
         const t = this.journal.state.tasks.get(id)!;

@@ -5,6 +5,15 @@ import { PINNED_SKILLS } from '../../server/skills/catalog.js';
 
 const agent = (name: string) => readFileSync(new URL(`../../.claude/agents/${name}.md`, import.meta.url), 'utf8');
 
+describe('agent prompts size tasks by capability', () => {
+  it('tell the SM that a task is one whole capability, never one task per file or layer', () => {
+    const sm = agent('sm');
+    expect(sm).toContain('A task delivers one whole capability');
+    expect(sm).toContain('planTasks');
+    expect(sm).not.toContain('small enough for one agent step');
+  });
+});
+
 describe('agent prompts for a project of services (R12.6)', () => {
   it('let the docs decide between one application and several services', () => {
     const sm = agent('sm');

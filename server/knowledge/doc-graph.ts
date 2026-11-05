@@ -1,7 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Governor } from '../budget/governor.js';
-import { MODELS } from '../config/config.js';
 import type { CommandResult, Exec } from '../exec/command.js';
 import { createStepHome, removeStepHome, syncBackCredentials } from '../runner/step-home.js';
 import { withRefreshGate } from '../runner/step.js';
@@ -22,6 +21,8 @@ export interface DocGraphDeps {
   exec: Exec;
   hostEnv: NodeJS.ProcessEnv;
   governor: Governor;
+  /** The model the extraction runs on: the project's graphify setting. */
+  model: string;
   clock?: () => Date;
 }
 
@@ -67,7 +68,7 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
           args: ['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', outDir],
           cwd: dir,
           timeoutMs: TIMEOUT_MS,
-          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: MODELS.sonnet },
+          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: deps.model },
         }),
       );
     } finally {

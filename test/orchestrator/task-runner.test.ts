@@ -120,6 +120,13 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();
   });
 
+  it('hands the Dev the blocking gates of the plan before its first attempt', async () => {
+    await new TaskRunner('T1', deps()).advance();
+    const rules = agentCalls[0]!.pack.principles.join('\n');
+    expect(rules).toContain('These blocking gates run on your change');
+    expect(rules).toMatch(/unit-test \(/);
+  });
+
   it('does not count the sandbox build cache under .tools as a change of the Dev', async () => {
     const cache: Agent = async (req) => {
       if (req.kind === 'security') return secApprove();

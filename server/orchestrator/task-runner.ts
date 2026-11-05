@@ -243,6 +243,11 @@ export class TaskRunner {
     return this.deps.journal.fact(OrchEvent.Feedback, { taskId: this.taskId, text, ...(opts.attempt ? { attempt: true } : {}) });
   }
 
+  /** The gates as they run now, with the plan's gate fixes applied. */
+  private currentGates() {
+    return effectivePlan(this.deps.plan, [...(this.deps.priorGateFixes ?? []), ...this.deps.journal.events], this.task.def.service ?? null).gates;
+  }
+
   private attemptDeltas(): string[] {
     return this.deps.journal.events.filter((e) => e.type === OrchEvent.Feedback && e.data.taskId === this.taskId && e.data.attempt === true).map((e) => String(e.data.text));
   }
@@ -350,7 +355,7 @@ export class TaskRunner {
     const env: Record<string, string> = this.deps.testDatabaseUrl ? { DATABASE_URL: this.deps.testDatabaseUrl } : {};
     const code = await this.deps.code(this.worktree, task.def);
     await this.recordCode('dev', code);
-    const pack = devPack(this.deps.packBase(), task.def, { code, handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan }, owner);
+    const pack = devPack(this.deps.packBase(), task.def, { code, handoffs: this.deps.handoffs(), feedback, e2eSuite: this.deps.plan.delivery?.e2eSuite, plan, gates: this.currentGates() }, owner);
     const { docsRoot, taskFile } = this.deps.packBase();
     let sources: string[];
     try {
@@ -565,7 +570,7 @@ export class TaskRunner {
     // The same frozen paths the scope check rejects for this task; the first spec's scaffold may change them.
     const frozenPaths = this.deps.firstSpec && this.task.bootstrapsFrozenPaths ? [] : this.deps.plan.frozenPaths;
     // The gate commands as they run now: the SM answers from the same plan the orchestrator runs, not the one before its fixes.
-    const gates = effectivePlan(this.deps.plan, [...(this.deps.priorGateFixes ?? []), ...this.deps.journal.events], this.task.def.service ?? null).gates.map(({ name, command }) => ({ name, command }));
+    const gates = this.currentGates().map(({ name, command }) => ({ name, command }));
     const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'spec-gap'>({ kind: 'spec-gap', role: 'sm', pack: specGapPack(this.deps.packBase(), task, { question, overrule, frozenPaths, gates }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return this.fail(outcome.failure, outcome.errors.join('\n'));
     const value = outcome.value as SpecGapOutput;

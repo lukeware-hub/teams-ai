@@ -6,7 +6,7 @@ import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { PLAN_STEP, preparePlans } from '../../server/refine/plan-prepare.js';
+import { preparePlans } from '../../server/refine/plan-prepare.js';
 import { reduceRefineEvents } from '../../server/refine/state.js';
 import { RefineJournal, RefineSession, type RunAgent } from '../../server/refine/session.js';
 import { loadEvents } from '../../server/store/event-store.js';
@@ -110,7 +110,7 @@ describe('RefineSession.runPlans with the plan step', () => {
     const session = await detailedSession();
     await session.runPlans();
     expect(agentCalls.map(keyOf).sort()).toEqual(['cart', 'login']);
-    expect(agentCalls.every((req) => req.kind === 'speckit' && req.model === PLAN_STEP.model && req.effort === PLAN_STEP.effort)).toBe(true);
+    expect(agentCalls.every((req) => req.kind === 'speckit' && req.model === undefined && req.effort === undefined)).toBe(true);
     for (const key of ['cart', 'login']) expect(await fs.readFile(`${draft().docs}/specs/${key}/implementation-plan.md`, 'utf8')).toContain('## Assumptions');
     const journal = await events();
     expect(journal.some((e) => e.type === RefineEvent.PlansPrepared)).toBe(true);

@@ -43,6 +43,44 @@ describe('buildEvidenceMatrix', () => {
     expect(rows[1]!.status).toBe('blocked');
   });
 
+  describe('deferred (evidence arrives after deploy)', () => {
+    const e2eTask = (id: string, refs: string[], state: TaskState) => ({ def: makePlanTask({ id, criteriaRefs: refs, affectedPaths: ['e2e/e2e_test.go'] }), state });
+    const supportTask = (id: string, refs: string[], state: TaskState) => ({ def: makePlanTask({ id, criteriaRefs: refs, affectedPaths: ['scripts/stop.sh', 'README.md'] }), state });
+    // e2e/ holds the post-deploy suite, scripts and docs support it, anything else is product code.
+    const onlyE2e = (def: { affectedPaths: string[] }) => (def.affectedPaths.every((p) => p.startsWith('e2e/')) ? 'suite' : def.affectedPaths.every((p) => p.startsWith('scripts/') || p.endsWith('.md')) ? 'support' : 'code') as 'suite' | 'support' | 'code';
+
+    it('defers a criterion whose merged tasks write the post-deploy suite and only support files beside it (live: hello-word AC-014)', () => {
+      const rows = buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'merged'), supportTask('T3-script', ['AC-002'], 'merged')], [], onlyE2e);
+      expect(rows[1]!.status).toBe('deferred');
+    });
+
+    it('keeps it missing when only support files own it, since no suite will prove it', () => {
+      expect(buildEvidenceMatrix(spec, [supportTask('T3-script', ['AC-002'], 'merged')], [], onlyE2e)[1]!.status).toBe('missing');
+    });
+
+    it('defers a criterion with no executed test whose merged tasks only write post-deploy suites', () => {
+      const rows = buildEvidenceMatrix(spec, [task('T1-create', ['AC-001'], 'merged'), e2eTask('T2-e2e', ['AC-002'], 'merged')], [result('[AC-001] a', 'passed', ['AC-001'])], onlyE2e);
+      expect(rows[1]!.status).toBe('deferred');
+    });
+
+    it('keeps it missing when no post-deploy rule is given', () => {
+      expect(buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'merged')], [])[1]!.status).toBe('missing');
+    });
+
+    it('keeps it missing when one owner also changes code outside the post-deploy suite', () => {
+      const rows = buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'merged'), task('T3-code', ['AC-002'], 'merged')], [], onlyE2e);
+      expect(rows[1]!.status).toBe('missing');
+    });
+
+    it('keeps blocked ahead of deferred, since the suite never reached main', () => {
+      expect(buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'blocked')], [], onlyE2e)[1]!.status).toBe('blocked');
+    });
+
+    it('does not defer while an owner has not merged', () => {
+      expect(buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'implementing')], [], onlyE2e)[1]!.status).toBe('missing');
+    });
+  });
+
   it('ignores superseded tasks when attributing criteria', () => {
     const rows = buildEvidenceMatrix(
       spec,
@@ -72,6 +110,30 @@ describe('readyForValidation', () => {
     expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'passed' }])).toBe(true);
     expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'passed' }, { criterion: 'AC-002', tasks: ['T2'], tests: [], status: 'blocked' }])).toBe(false);
     expect(readyForValidation([{ criterion: 'AC-001', tasks: [], tests: [], status: 'missing' }])).toBe(false);
+  });
+});
+
+describe('readyForValidation with deferred rows', () => {
+  it('accepts passed and deferred rows, and nothing else', () => {
+    const row = (status: 'passed' | 'deferred' | 'missing' | 'blocked' | 'failed') => ({ criterion: 'AC-001', tasks: [], tests: [], status });
+    expect(readyForValidation([row('passed'), row('deferred')])).toBe(true);
+    for (const bad of ['missing', 'blocked', 'failed'] as const) expect(readyForValidation([row('passed'), row(bad)])).toBe(false);
+  });
+});
+
+describe('attachE2e resolves deferred rows', () => {
+  const deferred = { criterion: 'AC-001', tasks: ['T1'], tests: [], status: 'deferred' as const };
+  it.each([
+    ['passed', 'passed'],
+    ['failed', 'failed'],
+    ['missing', 'missing'],
+    ['not-applicable', 'missing'],
+  ] as const)('e2e %s turns deferred into %s', (e2e, status) => {
+    expect(attachE2e([deferred], [{ acId: 'AC-001', status: e2e }])[0]!.status).toBe(status);
+  });
+
+  it.each([[undefined], [[]]])('turns deferred into missing when no e2e row exists (%j), so the report never shows deferred', (e2e) => {
+    expect(attachE2e([deferred], e2e)[0]!.status).toBe('missing');
   });
 });
 

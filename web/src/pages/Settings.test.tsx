@@ -86,6 +86,25 @@ describe('SettingsPage', () => {
     expect(projects.compareDocumentPosition(environment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('shows the chat and graphify settings beside the agents, on a fixed model with no automatic choice, and graphify without effort', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    const slots = [
+      { role: 'chat', setting: { model: 'claude-haiku-5-5', effort: 'low' }, inUse: { model: 'claude-haiku-5-5', effort: 'low' } },
+      { role: 'graphify', setting: { model: 'claude-sonnet-5-5', effort: 'low' }, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } },
+    ];
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: [...agents, ...slots] as never });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    await openModelsCollapse();
+    expect(await screen.findByLabelText('Modelo de Chat')).toBeTruthy();
+    expect(screen.getByLabelText('Esforço de Chat')).toBeTruthy();
+    expect(screen.getByLabelText('Modelo de Graphify')).toBeTruthy();
+    expect(screen.queryByLabelText('Esforço de Graphify')).toBeNull();
+    expect(screen.queryByLabelText('Modo de Chat')).toBeNull();
+    expect(screen.queryByLabelText('Modo de Graphify')).toBeNull();
+    expect(screen.getByTestId('in-use-graphify').textContent).toBe('Em uso agora: Sonnet 5.5');
+  });
+
   it('shows every agent on automatic and saves a manual pick with the default model and effort', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);

@@ -12,12 +12,14 @@ import { SettingsCollapse } from '../components/SettingsCollapse.js';
 import { ClaudeUsagePanel } from './ClaudeUsage.js';
 import { emptyState, panel, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
-const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente' };
+const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', chat: 'Chat', graphify: 'Graphify' };
+/** The chat and graphify settings: a model fixed in Settings, never automatic. Graphify takes no effort. */
+const SLOT_ROLES = ['chat', 'graphify'];
 const MODEL_LABELS: Record<AgentModel, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5' };
 const EFFORT_LABELS: Record<AgentEffort, string> = { low: 'Baixo', medium: 'Médio', high: 'Alto', max: 'Máximo' };
 const DEFAULT_PICK: AgentSetting = { model: 'claude-haiku-5-5', effort: 'low' };
 const SAVE_ERROR = 'Não foi possível salvar. Tente novamente.';
-const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esforço de cada tarefa. Manual fixa os dois para o agente em todos os seus passos, inclusive os de arquitetura. Manual ignora o limite de esforço por modelo e pode gastar mais cota.';
+const HELP_AGENTS = 'Automático deixa o orquestrador escolher o modelo e o esforço de cada tarefa. Manual fixa os dois para o agente em todos os seus passos, inclusive os de arquitetura. Manual ignora o limite de esforço por modelo e pode gastar mais cota. Chat e Graphify sempre usam o modelo escolhido aqui.';
 const HELP_ENV = 'Estas conexões valem para todo o Teams AI neste computador. Elas são as mesmas do status do ambiente.';
 const HELP_TIMEOUT = 'Tempo máximo que cada passo de um agente pode levar neste projeto. Passado esse tempo, o passo para e a revisão pede para reavaliar. Vale para o refinamento e para as execuções.';
 const TIMEOUT_LOAD_ERROR = 'Não foi possível carregar o tempo limite.';
@@ -28,6 +30,9 @@ const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos ag
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
   const label = ROLE_LABELS[agent.role] ?? agent.role;
+  const hasAutomatic = !SLOT_ROLES.includes(agent.role);
+  const effortApplies = agent.role !== 'graphify';
+  const settingText = (s: AgentSetting) => (effortApplies ? `${MODEL_LABELS[s.model]} · ${EFFORT_LABELS[s.effort]}` : MODEL_LABELS[s.model]);
   const [manual, setManual] = useState(agent.setting !== null);
   const [pick, setPick] = useState<AgentSetting>(agent.setting ?? DEFAULT_PICK);
   const [inUse, setInUse] = useState<AgentSetting>(agent.inUse);
@@ -48,8 +53,8 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
     <li className={row} data-testid={`settings-agent-${agent.role}`}>
       <span className={rowId} data-testid={`settings-agent-label-${agent.role}`}>{label}</span>
       <div className="grid gap-0.5 text-[0.8125rem] text-ink-soft" data-testid={`settings-agent-details-${agent.role}`}>
-        <span data-testid={`settings-agent-pick-${agent.role}`}>{manual ? `${MODEL_LABELS[pick.model]} · ${EFFORT_LABELS[pick.effort]}` : 'Orquestrador escolhe'}</span>
-        <span data-testid={`in-use-${agent.role}`}>{`Em uso agora: ${MODEL_LABELS[inUse.model]} · ${EFFORT_LABELS[inUse.effort]}`}</span>
+        <span data-testid={`settings-agent-pick-${agent.role}`}>{manual ? settingText(pick) : 'Orquestrador escolhe'}</span>
+        <span data-testid={`in-use-${agent.role}`}>{`Em uso agora: ${settingText(inUse)}`}</span>
       </div>
       <div className={`${rowActions} max-md:flex-col max-md:gap-3`} data-testid={`settings-agent-actions-${agent.role}`}>
         {manual ? (
@@ -57,15 +62,19 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
             <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Modelo de ${label}`} value={pick.model} onChange={(e) => changePick({ ...pick, model: e.target.value as AgentModel })}>
               {AGENT_MODELS.map((m) => <option key={m} value={m} data-testid={`settings-agent-model-option-${agent.role}-${m}`}>{MODEL_LABELS[m]}</option>)}
             </Select>
-            <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Esforço de ${label}`} value={pick.effort} onChange={(e) => changePick({ ...pick, effort: e.target.value as AgentEffort })}>
-              {AGENT_EFFORTS.map((e) => <option key={e} value={e} data-testid={`settings-agent-effort-option-${agent.role}-${e}`}>{EFFORT_LABELS[e]}</option>)}
-            </Select>
+            {effortApplies ? (
+              <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Esforço de ${label}`} value={pick.effort} onChange={(e) => changePick({ ...pick, effort: e.target.value as AgentEffort })}>
+                {AGENT_EFFORTS.map((e) => <option key={e} value={e} data-testid={`settings-agent-effort-option-${agent.role}-${e}`}>{EFFORT_LABELS[e]}</option>)}
+              </Select>
+            ) : null}
           </>
         ) : null}
-        <Select wrapperClassName="w-full md:w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
-          <option value="auto" data-testid={`settings-agent-mode-auto-${agent.role}`}>Automático</option>
-          <option value="manual" data-testid={`settings-agent-mode-manual-${agent.role}`}>Manual</option>
-        </Select>
+        {hasAutomatic ? (
+          <Select wrapperClassName="w-full md:w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
+            <option value="auto" data-testid={`settings-agent-mode-auto-${agent.role}`}>Automático</option>
+            <option value="manual" data-testid={`settings-agent-mode-manual-${agent.role}`}>Manual</option>
+          </Select>
+        ) : null}
       </div>
     </li>
   );

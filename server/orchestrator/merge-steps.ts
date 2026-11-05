@@ -145,12 +145,18 @@ function resetMainCheckout(deps: MergeStepsDeps): Promise<void> {
   });
 }
 
+/** The conventional commit type of a spec's pull requests; the squash commit on main takes the pull request title. */
+const PR_TYPE: Record<Spec['type'], string> = { feature: 'feat', bug: 'fix', maintenance: 'chore', refactor: 'refactor' };
+
+/** Every task of a spec takes the spec's type, so a generated fix task of a feature spec still reads feat. */
+export const prTitle = (task: PlanTask, spec: Spec): string => `${PR_TYPE[spec.type]}(${task.id}): ${task.title}`;
+
 /** Spec (orchestrator) §4.4 last row: the real MergeSteps for a task branch. */
 export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: string, branch: string, spec: Spec, summary: string): MergeSteps {
   let gateResults: GateResult[] = [];
   let changed: string[] = [];
   let rebasedOn: string | undefined;
-  const base = common(deps, worktree, branch, `${task.id}: ${task.title}`, async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine), specId: spec.specId }, deps.secretValues()), true, task.id);
+  const base = common(deps, worktree, branch, prTitle(task, spec), async () => prBody({ summary, criteria: spec.acceptanceCriteria.filter((c) => task.criteriaRefs.includes(c.id)), gateLines: gateResults.map(gateLine), specId: spec.specId }, deps.secretValues()), true, task.id);
   return {
     ...base,
     rebase: async () => {

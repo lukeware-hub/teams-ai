@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { effortFor, fallbackModel } from '../../server/runner/model-policy.js';
+import { effortFor } from '../../server/runner/model-policy.js';
 
 describe('effortFor', () => {
   it('holds Opus at low whatever was asked', () => {
@@ -22,14 +22,5 @@ describe('effortFor', () => {
     expect(effortFor('claude-haiku-5-5', 'high')).toBe('low');
     expect(effortFor('other-model', 'max')).toBe('max');
     expect(effortFor('other-model', undefined)).toBe('low');
-  });
-});
-
-describe('fallbackModel', () => {
-  it('moves only Opus down, to Sonnet', () => {
-    expect(fallbackModel('opus')).toBe('claude-sonnet-5-5');
-    expect(fallbackModel('claude-opus-5-5')).toBe('claude-sonnet-5-5');
-    expect(fallbackModel('sonnet')).toBeUndefined();
-    expect(fallbackModel('haiku')).toBeUndefined();
   });
 });
