@@ -34,7 +34,7 @@ export function DecisionTimeline({ decisions, titles }: { decisions: ProgramDeci
           {decisions.map((d, i) => (
             <li key={`${d.runId}-${d.at}-${i}`} className="grid gap-0.5 border-b border-line pb-2 text-[0.8125rem] last:border-b-0" data-testid={`decision-timeline-item-${d.runId}-${d.decisionId}`}>
               <span className="flex flex-wrap items-baseline gap-x-2" data-testid="decision-timeline-meta">
-                <time className="font-mono text-ink-faint tabular-nums" dateTime={d.at} data-testid="decision-timeline-time">{new Date(d.at).toLocaleTimeString('pt-BR')}</time>
+                <time className="font-mono text-ink-soft tabular-nums" dateTime={d.at} data-testid="decision-timeline-time">{new Date(d.at).toLocaleTimeString('pt-BR')}</time>
                 <b className="font-mono font-semibold text-ink" data-testid="decision-timeline-decision-id">{d.decisionId}</b>
                 <span className="text-ink-soft" data-testid="decision-timeline-who">{who(d)}</span>
                 <span className="text-ink-soft" data-testid="decision-timeline-program">· {titles[d.key] ?? d.key}</span>

@@ -1414,11 +1414,11 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 ### 27.1 Backlog execution — section `#execucao` of `/projects/:projectId`
 
-**One place for the execution.** The project hub follows a running backlog on its own page: right under the counters, the section `Execução do backlog` (anchor `#execucao`) holds the panel "Specs do backlog" and the decision timeline. The decision timeline appears only once a decision was answered; asks no model answered are a warning chip `N consultas sem resposta` (with a tip naming the Jev and the model key) at the right of the status line, shown only above zero, and there is no empty state. There is no separate status card on the hub: the panel header carries the status line (spinner, or alert icon when interrupted, "Executando o backlog · N de M concluídas", cost) and the progress bar under it, and the spec running now shows its phase under its run id. There is no separate screen and no button that leads to one. The old address `/refine/:projectId/:specId/program` redirects (replace) to `/projects/:projectId#execucao`, so saved links still work. The refinement page of a started spec shows the same status card with the link `Acompanhar no projeto`, which goes to the hub.
+**One place for the execution.** The project hub follows a running backlog on its own page: right under the counters, the section `Execução do backlog` (anchor `#execucao`) holds the panel "Specs do backlog" and the decision timeline. The decision timeline appears only once a decision was answered; asks where a model failed or the Jev key is missing are a warning chip `N consultas sem resposta` (with a tip naming the Jev and the model key); an unsure answer below the confidence bar is not counted at the right of the status line, shown only above zero, and there is no empty state. There is no separate status card on the hub: the panel header carries the status line (spinner, or alert icon when interrupted, "Executando o backlog · N de M concluídas", "· 1 aguarda sua validação" or "· 2 aguardam sua validação" for the specs awaiting validation, cost) and the progress bar under it, and the spec running now shows its phase under its run id. A spec awaiting validation does not hold the backlog: its dependents start at once, and only the owner's validation completes it. When nothing runs and only such specs are left, the status line reads "Aguardando sua validação · N de M concluídas" with a clock icon in place of the spinner. There is no separate screen and no button that leads to one. The old address `/refine/:projectId/:specId/program` redirects (replace) to `/projects/:projectId#execucao`, so saved links still work. The refinement page of a started spec shows the same status card with the link `Acompanhar no projeto`, which goes to the hub.
 
 **Where each action leads.** Starting an execution (from the refinement or from the hub) always lands on `/projects/:projectId`. The refinement receives the owner only when the owner opens it. A run opens at `/runs/:runId`; its breadcrumb is `⌂ › Projetos › <project> › <spec> › <run>`, and the validation adds `› Validação`. `Projetos` is always `/projects`, the project is always `/projects/:projectId`, the run is a link on the validation page; the spec is plain text because a concluded spec has no refinement to open.
 
-Same parts as the refinement card, nothing new. The panel "Specs do backlog" has its title at the left and the status line at the right; the status card (spinner or check, "Executando o backlog · N de M concluídas", the progress bar, one line per spec running now with "Acompanhar a run") stays only on the refinement page of a started spec. A run that lost its process (the owner's Stop, or a crash) reads as interrupted: the status line says "Backlog interrompido" with an alert icon in place of the spinner once every spec running now is in that state. Its list pill is the hub's "interrompida" pill. Each spec is one row on fixed columns — rank, title with its run id and, while it runs, its phase under it, the hub's status pill, cost right-aligned, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip). A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
+Same parts as the refinement card, nothing new. The panel "Specs do backlog" has its title at the left and the status line at the right; the status card (spinner, clock or check, "Executando o backlog · N de M concluídas" or "Aguardando sua validação · N de M concluídas", the progress bar, one line per spec running now with "Acompanhar a run") stays only on the refinement page of a started spec. A run that lost its process (the owner's Stop, or a crash) reads as interrupted: the status line says "Backlog interrompido" with an alert icon in place of the spinner once every spec running now is in that state. Its list pill is the hub's "interrompida" pill. Each spec is one row on fixed columns — rank, title with its run id and, while it runs, its phase under it, the hub's status pill, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip), and the cost last, right-aligned at the end of the row, so every row's cost lines up on the same edge. A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
 
 ### 27.4 Run — cabeçalho com atividade ao vivo
 
@@ -1453,6 +1453,26 @@ Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Aç�
 - **Erro ao listar repositórios.** Aparece dentro do diálogo, e a exclusão segue só com os arquivos locais.
 - **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
 - Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
+
+### 27.7 Repositório — tabela de tarefas
+
+Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por spec". Ele lista todas as tarefas do repositório, uma linha por tarefa, sem agrupar por spec.
+
+- **Linha.** Título da tarefa em negrito, com a spec e o responsável em texto de apoio abaixo; à direita, o chip de estado (§11.4) e, só para tarefa que não terminou com sucesso (bloqueada ou falhou), o botão `Detalhe`. Abaixo de 768px a linha vira uma coluna.
+- **Filtro.** Caixa de busca por título, tarefa ou spec, e um filtro de status com os estados da tela de entregas (`Entregue`, `Em desenvolvimento`, `Pendente`, `Bloqueada`, `Falhou`). Sem o filtro, o contador mostra só o total.
+- **Paginação.** A mesma paginação das outras tabelas do repositório (`Itens por página`, o intervalo `1–10 de 16` e as setas anterior e próxima), feita no servidor. Trocar o filtro ou a busca volta para a primeira página.
+- **Detalhe.** Abre um diálogo (§11.3) com o título da tarefa, três dados (`Tarefa`, `Spec`, `O que aconteceu`), o problema e a solução em linguagem simples, e o texto técnico do revisor dobrado em "Ver detalhe técnico". O mesmo bloco aparece na tela da run, então o texto é igual nos dois lugares. Link `Abrir run` no rodapé do diálogo.
+- **Vazio.** "Nenhuma tarefa encontrada." quando o filtro não acha nada.
+
+```
+┌ Tarefas (16) ─────────────── [busca] [Status: todos ▾] ┐
+│ Criar rota /ping                       ● Entregue      │
+│ spec-02 · Desenvolvimento                              │
+│ Validar login                          ● Falhou  [Detalhe]
+│ spec-02 · Desenvolvimento                              │
+│  Itens por página [10 ▾]     1–10 de 16     ← →      │
+└────────────────────────────────────────────────────────┘
+```
 
 ## 28. Copy
 
@@ -1556,3 +1576,77 @@ Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda
 O título interno do conteúdo não se repete: a contagem de specs vai no chip do cartão do backlog. Abaixo de 720 px os cartões continuam empilhados, sem mudar de ordem.
 
 A lista de specs por repositório não fica solta no cartão do backlog: ela abre ao clicar no chip `specs` da `Cobertura`, e o mesmo clique a fecha.
+
+## 31. Pedido em projeto em desenvolvimento (aprovada pelo dono e implementada)
+
+Estado: proposta. Nenhuma tela desta seção foi implementada. A aprovação do dono vem antes do código: é a regra de frontend do projeto.
+
+### 31.1 Hub: formulário "Nova spec"
+
+Mesmo lugar e aparência de hoje, sem a etapa de ID. Texto livre e o botão "Começar refinamento". Com um pedido já aberto, o formulário é trocado por um aviso que nomeia o pedido e leva a ele.
+
+```
+Especificações (i)                                      [ Nova spec + ]
+┌────────────────────────────────────────────────────────────────────┐
+│ Descreva o que adicionar ou mudar                                  │
+│ ┌────────────────────────────────────────────────────────────────┐ │
+│ │ Ex.: o administrador precisa exportar o relatório mensal em PDF│ │
+│ └────────────────────────────────────────────────────────────────┘ │
+│ Os agentes leem os documentos e as specs, medem o impacto e         │
+│ replanejam. Você só responde o que eles não decidirem sozinhos.     │
+│                        [ Cancelar ]  [ Começar refinamento → ]      │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 31.2 Tela do pedido
+
+Trilha de etapas (Pedido · Impacto · Specs e plano · Pronto) e cartões no mesmo padrão do `StepCard`. Os cartões existentes do backlog (Precisa de você, Itens do backlog, Planos e Verificação) continuam. Os novos são Pedido, Impacto e Replanejamento.
+
+```
+⌂ › Projetos › meu-projeto › pedido-2
+● Pedido ── ○ Impacto ── ○ Specs e plano ── ○ Pronto
+┌ Seu pedido · Escrito por você                              [ Interpretado ] ┐
+│ "O administrador precisa exportar…"   salvo em briefing.md › Nova demanda    │
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Impacto · Analisado pelo SM                                          [ Atual ] ┐
+│ [3 specs novas] [2 afetadas] [2 documentos] [1 risco]   ← chips abrem a lista   │
+│ Afeta: auth-login (entregue) → ajuste proposto                                  │
+│ Conflito: export-csv ↔ report-pdf (mesmo módulo) → ordem definida               │
+│ Documentos atualizados (acréscimos): flow.md › Exportação               [ ver ] │
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Replanejamento · Montado pelo PO                                  [ 4 mudaram ] ┐
+│  #  spec            estado      novo #   mudança                                 │
+│  1  auth-login      entregue    1        mantida                                 │
+│  4  report-pdf      nova        2        nova                                    │
+│  2  export-csv      planejada   3        desceu 1 · depende de …                 │
+└───────────────────────────────────────────────────────────────────────────────┘
+Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pergunta aberta
+        Trilha: Pedido → 3 specs → 3 planos → 14 tarefas     [ Iniciar desenvolvimento ]
+```
+
+### 31.3 Responsivo
+
+Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.
+
+## 32. Nova spec em modal
+
+Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução concluída) abre o mesmo modal grande, na própria tela, sem levar à página do projeto.
+
+### 32.1 Composição
+
+- Usa o `Dialog` em tamanho grande: 56 rem de largura no máximo e 90% da altura da janela.
+- Cabeçalho com o título `Nova spec · <projeto>` e o botão de fechar.
+- Corpo com um rótulo, uma caixa de texto alta (pelo menos 14 rem), uma frase que diz o que os agentes farão e, quando houver, o erro.
+- Rodapé com `Cancelar` (secundário) e `Criar spec` (primário, com seta), alinhados à direita.
+
+### 32.2 Comportamento
+
+- `Criar spec` fica desativado com o campo vazio e mostra o estado de envio sem permitir um segundo clique.
+- Ao confirmar, a tela abre `/refine/<projeto>/<spec>`, onde os agentes organizam a spec no padrão das outras.
+- Um erro aparece dentro do modal e o texto digitado é mantido.
+- Fechar com texto digitado pede confirmação antes de descartar.
+- Se já existe um pedido aberto e não iniciado, o modal mostra o aviso e o botão `Continuar` no lugar do campo.
+
+### 32.3 Responsivo
+
+Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.

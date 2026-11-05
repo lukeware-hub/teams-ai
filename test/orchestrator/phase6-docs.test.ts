@@ -149,7 +149,6 @@ describe('Phase 6 documentation gate', () => {
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
     expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
   });
-
   it('blocks when the report step itself fails', async () => {
     const r = await p6(async () => ({ ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false }));
     expect(r.ok).toBe(false);

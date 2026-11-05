@@ -7,6 +7,9 @@ import type { BacklogState } from './state.js';
  */
 export const specIdOf = (draftId: string, key: string, keyIds?: boolean): string => (keyIds && key !== draftId ? key : `${draftId}-${key}`);
 
+/** The draft id the spec ids of a backlog derive from: the `idBase` of a follow-on backlog, else the draft's own id. */
+export const idSourceOf = (draftId: string, backlog?: { idBase?: string } | null): string => backlog?.idBase ?? draftId;
+
 export interface SpecsIndexEntry {
   specId: string;
   key: string;
@@ -32,11 +35,12 @@ export interface SpecsIndex {
 }
 
 /** Generated from the derived backlog (browser-safe: the page builds the same file it offers for download). */
-export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'epics' | 'items' | 'keyIds'>): SpecsIndex {
+export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'epics' | 'items' | 'keyIds' | 'idBase'>): SpecsIndex {
+  const source = idSourceOf(draftId, backlog);
   const specs = [...backlog.items]
     .sort((a, b) => a.rank - b.rank)
     .map((i) => ({
-      specId: specIdOf(draftId, i.key, backlog.keyIds),
+      specId: specIdOf(source, i.key, backlog.keyIds),
       key: i.key,
       title: i.title,
       epic: i.epic,
@@ -45,11 +49,22 @@ export function buildSpecsIndex(draftId: string, backlog: Pick<BacklogState, 'ep
       size: i.size,
       scope: i.scope,
       rationale: i.rationale,
-      dependsOn: i.dependsOn.map((d) => specIdOf(draftId, d, backlog.keyIds)),
+      dependsOn: i.dependsOn.map((d) => specIdOf(source, d, backlog.keyIds)),
       sources: i.sources,
       ...(i.repository === undefined ? {} : { repository: i.repository }),
     }));
   return { version: 1, draftId, epics: backlog.epics, specs };
+}
+
+/**
+ * The id scheme a main's index names its specs by, so a follow-on backlog keeps those ids: the key alone (`keyIds`), or
+ * `<draft>-<key>` of the draft the index came from (`idBase`). Null when the index mixes the two.
+ */
+export function idSchemeOf(index: SpecsIndex): Pick<BacklogState, 'keyIds' | 'idBase'> | null {
+  const named = (scheme: Pick<BacklogState, 'keyIds' | 'idBase'>) => index.specs.every((s) => s.specId === specIdOf(idSourceOf(index.draftId, scheme), s.key, scheme.keyIds));
+  if (index.specs.length === 0 || named({ keyIds: true })) return { keyIds: true };
+  const legacy = { keyIds: false, idBase: index.draftId };
+  return named(legacy) ? legacy : null;
 }
 
 /** The outline a specs index was built from, so a new draft's first outline starts from what main already planned (R11.7.3). */

@@ -35,15 +35,17 @@ import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchi
 import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { restoreMove } from './moves.js';
-import { buildSpecsIndex } from './specs-index.js';
+import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
+import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, safePatches, speckitPending, type BacklogState, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
+import { idSourceOf, specIdOf } from './specs-index.js';
 import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
@@ -56,7 +58,7 @@ import { docsTarget, FIVE_DOCS, githubOwnerOf, type RepoTarget, type Style } fro
 import { mergeDocStrict, sameDoc } from '../git/merge-doc.js';
 import { boundaryLabel } from './docs-boundary.js';
 import { DocsSync, type DocsSyncView } from './docs-sync.js';
-import type { SpecAlias } from './docs-projection.js';
+import { specChanged, type SpecAlias } from './docs-projection.js';
 
 export type { RunAgent } from './cycle.js';
 const MAX_IMAGES = 4;
@@ -207,21 +209,24 @@ export interface Snapshot {
   limits: RefineLimits;
   /** specs.md is written from the current backlog and PO and SM both approved it: the final review may go on. */
   specsApproved: boolean;
+  /** The trail of a follow-on request: its specs and what each has; absent for other sessions. */
+  trace?: RequestTrace | null;
 }
 
 /**
  * R11.7.2: the program's entries from each item's status on main (`onMain`, by spec id). A done item starts done; a running
  * or paused one runs again from its freeze; one awaiting validation, or started on main while this draft re-derived it, refuses.
  */
-export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>): ProgramEntry[] {
+export function programEntries(draftId: string, backlog: BacklogState, onMain: Readonly<Record<string, string | undefined>>, owned: ReadonlySet<string> = new Set()): ProgramEntry[] {
   const specs = buildSpecsIndex(draftId, backlog).specs;
   const idOf = new Map(specs.map((s) => [s.key, s.specId]));
   // The SM's conflict map as each entry's spec ids; no map leaves the field out, so the program runs one at a time.
   const conflictsWith = (key: string) => ({ conflictsWith: backlog.conflicts!.pairs.flatMap((p) => (p.a === key ? [p.b] : p.b === key ? [p.a] : [])).flatMap((k) => idOf.get(k) ?? []) });
   const entries = specs.map((s): ProgramEntry => {
     const status = onMain[s.specId];
-    if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
-    if (status === 'awaiting-validation') throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
+    // A spec the program that runs already owns (a request joins it) is not refused: the program keeps its state.
+    if (isStarted(status) && !isStarted(backlog.specs?.[s.key]?.spec?.status) && !owned.has(s.specId)) throw new ConflictError(`A spec ${s.specId} foi iniciada ou entregue enquanto este rascunho refinava; avalie de novo para mantê-la como está na main.`);
+    if (status === 'awaiting-validation' && !owned.has(s.specId)) throw new ConflictError(`A spec ${s.specId} aguarda validação; valide essa entrega antes de iniciar este programa.`);
     return { specId: s.specId, key: s.key, rank: s.rank, dependsOn: s.dependsOn, ...(backlog.conflicts ? conflictsWith(s.key) : {}), ...(status === 'done' ? { done: true } : {}) };
   });
   if (entries.every((e) => e.done)) throw new ConflictError('Todas as specs deste backlog já foram entregues; não há nada para iniciar.');
@@ -308,7 +313,7 @@ export class RefineSession {
     // A graph extraction cut by a restart is failed, so the stage does not wait forever; Continuar tries again.
     if (journal.state.graphing) await journal.fact(RefineEvent.DocGraphFailed, { file: journal.state.graphing, reason: 'A extração foi interrompida quando o servidor reiniciou.' });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
-    if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft);
+    if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft, journal.state.extension ? requestHeading(journal.state.extension.requestId) : undefined);
     // A continued spec carries its JSON from main before any cycle has derived one.
     if (!journal.state.derived) journal.state.derived = await readDerived(deps.draft);
     const session = new RefineSession(deps, journal);
@@ -443,7 +448,7 @@ export class RefineSession {
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(),...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
@@ -547,6 +552,28 @@ export class RefineSession {
       if (advance) await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
       await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /** A follow-on request ends with its five documents in the graph, as they are now, in one extraction; a failure is journaled in plain words. */
+  async graphDocs(): Promise<void> {
+    this.guard();
+    const files = DOC_STAGES.filter((f) => !(this.state.graphed ?? []).includes(f));
+    if (!this.deps.extractDocs || files.length === 0) return;
+    try {
+      const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
+      const folder = path.posix.join(staging, 'docs');
+      await fs.rm(folder, { recursive: true, force: true });
+      await fs.mkdir(folder, { recursive: true });
+      for (const doc of DOC_STAGES) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      await this.deps.extractDocs(folder, staging);
+      for (const file of files) {
+        const counts = await documentCounts(staging, file);
+        if (counts.nodes === 0) throw new Error(`O Graphify não encontrou conteúdo em ${file}.`);
+        await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      }
+    } catch (err) {
+      await this.journal.fact(RefineEvent.DocGraphFailed, { file: files[0], reason: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -827,10 +854,19 @@ export class RefineSession {
     if (this.docs || this.state.docsRepo !== true || !exec) return;
     const marker = await readDocsMarker(this.deps.ws);
     if (!marker) return;
-    this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style) });
+    this.docs = new DocsSync({ ws: this.deps.ws, draft: this.deps.draft, style: marker.style, exec, aliases: () => this.docsAliases(marker.style), frozen: () => this.frozenSpecIds() });
     this.journal.onFact = (e) => this.onFact(e);
     if (atOpen) void this.docs.flush();
     else void this.docs.publish();
+  }
+
+  /** The specs of the backlog that main already started: the documentation store keeps their folders as main has them. */
+  private async frozenSpecIds(): Promise<string[]> {
+    const backlog = this.state.backlog;
+    if (!backlog) return [];
+    const ids = backlog.items.map((item) => specIdOf(idSourceOf(this.deps.draft.specId, backlog), item.key, backlog.keyIds));
+    const onMain = await Promise.all(ids.map(async (specId) => (await readMainSpec(this.deps.draft, specId))?.status));
+    return ids.filter((_, i) => isStarted(onMain[i]));
   }
 
   /** A boundary or a document change is committed at the next tick; nothing counts once the draft starts or syncs. */
@@ -840,9 +876,11 @@ export class RefineSession {
     if (label !== null) this.docs.boundary(label);
   }
 
-  /** The specs this draft derived: each alias folder, and for a microservice its repository. */
-  private docsAliases(style: Style): SpecAlias[] {
-    return Object.values(this.state.backlog?.specs ?? {}).flatMap((row) => (row.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
+  /** The specs this draft changed since main: each alias folder it writes, and for a microservice its repository. Main's own specs stay as main has them. */
+  private async docsAliases(style: Style): Promise<SpecAlias[]> {
+    const rows = Object.values(this.state.backlog?.specs ?? {}).filter((row) => row.spec);
+    const changed = await Promise.all(rows.map(async (row) => ((await specChanged(this.deps.draft, row.specId)) ? row : null)));
+    return changed.flatMap((row) => (row?.spec ? [{ alias: row.specId, service: style === 'microservices' ? row.spec.repository : undefined }] : []));
   }
 
   /** Closes the documentation repository before the launch; a refusal is a conflict, and nothing launches. A legacy session has nothing to close. */
@@ -955,15 +993,17 @@ export class RefineSession {
     const graphContext = this.deps.docGraphContext ? await this.deps.docGraphContext(path.posix.join(draft.root, 'doc-graph'), ARCHITECTURE_QUESTION, GRAPH_CONTEXT_TOKENS) : '';
     const answers = this.state.questions.filter((q) => q.origin === 'architecture' && q.status === 'answered' && q.answer).map((q) => `${q.text}: ${q.answer}`);
     const existingServices = this.state.derived?.project.services ?? [];
+    // A follow-on request starts from the architecture its project already decided, and only adds to it.
+    const previous = this.state.extension ? this.state.architecture?.decision : undefined;
     let issues: string[] = [];
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const pack = fitPackBudget(architecturePack({ specHash: hash, principles: [], docs, graphContext, existingServices, answers, issues }));
+      const pack = fitPackBudget(architecturePack({ specHash: hash, principles: [], docs, graphContext, existingServices, answers, issues, previous }));
       const out = (await this.deps.runAgent<'architecture'>(
         { kind: 'architecture', role: 'sm', pack, cwd: draft.root, phase: 'refine', taskId: null, attempt },
         { journal: this.journal, stepDir: draft.steps, specHash: hash, signal },
       )) as StepOutcome<ArchitectureOutput>;
       if (!out.ok) throw ownerFailure('A arquitetura', out.failure, out.errors, TRY_AGAIN);
-      issues = checkDecision(out.value, draft.projectId, docs);
+      issues = checkDecision(out.value, draft.projectId, docs, previous);
       if (issues.length === 0) return out.value;
     }
     throw new RulesOpenError(issues);
@@ -981,12 +1021,28 @@ export class RefineSession {
     if (await this.isArchitectureStale()) await this.redecideArchitecture();
     const why = await this.architectureProblem();
     if (why) throw new ConflictError(why);
-    if (bindRepo && this.state.docsRepo === true) await this.bindDocsRepo();
+    // A follow-on of a bound documentation repository keeps its binding: only a first backlog binds it.
+    if (bindRepo && this.state.docsRepo === true && !(await readDocsMarker(this.deps.ws))?.firstSha) await this.bindDocsRepo();
     // The move removes this draft's own spec.json (a continued spec's, on main): its criterion ids stay the numbering floor.
-    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), keyIds: true });
+    await this.journal.fact(RefineEvent.BacklogEnabled, { acFloor: await maxCriterionInDraft(this.deps.draft), ...(await this.idSchemeOfMain()) });
     // The detailing is part of the one process: every evaluation of the backlog details its changed items.
     await this.journal.fact(RefineEvent.BacklogDetailEnabled, {});
-    await moveBriefingToProject(this.deps.draft);
+    await moveBriefingToProject(this.deps.draft, this.state.extension ? requestHeading(this.state.extension.requestId) : undefined);
+  }
+
+  /** A request made in a project already in development: journaled with its title and text; the brief holds the text. */
+  async addRequest(request: { requestId: string; title: string; text: string; before?: ExtensionRequest['before']; idBase?: string }): Promise<void> {
+    this.guard();
+    await this.journal.fact(RefineEvent.RequestReceived, { ...request, heading: requestHeading(request.requestId), at: new Date().toISOString() });
+  }
+
+  /** The id scheme main's specs index holds, so this backlog keeps the ids main already gave; a project without one takes the readable ids. */
+  private async idSchemeOfMain(): Promise<Pick<BacklogState, 'keyIds' | 'idBase'>> {
+    const index = JSON.parse((await readBase(this.deps.draft, 'specs.json')) ?? 'null') as SpecsIndex | null;
+    if (index === null) return { keyIds: true };
+    const scheme = idSchemeOf(index);
+    if (scheme === null) throw new ConflictError('Os ids das specs de main misturam dois formatos: o backlog não pode mantê-los.');
+    return scheme;
   }
 
   /** Plan 90: the owner's answers not yet in the brief go into it as decisions, so the brief carries them into the move. */
@@ -1513,10 +1569,11 @@ export class RefineSession {
     return p;
   }
 
-  async accept(patchId: string): Promise<void> {
+  /** Accepts a suggestion; `auto` marks one the team accepted on its own, which the impact card lists. */
+  async accept(patchId: string, auto = false): Promise<void> {
     this.guardLight();
     const { file } = this.patch(patchId);
-    await this.applyPatchRow(patchId);
+    await this.applyPatchRow(patchId, auto);
     await this.markGraphOutdated(file as DocFile);
   }
 
@@ -1678,7 +1735,7 @@ export class RefineSession {
   }
 
   /** R11.4: checks the gate of a backlog start and hands back its items in rank order; `beginStart()` takes the starting lock first. */
-  async freezeProgram(summaryHash?: string): Promise<ProgramEntry[]> {
+  async freezeProgram(summaryHash?: string, owned?: ReadonlySet<string>): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
     if (this.state.status === 'started') throw new ConflictError('session already started a run');
@@ -1700,8 +1757,9 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
-    const entries = programEntries(this.deps.draft.specId, backlog, onMain);
-    await this.closeDocs(entries.map((e) => e.specId));
+    const entries = programEntries(this.deps.draft.specId, backlog, onMain, owned);
+    // A spec main already started keeps the start tag it got then: only the specs this start begins get one.
+    await this.closeDocs(entries.filter((e) => !isStarted(onMain[e.specId])).map((e) => e.specId));
     return entries;
   }
 
@@ -1723,7 +1781,7 @@ export class RefineSession {
     return frozen;
   }
 
-  async markStarted(runId: string): Promise<void> {
+  async markStarted(runId: string | null): Promise<void> {
     // R11.10: a suggestion still pending stays out of the run and moves to the history with the reason.
     for (const p of this.state.patches.filter((x) => x.status === 'pending')) {
       await this.journal.fact(RefineEvent.PatchDropped, { patchId: p.patchId, reason: 'não aplicada: a execução começou sem ela' });

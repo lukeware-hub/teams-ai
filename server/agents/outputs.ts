@@ -8,8 +8,9 @@ import { ID_PATTERNS } from '../core/ids.js';
 import { Project, ServiceName } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { Architecture } from '../contracts/architecture.js';
+import { Impact } from '../contracts/impact.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture', 'specs-review'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture', 'specs-review', 'impact'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -121,6 +122,10 @@ export type PreplanOutput = z.infer<typeof PreplanOutput>;
 /** The SM's conflict map: pairs of backlog items that change the same code, so they never run at the same time. */
 export const ConflictsOutput = z.object({ specHash, pairs: z.array(z.object({ a: z.string().regex(ID_PATTERNS.SLUG), b: z.string().regex(ID_PATTERNS.SLUG), reason: z.string().min(1) })).max(200) });
 export type ConflictsOutput = z.infer<typeof ConflictsOutput>;
+
+/** The impact of a follow-on request on the backlog it follows (see contracts/impact.ts). */
+export const ImpactOutput = z.object({ specHash, impact: Impact });
+export type ImpactOutput = z.infer<typeof ImpactOutput>;
 
 export const TechSpecOutput = z.object({
   specHash,
@@ -407,6 +412,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   spec: SpecDetailOutput,
   preplan: PreplanOutput,
   conflicts: ConflictsOutput,
+  impact: ImpactOutput,
   name: NameOutput,
   suggest: SuggestOutput,
   answer: AnswerOutput,

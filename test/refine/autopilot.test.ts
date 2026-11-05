@@ -25,6 +25,8 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     settled: vi.fn(async () => undefined),
     evaluateStage: vi.fn(async () => undefined),
     addToGraph: vi.fn(async (file: string) => { (state.graphed as string[]).push(file); }),
+    graphDocs: vi.fn(async () => undefined),
+    closingSummary: vi.fn(async () => ({ ok: true, summaryHash: 'h', checks: [], repositories: [], assumptions: [] })),
     saveDocs: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
@@ -35,7 +37,7 @@ describe('resolveEverything', () => {
   it('accepts every suggestion, answers every question, evaluates, settles specs.md and prepares the plans', async () => {
     const s = fake({ patches: [{ patchId: 'p1', status: 'pending', scopeChange: true, reason: '', find: 'a', replace: 'b', file: 'flow.md' }], questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
     await resolveEverything(s as unknown as RefineSession);
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.decideAnswer).toHaveBeenCalledWith('q1');
     expect(s.evaluate).toHaveBeenCalledTimes(1);
     expect(s.startSpecs).toHaveBeenCalledWith({ autonomous: true });
@@ -76,6 +78,36 @@ describe('resolveEverything', () => {
     const s = fake({ questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
     await Promise.all([resolveEverything(s as unknown as RefineSession), resolveEverything(s as unknown as RefineSession)]);
     expect(s.decideAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it('a follow-on request the team runs alone follows the specs.md and graphs the five documents in one go, but leaves the save in the repositories to the owner', async () => {
+    const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+    expect(s.closingSummary).toHaveBeenCalled();
+    expect(s.saveDocs).not.toHaveBeenCalled();
+    expect(s.graphDocs).toHaveBeenCalledTimes(1);
+    expect(s.addToGraph).not.toHaveBeenCalled();
+  });
+
+  it('a follow-on request the team runs alone accepts every suggestion, a rewording and a design change too, marked as automatic', async () => {
+    const s = fake({ patches: [
+      { patchId: 'add', status: 'pending', reason: '', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', file: 'briefing.md' },
+      { patchId: 'reword', status: 'pending', reason: '', find: 'a', replace: 'b', file: 'briefing.md' },
+      { patchId: 'design', status: 'pending', reason: '', find: 'x', replace: 'y', file: 'design.md' },
+    ] });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    for (const id of ['add', 'reword', 'design']) expect(s.accept).toHaveBeenCalledWith(id, true);
+  });
+
+  it('a follow-on request the owner runs follows the specs.md and saves the documents, as his button says', async () => {
+    const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+    expect(s.saveDocs).toHaveBeenCalledTimes(1);
   });
 });
 

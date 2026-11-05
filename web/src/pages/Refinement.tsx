@@ -17,7 +17,7 @@ import { OptionGroup } from '../components/OptionGroup.js';
 import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
-import { allGreen, isApproval } from '@server/refine/state';
+import { allGreen, isApproval, requestHeading } from '@server/refine/state';
 import { CHECK_NAMES, type Divergence, type DivergenceSide } from '@server/refine/checklist';
 import { BacklogPanel } from '../refine/BacklogPanel.js';
 import { MoveNotice } from '../refine/MoveNotice.js';
@@ -39,6 +39,8 @@ import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
+import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
+import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail, understoodCounts } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
@@ -70,6 +72,9 @@ const errorText = (text: string | null) => text
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
 /** The pause after the last keystroke before a stage document is saved on its own. */
 const AUTOSAVE_MS = 1500;
+
+/** The card each step of a request opens on the page: the owner's words, the impact, the replan, and the ready bar. */
+const REQUEST_STEP_TARGET: Record<string, string> = { pedido: 'step-card-request', impacto: 'step-card-impact', specs: 'step-card-replan', pronto: 'request-ready' };
 /** Whether an evaluation is open in the journal: it spans a stage's review, its score and its graph extraction, so the page shows the work from the first event to the last. */
 const evaluationOpen = (st: Pick<Snapshot['state'], 'evaluation'>): boolean => st.evaluation != null && st.evaluation.endedAt === null;
 /** The notice a click gets while a process is open: it says to wait, and the page frees itself when the process ends. */
@@ -354,6 +359,7 @@ function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: Drop
 }
 
 export function RefinementView(p: ViewProps) {
+  const navigate = useNavigate();
   const { snap, busy } = p;
   const st = snap.state;
   const [tab, setTab] = useState<DocFile>('flow.md');
@@ -1462,6 +1468,33 @@ export function RefinementView(p: ViewProps) {
       </ActionButton>
     </>
   );
+  // A follow-on request (design.md §31): its trail, its impact and its replan above the backlog's own cards, and the bar that starts it.
+  if (st.extension) {
+    const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
+    return (
+      <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
+        <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
+        <WizardShell
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
+          stepKey="request"
+          meta={usageLine}
+          back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
+          actions={null}
+        >
+          <div className="grid gap-4">
+          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
+          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
+          <ReplanCard rows={replanRows(st)} />
+          {backlogScreen()}
+          <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          </div>
+        </WizardShell>
+        {reevaluateDialog}
+        {askDialog}
+        {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
+      </div>
+    );
+  }
   if (newProject) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
@@ -1472,8 +1505,10 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
-          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          <div className="grid gap-4">
+            {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
+            {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          </div>
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1622,13 +1657,13 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const bannerStarts = scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && jevVerdict(snap.state.readiness) === 'scored';
   return (
     <main data-testid="refinement-main" className="flex flex-col gap-4 lg:h-full lg:min-h-0">
-      <Breadcrumb testId="refinement-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'refinement-breadcrumb-project' }, { label: `${specId} ${snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}`, testId: 'refinement-breadcrumb-spec' }]} />
+      <Breadcrumb testId="refinement-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'refinement-breadcrumb-project' }, { label: snap?.state.extension ? snap.state.extension.requestId : `${specId} ${snap?.state.mode === 'new-spec' ? 'spec nova' : 'rascunho'}`, testId: 'refinement-breadcrumb-spec' }]} />
       <MoveNotice moves={snap.state.moves ?? []} onUndo={(moveId) => act(() => refineApi.undoMove(projectId, specId, moveId))()} onClose={(moveId) => act(() => refineApi.closeNotice(projectId, specId, moveId))()} docName={docName} />
       {closingOpen && snap.closing && (
         <ClosingDialog projectId={projectId} specId={specId} summary={snap.closing} busy={starting} onCancel={() => setClosingOpen(false)} onAuthorize={(hash) => { setClosingOpen(false); void startWith(hash)(); }} />
       )}
       <ReshapeNotice reshapes={snap.state.reshapes ?? []} onUndo={(reshapeId) => act(() => refineApi.undoReshape(projectId, specId, reshapeId))()} onClose={(reshapeId) => act(() => refineApi.closeNotice(projectId, specId, reshapeId))()} docName={docName} />
-      {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !['evaluating', 'started'].includes(snap.state.status) && (
+      {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !snap.state.extension && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
       {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}

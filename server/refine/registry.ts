@@ -23,11 +23,13 @@ import { answerFloor } from './auto-floor.js';
 import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, stripControls, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
 import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
+import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
+import { runExtension } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
@@ -66,6 +68,8 @@ export interface DraftRow {
   specId: string;
   state: RefineStatus;
   registered: boolean;
+  /** Made by a request in a project already in development. */
+  extension?: boolean;
 }
 
 const slug = (v: string, what: string) => {
@@ -73,6 +77,17 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+/** The draft id of a project's request: `<project>-pedido-<n>`, the project part cut so the id has at most 40 characters. */
+export const requestDraftId = (projectId: string, number: number): string => {
+  const suffix = `-pedido-${number}`;
+  return slug(`${projectId.slice(0, 40 - suffix.length).replace(/-+$/, '')}${suffix}`, 'draftId');
+};
+/** Runs `task` once the last one queued under `key` is done: two requests of one project never race to make a draft. */
+function serialized<T>(queue: Map<string, Promise<unknown>>, key: string, task: () => Promise<T>): Promise<T> {
+  const run = (queue.get(key) ?? Promise.resolve()).then(task);
+  queue.set(key, run.catch(() => undefined));
+  return run;
+}
 /** A spec of a documentation repository takes an alias, which also names its folder; the refusal is in plain words. */
 const aliasOrConflict = (specId: string, fromProjectName = false): void => {
   try {
@@ -103,6 +118,8 @@ const inProject =
 /** Spec (refinement) §5: one live session per spec, opened from disk on demand. */
 export class SessionRegistry {
   private readonly sessions = new Map<string, Promise<RefineSession>>();
+  /** The last request of each project: a request starts only after the one before it made its draft. */
+  private readonly requests = new Map<string, Promise<unknown>>();
 
   private readonly programs: ProgramService;
 
@@ -257,6 +274,52 @@ export class SessionRegistry {
     return this.session(draft, ws, 'new-spec');
   }
 
+  /**
+   * The owner's request in a project already in development: its draft is a follow-on backlog whose brief is the text, and its
+   * evaluation turns the text into specs. A project whose main has no backlog takes one spec instead. One open request at a time.
+   */
+  async addRequest(projectId: string, description: string): Promise<RefineSession> {
+    slug(projectId, 'projectId');
+    const text = cleanDescription(stripControls(description));
+    if (text === '') throw new RangeError('description is required');
+    return serialized(this.requests, projectId, async () => {
+      const open = (await this.list()).find((row) => row.projectId === projectId && row.extension === true && row.state !== 'started');
+      if (open) throw new ConflictError(`o pedido ${open.specId} ainda não foi iniciado (/refine/${projectId}/${open.specId}): inicie-o antes de fazer outro`);
+      const ws = await this.ws(projectId);
+      await this.assertMirrorProject(ws);
+      const main = await this.mainOf(ws);
+      // A main without a backlog index (never broken into specs) takes the request as one spec.
+      const indexText = await main.text('docs/specs.json').catch(() => null);
+      if (indexText === null) {
+        const { id } = await this.suggestName('spec', { projectId, name: '', description: text });
+        return this.newSpec(projectId, id, text);
+      }
+      // The outline as main has it now: the replan view reads what the request adds, moves and keeps against it.
+      const index = JSON.parse(indexText) as SpecsIndex;
+      const outline = outlineOfIndex(index).items;
+      const before = index.specs.map((s, i) => ({ key: outline[i]!.key, specId: s.specId, title: s.title, rank: outline[i]!.rank, dependsOn: [...outline[i]!.dependsOn] }));
+      const number = await this.nextRequestNumber(ws);
+      const draft = draftPaths(ws, requestDraftId(projectId, number));
+      await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'backlog' }, main);
+      // The text is the spec's brief: enabling the backlog moves it under its own "Nova demanda" heading in the project briefing.
+      await fs.writeFile(draft.briefMd, `${text}\n`);
+      const session = await this.session(draft, ws, 'backlog');
+      const title = text.split('\n').find((line) => line.trim() !== '')!.trim().slice(0, 80);
+      await session.addRequest({ requestId: `pedido-${number}`, title, text, before, idBase: idSchemeOf(index)?.idBase });
+      await session.enableBacklog();
+      // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
+      runExtension(session).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      return session;
+    });
+  }
+
+  /** The number of a project's next request, one more than the requests it already made. */
+  private async nextRequestNumber(ws: Workspace): Promise<number> {
+    const drafts = await fs.readdir(path.posix.join(ws.root, 'refine')).catch(() => [] as string[]);
+    const numbers = drafts.flatMap((name) => { const m = /-pedido-(\d+)$/.exec(name); return m ? [Number(m[1])] : []; });
+    return Math.max(0, ...numbers) + 1;
+  }
+
   async continueSpec(projectId: string, specId: string, report?: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
     slug(specId, 'specId');
@@ -284,11 +347,14 @@ export class SessionRegistry {
   private async startProgram(projectId: string, specId: string, session: RefineSession, summaryHash?: string): Promise<{ runId: string; program: Program }> {
     session.beginStart();
     try {
-      const entries = await session.freezeProgram(summaryHash);
+      // A follow-on request joins the program that runs: its specs queue in that program, which keeps what it already owns.
+      const owner = await this.runningLedger(projectId, specId);
+      const entries = await session.freezeProgram(summaryHash, owner === null ? undefined : await this.specIdsOf(projectId, owner));
       // The first task reads the graph when it starts, so it is built before the program.
       await this.deps.buildGraph?.(projectId);
-      const program = await this.programs.start(projectId, specId, entries);
-      const runId = program.items.find((i) => i.runId !== null)?.runId ?? null;
+      const program = owner === null ? await this.programs.start(projectId, specId, entries) : await this.programs.extend(projectId, owner, specId, entries);
+      const runId = program.items.find((i) => entries.some((e) => e.specId === i.specId) && i.runId !== null)?.runId ?? program.items.find((i) => i.runId !== null)?.runId ?? null;
+      if (runId === null && owner !== null) throw new HttpError(409, 'o programa em andamento ainda não tem execução para seguir: tente de novo em instantes');
       if (runId === null) {
         // Nothing was launched (docker or the login are down): drop the ledger so the next start begins clean.
         await fs.rm(programFile(draftPaths(await this.ws(projectId), specId).root), { force: true });
@@ -301,6 +367,21 @@ export class SessionRegistry {
       await session.failStart();
       throw err;
     }
+  }
+
+  /** The ledger of another start of this project whose program runs now: a follow-on request joins it. Null when none runs. */
+  private async runningLedger(projectId: string, specId: string): Promise<string | null> {
+    for (const row of await this.list()) {
+      if (row.projectId !== projectId || row.specId === specId || row.state !== 'started') continue;
+      const program = await this.programs.read(projectId, row.specId);
+      if (program?.status === 'running') return program.draftId;
+    }
+    return null;
+  }
+
+  /** The specs a running program owns, so a request joining it keeps them as they are. */
+  private async specIdsOf(projectId: string, ledger: string): Promise<Set<string>> {
+    return new Set((await this.programs.read(projectId, ledger))?.items.map((i) => i.specId) ?? []);
   }
 
   async program(projectId: string, specId: string): Promise<ProgramView | null> {
@@ -507,7 +588,8 @@ export class SessionRegistry {
         const live = this.sessions.get(`${projectId}/${specId}`);
         const events = live ? (await live).events : await loadEvents(path.posix.join(refine, specId, 'events.ndjson')).then((es) => es.map(currentEvent)).catch(() => null);
         if (!events) continue;
-        out.push({ projectId, specId, state: reduceRefineEvents(events).status, registered: (await this.deps.projectDir(projectId)) !== null });
+        const state = reduceRefineEvents(events);
+        out.push({ projectId, specId, state: state.status, registered: (await this.deps.projectDir(projectId)) !== null, ...(state.extension !== undefined ? { extension: true } : {}) });
       }
     }
     return out;

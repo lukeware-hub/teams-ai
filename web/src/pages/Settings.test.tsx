@@ -57,8 +57,8 @@ describe('SettingsPage', () => {
     vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
-    expect(await screen.findByRole('heading', { name: 'Ambiente' })).toBeTruthy();
-    expect(await screen.findByRole('heading', { name: 'Seu uso' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Configuração Global do Ambiente' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Seu uso de tokens' })).toBeTruthy();
     for (const title of ['Login do GitHub CLI', 'Token do GitHub', 'Organização do GitHub', 'Login do Claude', 'Chave do OpenRouter (Jev)']) {
       expect(screen.getByText(title, { selector: '.settings-collapse-title' })).toBeTruthy();
     }
@@ -68,9 +68,22 @@ describe('SettingsPage', () => {
     expect(await screen.findByTestId('card-Token do GitHub')).toBeTruthy();
     expect(within(screen.getByTestId('card-Token do GitHub')).getByRole('button', { name: 'Salvar e continuar' })).toBeTruthy();
 
-    expect(await screen.findByRole('heading', { name: 'Projeto' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Configurações por Projetos' })).toBeTruthy();
     expect(screen.getByText('8 agentes')).toBeTruthy();
     await openModelsCollapse();
+  });
+
+  it('orders the cards as usage, projects, then global environment', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+
+    const usage = await screen.findByRole('heading', { name: 'Seu uso de tokens' });
+    const projects = await screen.findByRole('heading', { name: 'Configurações por Projetos' });
+    const environment = await screen.findByRole('heading', { name: 'Configuração Global do Ambiente' });
+    expect(usage.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(projects.compareDocumentPosition(environment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows every agent on automatic and saves a manual pick with the default model and effort', async () => {
@@ -175,10 +188,10 @@ describe('SettingsPage', () => {
     const setPlanAgents = vi.spyOn(settingsApi, 'setPlanAgents').mockResolvedValue({ agents: 2 });
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
-    const card = await screen.findByRole('region', { name: 'Preparação dos planos' });
-    const agents = within(card).getByLabelText('Agentes em paralelo') as HTMLInputElement;
+    fireEvent.click(await screen.findByText('Configura para Refinamento', { selector: '.settings-collapse-title' }));
+    const agents = (await screen.findByLabelText('Quantidade de agentes')) as HTMLInputElement;
     await waitFor(() => expect(agents.value).toBe('5'));
-    const save = within(card).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
+    const save = within(agents.closest('form')!).getByRole('button', { name: 'Salvar' }) as HTMLButtonElement;
     fireEvent.change(agents, { target: { value: '6' } });
     expect(save.disabled).toBe(true);
     fireEvent.change(agents, { target: { value: '2' } });

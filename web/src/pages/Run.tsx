@@ -1,11 +1,12 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Breadcrumb } from '../components/Breadcrumb.js';
-import { afterStartPath, newSpecPath, projectPath, runPath, validationPath } from '../routes.js';
+import { afterStartPath, projectPath, runPath, validationPath } from '../routes.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseRunId } from '@server/core/ids';
 import { runApi, type RunDecision, type RunDetail, type RunRow, type StoredEvent, type TestLink } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Dialog } from '../components/Dialog.js';
+import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { OptionGroup } from '../components/OptionGroup.js';
@@ -20,6 +21,7 @@ import { type BlockExplanation, type ModelUse, blockExplanation, cascadeBlockers
 import { useTestLinks } from '../run/useTestLinks.js';
 import { ROLE_LABEL } from '../run/roles.js';
 import { useJournal } from '../useSse.js';
+import { BlockReason, Facts, RAW_TEXT, SECTION_TITLE } from '../components/BlockReason.js';
 
 // A panel title with its info tip right beside it, not pushed to the far edge.
 const HEAD_ROW = 'flex items-center gap-[0.35rem] [&_h2]:min-w-0 [&_h2]:flex-[0_1_auto]';
@@ -45,7 +47,7 @@ export const RUN_UI = {
   bannerTitle: 'mb-[0.9rem] flex items-center gap-2 text-warn [&_svg]:flex-none',
   bannerRows:
     'm-0 grid [&>div]:grid [&>div]:grid-cols-[9rem_minmax(0,1fr)] [&>div]:gap-3 [&>div]:border-t [&>div]:border-line [&>div]:py-[0.7rem] max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:flex [&_dt]:items-center [&_dt]:gap-1 [&_dt]:self-start [&_dt]:pt-[0.1rem] [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:grid [&_dd]:min-w-0 [&_dd]:justify-items-start [&_dd]:gap-2 [&_dd]:text-ink [&_dd_p]:m-0',
-  raw: 'm-0 rounded-md border border-line bg-surface-sunken px-[0.9rem] py-3 text-[0.78rem] leading-normal whitespace-pre-wrap text-ink wrap-anywhere',
+  raw: RAW_TEXT,
   totals:
     'm-0 grid gap-[0.4rem] [&>div]:flex [&>div]:items-baseline [&>div]:justify-between [&>div]:gap-3 [&_dt]:inline-flex [&_dt]:min-w-0 [&_dt]:items-center [&_dt]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:text-right [&_dd]:text-[0.8125rem] [&_dd]:text-ink [&_dd]:tabular-nums',
 };
@@ -61,8 +63,6 @@ const ROW_TITLE = 'min-w-0 flex-1 text-ink max-md:basis-32';
 // A test name that opens its line on GitHub: text colour until hovered, and a row-high touch target.
 const TEST_LINK = 'group inline-flex min-h-6 min-w-0 items-center gap-[0.3rem] text-[0.875rem] text-ink no-underline wrap-anywhere hover:text-accent-text hover:underline';
 const TEST_LINK_ICON = 'flex-none text-ink-faint group-hover:text-accent-text';
-const FACT_ROWS = 'm-0 grid gap-[0.6rem] [&>div]:grid [&>div]:grid-cols-[8.5rem_minmax(0,1fr)] [&>div]:gap-3 max-md:[&>div]:grid-cols-1 max-md:[&>div]:gap-1 [&_dt]:text-[0.8125rem] [&_dt]:font-semibold [&_dt]:text-ink-soft [&_dd]:m-0 [&_dd]:min-w-0 [&_dd]:wrap-anywhere';
-const SECTION_TITLE = 'mt-0 mb-[0.4rem]';
 const META = 'col-span-full text-[0.75rem] tabular-nums';
 
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5);
@@ -341,22 +341,6 @@ const ownerChip = (owner: StopOwner, testId?: string) => (
   </Tipped>
 );
 
-/** Label/value rows of a failure dialog; a null row is skipped. */
-function Facts({ rows }: { rows: Array<[string, ReactNode] | null> }) {
-  return (
-    <dl data-testid="facts" className={FACT_ROWS}>
-      {rows
-        .filter((row): row is [string, ReactNode] => row !== null)
-        .map(([term, value]) => (
-          <div key={term} data-testid={`facts-row-${term}`}>
-            <dt data-testid={`facts-term-${term}`}>{term}</dt>
-            <dd data-testid={`facts-value-${term}`}>{value}</dd>
-          </div>
-        ))}
-    </dl>
-  );
-}
-
 /** One cause and the tasks it blocked: a task id opens that task, and Ver detalhe explains the cause. */
 function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; taskIds: string[] }; onSelect: (taskId: string, opener: HTMLElement) => void; onDetail: (reason: string, opener: HTMLElement) => void }) {
   return (
@@ -374,59 +358,6 @@ function CauseRow({ group, onSelect, onDetail }: { group: { reason: string; task
         <Icon name="chevron-right" size={14} />
       </button>
     </li>
-  );
-}
-
-/** The problem and the solution of a blocked task in plain words; the orchestrator's own text stays folded away. */
-function BlockReason({ block }: { block: BlockExplanation }) {
-  const count = block.findings.length;
-  return (
-    <div data-testid="block-reason" className="grid gap-5">
-      {block.problem.length || count ? (
-        <section data-testid="block-reason-problem">
-          <h3 data-testid="block-reason-problem-title" className={SECTION_TITLE}>O problema</h3>
-          {block.problem.map((text, i) => (
-            <p key={i} data-testid={`block-reason-problem-${i}`} className="m-0 mb-2">
-              {text}
-            </p>
-          ))}
-          {count ? (
-            <>
-              <p data-testid="block-reason-findings-count" className="m-0 mb-2">A revisão apontou {count === 1 ? '1 ponto' : `${count} pontos`} para corrigir:</p>
-              <ol data-testid="block-reason-findings" className="m-0 grid list-decimal gap-3 pl-5">
-                {block.findings.map((f, i) => (
-                  <li key={i} data-testid={`block-reason-finding-${f.where}`}>
-                    <span data-testid={`block-reason-finding-row-${f.where}`} className="flex flex-wrap items-center gap-2">
-                      <span data-testid={`block-reason-finding-where-${f.where}`} className="font-mono text-[0.8125rem] wrap-anywhere">{f.where}</span>
-                      <span data-testid={`block-reason-finding-severity-${f.where}`} className="rounded-pill bg-surface-muted px-2 py-0.5 text-[0.75rem] text-ink-soft">{f.severity}</span>
-                    </span>
-                    <span data-testid={`block-reason-finding-problem-${f.where}`} className="mt-1 block">{f.problem}</span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          ) : null}
-        </section>
-      ) : null}
-      <section data-testid="block-reason-solution" className="flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-ink [&_svg]:flex-none [&_svg]:text-accent-text">
-        <Icon name="lightbulb" size={20} />
-        <div data-testid="block-reason-solution-body" className="grid min-w-0 gap-2">
-          <h3 data-testid="block-reason-solution-title" className="m-0 text-[0.9375rem] font-semibold text-accent-text">Solução</h3>
-          {count ? (
-            <ol data-testid="block-reason-solution-steps" className="m-0 grid list-decimal gap-2 pl-5">
-              {block.findings.map((f, i) => (
-                <li key={i} data-testid={`block-reason-solution-step-${f.where}`}>{f.fix ?? 'Veja o detalhe técnico.'}</li>
-              ))}
-            </ol>
-          ) : null}
-          <p data-testid="block-reason-next" className="m-0">{block.next}</p>
-        </div>
-      </section>
-      <details data-testid="block-reason-raw">
-        <summary data-testid="block-reason-raw-summary" className="cursor-pointer text-[0.8125rem] font-semibold text-accent-text">Ver detalhe técnico</summary>
-        <pre data-testid="block-reason-raw-text" className={`mt-2 ${RUN_UI.raw}`}>{block.raw}</pre>
-      </details>
-    </div>
   );
 }
 
@@ -598,6 +529,7 @@ const STOPPABLE = new Set(['running', 'paused:quota', 'paused:auth']);
 const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed']);
 
 export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction, testLinks }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction; testLinks?: Record<string, TestLink> }) {
+  const [newSpec, setNewSpec] = useState(false);
   const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
   const state = runState(unique);
   const finished = finishedEvent(unique);
@@ -617,6 +549,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const phaseList = phases(unique);
   const activity = phaseActivity(unique);
   // The trigger gets focus back when the dialog closes.
+  const [readmeOpen, setReadmeOpen] = useState(false);
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
   // A link from the repository dashboard names the task to open: `?task=<id>` opens its dialog once, then the parameter goes.
   const [params, setParams] = useSearchParams();
@@ -806,9 +739,10 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
         {resumeAction?.error ? <p className="error" data-testid="resume-error">{resumeAction.error}</p> : null}
         {detail.locked ? (
           <p className="hint" data-testid="locked-notice">
-            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <Link to={newSpecPath(detail.projectId)}>nova spec no projeto</Link>.
+            Esta execução é somente leitura porque a spec foi concluída. Para a próxima entrega, crie uma <button type="button" className="inline h-auto min-h-0 min-w-0 border-0 bg-transparent p-0 font-[inherit] text-accent-text underline" data-testid="locked-new-spec" onClick={() => setNewSpec(true)}>nova spec no projeto</button>.
           </p>
         ) : null}
+        {newSpec ? <NewSpecDialog projectId={detail.projectId} onClose={() => setNewSpec(false)} /> : null}
         {stopAction?.error ? <p className="error" data-testid="stop-error">{stopAction.error}</p> : null}
         {totalTasks ? (
           <div data-testid="run-progress" className="col-span-full flex items-center gap-4 border-t border-line pt-4 max-md:flex-col max-md:items-stretch max-md:gap-2">
@@ -975,7 +909,14 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 <section className="card" data-testid="readme">
                   {/* The title keeps its width; the path and the button wrap below it on narrow screens. */}
                   <header data-testid="run-readme-head" className="flex-wrap gap-3">
-                    <h2 data-testid="run-readme-title" className="basis-auto">README do projeto</h2>
+                    <h2 data-testid="run-readme-title" className="basis-auto">
+                      {detail.readme ? (
+                        <button type="button" data-testid="readme-toggle" className="m-0 inline-flex h-auto min-w-[auto] items-center gap-2 border-0 bg-transparent p-0 text-inherit [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:bg-transparent" aria-expanded={readmeOpen} aria-controls="readme-body" onClick={() => setReadmeOpen((open) => !open)}>
+                          <span className={`text-ink-soft transition-transform ${readmeOpen ? 'rotate-90' : ''}`}><Icon name="chevron-right" size={16} /></span>
+                          README do projeto
+                        </button>
+                      ) : 'README do projeto'}
+                    </h2>
                     <span data-testid="run-readme-path" className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
                     {readmeAction && !detail.locked ? (
                       <ActionButton className="secondary h-10 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
@@ -985,7 +926,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   </header>
                   {readmeAction?.error ? <p className="error" data-testid="readme-error">{readmeAction.error}</p> : null}
                   {detail.readme ? (
-                    <Markdown source={detail.readme} />
+                    readmeOpen ? <div id="readme-body"><Markdown source={detail.readme} /></div> : null
                   ) : (
                     <p className="hint" data-testid="readme-empty">
                       Nenhum README gerado ainda. O Scrum Master (sm) escreve o resumo do projeto na fase de relatório, ao fim da run.

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { newSpecPath, refinePath } from '../routes.js';
-import { Link, useNavigate } from 'react-router-dom';
+import { refinePath } from '../routes.js';
+import { NewSpecDialog } from '../components/NewSpecDialog.js';
+import { Link } from 'react-router-dom';
 import { chatApi, runApi, type ChatCorrection, type ChatMessage, type ChatUsage, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -92,7 +93,7 @@ export function ChatPage() {
   const [recall, setRecall] = useState<{ index: number; draft: string } | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const navigate = useNavigate();
+  const [newSpec, setNewSpec] = useState(false);
   const current = useRef('');
   current.current = projectId;
 
@@ -206,7 +207,7 @@ export function ChatPage() {
               <Select wrapperClassName="min-w-[14rem] max-md:flex-1" aria-label="Projeto" value={projectId} disabled={asking !== null} onChange={(e) => { setProjectId(e.target.value); setRecall(null); }}>
                 {projects.map((p) => <option data-testid={`chat-project-option-${p.projectId}`} key={p.projectId} value={p.projectId}>{p.name}</option>)}
               </Select>
-              <button data-testid="chat-new-spec" type="button" className="secondary" disabled={!projectId} onClick={() => navigate(newSpecPath(projectId))}>
+              <button data-testid="chat-new-spec" type="button" className="secondary" disabled={!projectId} onClick={() => setNewSpec(true)}>
                 Nova spec
                 <Icon name="plus" size={16} />
               </button>
@@ -278,6 +279,7 @@ export function ChatPage() {
           ) : null}
         </Dialog>
       ) : null}
+      {newSpec ? <NewSpecDialog projectId={projectId} onClose={() => setNewSpec(false)} /> : null}
       {confirmClear ? (
         <ConfirmDialog title="Limpar conversa" subject={project?.name} confirmLabel="Limpar" onConfirm={clear} onCancel={() => setConfirmClear(false)}>
           <p data-testid="chat-clear-note">As mensagens deste projeto serão apagadas. As specs de correção que o chat já abriu continuam existindo.{asking !== null ? " A resposta que está sendo preparada será cancelada." : ""}</p>

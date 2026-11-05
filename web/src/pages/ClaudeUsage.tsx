@@ -147,9 +147,9 @@ export function ClaudeUsagePanel() {
   return (
     <section data-testid="claude-usage-panel" className={`${panel} gap-3`} aria-labelledby="usage-title">
       <div data-testid="claude-usage-title-row" className={sectionTitle}>
-        <h2 data-testid="claude-usage-heading" className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso</h2>
+        <h2 data-testid="claude-usage-heading" className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso de tokens</h2>
         {usage?.available ? <span data-testid="claude-usage-plan" className="text-[0.8125rem] text-ink-soft">{usage.plan}</span> : null}
-        <InfoTip label="Seu uso" text={HELP} />
+        <InfoTip label="Seu uso de tokens" text={HELP} />
       </div>
       {usage ? <UsageBody usage={usage} now={now} /> : failed ? <p data-testid="claude-usage-error" className="error">{REASONS.failed}</p> : <Loading />}
       {jev !== null && (

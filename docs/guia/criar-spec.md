@@ -35,3 +35,7 @@ Na tela de refinamento você revisa os documentos, clica em **Avaliar**, respond
 - Para corrigir algo de uma spec que já foi entregue, use **Relatar problema** na validação (veja "validacao"). Isso reabre a mesma spec com o seu relato.
 - Uma spec concluída fica somente leitura. A próxima entrega começa em uma spec nova.
 - O chat pode abrir sozinho uma spec de correção quando achar que algo sendo feito contraria a spec. Ela aparece como rascunho em refinamento; nada é executado até você iniciar.
+
+## Pedir uma mudança num projeto em andamento
+
+Num projeto que já tem specs, "Nova spec" pede só a descrição do que você quer adicionar ou mudar. Os agentes leem o projeto, medem o impacto no backlog e refinam o pedido sozinhos. Você só responde o que eles não decidem. Quando o pedido fica pronto, a tela mostra o que ele toca, o replanejamento e a trilha até os planos e as tarefas. "Iniciar desenvolvimento" é você quem clica. Se já houver um programa rodando, o pedido entra nele, sem interromper o que está em execução.

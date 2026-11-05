@@ -164,3 +164,7 @@ Status: built behind the flag `TEAMS_AI_DOCS_REPO_LAYOUT` (off by default). The 
 - Built: only the five documents and each spec's `spec.md`, `plan.md` and `task.md` are committed to the documentation repository. Every machine file (JSON, preplan, reports, technical spec) stays on the platform.
 - Built: a commit at each refinement boundary, a closing commit, and an annotated `dev-start/<alias>` tag per authorized spec, which marks where development starts.
 - Built: a monolith keeps the documents in the project repository; microservices keep them in `artefacty`, and the delivery documents (README, RUNBOOK, API) stay in the project hub.
+
+## 21. Pedidos em projeto em desenvolvimento
+
+Desenho em `specs/2026-11-04-teams-ai-add-specs-design.md`. O dono escreve o pedido em texto livre no botão "Nova spec" de um projeto que já tem specs. Os agentes refinam o pedido com o backlog que ele segue, medem o impacto (o que toca, conflita, repete, depende e arrisca), replanejam só o que o pedido toca e deixam o projeto pronto. O time decide tudo sozinho: aceita toda sugestão (inclusive ajustes, stack e design), responde as perguntas e segue o specs.md rejeitado; só salvar nos repositórios e "Iniciar" ficam com o dono. Se um programa já roda, o pedido entra nele e a mudança fica no histórico do programa. "Iniciar" é sempre o clique do dono.

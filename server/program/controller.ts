@@ -1,7 +1,7 @@
 /**
  * R11.4: the program controller. It takes a refined backlog from `planned` to delivered, in rank and dependency order,
  * up to `MAX_PARALLEL` specs at once. Two specs run together only when the SM's conflict map says they touch different
- * code, and never before the first spec (the project's foundation) is done; the clone and the deploy stack are guarded by
+ * code, and never before the first spec (the project's foundation) is delivered; the clone and the deploy stack are guarded by
  * file locks in the runs themselves. The ledger (`Program`) is the only state: `tick` reads it, settles what is in flight, starts the next item and
  * writes it back before it launches anything, so a restart finds the claim and adopts the run instead of starting another.
  * A failed spec is isolated: its dependents wait while it is repaired (R11.14, bounded by MAX_REPAIRS) and are blocked once it stays failed; everything independent of it keeps going.
@@ -9,7 +9,7 @@
  * A spec whose code is already on main when it fails for good (a deploy) ends `partial`, and its dependents still run.
  */
 
-/** `delivered`: its run delivered it and the owner validates it; the program completes nothing on its own. */
+/** `delivered`: its run delivered it, its code is on main, and the owner validates it; the program completes nothing on its own. */
 export type ItemStatus = 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
 
 export interface ProgramItem {
@@ -41,6 +41,8 @@ export interface ProgramItem {
   retryAt?: string;
   /** Waits after an environment failure so far; absent in a ledger written before them. */
   waits?: number;
+  /** The draft that owns the spec, when a follow-on request joined this program; absent means this ledger's own draft. */
+  draftId?: string;
 }
 
 export interface Program {
@@ -49,6 +51,9 @@ export interface Program {
   status: 'running' | 'finished';
   items: ProgramItem[];
   updatedAt: string;
+  /** The follow-on requests that joined this program, oldest first: what each added and re-ordered. */
+  /** Each request that joined the program: its request id ("pedido-<n>"), its draft, and what it added and moved. */
+  history?: Array<{ at: string; requestId: string; draftId: string; added: string[]; reranked: string[] }>;
 }
 
 export type RunOutcome =
@@ -114,6 +119,36 @@ export function newProgram(draftId: string, entries: readonly ProgramEntry[], no
 }
 
 /**
+ * A follow-on request joins the program that runs: the specs it adds are queued, the pending ones take its order and dependencies
+ * and are owned by the request's draft, and what started or delivered stays as it is. The change is kept in the ledger's history.
+ */
+export function extendProgram(program: Program, entries: readonly ProgramEntry[], requestDraftId: string, now: Date): Program {
+  const p = structuredClone(program);
+  const at = now.toISOString();
+  const added: string[] = [];
+  const reranked: string[] = [];
+  for (const e of entries) {
+    const item = p.items.find((i) => i.specId === e.specId);
+    if (!item) {
+      const { done, ...rest } = e;
+      p.items.push({ ...rest, dependsOn: [...e.dependsOn], status: done ? 'done' : 'pending', runId: null, completeRunId: null, startedAt: null, finishedAt: done ? at : null, reason: null, resumes: 0, costUsd: null, draftId: requestDraftId });
+      added.push(e.specId);
+    } else if (item.status === 'pending') {
+      const moved = item.rank !== e.rank || JSON.stringify(item.dependsOn) !== JSON.stringify(e.dependsOn);
+      Object.assign(item, { rank: e.rank, dependsOn: [...e.dependsOn], draftId: requestDraftId, ...(e.conflictsWith ? { conflictsWith: e.conflictsWith } : {}) });
+      if (moved) reranked.push(e.specId);
+    }
+  }
+  p.items.sort((a, b) => a.rank - b.rank);
+  if (added.length > 0 || reranked.length > 0) p.status = 'running';
+  // The draft id ends with the request's "-pedido-<n>": the request id is that part of it.
+  const requestId = requestDraftId.slice(requestDraftId.lastIndexOf('-pedido-') + 1);
+  p.history = [...(p.history ?? []), { at, requestId, draftId: requestDraftId, added, reranked }];
+  p.updatedAt = at;
+  return p;
+}
+
+/**
  * R11.4 continuation: clears a `failed` item back to `pending` so the next `tick()` gives it another try, and
  * un-blocks whatever was `blocked` on it (or transitively on those), letting `tick()`'s own block-detection pass
  * re-derive who is still blocked by another cause. No cause classification, no replanning: a human or a future Jev
@@ -153,8 +188,8 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
 }
 
 const IN_FLIGHT: ReadonlySet<ItemStatus> = new Set(['running', 'completing']);
-/** Its code is on main: a partial spec counts as delivered, so its dependents and the next free slot go ahead. */
-const isDelivered = (status: ItemStatus | undefined) => status === 'done' || status === 'partial';
+/** Its code is on main: a delivered or partial spec lets its dependents and the next free slot go ahead. */
+const isDelivered = (status: ItemStatus | undefined) => status === 'delivered' || status === 'done' || status === 'partial';
 /** Not settled yet: it still runs or will run, so its dependents wait and the program goes on. */
 const LIVE: ReadonlySet<ItemStatus> = new Set(['pending', 'waiting', 'delivered', ...IN_FLIGHT]);
 /** Two items may run together only when both carry a conflict map and neither names the other. */
@@ -304,8 +339,8 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     }
   }
 
-  // Fill the free slots: prioritized items first, then by rank, each with its dependencies done and no conflict in flight.
-  // Until one spec is done, one runs alone: the first spec lays the project's foundation.
+  // Fill the free slots: prioritized items first, then by rank, each with its dependencies delivered and no conflict in flight.
+  // Until one spec is delivered, one runs alone: the first spec lays the project's foundation.
   for (;;) {
     const inFlight = p.items.filter((i) => IN_FLIGHT.has(i.status));
     const slots = p.items.some((i) => isDelivered(i.status)) ? MAX_PARALLEL : 1;

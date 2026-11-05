@@ -144,12 +144,26 @@ describe('backlog events', () => {
   it('leaves a journal without backlog events with no backlog', () => {
     expect(reduceRefineEvents(cycle(1)).backlog).toBeNull();
   });
+  it('a request made in a project already in development marks its draft as the request, with its text and title', () => {
+    const at = '2026-11-04T10:00:00.000Z';
+    const request = { requestId: 'pedido-1', title: 'Exportar relatório', text: 'Exportar o relatório mensal em PDF.', at };
+    expect(reduceRefineEvents([{ type: RefineEvent.RequestReceived, data: request }]).extension).toEqual(request);
+    expect(reduceRefineEvents([]).extension).toBeUndefined();
+  });
+  it('keeps the impact of a request with the outline it was made from, and what it broke', () => {
+    const impact = reduceRefineEvents([{ type: RefineEvent.ImpactDerived, data: { cycle: 2, inputHash: 'h1', impact: null, issues: ['o impacto cita a spec x'] } }]).impact;
+    expect(impact).toEqual({ inputHash: 'h1', impact: null, issues: ['o impacto cita a spec x'], cycle: 2 });
+    expect(reduceRefineEvents([]).impact).toBeUndefined();
+  });
   it('enabling is idempotent and only makes an already evaluated session stale', () => {
     const fresh = reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: {} }]);
     expect(fresh.backlog).toMatchObject({ enabled: true, items: [], project: null });
     expect(fresh.stale).toBe(false);
     expect(fresh.backlog?.keyIds).toBeUndefined();
     expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBe(true);
+    // A follow-on backlog takes the id scheme and the id source of the main it came from.
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: false, idBase: 'shop-001' } }]).backlog).toMatchObject({ enabled: true, idBase: 'shop-001' });
+    expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: { keyIds: false, idBase: 'shop-001' } }]).backlog?.keyIds).toBeUndefined();
     // Re-enabling an older backlog never renames its specs.
     expect(reduceRefineEvents([{ type: RefineEvent.BacklogEnabled, data: {} }, { type: RefineEvent.BacklogEnabled, data: { keyIds: true } }]).backlog?.keyIds).toBeUndefined();
     const evaluated = reduceRefineEvents([...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: allGreen, questions: [], discardedPatches: [] } }, { type: RefineEvent.BacklogEnabled, data: {} }]);

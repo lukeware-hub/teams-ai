@@ -12,6 +12,7 @@ export interface ActivityItem {
 
 export const STEP_DOING: Record<string, string> = {
   'tech-spec': 'escrevendo a especificação técnica',
+  impact: 'medindo o impacto do pedido sobre o backlog',
   coverage: 'conferindo a cobertura dos critérios de aceite',
   plan: 'montando o plano de tarefas',
   'services-plan': 'montando o plano de tarefas dos serviços',

@@ -5,12 +5,11 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { describe, expect, it } from 'vitest';
 import { ExecutionRedirect, NotFound } from './App.js';
 import { Breadcrumb } from './components/Breadcrumb.js';
-import { afterStartPath, executionPath, newSpecPath, projectPath, refinePath, repoPath, runPath, validationPath } from './routes.js';
+import { afterStartPath, executionPath, projectPath, refinePath, repoPath, runPath, validationPath } from './routes.js';
 
 describe('route builders', () => {
   it('build every destination from ids', () => {
     expect(projectPath('hello-word')).toBe('/projects/hello-word');
-    expect(newSpecPath('hello-word')).toBe('/projects/hello-word?novaSpec=1');
     expect(executionPath('hello-word')).toBe('/projects/hello-word#execucao');
     expect(repoPath('p', 'api')).toBe('/projects/p/api');
     expect(refinePath('p', 's')).toBe('/refine/p/s');

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { listProjects, listRuns, readProject, runLiveness, SAFE_ID } from '../../server/api/run-index.js';
+import { listProjects, listRuns, readProject, runCost, runLiveness, SAFE_ID } from '../../server/api/run-index.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
@@ -53,6 +53,13 @@ describe('run index', () => {
     expect(project.projectId).toBe('hello-app');
     expect(specs.map((s) => [s.specId, s.status])).toEqual([['hello-001', 'running']]);
     await expect(readProject(home)).rejects.toThrow(/project\.json/);
+  });
+
+  it('runCost is the cost of the run\'s state snapshot, and zero before the first one', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.mkdir(path.join(runs, 'hello-001-r2'), { recursive: true });
+    expect(await runCost(runs, 'hello-001-r1')).toBe(0.25);
+    expect(await runCost(runs, 'hello-001-r2')).toBe(0);
   });
 
   it('a run a human reopened shows running again until its next RUN_FINISHED', async () => {
@@ -204,7 +211,7 @@ describe('run index', () => {
     expect((await listRuns(deps(), 'hello-app')).map((r) => r.locked)).toEqual([false, false]);
   });
 
-  it('lists a project registered in several dirs once: each spec takes the status of its own refinement dir', async () => {
+  it('lists a project registered in several dirs once: each spec takes its most advanced copy', async () => {
     // A started refinement registers its own dir: the second spec's dir also carries a copy of the first spec.
     const second = path.join(home, 'refine', 'hello-002');
     await fs.cp(HELLO, second, { recursive: true });
@@ -222,7 +229,7 @@ describe('run index', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.dir).toBe(second); // the newest dir carries the latest project docs
     expect(rows[0]!.specs).toEqual([
-      { specId: 'hello-001', status: 'running', activeRunId: null },
+      { specId: 'hello-001', status: 'awaiting-validation', activeRunId: null },
       { specId: 'hello-002', status: 'awaiting-validation', activeRunId: null },
     ]);
   });
@@ -237,6 +244,27 @@ describe('run index', () => {
     const d = deps();
     d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: [{ dir: clone }, { dir: own }] });
     expect((await listProjects(d))[0]!.specs).toEqual([{ specId: 'hello-001', status: 'awaiting-validation', activeRunId: null }]);
+  });
+
+  it('a spec with no refinement dir of its own takes its most advanced copy, whichever dir registered first', async () => {
+    // A follow-on backlog's specs have no dir named after them: the copy a run moved on is the one that speaks.
+    const planned = path.join(home, 'refine', 'shop-pedido-1');
+    const running = path.join(home, 'refine', 'shop-pedido-2');
+    await fs.cp(HELLO, planned, { recursive: true });
+    await fs.cp(HELLO, running, { recursive: true });
+    const write = async (dir: string, status: string) => {
+      const file = path.join(dir, 'docs', 'specs', 'hello-001', 'spec.json');
+      await fs.writeFile(file, JSON.stringify({ ...JSON.parse(await fs.readFile(file, 'utf8')), status }));
+    };
+    await write(planned, 'planned');
+    await write(running, 'running');
+    const specsWith = async (dirs: string[]) => {
+      const d = deps();
+      d.cfg = loadConfig({ ...JSON.parse(JSON.stringify(d.cfg)), projects: dirs.map((dir) => ({ dir })) });
+      return (await listProjects(d))[0]!.specs;
+    };
+    expect(await specsWith([planned, running])).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
+    expect(await specsWith([running, planned])).toEqual([{ specId: 'hello-001', status: 'running', activeRunId: null }]);
   });
 
   it('SAFE_ID rejects path tricks', () => {

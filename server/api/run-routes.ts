@@ -16,7 +16,7 @@ import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
-import { buildLocatedProjectGraph, buildProjectGraph, locateProject } from '../knowledge/project-graph.js';
+import { buildLocatedProjectGraphOnce, buildProjectGraph, locateProject } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
@@ -35,7 +35,7 @@ import { readProjectDocs } from '../git/main-docs.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, DRAIN_STOP_MS, isAlive, NO_DRAIN_STOP_MS, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, progressOf, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { probeProcess, type ProbeProcess } from './process-identity.js';
@@ -45,7 +45,7 @@ import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
-import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews } from './repository-dashboard.js';
+import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews, type DashboardSpecInput } from './repository-dashboard.js';
 import { graphLinkResolver } from './graph-links.js';
 import { buildGraphView, linkNodes } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -265,12 +265,17 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   /** Every draft registers its own root, so one project can have several directories: the spec decides which holds it. */
   const projectDir = async (idx: IndexDeps, projectId: string, specId?: string): Promise<string> => {
     let first: string | null = null;
+    let best: { dir: string; progress: number } | null = null;
     for (const { dir } of idx.cfg.projects) {
       const read = await readProject(dir).catch(() => null);
       if (read?.project.projectId !== projectId) continue;
       first ??= dir;
-      if (specId === undefined || read.specs.some((s) => s.specId === specId)) return dir;
+      if (specId === undefined) return dir;
+      // Of the copies of the spec, the one whose run got furthest is the project's.
+      const copy = read.specs.find((s) => s.specId === specId);
+      if (copy && (best === null || progressOf(copy.status) > best.progress)) best = { dir, progress: progressOf(copy.status) };
     }
+    if (best !== null) return best.dir;
     if (first !== null) return first;
     throw new HttpError(404, `unknown project ${projectId}`);
   };
@@ -415,8 +420,6 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   // One writer per spec: start, complete and readme share this key, so none of them launches while another one does.
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
-  // Projects whose code graph is being built right now: one build at a time per project.
-  const rebuilding = new Set<string>();
   /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
   const repoSource = async (projectId: string) => {
     const idx = await index();
@@ -430,7 +433,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // Each run's journal is read once here; the repository pages and the dashboard reduce the same events.
     const repoRuns = await loadRepoRuns(runsDir(idx), runs);
     const journals = new Map(repoRuns.map((r) => [r.runId, r.events] as const));
-    if (!src) return { src, runs, runsDir: runsDir(idx), journals, repoRuns };
+    if (!src) return { src, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists: new Map<string, DashboardSpecInput['taskList']>() };
     const settled = new Set(current.filter((run) => SETTLED_RUN.has(run.status)).map((run) => run.specId));
     const programStops = ((await deps.stoppedItems?.(projectId).catch(() => [])) ?? []).filter((stop) => !settled.has(stop.specId));
     // The project's drafts hold the questions and the secrets its specs need: a blocking question is open until answered.
@@ -467,18 +470,25 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     // A spec's tasks and delivered tasks come from its journals, the count the dashboard shows.
     const views = new Map(specViews(src.specs, repoRuns).specs.map((v) => [v.specId, v] as const));
     src.specs = src.specs.map((spec) => (views.has(spec.specId) ? { ...spec, tasks: views.get(spec.specId)!.total, delivered: views.get(spec.specId)!.delivered } : spec));
-    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns };
+    // A spec no run has started lists its tasks in its task.md, the list the dashboard counts.
+    const taskLists = new Map<string, DashboardSpecInput['taskList']>();
+    for (const spec of src.specs) {
+      if (spec.status === 'done' || runs.some((r) => r.specId === spec.specId)) continue;
+      const text = await fs.readFile(path.join(row.dir, 'docs', 'specs', spec.specId, 'task.md'), 'utf8').catch(() => '');
+      taskLists.set(spec.specId, [...text.matchAll(/^## Task (\d+): (.+)$/gm)].map((m) => ({ taskId: `T${m[1]}`, title: m[2]!.trim() })));
+    }
+    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists };
   };
   // The dashboard's input for one repository; the summary and each paged table read the same input.
   const dashboardInput = async (params: Record<string, string>) => {
     const name = params.repo!;
     if (!ID_PATTERNS.SLUG.test(name)) throw new HttpError(400, `invalid repository ${name}`);
-    const { src, repoRuns } = await repoSource(params.projectId!);
+    const { src, repoRuns, taskLists } = await repoSource(params.projectId!);
     const detail = src ? repositoryDetail(src, name) : null;
     if (!detail) throw new HttpError(404, `unknown repository ${name}`);
     const ids = new Set(detail.rows.map((r) => r.specId));
     return {
-      specs: detail.rows,
+      specs: detail.rows.map((row) => ({ ...row, taskList: taskLists.get(row.specId) ?? [] })),
       runs: repoRuns.filter((r) => ids.has(r.specId)),
       questions: detail.questions.map((q) => q.text),
       missingSecrets: detail.missingSecrets,
@@ -545,18 +555,16 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const projectId = params.projectId!;
         if (!deps.graphify) throw new HttpError(501, 'o graphify não está disponível neste servidor');
-        if (rebuilding.has(projectId)) throw new HttpError(409, 'o grafo já está sendo construído');
         const cfg = (await index()).cfg;
         const located = await locateProject(cfg, projectId);
         if (!located) throw new HttpError(404, `unknown project ${projectId}`);
-        rebuilding.add(projectId);
+        let built: boolean;
         try {
-          await buildLocatedProjectGraph(deps.graphify, located);
+          built = await buildLocatedProjectGraphOnce(deps.graphify, located);
         } catch (err) {
           throw new HttpError(500, `não foi possível construir o grafo: ${(err as Error).message}`);
-        } finally {
-          rebuilding.delete(projectId);
         }
+        if (!built) throw new HttpError(409, 'o grafo já está sendo construído');
         json(200, { ok: true });
       },
     },

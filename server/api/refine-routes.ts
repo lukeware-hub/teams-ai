@@ -87,6 +87,15 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${P}/projects/:projectId/requests`,
+      handler: wrap(async ({ params, body, json }) => {
+        const b = await body();
+        const session = await registry.addRequest(params.projectId!, str(b, 'description'));
+        json(200, { ...(await idOf(session)), mode: session.state.extension ? 'backlog' : 'single' });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${P}/projects/:projectId/specs/:specId/continue`,
       handler: wrap(async (ctx) => {
         const report = str(await optionalBody(ctx), 'report', true);
@@ -156,7 +165,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/autopilot`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        resolveEverything(s).catch(logRunFailure(params));
+        // A follow-on request is resolved by the team alone: saving in the repositories stays with the owner.
+        resolveEverything(s, { byOwner: s.state.extension === undefined }).catch(logRunFailure(params));
         json(202, { ok: true });
       }),
     },

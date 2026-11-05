@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildSpecsIndex, specIdOf } from '../../server/refine/specs-index.js';
+import { buildSpecsIndex, idSchemeOf, specIdOf } from '../../server/refine/specs-index.js';
 import type { BacklogState } from '../../server/refine/state.js';
+
+const item = (key: string, rank: number, dependsOn: string[] = []) => ({ key, title: 't', epic: 'e', scope: 's', priority: 'P1' as const, rationale: 'r', dependsOn, sources: [], size: 'M' as const, rank });
 
 const backlog: Pick<BacklogState, 'epics' | 'items'> = {
   epics: [{ key: 'core', title: 'Núcleo' }, { key: 'fin', title: 'Financeiro' }],
@@ -48,5 +50,23 @@ describe('buildSpecsIndex', () => {
     expect(specIdOf('order-service', 'order-service', true)).toBe('order-service-order-service');
     const index = buildSpecsIndex('order-service', { epics: [], items: [{ key: 'user-login', title: 't', epic: 'e', scope: 's', priority: 'P1', rationale: 'r', dependsOn: [], sources: [], size: 'M', rank: 1 }], keyIds: true });
     expect(index.specs.map((s) => s.specId)).toEqual(['user-login']);
+  });
+});
+
+describe('idBase: a follow-on backlog keeps the ids of the main it came from', () => {
+  it('names each spec and dependency after the id source, while the index keeps the follow-on draft id', () => {
+    const index = buildSpecsIndex('shop-pedido-1', { epics: [], items: [item('login', 1), item('cart', 2, ['login'])], keyIds: false, idBase: 'shop-001' });
+    expect(index.draftId).toBe('shop-pedido-1');
+    expect(index.specs.map((s) => [s.specId, s.dependsOn])).toEqual([['shop-001-login', []], ['shop-001-cart', ['shop-001-login']]]);
+  });
+
+  it('reads which scheme a main index holds, and refuses an index that mixes both', () => {
+    const legacy = buildSpecsIndex('shop-001', { epics: [], items: [item('login', 1)] });
+    expect(idSchemeOf(legacy)).toEqual({ keyIds: false, idBase: 'shop-001' });
+    const readable = buildSpecsIndex('shop-001', { epics: [], items: [item('login', 1)], keyIds: true });
+    expect(idSchemeOf(readable)).toEqual({ keyIds: true });
+    const mixed = buildSpecsIndex('shop-001', { epics: [], items: [item('login', 1), item('cart', 2)] });
+    mixed.specs[1] = { ...mixed.specs[1]!, specId: 'cart' };
+    expect(idSchemeOf(mixed)).toBeNull();
   });
 });

@@ -3,7 +3,7 @@ import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashb
 import type { GraphView } from '@server/api/repository-graph.js';
 export type { GraphView };
 import type { Page, PageRequest } from '@server/api/paging.js';
-export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, DashboardTaskRow, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 export type { Page, PageRequest } from '@server/api/paging.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
@@ -542,6 +542,10 @@ export interface RefineState {
   error: string | null;
   runId: string | null;
   backlog?: BacklogView | null;
+  /** The owner's request this draft follows up, with the outline it followed as main had it. */
+  extension?: { requestId: string; title: string; text: string; at: string; before?: Array<{ key: string; rank: number; dependsOn: string[] }> };
+  /** The SM's impact of the request, with the outline it was made from; `issues` names what it broke. */
+  impact?: { inputHash: string; impact: RequestImpact | null; issues: string[] };
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
   /** The backlog key a continued spec came from, which names its plan feature folder. */
   featureKey?: string;
@@ -615,10 +619,28 @@ export interface SpecsVerdictView {
   at: string | null;
 }
 
+/** What a request does to the backlog it follows, as the SM measured it. */
+export interface RequestImpact {
+  summary: string;
+  affected: Array<{ kind: 'spec' | 'doc' | 'architecture' | 'decision'; ref: string; effect: string; action: 'adjust' | 'review' | 'none' }>;
+  conflicts: Array<{ a: string; b: string; reason: string; resolution: string }>;
+  duplicates: Array<{ newKey: string; existing: string; verdict: 'reuse' | 'distinct'; reason: string }>;
+  dependencies: Array<{ from: string; to: string; reason: string }>;
+  risks: Array<{ text: string; severity: 'low' | 'medium' | 'high'; mitigation: string }>;
+}
+
+/** The trail of a request: each spec, whether its sources cite the request section, and whether it has its plan and task list. */
+export interface RequestTrace {
+  heading: string;
+  specs: Array<{ key: string; specId: string; citesRequest: boolean; planned: boolean; tasked: boolean; verdict: 'ok' | 'failed' | 'pending' }>;
+}
+
 export interface Snapshot {
   projectId: string;
   specId: string;
   state: RefineState;
+  /** The trail of a follow-on request; absent for other sessions. */
+  trace?: RequestTrace | null;
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   /** The sha256 of each document on disk: a save sends the one its text was typed over. */
   hashes?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>;
@@ -651,6 +673,8 @@ export interface DraftRow {
   specId: string;
   state: RefineStatus;
   registered: boolean;
+  /** Made by a request in a project already in development. */
+  extension?: boolean;
 }
 
 export interface NameRequest {
@@ -671,6 +695,7 @@ export const refineApi = {
   closingRepositories: (projectId: string, specId: string, req: PageRequest) => fetch(`${R}/refine/${encodeURIComponent(projectId)}/${encodeURIComponent(specId)}/closing/repositories?${pageQuery(req)}`).then((r) => json<Page<ClosingSummary['repositories'][number]>>(r)),
   suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
+  request: (projectId: string, description: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/requests`, { description }).then((r) => json<{ sessionId: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   restartSpec: (projectId: string, specId: string) =>

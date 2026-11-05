@@ -25,7 +25,9 @@ export interface DocsSyncInput {
   style: Style;
   exec: Exec;
   /** The specs the draft owns, read at each flush. */
-  aliases: () => SpecAlias[];
+  aliases: () => SpecAlias[] | Promise<SpecAlias[]>;
+  /** The specs main already started, whose folders the store keeps as main has them. */
+  frozen?: () => Promise<string[]>;
   /** The secrets directories whose values a flush refuses to commit; the project's and the platform's by default. */
   secretDirs?: () => Promise<string[]>;
   /** The timer of the push debounce; the system timer by default. */
@@ -184,14 +186,14 @@ export class DocsSync {
   private async retireNow(): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
-    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft));
+    const flushed = await retireAliases(store, draft.specId, await baseAliases(draft), await draftBases(draft));
     if (flushed.sha !== null) await this.push(store);
   }
 
   private async closeNow(aliases: readonly string[]): Promise<void> {
     const { ws, draft, style, exec } = this.input;
     const store = await openStore(ws, style, exec);
-    const files = await projectDraftFiles(draft, style, this.input.aliases());
+    const files = await projectDraftFiles(draft, style, await this.input.aliases());
     const projection = { draftId: draft.specId, stepKey: 'close', scope: 'refine', label: 'refinement closed', files, bases: await draftBases(draft), known: await this.knownSecrets() };
     await closeRefinement(ws, store, projection, { summary: `development starts: ${aliases.join(', ')}`, aliases });
     this.labels = [];
@@ -273,9 +275,9 @@ export class DocsSync {
     try {
       const store = await openStore(this.input.ws, this.input.style, this.input.exec);
       const seen = { pending: this.pending, labels: this.labels.length };
-      const files = await projectDraftFiles(this.input.draft, this.input.style, this.input.aliases());
+      const files = await projectDraftFiles(this.input.draft, this.input.style, await this.input.aliases());
       const label = [...new Set(this.labels.slice(0, seen.labels))].join(', ') || FALLBACK_LABEL;
-      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft), known: await this.knownSecrets() });
+      const flushed = await commitProjection(store, { draftId: this.input.draft.specId, stepKey: 'docs', scope: 'refine', label, files, bases: await draftBases(this.input.draft), known: await this.knownSecrets(), frozen: (await this.input.frozen?.()) ?? [] });
       const refused = [...flushed.diverged, ...flushed.aliasTaken];
       const immediate = this.labels.slice(0, seen.labels).some((name) => IMMEDIATE_LABELS.includes(name));
       if (refused.length === 0) {

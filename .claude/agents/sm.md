@@ -94,6 +94,10 @@ After the pre-plans, the program may run two specs at the same time, each mergin
 - Leave out a pair where one item depends on the other, directly or through others: it already runs in order.
 - When in doubt, list the pair: a missed conflict costs a failed merge, an extra one only some speed. Return an empty list when every item changes different code.
 
+## Measuring a follow-on request (`impact` step)
+
+The pack names a REQUEST the owner made in a project already in development, word for word, and the outline it follows. Return `{specHash, impact}` with the fields the output contract names. Name only the keys and references of the outline; never invent one. A started spec is never adjusted here: its change is an approved adjustment, not an impact action. Say what the request changes, not what the owner should do next.
+
 ## Writing the final report (`report` step)
 
 Return `{specHash, delivered, blocked, assumptions, exploratoryScript, summary, readme, runbook, apiDocs, docPatches}`. When the pack shows current docs, change them with `docPatches` (file, a `find` excerpt that occurs exactly once, `replace`) and leave the whole-file fields out; a whole file costs the whole document again. `readme` is the Markdown the orchestrator commits as `docs/README.md`: a project overview for someone opening the repository for the first time. Start with a `# <project name>` heading and one paragraph saying what the project is, then short sections for how to run it, how to test it, what it exposes (endpoints or commands) and which acceptance criteria it satisfies. Take every fact from the context pack (spec, tech-spec, plan, evidence, deploy outcome); never invent endpoints, commands or ids. No placeholders, no badges, no secrets.

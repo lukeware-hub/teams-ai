@@ -1,13 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
-import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
+import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runCost, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import { parseRunId } from '../core/ids.js';
 import type { Decider } from '../decide/decider.js';
-import type { DecisionRecord } from '../decide/types.js';
+import type { AttemptOutcome, DecisionAttempt, DecisionRecord } from '../decide/types.js';
 import { classifyFailure } from '../decide/decisions/failure-cause.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
@@ -15,7 +16,7 @@ import { RunEvent } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { loadEvents } from '../store/event-store.js';
 import { writeRepairNotes } from './repair-notes.js';
-import { newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type ProgramItem, type RepairVerdict, type RunOutcome } from './controller.js';
+import { extendProgram, newProgram, prioritizeItem, retryItem, tick, type Program, type ProgramEffects, type ProgramEntry, type ProgramItem, type RepairVerdict, type RunOutcome } from './controller.js';
 
 export interface ProgramServiceDeps {
   cfg: () => Promise<Config>;
@@ -43,13 +44,19 @@ export interface ProgramDecision {
   decisionId: string;
   /** Who answered: `jev`, `local`, `claude`, or null when none did. */
   backend: string | null;
+  /** Whether a model was asked and failed, or the Jev key is missing; never true for an answered decision. */
+  unanswered: boolean;
   escalated: boolean;
   answers: Array<{ question: string; value: string | number; confidence: number | null }>;
 }
 interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
 
+const FAILED_ASK: readonly AttemptOutcome[] = ['unavailable', 'invalid'];
+/** A backend that was called and failed, or the Jev that is needed and has no key. An unsure answer is not a failure. */
+const failedAsk = (a: DecisionAttempt): boolean => FAILED_ASK.includes(a.outcome) || (a.backend === 'jev' && a.outcome === 'missing-backend');
+
 const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
-  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, escalated: r.escalated,
+  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, unanswered: r.backend === null && r.attempts.some(failedAsk), escalated: r.escalated,
   answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
 });
 
@@ -66,9 +73,15 @@ export async function readProgram(draftRoot: string): Promise<Program | null> {
 
 const writeProgram = (draftRoot: string, p: Program): Promise<void> => writeFileAtomic(programFile(draftRoot), `${JSON.stringify(p, null, 2)}\n`);
 
+/** Where a draft whose specs joined another draft's program says which ledger runs them. */
+const joinedFile = (draftRoot: string): string => path.posix.join(draftRoot, 'program-joined.json');
+
 /** Runs of a program, one tick at a time per draft: the ledger is written by whoever holds the tick. */
 export class ProgramService {
   private readonly ticking = new Set<string>();
+
+  /** The last operation queued on each ledger, so the next one waits for it. */
+  private readonly locks = new Map<string, Promise<unknown>>();
 
   /** When this server started: a run launched before it died in the restart, not on its own. */
   private readonly bootedAt = Date.now();
@@ -90,8 +103,34 @@ export class ProgramService {
     return (await this.tick(projectId, draftId)) ?? (await readProgram(root))!;
   }
 
+  /** The draft whose ledger runs this draft's specs: its own, or the owner's when a follow-on request joined that program. */
+  private async ledgerOf(projectId: string, draftId: string): Promise<string> {
+    const text = await fs.readFile(joinedFile(await this.deps.draftRoot(projectId, draftId)), 'utf8').catch(() => null);
+    return text === null ? draftId : (JSON.parse(text) as { ledger: string }).ledger;
+  }
+
   async read(projectId: string, draftId: string): Promise<Program | null> {
-    return readProgram(await this.deps.draftRoot(projectId, draftId));
+    return readProgram(await this.deps.draftRoot(projectId, await this.ledgerOf(projectId, draftId)));
+  }
+
+  /** A follow-on request joins the program that runs: its specs enter the owner's ledger, and the request's draft points to that ledger. */
+  async extend(projectId: string, ownerDraftId: string, requestDraftId: string, entries: readonly ProgramEntry[]): Promise<Program> {
+    return this.locked(`${projectId}/${ownerDraftId}`, async () => {
+      const root = await this.deps.draftRoot(projectId, ownerDraftId);
+      const program = await readProgram(root);
+      if (program === null) throw new RangeError(`no program for ${projectId}/${ownerDraftId}`);
+      await writeProgram(root, extendProgram(program, entries, requestDraftId, this.now()));
+      await writeFileAtomic(joinedFile(await this.deps.draftRoot(projectId, requestDraftId)), `${JSON.stringify({ ledger: ownerDraftId })}\n`);
+      await this.deps.register(root);
+      return (await this.tickNow(projectId, ownerDraftId)) ?? (await readProgram(root))!;
+    });
+  }
+
+  /** Runs `task` after the ones queued on the same ledger: a join, a reorder and a retry never write one ledger at once. */
+  private locked<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const run = (this.locks.get(key) ?? Promise.resolve()).then(task);
+    this.locks.set(key, run.catch(() => undefined));
+    return run;
   }
 
   /** What the journals of an item's runs say: its pull requests, why and until when a run waits, and the System 1 decisions. */
@@ -119,16 +158,28 @@ export class ProgramService {
     return facts;
   }
 
-  /** The ledger with each item's pull requests, its pause, and whether its run lost its process. */
+  /** What all the runs of each spec cost in total, read as the runs table reads them, so the program and the table agree. */
+  private async specSpend(projectId: string, runs: string): Promise<Map<string, number>> {
+    const spend = new Map<string, number>();
+    for (const name of await fs.readdir(runs).catch(() => [] as string[])) {
+      const parsed = parseRunId(name);
+      if (!parsed || (parsed.projectId !== null && parsed.projectId !== projectId)) continue;
+      spend.set(parsed.specId, (spend.get(parsed.specId) ?? 0) + (await runCost(runs, name)));
+    }
+    return spend;
+  }
+
+  /** The ledger with each item's cost and pull requests, its pause, and whether its run lost its process. */
   async view(projectId: string, draftId: string): Promise<ProgramView | null> {
     const program = await this.read(projectId, draftId);
     if (program === null) return null;
     const idx = await this.index();
     const runs = runsDirOf(idx);
+    const spend = await this.specSpend(projectId, runs);
     const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
       const { prs, pause } = await this.runFacts(item, runs);
       const lost = await this.lostRun(item, idx);
-      return { ...item, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
+      return { ...item, costUsd: spend.get(item.specId) ?? item.costUsd, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
     }));
     return { ...program, items };
   }
@@ -141,36 +192,50 @@ export class ProgramService {
     return row?.status === 'interrupted' || row?.status === 'unknown' ? runId : null;
   }
 
-  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many asked nobody answered. */
+  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many were asked and nobody answered. */
   async decisions(projectId: string, draftId: string, limit = 100): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     const program = await this.read(projectId, draftId);
     if (program === null) return { decisions: [], unanswered: 0 };
     const runs = runsDirOf(await this.index());
     const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
     const answered = all.filter((d) => d.backend !== null);
-    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered: all.length - answered.length };
+    const unanswered = all.filter((d) => d.unanswered).length;
+    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered };
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */
   async prioritize(projectId: string, draftId: string, specId: string): Promise<Program> {
-    const root = await this.deps.draftRoot(projectId, draftId);
-    const program = await readProgram(root);
-    if (program === null) throw new RangeError(`no program for ${projectId}/${draftId}`);
-    await writeProgram(root, prioritizeItem(program, specId, this.now()));
-    return (await this.tick(projectId, draftId)) ?? (await readProgram(root))!;
+    const owner = await this.ledgerOf(projectId, draftId);
+    return this.locked(`${projectId}/${owner}`, async () => {
+      const root = await this.deps.draftRoot(projectId, owner);
+      const program = await readProgram(root);
+      if (program === null) throw new RangeError(`no program for ${projectId}/${owner}`);
+      await writeProgram(root, prioritizeItem(program, specId, this.now()));
+      return (await this.tickNow(projectId, owner)) ?? (await readProgram(root))!;
+    });
   }
 
   /** R11.4 continuation: clears a failed item back to pending (and un-blocks its dependents) and takes a tick. */
   async retry(projectId: string, draftId: string, specId: string): Promise<Program> {
-    const root = await this.deps.draftRoot(projectId, draftId);
-    const program = await readProgram(root);
-    if (program === null) throw new RangeError(`no program for ${projectId}/${draftId}`);
-    await writeProgram(root, retryItem(program, specId, this.now()));
-    return (await this.tick(projectId, draftId)) ?? (await readProgram(root))!;
+    const owner = await this.ledgerOf(projectId, draftId);
+    return this.locked(`${projectId}/${owner}`, async () => {
+      const root = await this.deps.draftRoot(projectId, owner);
+      const program = await readProgram(root);
+      if (program === null) throw new RangeError(`no program for ${projectId}/${owner}`);
+      await writeProgram(root, retryItem(program, specId, this.now()));
+      return (await this.tickNow(projectId, owner)) ?? (await readProgram(root))!;
+    });
   }
 
   /** One reconciliation of this draft's program; null when there is none, it is finished, or a tick is already running. */
   async tick(projectId: string, draftId: string): Promise<Program | null> {
+    const owner = await this.ledgerOf(projectId, draftId);
+    if (owner !== draftId) return this.tick(projectId, owner);
+    return this.locked(`${projectId}/${draftId}`, () => this.tickNow(projectId, draftId));
+  }
+
+  /** The reconciliation itself, for a caller that already holds the ledger's lock: the program it reads is the one it writes back. */
+  private async tickNow(projectId: string, draftId: string): Promise<Program | null> {
     const key = `${projectId}/${draftId}`;
     if (this.ticking.has(key)) return null;
     const root = await this.deps.draftRoot(projectId, draftId);
@@ -178,7 +243,7 @@ export class ProgramService {
     if (program === null || program.status === 'finished') return null;
     this.ticking.add(key);
     try {
-      return await tick(program, this.effects(projectId, draftId, root), (p) => writeProgram(root, p));
+      return await tick(program, this.effects(projectId, draftId, root, program.items), (p) => writeProgram(root, p));
     } finally {
       this.ticking.delete(key);
     }
@@ -188,12 +253,16 @@ export class ProgramService {
     return { cfg: await this.deps.cfg(), home: this.deps.home, isAlive: (pid) => isAlive(this.deps.control, pid) };
   }
 
-  private effects(projectId: string, draftId: string, root: string): ProgramEffects {
+  private effects(projectId: string, draftId: string, root: string, items: readonly ProgramItem[]): ProgramEffects {
     const { control } = this.deps;
+    // A spec of a joined follow-on request belongs to that request's draft: its root holds the spec and its runs start there.
+    const draftOf = (specId: string): string => items.find((i) => i.specId === specId)?.draftId ?? draftId;
+    const rootOf = (specId: string): Promise<string> => this.deps.draftRoot(projectId, draftOf(specId));
     const launch = async (specId: string, runId: string, mode: 'run' | 'resume' | 'complete'): Promise<void> => {
+      const dir = await rootOf(specId);
       const runs = runsDirOf(await this.index());
       await fs.mkdir(path.join(runs, runId), { recursive: true });
-      const { pid } = spawnRun(control, { projectDir: root, specId, runId, mode, ...(mode === 'run' ? { draft: true } : {}), logFile: path.join(runs, runId, 'ui.log') });
+      const { pid } = spawnRun(control, { projectDir: dir, specId, runId, mode, ...(mode === 'run' ? { draft: true } : {}), logFile: path.join(runs, runId, 'ui.log') });
       await waitForRunJournal(control, runs, runId, pid, expandHome((await this.deps.cfg()).paths.secrets, this.deps.home)).catch(async (err: unknown) => {
         // A resume keeps its directory: it holds the run's journal.
         if (mode !== 'resume') await abandonLaunch(control, runs, runId, pid);
@@ -207,13 +276,13 @@ export class ProgramService {
       findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null,
       startRun: async (specId) => {
         // A spec already delivered cannot be frozen again: the run that delivered it is the one to read (live: guide-detail-timeline failed on that freeze after its own delivery).
-        const delivered = await this.deliveredRun(projectId, root, specId);
+        const delivered = await this.deliveredRun(projectId, await rootOf(specId), specId);
         if (delivered) return { runId: delivered };
-        await this.deps.freezeItem(projectId, draftId, specId);
+        await this.deps.freezeItem(projectId, draftOf(specId), specId);
         const runs = runsDirOf(await this.index());
         const runId = await nextRunId({ runs, projectId }, specId);
         await launch(specId, runId, 'run');
-        await this.deps.register(root);
+        await this.deps.register(await rootOf(specId));
         return { runId };
       },
       resumeRun: async (runId) => {
@@ -233,7 +302,7 @@ export class ProgramService {
       stopRun: async (runId) => markStopRequested(runsDirOf(await this.index()), runId),
       completeSpec: async (specId) => {
         // The draft root keeps the status the freeze gave it (running); `spec complete` runs from it and wants awaiting-validation.
-        const file = path.posix.join(root, 'docs', 'specs', specId, 'spec.json');
+        const file = path.posix.join(await rootOf(specId), 'docs', 'specs', specId, 'spec.json');
         const spec = Spec.parse(JSON.parse(await fs.readFile(file, 'utf8')));
         if (spec.status === 'running') await writeFileAtomic(file, `${JSON.stringify({ ...spec, status: 'awaiting-validation' }, null, 2)}\n`);
         const runs = runsDirOf(await this.index());
@@ -243,7 +312,7 @@ export class ProgramService {
       },
       specDone: async (specId) => (await listRuns(await this.index(), projectId)).some((r) => r.specId === specId && r.kind === 'complete' && r.status === 'done'),
       outcome: async (runId) => this.outcome(runId),
-      repair: this.deps.decider && ((specId, failures) => this.repair(root, specId, failures)),
+      repair: this.deps.decider && (async (specId, failures) => this.repair(await rootOf(specId), specId, failures)),
     };
   }
 

@@ -178,10 +178,13 @@ async function ownedAliasFolders(store: Store, draftId: string, keep: readonly s
   return owned;
 }
 
-/** Removes the alias folders a discarded draft committed; the five documents, other drafts' folders and the `keep` aliases stay. */
-export async function retireAliases(store: Store, draftId: string, keep: readonly string[] = []): Promise<FlushResult> {
+/**
+ * Removes the alias folders a discarded draft committed, and puts back the documents it changed (`files`, main's copies): other
+ * drafts' folders and the `keep` aliases stay.
+ */
+export async function retireAliases(store: Store, draftId: string, keep: readonly string[] = [], files: Record<string, string> = {}): Promise<FlushResult> {
   const retire = await ownedAliasFolders(store, draftId, keep);
-  return commitProjection(store, { draftId, stepKey: 'discard', scope: 'refine', label: 'draft discarded', files: {}, retire });
+  return commitProjection(store, { draftId, stepKey: 'discard', scope: 'refine', label: 'draft discarded', files, retire });
 }
 
 /** The text a file holds at the store's HEAD, or null when the store has no commit or the file. */

@@ -184,3 +184,54 @@ describe('activity from the journals', () => {
     expect(second.list[0]!.at >= second.list[1]!.at).toBe(true);
   });
 });
+
+describe('the tasks table', () => {
+  const tasksPage = (inp: DashboardInput, req: { page?: number; size?: number; q?: string; facet?: string } = {}) =>
+    dashboardPage(inp, 'tasks', { page: req.page ?? 1, size: req.size ?? 100, q: req.q ?? '', facet: req.facet ?? '', sort: null, dir: 'asc' });
+  const events = [
+    planned('r1', 'T1-done'),
+    to('r1', 'T1-done', 'merged'),
+    planned('r1', 'T2-dep'),
+    to('r1', 'T2-dep', 'blocked'),
+    ev('r1', 'TASK_BLOCKED', { taskId: 'T2-dep', reason: DEPENDENCY_BLOCKED }),
+    planned('r1', 'T3-bad'),
+    to('r1', 'T3-bad', 'blocked'),
+    ev('r1', 'TASK_BLOCKED', { taskId: 'T3-bad', reason: 'o banco recusou a conexão' }),
+    planned('r1', 'T4-wait'),
+  ];
+  const inp = input({ specs: [spec('cart', { tasks: 4 })], runs: [run('r1', 'cart', 1, 'blocked', events)] });
+
+  it('lists every task with its state and keeps the raw reason only for a task that did not finish', () => {
+    const byId = Object.fromEntries(tasksPage(inp).list.map((t) => [t.taskId, t]));
+    expect(byId['T1-done']).toMatchObject({ state: 'delivered', rawReason: null });
+    expect(byId['T2-dep']).toMatchObject({ state: 'blocked', rawReason: DEPENDENCY_BLOCKED });
+    expect(byId['T3-bad']).toMatchObject({ state: 'failed', rawReason: 'o banco recusou a conexão' });
+    expect(byId['T4-wait']).toMatchObject({ state: 'pending', rawReason: null });
+  });
+
+  it('filters by state and searches by title', () => {
+    expect(tasksPage(inp, { facet: 'failed' }).list.map((t) => t.taskId)).toEqual(['T3-bad']);
+    expect(tasksPage(inp, { q: 'tarefa t2' }).list.map((t) => t.taskId)).toEqual(['T2-dep']);
+    expect(tasksPage(inp).facets.sort()).toEqual(['blocked', 'delivered', 'failed', 'pending']);
+  });
+
+  it('lists the tasks of a spec no run has started yet, from its task list, as pending, without counting them twice', () => {
+    const taskList = [
+      { taskId: 'T1', title: 'Criar a rota de login' },
+      { taskId: 'T2', title: 'Documentar a rota' },
+    ];
+    const pre = input({ specs: [spec('auth', { tasks: 2, taskList, status: 'pending' })] });
+    expect(tasksPage(pre).list).toEqual([
+      { specId: 'auth', runId: null, taskId: 'T1', title: 'Criar a rota de login', owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null },
+      { specId: 'auth', runId: null, taskId: 'T2', title: 'Documentar a rota', owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null },
+    ]);
+    expect(buildDashboard(pre).counts).toMatchObject({ tasks: 2, pending: 2, delivered: 0 });
+  });
+
+  it('pages every task of a large repository, past the dashboard cap', () => {
+    const many = Array.from({ length: 520 }, (_, i) => planned('r2', `T${i}`));
+    const big = input({ specs: [spec('pay', { tasks: 520 })], runs: [run('r2', 'pay', 1, 'running', many)] });
+    expect(tasksPage(big, { page: 2, size: 100 })).toMatchObject({ total: 520, matched: 520, page: 2, pages: 6 });
+    expect(tasksPage(big, { page: 2, size: 100 }).list).toHaveLength(100);
+  });
+});

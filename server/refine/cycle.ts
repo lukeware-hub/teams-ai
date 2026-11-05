@@ -35,13 +35,13 @@ import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
 import { questionPairs } from './question-pairs.js';
 import { checkRepeats, droppedOf, ROUND_REPEAT_OVERLAP } from './question-guard.js';
-import { buildSpecsIndex, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
+import { buildSpecsIndex, idSourceOf, outlineOfIndex, specIdOf, type SpecsIndex } from './specs-index.js';
 import type { JevValidationResult, ValidationDocs } from './jev-validation.js';
 import { PATCH_FILES, patchOwners, refinePack } from './packs.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { planMove } from './moves.js';
-import { applyRefineEvent, nextStuck, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
+import { applyRefineEvent, nextStuck, requestHeading, STUCK_ROUNDS, type BacklogState, type RefineState } from './state.js';
 import { scoresDocs, UNSCORED, type DocsScoreRecord } from './readiness.js';
 
 export type RunAgent = <K extends StepKind>(
@@ -250,6 +250,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   }
 
   const backlogMode = journal.state.backlog?.enabled === true;
+  // A follow-on draft names the briefing section its request sits under: the outline must keep what it follows and cite it.
+  const request = journal.state.extension ? requestHeading(journal.state.extension.requestId) : undefined;
   let derived: { project: Project; spec: Spec | null };
   let backlog: BacklogState | null = null;
   let criteria: readonly AcceptanceCriterion[] = [];
@@ -266,7 +268,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const last = before?.items.length ? before : await mainOutline(draft, before);
       // R11.7.4: adjustments are the orchestrator's: the PO never sees one, and each comes back from its approval in briefing.md.
       const previous = last && { ...last, items: last.items.filter((i) => !isAdjustment(i.key)) };
-      const idOf = (key: string) => before?.specs?.[key]?.specId ?? specIdOf(draft.specId, key, before?.keyIds);
+      const idOf = (key: string) => before?.specs?.[key]?.specId ?? specIdOf(idSourceOf(draft.specId, before), key, before?.keyIds);
       // R11.7.5: an item of the last outline whose spec started on main stays even when the PO drops it.
       const started = (await Promise.all((last?.items ?? []).map(async (i) => (isStarted((await readMainSpec(draft, idOf(i.key)))?.status) ? [i] : [])))).flat();
       let rejection: string[] | undefined;
@@ -276,7 +278,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state) })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state), request })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -288,7 +290,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           await failAgent('O backlog', out);
           return;
         }
-        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true);
+        const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true, request);
         if (checked.ok) accepted = checked;
         else rejection = checked.issues;
       }
@@ -302,7 +304,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const project = projectWithArchitecture(await keepBaseProject(draft, accepted.value.project), journal.state);
       await writeProject(draft, project);
       await writeBacklogMd(draft, renderBacklogMd(ranked));
-      await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds }));
+      await writeSpecsIndex(draft, buildSpecsIndex(draft.specId, { ...ranked, keyIds: before?.keyIds, idBase: before?.idBase }));
       const outline = { cycle, project, epics: ranked.epics, items: ranked.items, flowHeadings: flowHeadings(docs['flow.md']), draftHash: hash };
       // Remove first: the outline event drops the rows that name the retired items' directories.
       const keys = new Set(ranked.items.map((i) => i.key));
@@ -436,7 +438,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   await journal.fact(RefineEvent.FindingsReported, { cycle, findings: kept });
   let frontIndex = 0;
   for (const p of frontReview?.docPatch ?? []) {
-    const c = checkPatch(p, draft.specId, docs, backlogMode);
+    const c = checkPatch(p, draft.specId, docs, backlogMode, request);
     if (!c.ok) {
       discardedPatches.push({ role: 'front', file: p.file, reason: c.reason });
       continue;
@@ -543,7 +545,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   for (const [role, out] of [['po', po.value], ['sm', sm.value]] as const) {
     let i = 0;
     for (const p of out.docPatch) {
-      const c = checkPatch(p, draft.specId, docs, backlogMode);
+      const c = checkPatch(p, draft.specId, docs, backlogMode, request);
       if (c.ok && c.file === 'design.md') {
         discardedPatches.push({ role, file: p.file, reason: 'design.md is reviewable only by front' });
         continue;

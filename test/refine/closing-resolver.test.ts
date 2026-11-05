@@ -40,7 +40,7 @@ describe('resolveClosing', () => {
     });
     await resolveClosing(s as unknown as RefineSession);
     expect(s.accept).toHaveBeenCalledTimes(1);
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.evaluate).toHaveBeenCalledTimes(1);
     expect(s.runPlans).not.toHaveBeenCalled();
   });
@@ -64,7 +64,7 @@ describe('resolveClosing', () => {
     });
     await resolveClosing(s as unknown as RefineSession);
     expect(s.evaluateStage).toHaveBeenCalledWith('stack.md');
-    expect(s.accept).toHaveBeenCalledWith('p1');
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.decideArchitecture).not.toHaveBeenCalled();
     expect(s.runPlans).not.toHaveBeenCalled();
   });
@@ -125,5 +125,14 @@ describe('safePatches', () => {
   it('keeps only pending patches that change no scope', () => {
     const rows = [patch('ok'), patch('scope', { scopeChange: true }), patch('done', { status: 'accepted' })];
     expect(safePatches(rows).map((p) => p.patchId)).toEqual(['ok']);
+  });
+});
+
+describe('a follow-on request closes without the review step', () => {
+  it('decides the architecture the documents changed, as the review would for a project', async () => {
+    const s = fakeSession({ summaries: [summary([{ id: 'architecture', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'architecture', ok: true, detail: '' }], 'h2')], stale: true });
+    (s.state as unknown as { extension?: unknown }).extension = { requestId: 'pedido-1' };
+    await resolveClosing(s as unknown as RefineSession);
+    expect(s.decideArchitecture).toHaveBeenCalledTimes(1);
   });
 });

@@ -92,6 +92,8 @@ export interface ArchitecturePackInput {
   answers: readonly string[];
   /** What the last attempt got wrong, for the one repair. */
   issues?: readonly string[];
+  /** The decision a follow-on request starts from: the new one keeps its style, repositories and integrations. */
+  previous?: DecidedArchitecture;
 }
 
 /** The architecture pack: the five documents in full (or as a digest), the graph context, the existing services and the owner's answers. */
@@ -107,6 +109,7 @@ export function architecturePack(input: ArchitecturePackInput): ContextPackInput
     ...(input.issues && input.issues.length > 0 ? ['The last answer broke these rules, fix them all:', ...input.issues.map((i) => `- ${i}`)] : []),
     ...(input.answers.length > 0 ? ['### Owner answers\n' + input.answers.map((a) => `- ${a}`).join('\n')] : []),
     ...(input.existingServices.length > 0 ? [`### Existing services\n${input.existingServices.join(', ')}`] : []),
+    ...(input.previous ? [`### Architecture already decided (this request only adds to it: keep the style, every repository and integration)\n${JSON.stringify(input.previous, null, 2)}`] : []),
     ...(input.graphContext ? [`### Graph context\n${input.graphContext}`] : []),
     ...(digested ? [DIGEST_NOTE] : []),
     `### project.md\n${d.project}`,
@@ -118,10 +121,25 @@ export function architecturePack(input: ArchitecturePackInput): ContextPackInput
   return { kind: 'architecture', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('architecture'), criteria: [], feedback, budgetTokens: 30_000 };
 }
 
-/** The rules the validator checks, with the document texts it reads quotes from. */
-export function checkDecision(out: ArchitectureOutput, projectId: string, docs: Readonly<Record<DocFile, string>>): string[] {
+/** The architecture a follow-on request starts from: its decision is kept, and the request only adds to it. */
+export type DecidedArchitecture = Pick<Architecture, 'style' | 'repositories' | 'integrations'>;
+
+/** A decision that follows another only adds to it: the style stays, and every repository and integration of the other stays. */
+function additiveIssues(out: ArchitectureOutput, previous: DecidedArchitecture): string[] {
+  const names = new Set(out.repositories.map((r) => r.name));
+  const pairs = new Set(out.integrations.map((i) => `${i.consumer} → ${i.provider}`));
+  return [
+    ...(out.style !== previous.style ? [`a arquitetura decidida tem o estilo ${previous.style}; o pedido não muda o estilo`] : []),
+    ...previous.repositories.filter((r) => !names.has(r.name)).map((r) => `o repositório ${r.name} da arquitetura decidida saiu; o pedido só acrescenta`),
+    ...previous.integrations.filter((i) => !pairs.has(`${i.consumer} → ${i.provider}`)).map((i) => `a integração ${i.consumer} → ${i.provider} da arquitetura decidida saiu; o pedido só acrescenta`),
+  ];
+}
+
+/** The rules the validator checks, with the document texts it reads quotes from; a follow-on request also keeps what was decided. */
+export function checkDecision(out: ArchitectureOutput, projectId: string, docs: Readonly<Record<DocFile, string>>, previous?: DecidedArchitecture): string[] {
   const arch = Architecture.parse({ style: out.style, rationale: out.rationale, repositories: out.repositories, integrations: out.integrations });
-  return validateArchitecture(arch, { projectId, docs, normalize: (text) => ` ${normHeading(text)} ` });
+  const issues = validateArchitecture(arch, { projectId, docs, normalize: (text) => ` ${normHeading(text)} ` });
+  return previous ? [...issues, ...additiveIssues(out, previous)] : issues;
 }
 
 /** The decision broke a rule on both answers: the owner reads each rule that stayed open. */

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
 import { refineApi, runApi, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
+import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Pagination, SortHeader, TableFilters, usePagedTable } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
 import { GraphPanel } from './repository/GraphPanel.js';
 import { BacklogExecution } from '../refine/BacklogExecution.js';
+import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
@@ -18,7 +20,7 @@ import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, mo
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 max-md:px-4';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
-const dir = 'mt-2 block text-[0.8125rem] text-ink-faint wrap-anywhere';
+const dir = 'mt-2 block text-[0.8125rem] text-ink-soft wrap-anywhere';
 const desc = 'mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft';
 // Stat strip: at-a-glance health of the project before scrolling into the lists below.
 const stats = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3';
@@ -30,7 +32,6 @@ const sectionHead = 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2
 // Section icon badge: breaks up stacked panels that would otherwise read as one grey wall.
 const sectionIcon = 'grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink';
 const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 text-[0.875rem] text-ink-soft';
-const newSpecLabel = 'text-[0.8125rem] font-semibold';
 // Runs in flight stand out from the history instead of blending into the table.
 const live = '[&>td]:bg-good-soft [&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)]';
 // A group title spans the spec list; the first group's title needs no space above it.
@@ -116,7 +117,6 @@ export function ProjectHubView(p: {
   onStart: (specId: string) => void | Promise<void>;
   onResume: (runId: string) => void | Promise<void>;
   onStop: (runId: string) => void | Promise<void>;
-  onNewSpec: (specId: string, description: string) => void | Promise<void>;
   onContinue: (specId: string) => void | Promise<void>;
   onRestart: (specId: string) => void | Promise<void>;
   /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
@@ -124,10 +124,11 @@ export function ProjectHubView(p: {
   /** Brings the concluded project's application up from its last delivery. */
   onStartApp?: () => void;
   onDeleteDraft: (specId: string) => void;
-  onSuggestName?: (input: NameRequest) => Promise<NameSuggestion>;
 }) {
   const projectId = p.project?.projectId ?? '';
-  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status);
+  // A run's status, tokens and cost move while it goes on: the runs table reads the page again when they do.
+  const runsKey = p.runs.map((r) => `${r.runId}:${r.status}:${r.tokens}:${r.cost}`).join('|');
+  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status, runsKey);
   const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), (status) => LABEL[status] ?? status);
   const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
   // While a backlog runs its panel lists the planned specs, so the specs card leaves them out.
@@ -136,41 +137,12 @@ export function ProjectHubView(p: {
   const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
   const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => listed(s) && groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
   const groupedSpecs = groupSpecs(specsView.rows);
-  const [specDraft, setSpecDraft] = useState('');
-  const [specDescription, setSpecDescription] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingRestart, setPendingRestart] = useState<string | null>(null);
-  // A link with ?novaSpec=1 (project card, chat, finished run) opens the form straight away.
-  const [search, setSearch] = useSearchParams();
-  const [creating, setCreating] = useState(search.get('novaSpec') === '1');
-  const [idShown, setIdShown] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const closeNewSpec = () => {
-    if (search.has('novaSpec')) {
-      search.delete('novaSpec');
-      setSearch(search, { replace: true });
-    }
-    setCreating(false);
-    setIdShown(false);
-    setSpecDraft('');
-    setSpecDescription('');
-    setSuggestError(null);
-  };
-  const continueNewSpec = async () => {
-    setIdShown(true);
-    if (!p.onSuggestName || !p.project) return;
-    setSuggesting(true);
-    setSuggestError(null);
-    try {
-      setSpecDraft((await p.onSuggestName({ kind: 'spec', projectId: p.project.projectId, name: '', description: specDescription })).id);
-    } catch (e) {
-      setSuggestError((e as Error).message);
-    } finally {
-      setSuggesting(false);
-    }
-  };
+  const [creating, setCreating] = useState(false);
+  const closeNewSpec = () => setCreating(false);
+  // A request not yet started holds the form: its notice names it and leads to it.
+  const openRequest = p.drafts.find((d) => d.extension === true && d.state !== 'started');
   if (p.notFound) {
     return (
       <main data-testid="project-hub-not-found">
@@ -275,7 +247,7 @@ export function ProjectHubView(p: {
                         <td data-testid={`project-hub-run-actions-${r.runId}`} className={responsiveCell}>
                           <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2">
                             {r.locked ? (
-                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-soft" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
                                 Somente leitura
                               </span>
@@ -402,56 +374,25 @@ export function ProjectHubView(p: {
               <h2 data-testid="project-hub-specs-title" className={sectionHeading}>Especificações</h2>
               <InfoTip label="Especificações" text={HELP.specs} />
             </div>
-            {creating ? null : (
-              <button type="button" className={allConcluded ? action.primary : action.secondary} data-testid="open-new-spec" onClick={() => setCreating(true)}>
+            <button type="button" className={allConcluded ? action.primary : action.secondary} data-testid="open-new-spec" onClick={() => setCreating(true)}>
+              Nova spec
+              <Icon name="plus" size={14} />
+            </button>
+          </div>
+          {creating ? <NewSpecDialog projectId={projectId} openRequest={openRequest?.specId} onClose={closeNewSpec} /> : null}
+          {openRequest ? <RequestNotice projectId={projectId} specId={openRequest.specId} ready={openRequest.state === 'ready'} /> : null}
+          {allConcluded ?<p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
+          {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
+          {pr.specs.length === 0 ? (
+            <div className={emptyState} data-testid="no-specs">
+              <Icon name="list" size={24} />
+              <p data-testid="project-hub-no-specs-text">Este projeto ainda não tem specs.</p>
+              <p data-testid="project-hub-no-specs-steps">Uma spec descreve uma entrega. O caminho é: descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado.</p>
+              <button type="button" className={action.primary} data-testid="empty-new-spec" onClick={() => setCreating(true)}>
                 Nova spec
                 <Icon name="plus" size={14} />
               </button>
-            )}
-          </div>
-          {creating ? (
-            <form
-              data-testid="project-hub-new-spec-form"
-              className="mt-3 flex flex-col flex-nowrap items-stretch gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setSubmitting(true);
-                void Promise.resolve(p.onNewSpec(specDraft.trim(), specDescription)).finally(() => setSubmitting(false));
-              }}
-            >
-              <label data-testid="project-hub-new-spec-description-label" className={newSpecLabel} htmlFor="new-spec-description">Descreva o serviço</label>
-              <textarea className="w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={5} autoFocus value={specDescription} onChange={(e) => setSpecDescription(e.target.value)} placeholder="Ex.: listar todos os usuários com o e-mail mascarado. Os documentos do projeto entram como contexto; só esta spec passa pelo refinamento." />
-              {idShown ? (
-                <>
-                  <label data-testid="project-hub-new-spec-id-label" className={newSpecLabel} htmlFor="new-spec-id">ID da spec</label>
-                  <input className="w-full max-w-[24rem] min-w-0" id="new-spec-id" data-testid="new-spec-id" value={specDraft} disabled={suggesting} onChange={(e) => setSpecDraft(e.target.value)} placeholder={suggesting ? 'Sugerindo…' : 'ex.: list-users'} />
-                </>
-              ) : null}
-              {suggestError ? <span data-testid="project-hub-new-spec-error" className="error" role="alert">{suggestError}</span> : null}
-              <div data-testid="project-hub-new-spec-actions" className="flex flex-wrap justify-end gap-2">
-                <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={closeNewSpec}>Cancelar</button>
-                {idShown ? (
-                  <ActionButton key="new-spec" type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={suggesting || specDraft.trim() === '' || specDescription.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Começar refinamento</ActionButton>
-                ) : (
-                  <ActionButton key="continue-new-spec" className={action.primary} data-testid="continue-new-spec" disabled={specDescription.trim() === ''} onClick={continueNewSpec} icon={<Icon name="arrow-right" size={14} />}>Continuar</ActionButton>
-                )}
-              </div>
-            </form>
-          ) : null}
-          {allConcluded && !creating ? <p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
-          {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
-          {pr.specs.length === 0 ? (
-            creating ? null : (
-              <div className={emptyState} data-testid="no-specs">
-                <Icon name="list" size={24} />
-                <p data-testid="project-hub-no-specs-text">Este projeto ainda não tem specs.</p>
-                <p data-testid="project-hub-no-specs-steps">Uma spec descreve uma entrega. O caminho é: descrever, responder as perguntas e avaliar, iniciar a execução e validar o resultado.</p>
-                <button type="button" className={action.primary} data-testid="empty-new-spec" onClick={() => setCreating(true)}>
-                  Nova spec
-                  <Icon name="plus" size={14} />
-                </button>
-              </div>
-            )
+            </div>
           ) : specsView.rows.length === 0 ? (
             <p data-testid="project-hub-specs-empty" className={empty}>Nenhuma spec corresponde ao filtro.</p>
           ) : (
@@ -695,12 +636,10 @@ export function ProjectHub() {
       })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
       onStop={(runId) => act(() => runApi.stopRun(runId))()}
-      onNewSpec={(specId, description) => void go(() => refineApi.newSpec(projectId, specId, description))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
       onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}
       onValidate={(specId) => void act(async () => navigate(validationPath((await runApi.deployAgain(projectId, specId)).runId)))()}
-      onSuggestName={refineApi.suggestName}
       onDeleteDraft={(specId) => (async () => {
         setDeleteError(null);
         try {

@@ -86,6 +86,23 @@ function Pager({ fetchPage = serve(PAGED, PAGED_SPEC) }: { fetchPage?: (req: Pag
   );
 }
 
+describe('table reloading on the server', () => {
+  it('asks the server again when the reload key changes, and not for the same key', async () => {
+    const fetchPage = vi.fn(serve(PAGED, PAGED_SPEC));
+    function Reloads({ reloadKey }: { reloadKey: string }) {
+      const view = usePagedTable('reload', fetchPage, undefined, reloadKey);
+      return <ul>{view.rows.map((r) => <li key={r.id}>{r.id}</li>)}</ul>;
+    }
+    const { rerender } = render(<Reloads reloadKey="a" />);
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(1));
+    rerender(<Reloads reloadKey="a" />);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+    rerender(<Reloads reloadKey="b" />);
+    await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
+    expect(fetchPage).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1 }));
+  });
+});
+
 const pageIds = () => screen.queryAllByRole('listitem').map((li) => li.textContent);
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `T${from + i}`);
 

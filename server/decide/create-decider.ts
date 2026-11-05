@@ -4,7 +4,7 @@ import { ClaudeEscalateBackend, type EscalationRunner } from './claude-escalate.
 import { Decider } from './decider.js';
 import { JevOpenRouterBackend } from './jev-openrouter.js';
 import { LocalLogprobsBackend } from './local-logprobs.js';
-import { LocalStubBackend } from './local-stub.js';
+import { recordJevCost } from '../usage/jev-ledger.js';
 import type { BackendName, DecisionBackend, DecisionRecord } from './types.js';
 
 export interface CreateDeciderDeps {
@@ -13,6 +13,8 @@ export interface CreateDeciderDeps {
   secrets: Record<string, string>;
   accounting: Accounting;
   runEscalation: EscalationRunner;
+  /** The spec hash a Claude escalation must echo; empty where nothing escalates. */
+  specHash?: string;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   onDecision?: (record: DecisionRecord) => void;
@@ -21,12 +23,13 @@ export interface CreateDeciderDeps {
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Spec 10A.0 chain: jev (when a key exists) → local (when enabled, else the stub) → claude. Cost lands in accounting under system1. */
+/** Spec 10A.0 chain: jev (when a key exists) → local (when enabled) → claude. Cost lands in accounting under system1. */
 export function createDecider(deps: CreateDeciderDeps): Decider {
   const l = deps.cfg.decisions.local;
+  // A disabled local model is left out, so the decider records it as missing rather than as a call that failed.
   const backends: Partial<Record<BackendName, DecisionBackend>> = {
-    local: l.enabled ? new LocalLogprobsBackend({ fetch: deps.fetch ?? globalThis.fetch, baseUrl: l.baseUrl, timeoutMs: l.timeoutMs, nProbs: l.nProbs }) : new LocalStubBackend(),
-    claude: new ClaudeEscalateBackend(deps.runEscalation),
+    ...(l.enabled ? { local: new LocalLogprobsBackend({ fetch: deps.fetch ?? globalThis.fetch, baseUrl: l.baseUrl, timeoutMs: l.timeoutMs, nProbs: l.nProbs }) } : {}),
+    claude: new ClaudeEscalateBackend(deps.runEscalation, deps.specHash ?? ''),
   };
   const key = deps.secrets.OPENROUTER_API_KEY;
   if (typeof key === 'string' && key.trim() !== '') {
@@ -40,6 +43,7 @@ export function createDecider(deps: CreateDeciderDeps): Decider {
       maxTries: o.maxTries,
       backoffMs: o.backoffMs,
       sleep: deps.sleep ?? defaultSleep,
+      onCost: (costUsd) => void recordJevCost(deps.cfg, costUsd).catch(() => {}),
     });
   }
   return new Decider({

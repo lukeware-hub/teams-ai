@@ -77,15 +77,16 @@ function fakeAgent(outline: () => BacklogItem[], hook: (req: Req, n: number) => 
   return { fn, calls, kinds };
 }
 
-async function setup(existing?: string) {
+async function setup(existing?: string, opts: { specId?: string; enable?: Record<string, unknown> } = {}) {
   const root = existing ?? (await mkdtemp(path.join(os.tmpdir(), 'teams-ai-detail-'))).replace(/\\/g, '/');
   const docs = `${root}/docs`;
   await mkdir(docs, { recursive: true });
+  const specId = opts.specId ?? 'big-001';
   const draft = {
-    projectId: 'big', specId: 'big-001', root, docs, base: `${root}/.base/docs`,
-    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/big-001/briefing.md`, briefingMd: `${docs}/briefing.md`,
+    projectId: 'big', specId, root, docs, base: `${root}/.base/docs`,
+    projectMd: `${docs}/project.md`, projectJson: `${docs}/project.json`, briefMd: `${docs}/specs/${specId}/briefing.md`, briefingMd: `${docs}/briefing.md`,
     stackMd: `${docs}/stack.md`, flowMd: `${docs}/flow.md`, designMd: `${docs}/design.md`,
-    specJson: `${docs}/specs/big-001/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
+    specJson: `${docs}/specs/${specId}/spec.json`, events: `${root}/events.ndjson`, steps: (seq: number) => `${root}/steps/${seq}`,
   };
   await writeFile(draft.projectMd, filled(projectTemplate('big')));
   await writeFile(draft.briefingMd, filled(briefTemplate()));
@@ -104,7 +105,7 @@ async function setup(existing?: string) {
       return { seq: events.length, at: '', runId: 'big/big-001', specHash: 'draft', type, kind: 'fact' as const, data };
     },
   };
-  await journal.fact(RefineEvent.BacklogEnabled, {});
+  await journal.fact(RefineEvent.BacklogEnabled, opts.enable ?? {});
   const run = (agent: ReturnType<typeof fakeAgent>, cycle: number, decider?: ReturnType<typeof jev>) => runCycle({ draft, journal, runAgent: agent.fn as never, principles: () => [], retrieval: () => [], decider: decider as never }, cycle);
   const itemDir = (key: string) => `${docs}/specs/big-001-${key}`;
   return { draft, journal, events, run, itemDir, docs };
@@ -244,6 +245,26 @@ describe('backlog detailing in the refinement cycle', () => {
   };
   const withoutFat = (d: Env) => writeFile(d.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
   const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Ajuste aprovado'));
+
+  // A new top item builds on the foundation of a backlog that started: only a backlog with nothing started marks its first spec FIRST.
+  const OUTLINE_FOUNDATION = [
+    item('base', 'atend', '1. Caso', { priority: 'P0' }),
+    item('caso', 'atend', '1. Caso', { priority: 'P0', dependsOn: ['base'] }),
+    item('triagem', 'atend', '2. Triagem', { dependsOn: ['caso'] }),
+    item('opme', 'supr', '3. OPME', { dependsOn: ['caso'] }),
+    item('fat', 'fin', '4. Faturamento', { priority: 'P2', dependsOn: ['opme'] }),
+  ];
+  it('marks the new top item FIRST when nothing of the backlog has started on main', async () => {
+    const { agent } = await secondDraft(undefined, fakeAgent(() => OUTLINE_FOUNDATION));
+    const preplans = agent.calls.filter((c) => c.kind === 'preplan').map((c) => c.feedback).join('\n');
+    expect(preplans).toContain('## Spec base: Item base (FIRST: carries the walking skeleton)');
+  });
+  it('does not mark a new top item FIRST once a spec of the backlog started on main', async () => {
+    const { agent } = await secondDraft(async (d) => markStatus(d, 'caso', 'running'), fakeAgent(() => OUTLINE_FOUNDATION));
+    const preplans = agent.calls.filter((c) => c.kind === 'preplan').map((c) => c.feedback).join('\n');
+    expect(preplans).toContain('## Spec base: Item base');
+    expect(preplans).not.toContain('(FIRST: carries the walking skeleton)');
+  });
 
   it("reuses main's spec and pre-plan of every item whose inputs did not change", async () => {
     const { second, detailing } = await secondDraft();
@@ -783,5 +804,102 @@ describe('backlog detailing without secrets', () => {
     await run(agent, 2);
     const evaluated = events.filter((e) => e.type === 'REFINE_EVALUATED').at(-1)!;
     expect((evaluated.data.checklist as Array<{ id: string }>).some((i) => i.id === 'sm.dependencies-and-secrets')).toBe(false);
+  });
+});
+
+describe('a follow-on backlog keeps the spec ids of the main it came from', () => {
+  it('names every spec after the main draft id, while the index records its own draft', async () => {
+    const env = await setup(undefined, { specId: 'big-pedido-1', enable: { keyIds: false, idBase: 'big-001' } });
+    await env.run(fakeAgent(() => OUTLINE), 1);
+    const index = JSON.parse(await readFile(`${env.docs}/specs.json`, 'utf8')) as { draftId: string; specs: Array<{ key: string; specId: string; dependsOn: string[] }> };
+    expect(index.draftId).toBe('big-pedido-1');
+    expect(index.specs.find((s) => s.key === 'triagem')).toMatchObject({ specId: 'big-001-triagem', dependsOn: ['big-001-caso'] });
+  });
+});
+
+describe('the impact of a follow-on request on the backlog it follows', () => {
+  it('journals the impact once for the outline, and asks the SM again once when it breaks a rule', async () => {
+    const env = await setup();
+    // A follow-on request: its section is in the brief, and every new item cites it besides its flow section.
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      // The first answer depends on an item the backlog does not name: the rule sends it back once.
+      const dependencies = impactCalls === 1 ? [{ from: 'caso', to: 'fantasma', reason: 'r' }] : [{ from: 'triagem', to: 'caso', reason: 'a triagem usa o caso' }];
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
+    });
+    await env.run(agent, 1);
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(2);
+    const impacts = env.events.filter((e) => e.type === RefineEvent.ImpactDerived);
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]!.data).toMatchObject({ cycle: 2, issues: [], impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
+  it('keeps a usable impact of an unchanged outline without asking the SM again or journaling it twice', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(1);
+    const impacts = env.events.filter((e) => e.type === RefineEvent.ImpactDerived);
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0]!.data).toMatchObject({ backlogCycle: expect.any(Number), impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
+  it('measures the impact again on the next run when the last one broke a rule', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      // Both answers of the first run name an item the backlog does not have: that impact is unusable until a later run answers well.
+      const dependencies = impactCalls <= 2 ? [{ from: 'caso', to: 'fantasma', reason: 'r' }] : [];
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies, risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    expect(impactCalls).toBe(2);
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(3);
+    expect(env.events.filter((e) => e.type === RefineEvent.ImpactDerived).at(-1)!.data).toMatchObject({ impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
+  it('asks the SM for the impact after the conflicts of the outline', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    const kinds: string[] = [];
+    const agent = fakeAgent(() => outline, (req) => {
+      kinds.push(req.kind);
+      if (req.kind !== 'impact') return undefined;
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    expect(kinds).toContain('conflicts');
+    expect(kinds.indexOf('conflicts')).toBeLessThan(kinds.indexOf('impact'));
   });
 });
