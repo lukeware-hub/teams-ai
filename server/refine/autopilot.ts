@@ -1,5 +1,5 @@
 import { ConflictError, type RefineSession } from './session.js';
-import { resolveStages } from './closing-resolver.js';
+import { resolveClosing, resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
 
 /** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
@@ -55,9 +55,11 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
     }
     // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision to the team.
     if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
-    // Last: every document goes into the graph (a request in one extraction), and the owner's run saves the documents and specs in the repositories.
-    if (s.state.extension !== undefined) await tolerate(() => s.graphDocs());
-    else {
+    // Last: the closing checks the request still fails (the architecture, the impact) are decided by the team, then every document goes into the graph in one extraction.
+    if (s.state.extension !== undefined) {
+      await tolerate(() => resolveClosing(s));
+      await tolerate(() => s.graphDocs());
+    } else {
       for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
         await tolerate(() => s.addToGraph(file));
         await tolerate(() => s.settled());

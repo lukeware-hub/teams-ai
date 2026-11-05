@@ -127,3 +127,12 @@ describe('safePatches', () => {
     expect(safePatches(rows).map((p) => p.patchId)).toEqual(['ok']);
   });
 });
+
+describe('a follow-on request closes without the review step', () => {
+  it('decides the architecture the documents changed, as the review would for a project', async () => {
+    const s = fakeSession({ summaries: [summary([{ id: 'architecture', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'architecture', ok: true, detail: '' }], 'h2')], stale: true });
+    (s.state as unknown as { extension?: unknown }).extension = { requestId: 'pedido-1' };
+    await resolveClosing(s as unknown as RefineSession);
+    expect(s.decideArchitecture).toHaveBeenCalledTimes(1);
+  });
+});

@@ -26,6 +26,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     evaluateStage: vi.fn(async () => undefined),
     addToGraph: vi.fn(async (file: string) => { (state.graphed as string[]).push(file); }),
     graphDocs: vi.fn(async () => undefined),
+    closingSummary: vi.fn(async () => ({ ok: true, summaryHash: 'h', checks: [], repositories: [], assumptions: [] })),
     saveDocs: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
@@ -84,6 +85,7 @@ describe('resolveEverything', () => {
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
     expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+    expect(s.closingSummary).toHaveBeenCalled();
     expect(s.saveDocs).not.toHaveBeenCalled();
     expect(s.graphDocs).toHaveBeenCalledTimes(1);
     expect(s.addToGraph).not.toHaveBeenCalled();
