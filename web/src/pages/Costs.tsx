@@ -5,15 +5,15 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { costsProjectPath } from '../routes.js';
 import { emptyState, panel, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
-import { ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, ShareBar, ShareList, UnreadChip, headRow, numCell, shareRow, table, tableWrap } from './costs/CostParts.js';
+import { ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, ShareBar, ShareList, UnreadChip, UpdatedAt, headRow, numCell, shareRow, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, shareOf, tokens } from './costs/format.js';
-import { AGENT_LABEL, HELP, STAGE_LABEL, labelOf } from './costs/labels.js';
+import { AGENT_LABEL, HELP, MODEL_LABEL, STAGE_LABEL, labelOf } from './costs/labels.js';
 import { useCostData, usePeriod } from './costs/useCostData.js';
 
 /** Every project's cost, the agents and the models, for one period. */
 export function CostsPage() {
   const [period, choose] = usePeriod();
-  const { data, error, reload } = useCostData('overview', costsApi.overview, period);
+  const { data, error, reload, updatedAt } = useCostData('overview', costsApi.overview, period);
   const retry = () => void reload();
   return (
     <main data-testid="costs-main" className="grid min-w-0 gap-4">
@@ -22,7 +22,10 @@ export function CostsPage() {
           <h1 className="m-0 text-[1.375rem] leading-[1.3] text-ink">Custos</h1>
           <p className="mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft">Quanto cada projeto gastou, onde e com qual agente.</p>
         </div>
-        <RefreshButton onClick={retry} />
+        <div className="flex flex-wrap items-center gap-3">
+          <UpdatedAt at={updatedAt} />
+          <RefreshButton onClick={retry} />
+        </div>
       </header>
       <PeriodChips value={period} onChange={choose} />
       {error ? <ErrorBlock onRetry={retry} /> : null}
@@ -39,11 +42,12 @@ function Overview({ data }: { data: CostOverview }) {
         <Indicator id="total" label="Total" help={HELP.total} value={money(total.costUsd)} detail={tokens(total.tokens)} />
         <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(byStage.refinement.costUsd)} detail={ofTotal(byStage.refinement.costUsd, total.costUsd)} />
         <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(byStage.development.costUsd)} detail={ofTotal(byStage.development.costUsd, total.costUsd)} />
-        <Indicator id="chat" label="Chat" value={money(byStage.chat.costUsd)} detail={ofTotal(byStage.chat.costUsd, total.costUsd)} />
+        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(byStage.chat.costUsd)} detail={ofTotal(byStage.chat.costUsd, total.costUsd)} />
       </div>
       {total.steps === 0 ? (
         <div className={emptyState}>
           <p>Nenhum custo registrado neste período.</p>
+          <p>O custo aparece aqui depois que um refinamento ou um run chamar um modelo.</p>
         </div>
       ) : (
         <>
@@ -55,7 +59,7 @@ function Overview({ data }: { data: CostOverview }) {
             </section>
             <section className={panel} data-testid="costs-models">
               <PanelTitle icon="code" title="Por modelo" />
-              <ShareList rows={data.models.map((m) => shareRow(m, m.key))} />
+              <ShareList rows={data.models.map((m) => shareRow(m, labelOf(MODEL_LABEL, m.key), m.key))} />
             </section>
           </div>
         </>
@@ -81,14 +85,14 @@ function ProjectsPanel({ data }: { data: CostOverview }) {
               <th scope="col" className="text-right">Desenvolvimento</th>
               <th scope="col" className="text-right">Chat</th>
               <th scope="col" className="text-right">Total</th>
-              <th scope="col" className="text-right">Runs</th>
+              <th scope="col" className="text-right">Execuções</th>
             </tr>
           </thead>
           <tbody>
             {data.projects.map((p) => (
-              <tr key={p.projectId ?? 'sem-projeto'} className={responsiveRow} data-testid={`costs-project-${p.projectId ?? 'sem-projeto'}`}>
+              <tr key={p.projectId ?? 'sem-projeto'} className={`${responsiveRow} relative`} data-testid={`costs-project-${p.projectId ?? 'sem-projeto'}`}>
                 <td className={responsiveCell} data-label="Projeto">
-                  {p.projectId ? <Link to={costsProjectPath(p.projectId)} className="wrap-anywhere">{p.name}</Link> : p.name}
+                  {p.projectId ? <Link to={costsProjectPath(p.projectId)} className="wrap-anywhere after:absolute after:inset-0 after:content-['']">{p.name}</Link> : p.name}
                 </td>
                 <td className={numCell} data-label="Refinamento">{money(p.byStage.refinement.costUsd)}</td>
                 <td className={numCell} data-label="Desenvolvimento">{money(p.byStage.development.costUsd)}</td>
@@ -99,7 +103,7 @@ function ProjectsPanel({ data }: { data: CostOverview }) {
                     <ShareBar share={shareOf(p.total.costUsd, data.total.costUsd)} />
                   </span>
                 </td>
-                <td className={numCell} data-label="Runs">{p.runs}</td>
+                <td className={numCell} data-label="Execuções">{p.runs}</td>
               </tr>
             ))}
           </tbody>

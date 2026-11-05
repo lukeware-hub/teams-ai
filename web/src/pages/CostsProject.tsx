@@ -7,7 +7,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { PROJECTS, projectPath } from '../routes.js';
 import { emptyState, panel, plural, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
-import { type Option, ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
+import { type Option, ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, sumMoney, tokens, unpricedNote } from './costs/format.js';
 import { AGENT_LABEL, CHAT_AGENT, HELP, labelOf } from './costs/labels.js';
 import { StagePanel } from './costs/StagePanel.js';
@@ -18,7 +18,7 @@ import { useCostData, usePeriod } from './costs/useCostData.js';
 export function CostsProjectPage() {
   const { projectId = '' } = useParams();
   const [period, choose] = usePeriod();
-  const { data, error, version, reload } = useCostData(projectId, (p) => costsApi.project(projectId, p), period);
+  const { data, error, version, reload, updatedAt } = useCostData(projectId, (p) => costsApi.project(projectId, p), period);
   const retry = () => void reload();
   if (error instanceof ApiError && error.status === 404) return <NotFound />;
   return (
@@ -31,12 +31,15 @@ export function CostsProjectPage() {
             { label: 'Custos', testId: 'costs-breadcrumb-current' },
           ]}
         />
-        <RefreshButton onClick={retry} />
+        <div className="flex flex-wrap items-center gap-3">
+          <UpdatedAt at={updatedAt} />
+          <RefreshButton onClick={retry} />
+        </div>
       </div>
       <h1 className="sr-only">Custos de {data?.name ?? projectId}</h1>
       <PeriodChips value={period} onChange={choose} />
       {error ? <ErrorBlock onRetry={retry} /> : null}
-      {data ? <ProjectView projectId={projectId} data={data} version={version} /> : error ? null : <Loading />}
+      {data ? <ProjectView projectId={projectId} data={data} version={version} onRetry={retry} /> : error ? null : <Loading />}
     </main>
   );
 }
@@ -56,7 +59,7 @@ function NotFound() {
   );
 }
 
-function ProjectView({ projectId, data, version }: { projectId: string; data: ProjectCosts; version: number }) {
+function ProjectView({ projectId, data, version, onRetry }: { projectId: string; data: ProjectCosts; version: number; onRetry: () => void }) {
   const { refinement, development, chat, specs } = data;
   const total = sumMoney([refinement.total, development.total, chat]);
   return (
@@ -65,11 +68,12 @@ function ProjectView({ projectId, data, version }: { projectId: string; data: Pr
         <Indicator id="total" label="Total" help={HELP.total} value={money(total.costUsd)} detail={tokens(total.tokens)} />
         <Indicator id="refinement" label="Refinamento" help={HELP.refinement} value={money(refinement.total.costUsd)} detail={ofTotal(refinement.total.costUsd, total.costUsd)} />
         <Indicator id="development" label="Desenvolvimento" help={HELP.development} value={money(development.total.costUsd)} detail={ofTotal(development.total.costUsd, total.costUsd)} />
-        <Indicator id="chat" label="Chat" value={money(chat.costUsd)} detail={ofTotal(chat.costUsd, total.costUsd)} />
+        <Indicator id="chat" label="Chat" help={HELP.chat} value={money(chat.costUsd)} detail={ofTotal(chat.costUsd, total.costUsd)} />
       </div>
       {total.steps === 0 ? (
         <div className={emptyState}>
           <p>Nenhum custo registrado neste período.</p>
+          <p>O custo aparece aqui depois que um refinamento ou um run chamar um modelo.</p>
         </div>
       ) : (
         <>
@@ -78,7 +82,7 @@ function ProjectView({ projectId, data, version }: { projectId: string; data: Pr
             <StagePanel id="development" title="Desenvolvimento" help={HELP.development} costs={development} development />
           </div>
           <SpecPanel specs={specs} />
-          <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} />
+          <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />
         </>
       )}
       <footer data-testid="costs-chat" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.8125rem] text-ink-soft">
@@ -108,7 +112,7 @@ function SpecPanel({ specs }: { specs: SpecRow[] }) {
                 <th scope="col" className="text-right">Refinamento</th>
                 <th scope="col" className="text-right">Desenvolvimento</th>
                 <th scope="col" className="text-right">Total</th>
-                <th scope="col" className="text-right">Runs</th>
+                <th scope="col" className="text-right">Execuções</th>
               </tr>
             </thead>
             <tbody>
@@ -118,7 +122,7 @@ function SpecPanel({ specs }: { specs: SpecRow[] }) {
                   <td className={numCell} data-label="Refinamento">{money(s.refinement)}</td>
                   <td className={numCell} data-label="Desenvolvimento">{money(s.development)}</td>
                   <td className={numCell} data-label="Total">{money(s.total)}</td>
-                  <td className={numCell} data-label="Runs">{s.runs}</td>
+                  <td className={numCell} data-label="Execuções">{s.runs}</td>
                 </tr>
               ))}
             </tbody>

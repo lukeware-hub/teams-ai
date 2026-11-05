@@ -9,10 +9,10 @@ import { Select } from '../../components/Select.js';
 import { emptyState, panel, responsiveCell, responsiveHead, responsiveRow, when } from '../project-shared.js';
 import { type Option, PanelTitle, headRow, numCell, table, tableWrap } from './CostParts.js';
 import { money, tokenCount } from './format.js';
-import { AGENT_LABEL, PHASE_LABEL, STAGE_LABEL, labelOf } from './labels.js';
+import { AGENT_LABEL, MODEL_LABEL, PHASE_LABEL, STAGE_LABEL, labelOf } from './labels.js';
 
 /** The steps of a project, one page at a time, filtered by stage, agent, spec and text. */
-export function StepsPanel({ projectId, agents, specs, version }: { projectId: string; agents: Option[]; specs: Option[]; version: number }) {
+export function StepsPanel({ projectId, agents, specs, version, onRetry }: { projectId: string; agents: Option[]; specs: Option[]; version: number; onRetry: () => void }) {
   const [agente, setAgente] = useState('');
   const [spec, setSpec] = useState('');
   // A new agent or spec is a new scope, so the table goes back to its first page.
@@ -38,7 +38,14 @@ export function StepsPanel({ projectId, agents, specs, version }: { projectId: s
           {view.filtered || agente || spec ? `${view.matched} de ${view.total}` : ''}
         </p>
       </div>
-      {view.failed ? <p role="alert" className="error mt-3 mb-0">Não foi possível ler os steps.</p> : null}
+      {view.failed ? (
+        <div role="alert" className="error mt-3 flex flex-wrap items-center justify-between gap-3">
+          <span>Não foi possível ler os steps. Tente de novo.</span>
+          <button type="button" className="secondary max-md:min-h-11" onClick={onRetry}>
+            Tentar de novo
+          </button>
+        </div>
+      ) : null}
       {!view.loaded ? (view.failed ? null : <Loading />) : view.matched === 0 ? <p className={`${emptyState} mt-3`}>Nenhum step com estes filtros.</p> : <StepTable view={view} />}
     </section>
   );
@@ -67,7 +74,7 @@ function StepTable({ view }: { view: TableView<CostFact> }) {
             <SortHeader view={view} column="data">Data</SortHeader>
             <th scope="col">Etapa</th>
             <th scope="col">Spec</th>
-            <th scope="col">Run</th>
+            <th scope="col">Execução</th>
             <th scope="col">Repositório</th>
             <th scope="col">Tarefa</th>
             <th scope="col">Agente</th>
@@ -83,12 +90,12 @@ function StepTable({ view }: { view: TableView<CostFact> }) {
               <td className={responsiveCell} data-label="Data">{when(f.at)}</td>
               <td className={responsiveCell} data-label="Etapa">{labelOf(STAGE_LABEL, f.stage)}</td>
               <td className={responsiveCell} data-label="Spec">{f.specId ? specLabel(f.specId) : '—'}</td>
-              <td className={`${responsiveCell} wrap-anywhere`} data-label="Run">{f.runId ?? '—'}</td>
+              <td className={`${responsiveCell} wrap-anywhere`} data-label="Execução">{f.runId ?? '—'}</td>
               <td className={responsiveCell} data-label="Repositório">{f.repository ?? '—'}</td>
               <td className={`${responsiveCell} wrap-anywhere`} data-label="Tarefa">{f.taskId ?? '—'}</td>
               <td className={responsiveCell} data-label="Agente">{labelOf(AGENT_LABEL, agentOf(f))}</td>
               <td className={responsiveCell} data-label="Fase">{labelOf(PHASE_LABEL, f.phase)}</td>
-              <td className={responsiveCell} data-label="Modelo">{f.model ?? 'sem modelo'}</td>
+              <td className={responsiveCell} data-label="Modelo">{labelOf(MODEL_LABEL, f.model ?? 'sem modelo')}</td>
               <td className={numCell} data-label="Tokens">{tokenCount(f.tokens.inputTokens + f.tokens.outputTokens)}</td>
               <td className={numCell} data-label="Custo">{f.costUsd === null ? 'sem custo' : money(f.costUsd)}</td>
             </tr>

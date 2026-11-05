@@ -23,6 +23,8 @@ interface Slot<T> {
   data?: T;
   error?: unknown;
   version: number;
+  /** When the last good read landed. */
+  at?: Date;
 }
 
 /**
@@ -41,13 +43,13 @@ export function useCostData<T>(scope: string, read: (period: CostPeriod) => Prom
     return asked.read(asked.period).then(
       (data) => {
         if (latest.current.key !== asked.key) return;
-        setSlot((prev) => ({ key: asked.key, data, version: (prev?.key === asked.key ? prev.version : 0) + 1 }));
+        setSlot((prev) => ({ key: asked.key, data, version: (prev?.key === asked.key ? prev.version : 0) + 1, at: new Date() }));
       },
       (error: unknown) => {
         if (latest.current.key !== asked.key) return;
         setSlot((prev) => {
           const same = prev?.key === asked.key;
-          return { key: asked.key, data: same ? prev.data : undefined, error, version: same ? prev.version : 0 };
+          return { key: asked.key, data: same ? prev.data : undefined, error, version: same ? prev.version : 0, at: same ? prev.at : undefined };
         });
       },
     );
@@ -59,5 +61,5 @@ export function useCostData<T>(scope: string, read: (period: CostPeriod) => Prom
   usePolling(load, REFRESH_MS);
 
   const shown = slot?.key === key ? slot : null;
-  return { data: shown?.data, error: shown?.error, version: shown?.version ?? 0, reload: load };
+  return { data: shown?.data, error: shown?.error, version: shown?.version ?? 0, updatedAt: shown?.at, reload: load };
 }

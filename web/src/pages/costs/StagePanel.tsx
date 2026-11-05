@@ -2,7 +2,7 @@ import type { StageCosts } from '@server/usage/cost-report.js';
 import { panel, plural } from '../project-shared.js';
 import { PanelTitle, ShareList, shareRow } from './CostParts.js';
 import { money, unpricedNote } from './format.js';
-import { AGENT_LABEL, KIND_LABEL, PHASE_LABEL, labelOf } from './labels.js';
+import { AGENT_LABEL, KIND_LABEL, MODEL_LABEL, PHASE_LABEL, labelOf } from './labels.js';
 
 /** One stage of one project, with its own total and its own breakdowns; development adds the phase and the repository. */
 export function StagePanel({ id, title, help, costs, development = false }: { id: string; title: string; help: string; costs: StageCosts; development?: boolean }) {
@@ -19,7 +19,7 @@ export function StagePanel({ id, title, help, costs, development = false }: { id
       ) : (
         <div className="mt-4 grid gap-5">
           <ShareList title="Por agente" rows={costs.byAgent.map((a) => shareRow(a, labelOf(AGENT_LABEL, a.key)))} />
-          <ShareList title="Por modelo" rows={costs.byModel.map((m) => shareRow(m, m.key))} />
+          <ShareList title="Por modelo" rows={costs.byModel.map((m) => shareRow(m, labelOf(MODEL_LABEL, m.key), m.key))} />
           <ShareList title="Por tipo" rows={costs.byKind.map((k) => shareRow(k, labelOf(KIND_LABEL, k.key)))} />
           {development ? (
             <>

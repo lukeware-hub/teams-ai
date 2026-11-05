@@ -1675,7 +1675,7 @@ Modo: **Operate.** A pessoa quer saber quanto foi gasto, onde, e qual agente gas
 │ ⚙  │ │ 5,7 mi tokens││ 15%         ││ 84%             ││ 1%         │ │
 │ ☾  │ └──────────────┘└─────────────┘└─────────────────┘└────────────┘ │
 │    │ ┌ Por projeto ───────────────────────────────────────────────┐   │
-│    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total   Runs  │   │
+│    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total  Execuç.│   │
 │    │ │ kayron…  US$ 3,10     US$ 20,10        0,05  23,25   31    │   │
 │    │ │          ▇▇▇          ▇▇▇▇▇▇▇▇▇▇▇▇                         │   │
 │    │ └────────────────────────────────────────────────────────────┘   │
@@ -1692,7 +1692,7 @@ Ordem de cima para baixo: cabeçalho com título, uma linha de apoio e `Atualiza
 ### 33.3 Visão do projeto — `/costs/:projectId`
 
 ```text
-Custos › kayron-hub                                     [ Atualizar ]
+Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
 ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )
 ┌ Total ┐ ┌ Refinamento ┐ ┌ Desenvolvimento ┐ ┌ Chat ┐
 ┌─ Refinamento ───────────────────┐ ┌─ Desenvolvimento ─────────────────┐
@@ -1700,10 +1700,10 @@ Custos › kayron-hub                                     [ Atualizar ]
 │ Por agente  po ▇▇ sm ▇ front ▇  │ │ Por agente  dev ▇▇▇▇ test ▇▇ sec ▇│
 │ Por modelo  …                   │ │ Por modelo  …                     │
 │ Por tipo    docs ▇ spec ▇ plano │ │ Por fase    Tarefas ▇▇▇ Plano ▇ … │
-│ Por draft   (lista)             │ │ Por repositório  api ▇▇ web ▇     │
+│ Por modelo  Sonnet 5.5 · Haiku  │ │ Por repositório  api ▇▇ web ▇     │
 └─────────────────────────────────┘ └───────────────────────────────────┘
 ┌─ Por spec ────────────────────────────────────────────────────────────┐
-│ Spec    Refinamento   Desenvolvimento   Total   Runs                  │
+│ Spec    Refinamento   Desenvolvimento   Total   Execuções             │
 └───────────────────────────────────────────────────────────────────────┘
 ┌─ Steps ── Etapa [Todas ▾] Agente [Todos ▾] Spec [Todas ▾]  [busca] ───┐
 │ Data  Etapa  Spec  Run  Repo  Tarefa  Agente  Fase  Modelo  Tokens US$│
@@ -1722,13 +1722,13 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 - **Chips de período:** família única de chips (§3.9). Selecionado: `accent-soft` com texto `accent-ink` e `aria-pressed="true"`. Os chips quebram linha; não há rolagem horizontal.
 - **Tabelas:** §11.16. Números à direita, em algarismos tabulares. Abaixo de 44 rem viram cartões (`responsiveTable`).
 - **Carregamento:** esqueleto de §11.2 do tamanho do painel; aparece só após 300 ms.
-- **Atualização:** a cada 30 s, somente com a aba visível.
+- **Atualização:** a cada 30 s, somente com a aba visível. Ao lado de `Atualizar`, o texto `Atualizado às HH:MM` mostra a última leitura boa.
 
 ### 33.5 Estados
 
 | Estado | Texto ou visual |
 |---|---|
-| Sem custo no período | `Nenhum custo registrado neste período.` |
+| Sem custo no período | `Nenhum custo registrado neste período.`, com a linha `O custo aparece aqui depois que um refinamento ou um run chamar um modelo.` Os percentuais viram `Sem custo no período`. |
 | Erro de leitura | `Não foi possível ler os custos. Tente de novo.` com o botão `Tentar de novo`. O último valor lido continua visível. |
 | Journal que não pôde ser lido | Chip de aviso `N registros não lidos`, com ajuda: o total pode estar abaixo do real. |
 | Jev fora de projetos em período curto | `Indisponível neste período`. |
@@ -1760,7 +1760,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 
 - Foco visível em chips, linhas clicáveis e botões.
 - Cada barra tem o valor escrito; cada tabela tem cabeçalhos `th`.
-- A linha clicável do projeto é um link com o nome do projeto.
+- A linha inteira do projeto abre `/costs/:projectId`; o nome do projeto é o link, e a linha inteira é a área de clique.
 
 ### 33.10 Fora desta tela
 

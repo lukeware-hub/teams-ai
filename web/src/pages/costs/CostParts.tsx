@@ -52,7 +52,7 @@ export function PeriodChips({ value, onChange }: { value: CostPeriod; onChange: 
           type="button"
           data-testid={`costs-period-${period}`}
           aria-pressed={value === period}
-          className="min-w-[auto] px-3.5 text-[0.8125rem] text-ink-soft hover:text-ink aria-[pressed=true]:border-accent-line aria-[pressed=true]:bg-accent-soft aria-[pressed=true]:text-accent-ink"
+          className="min-w-[auto] px-3.5 text-[0.8125rem] text-ink-soft max-md:min-h-11 hover:text-ink aria-[pressed=true]:border-accent-line aria-[pressed=true]:bg-accent-soft aria-[pressed=true]:text-accent-ink"
           onClick={() => onChange(period)}
         >
           {PERIOD_LABEL[period]}
@@ -114,9 +114,17 @@ export function ShareList({ title, rows }: { title?: string; rows: ShareRow[] })
   );
 }
 
+const clock = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/** When the figures were last read; nothing shows before the first good read. */
+export function UpdatedAt({ at }: { at?: Date }) {
+  if (!at) return null;
+  return <p data-testid="costs-updated-at" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums">Atualizado às {clock.format(at)}</p>;
+}
+
 export function RefreshButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" data-testid="costs-refresh" className="secondary" onClick={onClick}>
+    <button type="button" data-testid="costs-refresh" className="secondary max-md:min-h-11" onClick={onClick}>
       Atualizar
       <Icon name="refresh" size={16} />
     </button>
@@ -128,7 +136,7 @@ export function ErrorBlock({ onRetry }: { onRetry: () => void }) {
   return (
     <div role="alert" data-testid="costs-error" className="error flex flex-wrap items-center justify-between gap-3">
       <span>Não foi possível ler os custos. Tente de novo.</span>
-      <button type="button" className="secondary" onClick={onRetry}>
+      <button type="button" className="secondary max-md:min-h-11" onClick={onRetry}>
         Tentar de novo
       </button>
     </div>

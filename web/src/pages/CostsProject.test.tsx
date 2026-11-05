@@ -87,7 +87,7 @@ describe('CostsProjectPage', () => {
     vi.spyOn(costsApi, 'steps').mockResolvedValue({ total: 0, matched: 0, page: 1, size: 10, pages: 1, facets: [], list: [] });
     renderAt();
     const specs = await screen.findByTestId('costs-specs');
-    expect(within(specs).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Spec', 'Refinamento', 'Desenvolvimento', 'Total', 'Runs']);
+    expect(within(specs).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Spec', 'Refinamento', 'Desenvolvimento', 'Total', 'Execuções']);
   });
 
   it('shows the not-found state for an unknown project', async () => {

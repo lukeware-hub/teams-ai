@@ -11,7 +11,8 @@ export const tokens = (n: number): string => `${tokenCount(n)} tokens`;
 export const percent = (share: number): string => `${Math.round(share * 100)}%`;
 /** The part of a whole as a fraction; zero while the whole is empty. */
 export const shareOf = (part: number, whole: number): number => (whole > 0 ? part / whole : 0);
-export const ofTotal = (part: number, whole: number): string => `${percent(shareOf(part, whole))} do total`;
+/** The part's share of the whole; with no spend in the period there is no share to show. */
+export const ofTotal = (part: number, whole: number): string => (whole > 0 ? `${percent(shareOf(part, whole))} do total` : 'Sem custo no período');
 /** Calls with no reported cost are counted as steps, and the line says so. */
 export const unpricedNote = (count: number): string => (count > 0 ? ` · ${count} sem custo informado` : '');
 
