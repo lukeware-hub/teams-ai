@@ -168,3 +168,9 @@ Status: built behind the flag `TEAMS_AI_DOCS_REPO_LAYOUT` (off by default). The 
 ## 21. Pedidos em projeto em desenvolvimento
 
 Desenho em `specs/2026-11-04-teams-ai-add-specs-design.md`. O dono escreve o pedido em texto livre no botão "Nova spec" de um projeto que já tem specs. Os agentes refinam o pedido com o backlog que ele segue, medem o impacto (o que toca, conflita, repete, depende e arrisca), replanejam só o que o pedido toca e deixam o projeto pronto. O time decide tudo sozinho: aceita toda sugestão (inclusive ajustes, stack e design), responde as perguntas e segue o specs.md rejeitado; só salvar nos repositórios e "Iniciar" ficam com o dono. Se um programa já roda, o pedido entra nele e a mudança fica no histórico do programa. "Iniciar" é sempre o clique do dono.
+
+## 22. Cost dashboard: global and per project, read only
+
+Status: in progress, on branch `feat/cost-dashboard`, with a draft pull request.
+
+Planned: a new screen `/costs` with a fourth icon in the side bar, and a per-project view `/costs/:projectId`. Both show the cost by stage, kept apart: refinement (the draft journals, with the Jev) and development (the run journals, with the Jev decisions), plus chat. They break cost down by project, repository, spec, run, step, agent role and model, with a period filter (today, 7 days, 30 days, all). The screen reads the journals and does not change how runs behave. The spend limit per project is a later step (item 3 of the owner's order), and it reuses this data.
