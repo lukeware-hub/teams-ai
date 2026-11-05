@@ -44,7 +44,7 @@ async function fakeExec(spec: CommandSpec): Promise<CommandResult> {
   return result();
 }
 
-const deps = () => ({ exec: fakeExec, hostEnv, governor: new Governor(1), model: 'claude-sonnet-5-5' });
+const deps = () => ({ exec: fakeExec, hostEnv, governor: new Governor(1), model: 'claude-sonnet-5-5', effort: 'low' as const });
 
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-doc-graph-'))).replace(/\\/g, '/');
@@ -72,6 +72,11 @@ describe('document graph extraction', () => {
     expect(call.args).toEqual(['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', out]);
     expect(call.env).toMatchObject({ GRAPHIFY_CLAUDE_CLI_MODEL: 'claude-sonnet-5-5', SSH_AUTH_SOCK: '', DOCKER_HOST: '' });    expect(call.env!.HOME).not.toBe(host);
     expect(call.env!.HOME!.replace(/\\/g, '/').startsWith(parent)).toBe(true);
+  });
+
+  it('extracts at the effort the project chose for graphify', async () => {
+    await extractDocs({ ...deps(), effort: 'high' }, dir, out, parent);
+    expect(calls[0]!.env).toMatchObject({ CLAUDE_CODE_EFFORT_LEVEL: 'high' });
   });
 
   it('denies every tool in the HOME of the extraction, and gives it the host login as a copy', async () => {
