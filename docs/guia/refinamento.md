@@ -97,4 +97,4 @@ Todo projeto novo tem um backlog: o briefing vira várias specs, ordenadas por p
 
 ## Pedido em projeto em desenvolvimento
 
-Um pedido segue o mesmo refinamento do backlog, com três diferenças. O texto vira a seção "Nova demanda (<id>)" do briefing, e o backlog mantém os ids e a arquitetura já decididos. O SM mede o impacto do pedido no backlog que ele segue. Só acréscimos aos documentos do projeto entram sem você; remoções, reescritas, stack, design e aprovações de ajuste continuam com você.
+Um pedido segue o mesmo refinamento do backlog, com três diferenças. O texto vira a seção "Nova demanda (<id>)" do briefing, e o backlog mantém os ids e a arquitetura já decididos. O SM mede o impacto do pedido no backlog que ele segue. O time decide tudo sozinho: aceita toda sugestão, responde as perguntas e segue o specs.md que um revisor ainda rejeita. Só salvar nos repositórios e "Iniciar desenvolvimento" continuam com você.

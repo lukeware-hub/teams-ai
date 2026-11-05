@@ -48,7 +48,7 @@ export function ImpactCard({ impact, issues, addedKeys, accepted = [] }: { impac
       {impact.conflicts.length > 0 && <ul data-testid="impact-conflicts" className="m-0 grid list-none gap-1 p-0 text-[0.8125rem] text-ink-soft">{impact.conflicts.map((c) => <li key={`${c.a}-${c.b}`}>Conflito: {c.a} ↔ {c.b} ({c.reason}) → {c.resolution}</li>)}</ul>}
       <p data-testid="impact-architecture" className="m-0 text-[0.8125rem] text-ink-soft">Arquitetura: {impact.affected.some((a) => a.kind === 'architecture' || a.kind === 'decision') ? 'com mudança' : 'sem mudança'} · Duplicidade: {impact.duplicates.length > 0 ? 'ver abaixo' : 'nenhuma'}</p>
       {impact.duplicates.length > 0 && <ul className="m-0 grid list-none gap-1 p-0 text-[0.8125rem] text-ink-soft">{impact.duplicates.map((d) => <li key={d.newKey}>{d.newKey} repete {d.existing}: {d.verdict === 'reuse' ? 'aproveita a existente' : 'é distinta'}. {d.reason}</li>)}</ul>}
-      <p data-testid="impact-accepted" className="m-0 text-[0.8125rem] text-ink-soft">Documentos atualizados (acréscimos): {accepted.length > 0 ? accepted.map((a) => `${a.file} › ${a.heading}`).join('; ') : 'nenhum'}</p>
+      <p data-testid="impact-accepted" className="m-0 text-[0.8125rem] text-ink-soft">Documentos atualizados pelo time: {accepted.length > 0 ? accepted.map((a) => `${a.file} › ${a.heading}`).join('; ') : 'nenhum'}</p>
     </div>
   );
   return (

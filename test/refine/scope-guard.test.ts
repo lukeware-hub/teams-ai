@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { additiveOnly, changesNothing, joinsListItems, patchChangesScope, structureOf, writesOrchestratorId } from '../../server/refine/scope-guard.js';
+import { changesNothing, joinsListItems, patchChangesScope, structureOf, writesOrchestratorId } from '../../server/refine/scope-guard.js';
 
 describe('scope guard for document patches', () => {
   it('flags a patch that adds or removes a list item', () => {
@@ -78,25 +78,5 @@ describe('writesOrchestratorId and joinsListItems: a change that writes a decisi
     expect(joinsListItems('- Vitest para testes.', '- Vitest para testes.\n- Docker para subir o serviço localmente.')).toBe(false);
     expect(joinsListItems('O login é simples.', 'O login é simples. - Ver a regra AC-001.')).toBe(false);
     expect(joinsListItems('- Vitest para testes. - Docker.', '- Vitest para testes.\n- Docker.')).toBe(false);
-  });
-});
-
-describe('additiveOnly: a change that only adds to the text it finds', () => {
-  it('accepts an insertion that keeps the text it finds whole', () => {
-    expect(additiveOnly('## Fluxo\n\nO cliente paga.', '## Fluxo\n\nO cliente paga.\n- Exporta o relatório.')).toBe(true);
-  });
-
-  it('refuses a change that drops a list item or renames a heading', () => {
-    expect(additiveOnly('- A\n- B', '- A')).toBe(false);
-    expect(additiveOnly('## Antigo\n\ntexto', '## Novo\n\ntexto')).toBe(false);
-  });
-
-  it('accepts a clause added after the sentence, joined by a comma in place of its final mark', () => {
-    expect(additiveOnly('Responde com o corpo `Seja bem-vindo, <nome>!`.', 'Responde com o corpo `Seja bem-vindo, <nome>!`, exceto quando o nome for `noite`.')).toBe(true);
-    expect(additiveOnly('Retorna a mensagem no seguinte formato:', 'Retorna a mensagem no seguinte formato, exceto para `noite`:')).toBe(true);
-  });
-
-  it('refuses a rewording, which does not keep the text it finds', () => {
-    expect(additiveOnly('O cliente paga.', 'O cliente paga por cartão.')).toBe(false);
   });
 });

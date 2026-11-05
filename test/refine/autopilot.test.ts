@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autoAcceptable, resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
+import { resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 
 /** A session stand-in: the state the test sets, and every call the autopilot makes is recorded. */
@@ -78,24 +78,24 @@ describe('resolveEverything', () => {
     expect(s.decideAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it('a follow-on request the team runs alone leaves the specs.md approval and the save in the repositories to the owner', async () => {
+  it('a follow-on request the team runs alone follows the specs.md, but leaves the save in the repositories to the owner', async () => {
     const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    expect(s.approveSpecsAnyway).not.toHaveBeenCalled();
+    expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
     expect(s.saveDocs).not.toHaveBeenCalled();
     expect(s.addToGraph.mock.calls.map((c) => c[0])).toEqual(['flow.md', 'stack.md', 'design.md']);
   });
 
-  it('a follow-on request the team runs alone accepts only the additions and leaves a rewording to the owner', async () => {
+  it('a follow-on request the team runs alone accepts every suggestion, a rewording and a design change too, marked as automatic', async () => {
     const s = fake({ patches: [
       { patchId: 'add', status: 'pending', reason: '', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', file: 'briefing.md' },
       { patchId: 'reword', status: 'pending', reason: '', find: 'a', replace: 'b', file: 'briefing.md' },
+      { patchId: 'design', status: 'pending', reason: '', find: 'x', replace: 'y', file: 'design.md' },
     ] });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    expect(s.accept).toHaveBeenCalledWith('add', true);
-    expect(s.accept).not.toHaveBeenCalledWith('reword');
+    for (const id of ['add', 'reword', 'design']) expect(s.accept).toHaveBeenCalledWith(id, true);
   });
 
   it('a follow-on request the owner runs follows the specs.md and saves the documents, as his button says', async () => {
@@ -113,32 +113,5 @@ describe('startIsClear', () => {
     expect(await startIsClear(ready as unknown as RefineSession)).toBe(true);
     expect(await startIsClear(fake({ status: 'ready' }) as unknown as RefineSession)).toBe(false);
     expect(await startIsClear(fake({ status: 'ready', plansDone: true, questions: [{ questionId: 'q', status: 'pending', blocking: true }] }) as unknown as RefineSession)).toBe(false);
-  });
-});
-
-describe('autoAcceptable: the team accepts on its own what only adds to the project documents of a request', () => {
-  const patch = (over: Record<string, string>) => ({ file: 'briefing.md', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', status: 'pending', ...over }) as never;
-
-  it('accepts every suggestion of a session that is not a request, as before', () => {
-    expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), false)).toBe(true);
-  });
-
-  it('accepts an addition to project.md, flow.md or briefing.md of a request', () => {
-    expect(autoAcceptable(patch({}), true)).toBe(true);
-    expect(autoAcceptable(patch({ file: 'flow.md' }), true)).toBe(true);
-    expect(autoAcceptable(patch({ file: 'project.md' }), true)).toBe(true);
-  });
-
-  it('accepts an addition to stack.md, and a flow edge rerouted through new nodes that keeps its ends', () => {
-    expect(autoAcceptable(patch({ file: 'stack.md' }), true)).toBe(true);
-    expect(autoAcceptable(patch({ file: 'flow.md', find: 'F -->|HTTP 200| G', replace: 'F -->|HTTP 200| T{"noite?"}\n  T -->|Não| G\n  T -->|Sim| U["boa-noite"]' }), true)).toBe(true);
-  });
-
-  it('leaves to the owner a rewording, a change of design, a flow edge that loses an end, and an adjustment approval', () => {
-    expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), true)).toBe(false);
-    expect(autoAcceptable(patch({ file: 'stack.md', replace: 'outro texto' }), true)).toBe(false);
-    expect(autoAcceptable(patch({ file: 'flow.md', find: 'F -->|HTTP 200| G', replace: 'F -->|HTTP 200| T' }), true)).toBe(false);
-    expect(autoAcceptable(patch({ file: 'design.md' }), true)).toBe(false);
-    expect(autoAcceptable(patch({ find: '', replace: '## Ajuste aprovado: login-ajuste-1\n\ntexto\n' }), true)).toBe(false);
   });
 });
