@@ -14,6 +14,7 @@ import { afterStartPath, executionPath, projectPath } from '../routes.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { OptionGroup } from '../components/OptionGroup.js';
+import { money } from './costs/format.js';
 import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
@@ -1026,7 +1027,7 @@ export function RefinementView(p: ViewProps) {
           </div>
           <div data-testid="refinement-usage-cost">
             <dt data-testid="refinement-usage-cost-label">Custo estimado<InfoTip text="Estimativa em dólares das chamadas aos modelos de IA neste refinamento, calculada pelos preços de API." /></dt>
-            <dd data-testid="refinement-usage-cost-value">US$ {snap.tokens.costUsd.toFixed(2)}</dd>
+            <dd data-testid="refinement-usage-cost-value">{money(snap.tokens.costUsd)}</dd>
           </div>
           <div data-testid="refinement-usage-last-evaluation">
             <dt data-testid="refinement-usage-last-evaluation-label">Última avaliação<InfoTip text="Quanto a última avaliação levou, do clique em Avaliar ou Reavaliar até ela terminar." /></dt>
@@ -1110,7 +1111,7 @@ export function RefinementView(p: ViewProps) {
     return block?.id === 'graphed' ? null : block;
   })();
   const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
-  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ ${snap.tokens.costUsd.toFixed(2)}`;
+  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${money(snap.tokens.costUsd)}`;
   const outdatedDocs = st.outdatedDocs ?? [];
   const stageScreen = (file: DocFile) => {
     const score = st.readiness?.docs?.[file];

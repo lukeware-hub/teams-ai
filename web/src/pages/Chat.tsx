@@ -12,9 +12,9 @@ import { Bone, Loading, Skeleton } from '../components/Loading.js';
 import { Markdown } from '../components/Markdown.js';
 import { Select } from '../components/Select.js';
 import { emptyState, grouped } from './project-shared.js';
+import { money } from './costs/format.js';
 
-/** A chat answer costs a fraction of a cent: seven decimals, the precision the CLI reports. */
-const price = (usd: number) => `US$ ${usd.toFixed(7)}`;
+const price = money;
 
 const HELP = 'Aqui você tira dúvidas sobre o projeto. O chat lê os registros das execuções: o que bloqueia uma spec, por quê, quem precisa agir e o próximo passo. Para explicar um erro registrado, ele pode pesquisar na internet uma vez por pergunta, exceto em projetos confidenciais. Ele não dá ordens aos agentes: eles seguem apenas as specs e o backlog. Se achar algo sendo feito que contraria a spec, abre uma spec de correção para você revisar.';
 const EXAMPLES = ['Como crio uma nova spec?', 'O que está sendo desenvolvido agora?', 'Quais tarefas estão bloqueadas e por quê?', 'Algo está sendo feito fora do que foi pedido?'];

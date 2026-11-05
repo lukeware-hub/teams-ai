@@ -8,6 +8,7 @@ import { Pagination, SortHeader, TableFilters, usePagedTable } from '../componen
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
+import { money } from './costs/format.js';
 import { responsiveCell, responsiveHead, responsiveRow, responsiveTable } from './project-shared.js';
 import { explainBlockReason, ownHint, rootBlockers, stopBefore, stopSummary } from '../run/selectors.js';
 import { PUBLISHED_PORTS, serviceLinks } from '@server/deploy/service-links';
@@ -557,7 +558,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                     <dl data-testid="validation-totals" className={RUN_UI.totals}>
                       <div data-testid="validation-totals-cost">
                         <dt data-testid="validation-totals-cost-term">Custo estimado <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." /></dt>
-                        <dd data-testid="validation-totals-cost-value" className="font-[650]">US$ {report.tokens.total.costUsd.toFixed(2)}</dd>
+                        <dd data-testid="validation-totals-cost-value" className="font-[650]">{money(report.tokens.total.costUsd)}</dd>
                       </div>
                       <div data-testid="validation-totals-tokens">
                         <dt data-testid="validation-totals-tokens-term">Tokens <InfoTip text="Volume de texto processado pelos modelos de IA: entrada é o que eles leram, saída é o que escreveram. O custo cresce com os tokens." /></dt>

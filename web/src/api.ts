@@ -64,6 +64,8 @@ export interface AgentSetting { model: AgentModel; effort: AgentEffort }
 /** `inUse` is the model and effort the role's next step runs on: its setting, or the automatic default. */
 export interface AgentRow { role: string; setting: AgentSetting | null; inUse: AgentSetting }
 export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting);
+/** The models the automatic choice uses on every project: the task sizes, the architecture steps and the later refinement cycles. */
+export interface AutomaticModels { tiers: { small: AgentModel; medium: AgentModel; large: AgentModel }; architecture: AgentModel; laterCycle: AgentModel }
 
 const S = '/api/settings';
 export const settingsApi = {
@@ -76,6 +78,9 @@ export const settingsApi = {
   agentsDecide: (projectId: string) => fetch(`${S}/agents-decide/${projectId}`).then((r) => json<{ agentsDecide: boolean }>(r)),
   setAgentsDecide: (projectId: string, agentsDecide: boolean) =>
     fetch(`${S}/agents-decide/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agentsDecide }) }).then((r) => json<{ agentsDecide: boolean }>(r)),
+  automatic: () => fetch(`${S}/automatic`).then((r) => json<AutomaticModels>(r)),
+  setAutomatic: (models: AutomaticModels) =>
+    fetch(`${S}/automatic`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(models) }).then((r) => json<AutomaticModels>(r)),
   planAgents: () => fetch(`${S}/plan-agents`).then((r) => json<{ agents: number }>(r)),
   setPlanAgents: (agents: number) =>
     fetch(`${S}/plan-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),

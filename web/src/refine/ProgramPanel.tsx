@@ -9,6 +9,7 @@ import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, plural, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
+import { money } from '../pages/costs/format.js';
 
 const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam e publicam cada spec. Quando uma spec fica pronta para validação, a próxima segue sem esperar; só você a valida e conclui. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila. O custo de cada spec soma todas as suas execuções, inclusive tentativas, conclusão e deploy.';
 
@@ -69,7 +70,7 @@ export function canStartRun(st: StartInput, busy: boolean): boolean {
 }
 
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
-const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
+const fmtCost = money;
 
 /** `repo#7`: services keep their own repositories, so a number alone would name several pull requests. */
 export const prLabel = (pr: { number: number; url: string }): string => `${/github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ?? 'PR'}#${pr.number}`;

@@ -180,8 +180,8 @@ describe('a service of a system of services', () => {
   const shared = { composeProject: 'teams-ai-shop--orders', network: 'teams-ai-shop_net', alias: 'orders' };
   const intent = { projectId: 'shop', image: 'orders', tag: 't1', port: 20001, healthcheckPath: '/health', manifests: [], secretNames: [], contextDir: '/ws/orders', compose: 'docker-compose.yml', shared };
 
-  it("runs in its own compose project and joins only its main container to the shared network, under the service's name", async () => {
-    // The main container is the compose service named like the service (the devops rule of R12.6); its database stays private.
+  it("runs in its own compose project and joins every service of the app to the shared network under its own name, so the e2e gate reaches a fixture by name", async () => {
+    // The main container is the compose service named like the service (the devops rule of R12.6); the other services of the file join by their names too (owner decision, 2026-11-05: an e2e fixture such as a second instance must be reachable).
     const seen: { file?: string; mode?: number; override?: unknown } = {};
     const fake = new FakeExec()
       .on((s) => s.args.includes('--services'), () => ({ stdout: 'orders\ndb\n' }))
@@ -196,7 +196,7 @@ describe('a service of a system of services', () => {
     const up = fake.calls.find((c) => c.args.includes('up'))!;
     expect(up.args.slice(0, 3)).toEqual(['compose', '-p', 'teams-ai-shop--orders']);
     expect(seen.override).toEqual({
-      services: { orders: { networks: { default: {}, shared: { aliases: ['orders'] } } } },
+      services: { orders: { networks: { default: {}, shared: { aliases: ['orders'] } } }, db: { networks: { default: {}, shared: { aliases: ['db'] } } } },
       networks: { shared: { name: 'teams-ai-shop_net', external: true } },
     });
     // A private directory of its own, gone once compose read it: another user could swap a fixed name in a shared /tmp.

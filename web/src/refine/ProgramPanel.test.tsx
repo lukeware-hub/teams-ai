@@ -74,7 +74,7 @@ describe('ProgramPanel', () => {
 
   it('shows the cost of a spec in total, and the panel explains that it adds up every run', () => {
     renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1', costUsd: 1 })]));
-    expect(screen.getByTestId('program-item-cost-a').textContent).toBe('US$ 1.00');
+    expect(screen.getByTestId('program-item-cost-a').textContent).toBe('US$ 1,0000');
     expect(screen.getByRole('button', { name: /soma todas as suas execuções/ })).toBeTruthy();
     expect(screen.getByTestId('program-panel-action-a').compareDocumentPosition(screen.getByTestId('program-panel-cost-a')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

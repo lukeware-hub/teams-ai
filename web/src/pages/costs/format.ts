@@ -1,6 +1,6 @@
 import type { CostMoney } from '@server/usage/cost-types.js';
 
-const usd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' });
+const usd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const compact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 
 export const money = (amount: number): string => usd.format(amount);

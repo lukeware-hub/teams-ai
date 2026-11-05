@@ -3,8 +3,8 @@ import { money, ofTotal, percent, shareOf, sumMoney, tokens, unpricedNote } from
 
 describe('cost formats', () => {
   it('writes dollars in pt-BR with a no-break space after US$', () => {
-    expect(money(39.67)).toBe('US$ 39,67');
-    expect(money(1234.5)).toBe('US$ 1.234,50');
+    expect(money(39.67)).toBe('US$ 39,6700');
+    expect(money(1234.5)).toBe('US$ 1.234,5000');
   });
 
   it('writes tokens in the short pt-BR form', () => {

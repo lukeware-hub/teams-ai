@@ -55,10 +55,10 @@ describe('CostsPage', () => {
     vi.spyOn(costsApi, 'overview').mockResolvedValue(overview());
     renderAt();
     const total = await screen.findByTestId('costs-indicator-total');
-    expect(within(total).getByText(usd('39,67'))).toBeTruthy();
+    expect(within(total).getByText(usd('39,6700'))).toBeTruthy();
     expect(within(total).getByText('5,7 mi tokens')).toBeTruthy();
     const refinement = screen.getByTestId('costs-indicator-refinement');
-    expect(within(refinement).getByText(usd('6,35'))).toBeTruthy();
+    expect(within(refinement).getByText(usd('6,3500'))).toBeTruthy();
     expect(within(refinement).getByText('16% do total')).toBeTruthy();
   });
 
@@ -116,7 +116,7 @@ describe('CostsPage', () => {
     vi.spyOn(costsApi, 'overview').mockResolvedValue(overview());
     renderAt();
     const footer = await screen.findByTestId('costs-footer');
-    expect(within(footer).getByText(usd('0,40'))).toBeTruthy();
+    expect(within(footer).getByText(usd('0,4000'))).toBeTruthy();
     expect(screen.queryByTestId('costs-unread')).toBeNull();
   });
 });

@@ -1671,19 +1671,19 @@ Modo: **Operate.** A pessoa quer saber quanto foi gasto, onde, e qual agente gas
 │ ── │ Quanto cada projeto gastou, onde e com qual agente.              │
 │ ▤  │ ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )                         │
 │ $  │ ┌ Total ───────┐┌ Refinamento ┐┌ Desenvolvimento ┐┌ Chat ──────┐ │
-│ ▢  │ │ US$ 39,67    ││ US$ 6,10    ││ US$ 33,20       ││ US$ 0,12   │ │
+│ ▢  │ │ US$ 39,6700  ││ US$ 6,1000  ││ US$ 33,2000     ││ US$ 0,1200 │ │
 │ ⚙  │ │ 5,7 mi tokens││ 15%         ││ 84%             ││ 1%         │ │
 │ ☾  │ └──────────────┘└─────────────┘└─────────────────┘└────────────┘ │
 │    │ ┌ Por projeto ───────────────────────────────────────────────┐   │
 │    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total  Execuç.│   │
-│    │ │ kayron…  US$ 3,10     US$ 20,10        0,05  23,25   31    │   │
+│    │ │ kayron…  US$ 3,1000   US$ 20,1000      0,0500  23,2500 31  │   │
 │    │ │          ▇▇▇          ▇▇▇▇▇▇▇▇▇▇▇▇                         │   │
 │    │ └────────────────────────────────────────────────────────────┘   │
 │    │ ┌ Por agente ──────────────────┐┌ Por modelo ───────────────┐     │
-│    │ │ Refinamento · po  US$ 2,00 ▇▇ ││ opus   US$ 30,00 ▇▇▇▇▇▇▇ │     │
-│    │ │ Desenvolv.  · dev US$ 15,00 ▇▇││ sonnet US$  8,00 ▇▇      │     │
+│    │ │ Refinamento · po US$ 2,0000 ▇▇││ opus   US$ 30,0000▇▇▇▇▇▇▇│     │
+│    │ │ Desenvolv. · dev US$ 15,0000▇▇││ sonnet US$  8,0000 ▇▇    │     │
 │    │ └──────────────────────────────┘└───────────────────────────┘     │
-│    │ Jev fora de projetos: US$ 0,40 (i)    2 journals não lidos (i)   │
+│    │ Jev fora de projetos: US$ 0,4000 (i)  2 journals não lidos (i)   │
 └────┴──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1696,7 +1696,7 @@ Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
 ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )
 ┌ Total ┐ ┌ Refinamento ┐ ┌ Desenvolvimento ┐ ┌ Chat ┐
 ┌─ Refinamento ───────────────────┐ ┌─ Desenvolvimento ─────────────────┐
-│ US$ 3,10 · 18 steps          (i)│ │ US$ 20,10 · 212 steps          (i)│
+│ US$ 3,1000 · 18 steps        (i)│ │ US$ 20,1000 · 212 steps        (i)│
 │ Por agente  po ▇▇ sm ▇ front ▇  │ │ Por agente  dev ▇▇▇▇ test ▇▇ sec ▇│
 │ Por modelo  …                   │ │ Por modelo  …                     │
 │ Por tipo    docs ▇ spec ▇ plano │ │ Por fase    Tarefas ▇▇▇ Plano ▇ … │
@@ -1709,7 +1709,7 @@ Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
 │ Data  Etapa  Spec  Run  Repo  Tarefa  Agente  Fase  Modelo  Tokens US$│
 │                                                      < 1 2 3 … >     │
 └───────────────────────────────────────────────────────────────────────┘
-Chat: US$ 0,12 · 14 respostas
+Chat: US$ 0,1200 · 14 respostas
 ```
 
 Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abaixo, `Por spec` (uma linha por spec com as duas colunas de custo), a tabela paginada de `Steps` com filtros e busca, e a linha de Chat.
@@ -1717,7 +1717,8 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 ### 33.4 Componentes
 
 - **Painel:** cabeçalho de §11.2 (ícone em bloco, rótulo pequeno, título e um chip de estado).
-- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio.
+- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio. Os indicadores de etapa e de chat trazem a barra de participação logo abaixo da linha de apoio.
+- **Títulos de painel:** todo painel de custos tem um botão de informação ao lado do título, com o texto de §33.6. O conteúdo do painel começa no topo (`content-start`), sem espaço extra acima quando ele divide a linha com outro painel.
 - **Barra de participação:** rótulo à esquerda, trilho de 6 px (§11.17), preenchimento `accent` liso, valor e percentual escritos à direita. A etapa vem sempre escrita ao lado da barra: a cor nunca é a única pista.
 - **Chips de período:** família única de chips (§3.9). Selecionado: `accent-soft` com texto `accent-ink` e `aria-pressed="true"`. Os chips quebram linha; não há rolagem horizontal.
 - **Tabelas:** §11.16. Números à direita, em algarismos tabulares. Abaixo de 44 rem viram cartões (`responsiveTable`).
@@ -1746,7 +1747,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 
 ### 33.7 Formato
 
-- Dinheiro: `US$ 39,67` (vírgula decimal, pt-BR, sempre com `US$` antes do valor).
+- Dinheiro: `US$ 39,6700` (vírgula decimal, pt-BR, sempre quatro casas decimais, sempre com `US$` antes do valor). O mesmo formato vale em todas as telas e na API, que arredonda a quatro casas.
 - Tokens: forma compacta pt-BR (`5,7 mi tokens`).
 - Percentual sem casas decimais, com `%`.
 - Frases curtas, em sentença normal, sem jargão de sistema.
@@ -1766,3 +1767,39 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 ### 33.10 Fora desta tela
 
 Limite de gasto, mudança de comportamento dos runs, série temporal, exportação.
+
+## 34. Configurações — modelos por agente, chat, graphify e automático
+
+Tela `/settings`, dentro do que já existe. Nenhuma forma nova de tela: as linhas seguem o padrão da lista de agentes.
+
+### 34.1 Modelos e esforço, por projeto
+
+A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm só modelo fixo: não há `Automático`. `Graphify` não mostra esforço, porque o graphify não recebe esforço. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
+
+### 34.2 Modelos automáticos, globais
+
+Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Configuração Global do Ambiente`. Ele mostra cinco escolhas, usadas pelos papéis em `Automático` em todos os projetos deste computador:
+
+| Linha | Usada em |
+|---|---|
+| Tarefa pequena | tarefa de tamanho pequeno no modo de roteamento |
+| Tarefa média | tarefa de tamanho médio |
+| Tarefa grande | tarefa de tamanho grande |
+| Arquitetura | passos de tech-spec, plano, services-plan e arquitetura |
+| Refinamento, ciclos seguintes | passos de refinamento a partir do segundo ciclo |
+
+Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro. Não há campo de esforço: o modo automático define o esforço por modelo.
+
+```
+Modelos automáticos                                    (i)
+Usados pelos papéis em Automático, em todos os projetos.
+Tarefa pequena                  [ Haiku 5.5   v ]
+Tarefa média                    [ Sonnet 5.5  v ]
+Tarefa grande                   [ Sonnet 5.5  v ]
+Arquitetura                     [ Opus 5.5    v ]
+Refinamento, ciclos seguintes   [ Sonnet 5.5  v ]
+```
+
+### 34.3 Fora desta tela
+
+A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqui. Ela segue a configuração do arquivo.

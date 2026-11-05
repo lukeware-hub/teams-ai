@@ -1,7 +1,7 @@
 import { COST_STAGES, type CostFact, type CostMoney, type CostPeriod, type CostShare, type CostStage } from './cost-types.js';
 
 const DAY_MS = 86_400_000;
-const round = (n: number): number => Math.round(n * 1e6) / 1e6;
+const round = (n: number): number => Math.round(n * 1e4) / 1e4;
 const sum = (values: readonly number[]): number => values.reduce((total, v) => total + v, 0);
 const costOf = (f: CostFact): number => f.costUsd ?? 0;
 

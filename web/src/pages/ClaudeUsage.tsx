@@ -5,6 +5,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { hhmm } from '../refine/ProgramPanel.js';
 import { panel, sectionTitle } from './project-shared.js';
+import { money } from './costs/format.js';
 
 const REFRESH_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -23,7 +24,7 @@ const REASONS: Record<UnavailableReason, string> = {
 };
 
 const startOfDay = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
-const usd = (value: number) => `US$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+const usd = money;
 
 /** hoje, amanhã, or the weekday of a day within the week. */
 function dayName(at: Date, now: Date): string {
