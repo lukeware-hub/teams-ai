@@ -20,6 +20,8 @@ export interface ChatUsage {
   costUsd: number | null;
   seconds: number;
   turns: number;
+  /** The model the answer ran on; absent in conversations saved before it was recorded. */
+  model?: string;
 }
 
 export interface ChatMessage {

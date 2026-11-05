@@ -1,13 +1,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { abandonLaunch, isAlive, spawnRun, waitForRunJournal, type RunControlDeps } from '../api/run-control.js';
-import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
+import { claimLaunch, claimsSpec, clearStopRequested, isStopRequested, listRuns, markStopRequested, runCost, runRow, runsDir as runsDirOf, writePid, type IndexDeps } from '../api/run-index.js';
 import type { Config } from '../config/config.js';
 import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
+import { parseRunId } from '../core/ids.js';
 import type { Decider } from '../decide/decider.js';
-import type { DecisionRecord } from '../decide/types.js';
+import type { AttemptOutcome, DecisionAttempt, DecisionRecord } from '../decide/types.js';
 import { classifyFailure } from '../decide/decisions/failure-cause.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import { expandHome, nextRunId } from '../orchestrator/workspace.js';
@@ -43,13 +44,19 @@ export interface ProgramDecision {
   decisionId: string;
   /** Who answered: `jev`, `local`, `claude`, or null when none did. */
   backend: string | null;
+  /** Whether a model was asked and failed, or the Jev key is missing; never true for an answered decision. */
+  unanswered: boolean;
   escalated: boolean;
   answers: Array<{ question: string; value: string | number; confidence: number | null }>;
 }
 interface RunFacts { prs: ProgramPr[]; decisions: ProgramDecision[]; pause?: { reason: 'quota' | 'auth'; until?: string } }
 
+const FAILED_ASK: readonly AttemptOutcome[] = ['unavailable', 'invalid'];
+/** A backend that was called and failed, or the Jev that is needed and has no key. An unsure answer is not a failure. */
+const failedAsk = (a: DecisionAttempt): boolean => FAILED_ASK.includes(a.outcome) || (a.backend === 'jev' && a.outcome === 'missing-backend');
+
 const decisionOf = (r: DecisionRecord, key: string, runId: string): ProgramDecision => ({
-  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, escalated: r.escalated,
+  at: r.at, key, runId, decisionId: r.decisionId, backend: r.backend, unanswered: r.backend === null && r.attempts.some(failedAsk), escalated: r.escalated,
   answers: Object.entries(r.answers ?? {}).map(([question, a]) => ({ question, value: a.value, confidence: a.confidence })),
 });
 
@@ -151,16 +158,28 @@ export class ProgramService {
     return facts;
   }
 
-  /** The ledger with each item's pull requests, its pause, and whether its run lost its process. */
+  /** What all the runs of each spec cost in total, read as the runs table reads them, so the program and the table agree. */
+  private async specSpend(projectId: string, runs: string): Promise<Map<string, number>> {
+    const spend = new Map<string, number>();
+    for (const name of await fs.readdir(runs).catch(() => [] as string[])) {
+      const parsed = parseRunId(name);
+      if (!parsed || (parsed.projectId !== null && parsed.projectId !== projectId)) continue;
+      spend.set(parsed.specId, (spend.get(parsed.specId) ?? 0) + (await runCost(runs, name)));
+    }
+    return spend;
+  }
+
+  /** The ledger with each item's cost and pull requests, its pause, and whether its run lost its process. */
   async view(projectId: string, draftId: string): Promise<ProgramView | null> {
     const program = await this.read(projectId, draftId);
     if (program === null) return null;
     const idx = await this.index();
     const runs = runsDirOf(idx);
+    const spend = await this.specSpend(projectId, runs);
     const items = await Promise.all(program.items.map(async (item): Promise<ProgramItemView> => {
       const { prs, pause } = await this.runFacts(item, runs);
       const lost = await this.lostRun(item, idx);
-      return { ...item, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
+      return { ...item, costUsd: spend.get(item.specId) ?? item.costUsd, prs, ...(pause ? { pause } : {}), ...(lost ? { interrupted: { runId: lost } } : {}) };
     }));
     return { ...program, items };
   }
@@ -173,14 +192,15 @@ export class ProgramService {
     return row?.status === 'interrupted' || row?.status === 'unknown' ? runId : null;
   }
 
-  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many asked nobody answered. */
+  /** The System 1 decisions of the program's runs that got an answer, the newest first and at most `limit`, and how many were asked and nobody answered. */
   async decisions(projectId: string, draftId: string, limit = 100): Promise<{ decisions: ProgramDecision[]; unanswered: number }> {
     const program = await this.read(projectId, draftId);
     if (program === null) return { decisions: [], unanswered: 0 };
     const runs = runsDirOf(await this.index());
     const all = (await Promise.all(program.items.map(async (item) => (await this.runFacts(item, runs)).decisions))).flat();
     const answered = all.filter((d) => d.backend !== null);
-    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered: all.length - answered.length };
+    const unanswered = all.filter((d) => d.unanswered).length;
+    return { decisions: answered.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit), unanswered };
   }
 
   /** Puts a pending item ahead of the queue and takes a tick, which starts it if a slot is free and nothing in flight conflicts. */

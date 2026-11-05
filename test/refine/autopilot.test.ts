@@ -25,6 +25,8 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     settled: vi.fn(async () => undefined),
     evaluateStage: vi.fn(async () => undefined),
     addToGraph: vi.fn(async (file: string) => { (state.graphed as string[]).push(file); }),
+    graphDocs: vi.fn(async () => undefined),
+    closingSummary: vi.fn(async () => ({ ok: true, summaryHash: 'h', checks: [], repositories: [], assumptions: [] })),
     saveDocs: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
@@ -78,24 +80,26 @@ describe('resolveEverything', () => {
     expect(s.decideAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it('a follow-on request the team runs alone leaves the specs.md approval and the save in the repositories to the owner', async () => {
+  it('a follow-on request the team runs alone follows the specs.md and graphs the five documents in one go, but leaves the save in the repositories to the owner', async () => {
     const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    expect(s.approveSpecsAnyway).not.toHaveBeenCalled();
+    expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
+    expect(s.closingSummary).toHaveBeenCalled();
     expect(s.saveDocs).not.toHaveBeenCalled();
-    expect(s.addToGraph.mock.calls.map((c) => c[0])).toEqual(['flow.md', 'stack.md', 'design.md']);
+    expect(s.graphDocs).toHaveBeenCalledTimes(1);
+    expect(s.addToGraph).not.toHaveBeenCalled();
   });
 
-  it('a follow-on request the team runs alone accepts only the additions and leaves a rewording to the owner', async () => {
+  it('a follow-on request the team runs alone accepts every suggestion, a rewording and a design change too, marked as automatic', async () => {
     const s = fake({ patches: [
       { patchId: 'add', status: 'pending', reason: '', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', file: 'briefing.md' },
       { patchId: 'reword', status: 'pending', reason: '', find: 'a', replace: 'b', file: 'briefing.md' },
+      { patchId: 'design', status: 'pending', reason: '', find: 'x', replace: 'y', file: 'design.md' },
     ] });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    expect(s.accept).toHaveBeenCalledWith('add', true);
-    expect(s.accept).not.toHaveBeenCalledWith('reword');
+    for (const id of ['add', 'reword', 'design']) expect(s.accept).toHaveBeenCalledWith(id, true);
   });
 
   it('a follow-on request the owner runs follows the specs.md and saves the documents, as his button says', async () => {

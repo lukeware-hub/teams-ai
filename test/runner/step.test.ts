@@ -353,6 +353,14 @@ describe('runStep', () => {
       expect(bookedUsage()).toEqual([[100, 20], [160, 50]]);
     });
 
+    it('books the cost delta and flags the reset when only the API time went back', async () => {
+      await run('first.ndjson', result(0.37, 62_000, 100, 20), false);
+      const second = await run('second.ndjson', result(0.55, 40_000, 40, 10), true);
+      expect(deps.accounting.records()[1]!.costUsd).toBeCloseTo(0.18, 6);
+      expect(second.summary.profile?.durationApiMs).toBe(40_000);
+      expect(second.summary.profile?.sessionTotalsReset).toBe(true);
+    });
+
     it('books the reported cost and flags the reset when the session cost went down', async () => {
       await run('first.ndjson', result(0.37, 62_000, 100, 20), false);
       const second = await run('second.ndjson', result(0.1, 70_000, 40, 10), true);

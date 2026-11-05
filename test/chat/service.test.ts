@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
+import { CHAT_ALLOW, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import type { MainDoc } from '../../server/git/main-docs.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
@@ -37,6 +37,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     workspacesRoot: async () => path.join(home, 'ws'),
     suggestSpecId,
     newSpec,
+    chatModel: async () => 'claude-haiku-5-5',
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
@@ -52,8 +53,7 @@ describe('ChatService.ask', () => {
     const { service, newSpec } = make(runAgent);
     const reply = await service.ask('hello-app', ' o que está sendo feito? ');
     expect(reply!).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
-    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po', model: 'haiku' });
-    expect(CHAT_MODEL).toBe('haiku');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po' });
     expect(runAgent.mock.calls[0]![0].pack.feedback).toContain('o que está sendo feito?');
     expect((await service.messages('hello-app')).map((m) => [m.role, m.text])).toEqual([['user', 'o que está sendo feito?'], ['assistant', 'Está sendo feito o cumprimento.']]);
     expect(newSpec).not.toHaveBeenCalled();
@@ -90,7 +90,7 @@ describe('ChatService.ask', () => {
     const lines: string[] = [];
     const { service } = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary }), { log: (l) => lines.push(l) });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3 });
+    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3, model: 'claude-haiku-5-5' });
     expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply!.usage);
     expect(lines).toEqual(['chat hello-app: 7000 tokens read, 340 written, 3 turns, 14s, US$ 0.0421']);
     const prose = make(async (_req: Req) => ({ ok: false, failure: 'schema', errors: ['no JSON'], summary: { ...summary, costUsd: null, resultText: 'Texto livre.' }, sandboxDisabled: false }));

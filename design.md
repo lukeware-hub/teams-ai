@@ -24,7 +24,7 @@ Hex values are sampled by eye from the screenshots and marked **≈** where they
 
 ## 1. Scope, mode and authority
 
-**Applies to** every screen in `web/src`: `/onboarding`, `/projects`, `/runs/:runId`, `/refine/:projectId/:specId`, `/status`.
+**Applies to** every screen in `web/src`: `/onboarding`, `/projects`, `/runs/:runId`, `/refine/:projectId/:specId`, `/costs`, `/costs/:projectId`, `/chat`, `/settings`.
 
 **Mode: Operate.** Every surface exists to let someone finish a task. Expression never outranks the task, the state, or the familiar affordance. The failure mode is not blandness, it is *strangeness without purpose* — over-decorated controls, mismatched form elements, gratuitous motion, invented affordances for standard jobs. The bar is **earned familiarity**: a category-fluent developer trusts the interface immediately and never pauses at a subtly-off control.
 
@@ -1095,7 +1095,7 @@ Every screen, onboarding included, lives in one shell that fills the window, the
 | Region | Spec |
 |---|---|
 | Shell | Full window height (`100dvh`), 16px around, the rail on the left and an empty column of the same width on the right, so the content is always exactly centered in the window; the whole shell is at most 1760px wide. The page itself never scrolls. |
-| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. The rail shows icons only: no visible words. |
+| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination, in this order — `Projetos` (folder), `Custos` (coin), `Chat de dúvidas` (speech bubble) and `Configurações` (gear) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. The rail shows icons only: no visible words. |
 | Content area | Holds the current screen and scrolls inside. It has no background, border or edge of its own: the screen sits straight on the page gradient, and only the cards carry edges. |
 | Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the window height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. Panels can share a group: between 1024px and 1280px the refinement stacks Revisão and Verificação in one right column at full height with a single scroll, so neither is squeezed to half the window. |
 | Below 768px | The rail becomes a bottom bar across the window and the frame loses its border and radius, so the content gets the whole width. |
@@ -1414,11 +1414,11 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 ### 27.1 Backlog execution — section `#execucao` of `/projects/:projectId`
 
-**One place for the execution.** The project hub follows a running backlog on its own page: right under the counters, the section `Execução do backlog` (anchor `#execucao`) holds the panel "Specs do backlog" and the decision timeline. The decision timeline appears only once a decision was answered; asks no model answered are a warning chip `N consultas sem resposta` (with a tip naming the Jev and the model key) at the right of the status line, shown only above zero, and there is no empty state. There is no separate status card on the hub: the panel header carries the status line (spinner, or alert icon when interrupted, "Executando o backlog · N de M concluídas", cost) and the progress bar under it, and the spec running now shows its phase under its run id. There is no separate screen and no button that leads to one. The old address `/refine/:projectId/:specId/program` redirects (replace) to `/projects/:projectId#execucao`, so saved links still work. The refinement page of a started spec shows the same status card with the link `Acompanhar no projeto`, which goes to the hub.
+**One place for the execution.** The project hub follows a running backlog on its own page: right under the counters, the section `Execução do backlog` (anchor `#execucao`) holds the panel "Specs do backlog" and the decision timeline. The decision timeline appears only once a decision was answered; asks where a model failed or the Jev key is missing are a warning chip `N consultas sem resposta` (with a tip naming the Jev and the model key); an unsure answer below the confidence bar is not counted at the right of the status line, shown only above zero, and there is no empty state. There is no separate status card on the hub: the panel header carries the status line (spinner, or alert icon when interrupted, "Executando o backlog · N de M concluídas", "· 1 aguarda sua validação" or "· 2 aguardam sua validação" for the specs awaiting validation, cost) and the progress bar under it, and the spec running now shows its phase under its run id. A spec awaiting validation does not hold the backlog: its dependents start at once, and only the owner's validation completes it. When nothing runs and only such specs are left, the status line reads "Aguardando sua validação · N de M concluídas" with a clock icon in place of the spinner. There is no separate screen and no button that leads to one. The old address `/refine/:projectId/:specId/program` redirects (replace) to `/projects/:projectId#execucao`, so saved links still work. The refinement page of a started spec shows the same status card with the link `Acompanhar no projeto`, which goes to the hub.
 
 **Where each action leads.** Starting an execution (from the refinement or from the hub) always lands on `/projects/:projectId`. The refinement receives the owner only when the owner opens it. A run opens at `/runs/:runId`; its breadcrumb is `⌂ › Projetos › <project> › <spec> › <run>`, and the validation adds `› Validação`. `Projetos` is always `/projects`, the project is always `/projects/:projectId`, the run is a link on the validation page; the spec is plain text because a concluded spec has no refinement to open.
 
-Same parts as the refinement card, nothing new. The panel "Specs do backlog" has its title at the left and the status line at the right; the status card (spinner or check, "Executando o backlog · N de M concluídas", the progress bar, one line per spec running now with "Acompanhar a run") stays only on the refinement page of a started spec. A run that lost its process (the owner's Stop, or a crash) reads as interrupted: the status line says "Backlog interrompido" with an alert icon in place of the spinner once every spec running now is in that state. Its list pill is the hub's "interrompida" pill. Each spec is one row on fixed columns — rank, title with its run id and, while it runs, its phase under it, the hub's status pill, cost right-aligned, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip). A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
+Same parts as the refinement card, nothing new. The panel "Specs do backlog" has its title at the left and the status line at the right; the status card (spinner, clock or check, "Executando o backlog · N de M concluídas" or "Aguardando sua validação · N de M concluídas", the progress bar, one line per spec running now with "Acompanhar a run") stays only on the refinement page of a started spec. A run that lost its process (the owner's Stop, or a crash) reads as interrupted: the status line says "Backlog interrompido" with an alert icon in place of the spinner once every spec running now is in that state. Its list pill is the hub's "interrompida" pill. Each spec is one row on fixed columns — rank, title with its run id and, while it runs, its phase under it, the hub's status pill, then the action (`Executar agora`, `Tentar de novo`, or the `prioritária` chip), and the cost last, right-aligned at the end of the row, so every row's cost lines up on the same edge. A live row has a faint `accent-soft` ground. Below 1024px status, cost and action wrap under the title.
 
 ### 27.4 Run — cabeçalho com atividade ao vivo
 
@@ -1453,6 +1453,26 @@ Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Aç�
 - **Erro ao listar repositórios.** Aparece dentro do diálogo, e a exclusão segue só com os arquivos locais.
 - **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
 - Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
+
+### 27.7 Repositório — tabela de tarefas
+
+Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por spec". Ele lista todas as tarefas do repositório, uma linha por tarefa, sem agrupar por spec.
+
+- **Linha.** Título da tarefa em negrito, com a spec e o responsável em texto de apoio abaixo; à direita, o chip de estado (§11.4) e, só para tarefa que não terminou com sucesso (bloqueada ou falhou), o botão `Detalhe`. Abaixo de 768px a linha vira uma coluna.
+- **Filtro.** Caixa de busca por título, tarefa ou spec, e um filtro de status com os estados da tela de entregas (`Entregue`, `Em desenvolvimento`, `Pendente`, `Bloqueada`, `Falhou`). Sem o filtro, o contador mostra só o total.
+- **Paginação.** A mesma paginação das outras tabelas do repositório (`Itens por página`, o intervalo `1–10 de 16` e as setas anterior e próxima), feita no servidor. Trocar o filtro ou a busca volta para a primeira página.
+- **Detalhe.** Abre um diálogo (§11.3) com o título da tarefa, três dados (`Tarefa`, `Spec`, `O que aconteceu`), o problema e a solução em linguagem simples, e o texto técnico do revisor dobrado em "Ver detalhe técnico". O mesmo bloco aparece na tela da run, então o texto é igual nos dois lugares. Link `Abrir run` no rodapé do diálogo.
+- **Vazio.** "Nenhuma tarefa encontrada." quando o filtro não acha nada.
+
+```
+┌ Tarefas (16) ─────────────── [busca] [Status: todos ▾] ┐
+│ Criar rota /ping                       ● Entregue      │
+│ spec-02 · Desenvolvimento                              │
+│ Validar login                          ● Falhou  [Detalhe]
+│ spec-02 · Desenvolvimento                              │
+│  Itens por página [10 ▾]     1–10 de 16     ← →      │
+└────────────────────────────────────────────────────────┘
+```
 
 ## 28. Copy
 
@@ -1607,3 +1627,179 @@ Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pe
 ### 31.3 Responsivo
 
 Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.
+
+## 32. Nova spec em modal
+
+Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução concluída) abre o mesmo modal grande, na própria tela, sem levar à página do projeto.
+
+### 32.1 Composição
+
+- Usa o `Dialog` em tamanho grande: 56 rem de largura no máximo e 90% da altura da janela.
+- Cabeçalho com o título `Nova spec · <projeto>` e o botão de fechar.
+- Corpo com um rótulo, uma caixa de texto alta (pelo menos 14 rem), uma frase que diz o que os agentes farão e, quando houver, o erro.
+- Rodapé com `Cancelar` (secundário) e `Criar spec` (primário, com seta), alinhados à direita.
+
+### 32.2 Comportamento
+
+- `Criar spec` fica desativado com o campo vazio e mostra o estado de envio sem permitir um segundo clique.
+- Ao confirmar, a tela abre `/refine/<projeto>/<spec>`, onde os agentes organizam a spec no padrão das outras.
+- Um erro aparece dentro do modal e o texto digitado é mantido.
+- Fechar com texto digitado pede confirmação antes de descartar.
+- Se já existe um pedido aberto e não iniciado, o modal mostra o aviso e o botão `Continuar` no lugar do campo.
+
+### 32.3 Responsivo
+
+Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.
+
+## 33. Custos — `/costs` e `/costs/:projectId`
+
+Modo: **Operate.** A pessoa quer saber quanto foi gasto, onde, e qual agente gastou mais, sem interpretar gráfico. Todo número vem dos registros do sistema. O que não tem fonte diz que não tem.
+
+### 33.1 Decisões de produto
+
+- Refinamento e Desenvolvimento são sempre dois blocos, cada um com total próprio. Nenhum total mistura as duas etapas sem mostrar as duas partes.
+- Valor em dólar americano (`US$`), estimado a preços de API. A tela nunca diz que o valor foi cobrado: no plano de assinatura o custo não é cobrado por uso.
+- Período: `Hoje` (dia corrente no fuso do servidor), `7 dias`, `30 dias` e `Tudo`. Padrão: `Tudo`.
+- Sem gráfico de linha, pizza ou rosca. Participação é barra horizontal com o valor escrito ao lado.
+- Custo é alerta, nunca parada: a tela não tem ação que limite gasto.
+
+### 33.2 Visão global — `/costs`
+
+```text
+┌────┬──────────────────────────────────────────────────────────────────┐
+│ ◆  │ Custos                                           [ Atualizar ]   │
+│ ── │ Quanto cada projeto gastou, onde e com qual agente.              │
+│ ▤  │ ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )                         │
+│ $  │ ┌ Total ───────┐┌ Refinamento ┐┌ Desenvolvimento ┐┌ Chat ──────┐ │
+│ ▢  │ │ US$ 39,6700  ││ US$ 6,1000  ││ US$ 33,2000     ││ US$ 0,1200 │ │
+│ ⚙  │ │ 5,7 mi tokens││ 15%         ││ 84%             ││ 1%         │ │
+│ ☾  │ └──────────────┘└─────────────┘└─────────────────┘└────────────┘ │
+│    │ ┌ Por projeto ───────────────────────────────────────────────┐   │
+│    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total  Execuç.│   │
+│    │ │ kayron…  US$ 3,1000   US$ 20,1000      0,0500  23,2500 31  │   │
+│    │ │          ▇▇▇          ▇▇▇▇▇▇▇▇▇▇▇▇                         │   │
+│    │ └────────────────────────────────────────────────────────────┘   │
+│    │ ┌ Por agente ──────────────────┐┌ Por modelo ───────────────┐     │
+│    │ │ Refinamento · po US$ 2,0000 ▇▇││ opus   US$ 30,0000▇▇▇▇▇▇▇│     │
+│    │ │ Desenvolv. · dev US$ 15,0000▇▇││ sonnet US$  8,0000 ▇▇    │     │
+│    │ └──────────────────────────────┘└───────────────────────────┘     │
+│    │ Jev fora de projetos: US$ 0,4000 (i)  2 journals não lidos (i)   │
+└────┴──────────────────────────────────────────────────────────────────┘
+```
+
+Ordem de cima para baixo: cabeçalho com título, uma linha de apoio e `Atualizar` (secundário, à direita); chips de período; faixa de quatro indicadores (Total, Refinamento, Desenvolvimento, Chat); painel `Por projeto`, uma linha por projeto, clicável, que abre `/costs/:projectId`; dois painéis lado a lado, `Por agente` e `Por modelo`; rodapé com `Jev fora de projetos` e os avisos de leitura.
+
+### 33.3 Visão do projeto — `/costs/:projectId`
+
+```text
+Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
+( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )
+┌ Total ┐ ┌ Refinamento ┐ ┌ Desenvolvimento ┐ ┌ Chat ┐
+┌─ Refinamento ───────────────────┐ ┌─ Desenvolvimento ─────────────────┐
+│ US$ 3,1000 · 18 steps        (i)│ │ US$ 20,1000 · 212 steps        (i)│
+│ Por agente  po ▇▇ sm ▇ front ▇  │ │ Por agente  dev ▇▇▇▇ test ▇▇ sec ▇│
+│ Por modelo  …                   │ │ Por modelo  …                     │
+│ Por tipo    docs ▇ spec ▇ plano │ │ Por fase    Tarefas ▇▇▇ Plano ▇ … │
+│ Por modelo  Sonnet 5.5 · Haiku  │ │ Por repositório  api ▇▇ web ▇     │
+└─────────────────────────────────┘ └───────────────────────────────────┘
+┌─ Por spec ────────────────────────────────────────────────────────────┐
+│ Spec    Refinamento   Desenvolvimento   Total   Execuções             │
+└───────────────────────────────────────────────────────────────────────┘
+┌─ Steps ── Etapa [Todas ▾] Agente [Todos ▾] Spec [Todas ▾]  [busca] ───┐
+│ Data  Etapa  Spec  Run  Repo  Tarefa  Agente  Fase  Modelo  Tokens US$│
+│                                                      < 1 2 3 … >     │
+└───────────────────────────────────────────────────────────────────────┘
+Chat: US$ 0,1200 · 14 respostas
+```
+
+Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abaixo, `Por spec` (uma linha por spec com as duas colunas de custo), a tabela paginada de `Steps` com filtros e busca, e a linha de Chat.
+
+### 33.4 Componentes
+
+- **Painel:** cabeçalho de §11.2 (ícone em bloco, rótulo pequeno, título e um chip de estado).
+- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio. Os indicadores de etapa e de chat trazem a barra de participação logo abaixo da linha de apoio.
+- **Títulos de painel:** todo painel de custos tem um botão de informação ao lado do título, com o texto de §33.6. O conteúdo do painel começa no topo (`content-start`), sem espaço extra acima quando ele divide a linha com outro painel.
+- **Barra de participação:** rótulo à esquerda, trilho de 6 px (§11.17), preenchimento `accent` liso, valor e percentual escritos à direita. A etapa vem sempre escrita ao lado da barra: a cor nunca é a única pista.
+- **Chips de período:** família única de chips (§3.9). Selecionado: `accent-soft` com texto `accent-ink` e `aria-pressed="true"`. Os chips quebram linha; não há rolagem horizontal.
+- **Tabelas:** §11.16. Números à direita, em algarismos tabulares. Abaixo de 44 rem viram cartões (`responsiveTable`).
+- **Carregamento:** esqueleto de §11.2 do tamanho do painel; aparece só após 300 ms.
+- **Atualização:** a cada 30 s, somente com a aba visível. Ao lado de `Atualizar`, o texto `Atualizado às HH:MM` mostra a última leitura boa.
+
+### 33.5 Estados
+
+| Estado | Texto ou visual |
+|---|---|
+| Sem custo no período | `Nenhum custo registrado neste período.`, com a linha `O custo aparece aqui depois que um refinamento ou um run chamar um modelo.` Os percentuais viram `Sem custo no período`. |
+| Erro de leitura | `Não foi possível ler os custos. Tente de novo.` com o botão `Tentar de novo`. O último valor lido continua visível. |
+| Journal que não pôde ser lido | Chip de aviso `N registros não lidos`, com ajuda: o total pode estar abaixo do real. |
+| Jev fora de projetos em período curto | `Indisponível neste período`. |
+| Chat sem registro de custo | Ajuda: respostas que falharam não têm custo registrado. |
+| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
+
+### 33.6 Ajuda (botões de informação)
+
+- **Total:** `Soma de refinamento, desenvolvimento e chat. Valores estimados a preços de API. No plano de assinatura, o custo não aparece cobrado.`
+- **Refinamento:** `Custo dos agentes e do Jev que refinaram documentos e specs, antes do desenvolvimento.`
+- **Desenvolvimento:** `Custo dos agentes que implementam, testam, revisam e publicam as specs, inclusive decisões automáticas.`
+- **Escalonamento para Claude:** `Decisões que o Claude tomou quando o Jev não bastou. O papel que pediu a decisão não fica registrado.`
+- **Retomada:** `Em runs retomados, o total pode ser diferente do custo da tabela de runs.`
+- **Jev fora de projetos:** `Custo do Jev que não pode ser ligado a um projeto, como validações de documentos de projetos apagados.`
+
+### 33.7 Formato
+
+- Dinheiro: `US$ 39,6700` (vírgula decimal, pt-BR, sempre quatro casas decimais, sempre com `US$` antes do valor). O mesmo formato vale em todas as telas e na API, que arredonda a quatro casas.
+- Tokens: forma compacta pt-BR (`5,7 mi tokens`).
+- Percentual sem casas decimais, com `%`.
+- Frases curtas, em sentença normal, sem jargão de sistema.
+
+### 33.8 Responsivo
+
+- Acima de 1024 px: os painéis lado a lado.
+- De 768 a 1023 px: um painel por linha.
+- Abaixo de 768 px: barra inferior do §25; indicadores em duas colunas; a lista de specs e a tabela de steps somem da tela e uma frase explica que aparecem no computador. Os totais e os agrupamentos continuam. Nenhuma rolagem horizontal da página, nem em 360 px.
+
+### 33.9 Acessibilidade
+
+- Foco visível em chips, linhas clicáveis e botões.
+- Cada barra tem o valor escrito; cada tabela tem cabeçalhos `th`.
+- A linha inteira do projeto abre `/costs/:projectId`; o nome do projeto é o link, e a linha inteira é a área de clique.
+
+### 33.10 Fora desta tela
+
+Limite de gasto, mudança de comportamento dos runs, série temporal, exportação.
+
+## 34. Configurações — modelos por agente, chat, graphify e automático
+
+Tela `/settings`, dentro do que já existe. Nenhuma forma nova de tela: as linhas seguem o padrão da lista de agentes.
+
+### 34.1 Modelos e esforço, por projeto
+
+A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm só modelo fixo: não há `Automático`. `Graphify` não mostra esforço, porque o graphify não recebe esforço. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
+
+### 34.2 Modelos automáticos, globais
+
+Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Configuração Global do Ambiente`. Ele mostra cinco escolhas, usadas pelos papéis em `Automático` em todos os projetos deste computador:
+
+| Linha | Usada em |
+|---|---|
+| Tarefa pequena | tarefa de tamanho pequeno no modo de roteamento |
+| Tarefa média | tarefa de tamanho médio |
+| Tarefa grande | tarefa de tamanho grande |
+| Arquitetura | passos de tech-spec, plano, services-plan e arquitetura |
+| Refinamento, ciclos seguintes | passos de refinamento a partir do segundo ciclo |
+
+Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro. Não há campo de esforço: o modo automático define o esforço por modelo.
+
+```
+Modelos automáticos                                    (i)
+Usados pelos papéis em Automático, em todos os projetos.
+Tarefa pequena                  [ Haiku 5.5   v ]
+Tarefa média                    [ Sonnet 5.5  v ]
+Tarefa grande                   [ Sonnet 5.5  v ]
+Arquitetura                     [ Opus 5.5    v ]
+Refinamento, ciclos seguintes   [ Sonnet 5.5  v ]
+```
+
+### 34.3 Fora desta tela
+
+A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqui. Ela segue a configuração do arquivo.

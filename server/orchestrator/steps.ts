@@ -5,7 +5,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { AgentSetting, RoleProfile, Role } from '../config/config.js';
+import type { AgentSetting, RoleProfile, Role, SettingKey } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { PlatformService, Project } from '../contracts/project.js';
@@ -16,7 +16,7 @@ import { repoName, stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
-import { effortFor, fallbackModel } from '../runner/model-policy.js';
+import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
@@ -197,16 +197,20 @@ export interface PlanTasks {
 export const taskRule = (file: string, ids: readonly string[]): string =>
   `This task builds the plan task${ids.length > 1 ? 's' : ''} ${ids.join(', ')} of ${file}: write each of its tests first, run the verifications the plan gives and read their output, and build only these tasks within this task's affected paths. Never change the plan file or .claude/, never ask a question in the chat (take the most reasonable choice and name it in the summary), and skip every git step: the orchestrator commits.`;
 
+/** The blocking gates run on every change and a failure costs a whole attempt, so the Dev learns them before writing, not from the rejection. */
+export const gateRules = (gates: ReadonlyArray<{ name: string; command: string; blocking: boolean }>): string =>
+  `These blocking gates run on your change and each failure costs an attempt: ${gates.filter((g) => g.blocking).map((g) => `${g.name} (${g.command})`).join('; ')}. Run the ones this sandbox allows before you finish. A test for a failure case must assert that failure and never accept the success status.`;
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; plan?: PlanTasks },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; plan?: PlanTasks; gates?: ReadonlyArray<{ name: string; command: string; blocking: boolean }> },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []), ...(opts.gates?.some((g) => g.blocking) ? [gateRules(opts.gates)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -307,14 +311,14 @@ export const COVERAGE_CONTRACT =
 export function planRules(firstSpec: boolean | 'services', requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
-    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath only when the spec asks for a Swagger/OpenAPI documentation page and one of its tasks builds that page (for example /docs), because the deploy checks that the path answers; a spec that asks for no documentation page has no deploy.docsPath; deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
+    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath only when the spec asks for a Swagger/OpenAPI documentation page and one of its tasks builds that page (for example /docs), because the deploy checks that the path answers; a spec that asks for no documentation page has no deploy.docsPath; deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service; deploy.image, deploy.port and deploy.healthcheckPath (starting with /) are required unless deploy.kind is mobile',
     firstSpec === 'services'
       ? "- a datastore only one service uses publishes no host port: it stays on that service's private compose network, so two services' databases never collide on the host; a datastore several services share is a platform container in project.json, never a compose service"
       : '- a database or other datastore service in docker-compose (Postgres, MySQL, Redis, ...) publishes its own port to the host too, on a port outside 20000-20099; an integration test against a real database needs a route to it exactly like the app has for deploy.port, and one that only the compose-internal network can reach has none',
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- every task id is T<n>-<slug>: a number plus 1 to 4 English kebab-case words saying what the task does (T1-create-endpoint, T2-add-login-form); never a bare T1',
-    '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; a task delivers one whole capability (its logic, its tests and its interface across the layers it touches), never one task per file, layer or function; plan tasks of one capability join one task through planTasks',
     '- dependsOn names only a real dependency: the task needs code, an interface or a file that the other task creates. Writing the tasks in order is not a dependency; tasks that touch different files run in parallel, and a chain of dependsOn that is not needed makes the run sequential',
     OWNER_RULE,
     EVIDENCE_RULE,
@@ -527,6 +531,7 @@ export const DOCS_STRUCTURE = [
   '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), in Brazilian Portuguese (for example Executar, Testes, Variáveis de ambiente, Arquitetura and Pipeline), each with real content.',
   '- `runbook` (docs/RUNBOOK.md): headings for start, stop, logs and rollback, each with real content.',
   '- `apiDocs` (docs/API.md): every endpoint named in the spec features or documented in the current docs/API.md, written with its exact path, each endpoint as `METHOD /path` (for example `### GET /orders/{id}`) (only needed when the features name endpoints; an empty `apiDocs` leaves the current file as it is).',
+  'Omit a document you do not change; never send null.',
 ].join('\n');
 
 /** The plan's delivery sections the README must carry; the validator checks them the same way. */
@@ -638,8 +643,8 @@ export interface AgentStepDeps {
   sessionDir?: (taskId: string) => string;
   /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
   stepModel?: (kind: StepKind, attempt: number) => string | undefined;
-  /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
-  agentSetting?: (role: Role) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
+  /** A model and effort the user fixed for this role or slot in this project; they win over the request and the routing, and skip `effortFor`. */
+  agentSetting?: (key: SettingKey) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
   /** The pinned snapshot a documentation-repository project reads; every step gets a read-only grant of it. */
   docsRoot?: string;
@@ -664,13 +669,9 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  // A plan step carries its own model and effort (plan 107): the role's pin, which sets the builders, does not apply to it.
-  // The architecture step follows the role's setting in the Settings screen, as the owner asked.
-  const manual = req.kind === 'speckit' ? undefined : await deps.agentSetting?.(req.role);
-  const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
-  // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.
-  const lower = sessionStore || manual ? undefined : fallbackModel(planned);
-  let model = lower && deps.breaker.modelPaused(planned) ? lower : planned;
+  // Every step follows its setting in the Settings screen: the chat has its own slot, every other step its role's.
+  const manual = await deps.agentSetting?.(req.kind === 'chat' ? 'chat' : req.role);
+  const model = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it.
   const effortOf = (m: string): Effort => (manual ? manual.effort : effortFor(m, req.effort));
   await deps.journal.fact(OrchEvent.StepStarted, {
@@ -723,12 +724,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     );
   try {
     outcome = await attempt(model);
-    // The step itself tests the lower model: it runs there at once, and the global pause comes only if that is out too.
-    if (!outcome.ok && outcome.failure === 'quota' && lower && model === planned) {
-      deps.breaker.pauseModel(planned, outcome.summary.rateLimit);
-      model = lower;
-      outcome = await attempt(model);
-    }
   } finally {
     release();
   }
@@ -748,7 +743,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     ok: outcome.ok,
     model,
     effort: effortOf(model),
-    ...(model !== planned ? { fellBackFrom: planned } : {}),
     failure: outcome.ok ? null : outcome.failure,
     usage: outcome.summary.usage,
     costUsd: outcome.summary.costUsd,

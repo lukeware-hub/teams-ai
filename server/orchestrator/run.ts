@@ -5,9 +5,10 @@ import path from 'node:path';
 import type { AgentDefinition } from '../agents/registry.js';
 import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
+import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -25,6 +26,7 @@ import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
+import { refreshProjectGraph } from '../knowledge/project-graph.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { RunEvent, type RunState } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
@@ -33,6 +35,7 @@ import type { runStep as runStepFn, StepDeps, StepOutcome } from '../runner/step
 import { nextRunnable, runProgress, tasksToBlock, type RunProgress } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { CrashInjected, Intent, Journal, OrchEvent, type IntentType, type RunResult } from './events.js';
+import { phase6Resume } from './phase6-resume.js';
 import { effectivePlan } from './gate-fix.js';
 export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
@@ -191,6 +194,15 @@ export function repeatedBlock(events: readonly { type: string; data: Record<stri
   return signature !== '' && signature === blockSignature(before!.data.blocked);
 }
 
+/** The last return to the agents ended blocked again and merged no task: another return burns money the same way. */
+export function returnMadeNoProgress(events: readonly { type: string; data: Record<string, unknown> }[]): boolean {
+  const finishes = events.map((e, i) => (e.type === OrchEvent.RunFinished ? i : -1)).filter((i) => i >= 0);
+  if (finishes.length < 2) return false;
+  const [from, to] = finishes.slice(-2) as [number, number];
+  if (events[to]!.data.result !== 'blocked') return false;
+  return !events.slice(from, to).some((e) => e.type === RunEvent.TaskStateChanged && e.data.to === 'merged');
+}
+
 /** After a fix task's loop the run goes on unless a task is blocked. A fix task replanned into replacements is judged by its replacements. */
 export function fixTasksOutcome(state: RunState): 'merged' | 'blocked' {
   return [...state.tasks.values()].some((t) => t.state === 'blocked') ? 'blocked' : 'merged';
@@ -221,6 +233,7 @@ export class Run {
   private readonly inflight = new Map<string, Promise<void>>();
   /** The tasks, and the run as null, whose spent budget observe mode journaled already. */
   private readonly budgetNoted: Set<string | null>;
+  private costAlerted: boolean;
   private readonly deps: RunDeps;
 
   private constructor(
@@ -238,7 +251,8 @@ export class Run {
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
     this.budgetNoted = new Set(journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => (e.data.taskId as string | null) ?? null));
-    this.rebuildAccounting();
+    this.costAlerted = journal.events.some((e) => e.type === OrchEvent.RunCostAlert);
+    replayAccounting(this.journal.events, this.accounting);
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
   }
@@ -305,7 +319,7 @@ export class Run {
   /** The agents take the blocked tasks back on their own: the owner lets them decide, and fewer than MAX_AUTO_RETURNS returns ran. */
   async canReturnBlocked(): Promise<boolean> {
     const returns = this.journal.events.filter((e) => e.type === RunEvent.RunReopened && e.data.auto === true).length;
-    return returns < MAX_AUTO_RETURNS && !repeatedBlock(this.journal.events) && (await this.autonomous());
+    return returns < MAX_AUTO_RETURNS && !repeatedBlock(this.journal.events) && !returnMadeNoProgress(this.journal.events) && (await this.autonomous());
   }
 
   /** With the owner's agents deciding, a blocked run whose returns are spent starts one successor of the spec; a successor starts none, and a repeated block starts none. */
@@ -314,31 +328,6 @@ export class Run {
     return !successor && !repeatedBlock(this.journal.events) && (await this.autonomous());
   }
 
-  /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */
-  private rebuildAccounting(): void {
-    const started = new Map<string, Record<string, unknown>>();
-    for (const e of this.journal.events) {
-      if (e.type === OrchEvent.StepStarted) started.set(String(e.data.stepId), e.data);
-      if (e.type !== OrchEvent.StepFinished) continue;
-      const s = started.get(String(e.data.stepId));
-      const usage = e.data.usage as { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | undefined;
-      if (!s || !usage) continue;
-      this.accounting.record({
-        role: s.role as Role,
-        phase: e.data.taskId ? 'phase3' : 'phase',
-        taskId: (e.data.taskId as string | null) ?? null,
-        attempt: Number(e.data.attempt ?? 0),
-        stepKind: e.data.kind as StepKind,
-        provider: 'claude',
-        model: 'unknown',
-        usage,
-        costUsd: (e.data.costUsd as number | null) ?? null,
-        durationMs: Number(e.data.durationMs ?? 0),
-        numTurns: Number(e.data.numTurns ?? 0),
-        at: e.at,
-      });
-    }
-  }
 
   private async afterMergeOnResume(taskId: string, branch: string): Promise<void> {
     const plan = this.plan ?? (await this.loadPlan());
@@ -384,7 +373,7 @@ export class Run {
   }
 
   /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
-  private async manualSettings(): Promise<Partial<Record<Role, AgentSetting>>> {
+  private async manualSettings(): Promise<Partial<Record<SettingKey, AgentSetting>>> {
     const projectId = this.deps.project.projectId;
     return manualAgentSettings(this.deps.agentSettings ? await this.deps.agentSettings(projectId) : this.deps.cfg.agentSettings[projectId]);
   }
@@ -627,6 +616,7 @@ export class Run {
       cfg,
       secrets,
       accounting: this.accounting,
+      specHash: spec.specHash!,
       runEscalation: async ({ role, prompt }) => {
         // A Claude escalation is a claude process like any other step: governed and breaker-observed (spec §7).
         const profile = cfg.roles[role];
@@ -822,7 +812,23 @@ export class Run {
     return { ok: true };
   }
 
+  /** A run that failed in phase 6 writes its report again: phases 0 to 5 already passed, and the journal says so. */
+  private async resumePhase6(result: 'awaiting-validation'): Promise<ExecuteResult> {
+    const events = this.journal.events;
+    if (events.findLastIndex((e) => e.type === OrchEvent.RunFinished) > events.findLastIndex((e) => e.type === RunEvent.RunReopened)) await this.journal.fact(RunEvent.RunReopened, { manual: true });
+    const plan = await this.loadPlan();
+    if (plan === null) return this.finish('phase-failed', 'the plan is not on main, so phase 6 has nothing to report');
+    this.plan = plan;
+    await this.loadServiceContext(plan);
+    const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
+    if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
+    if (!p6.ok) return this.finish('phase-failed', p6.reason);
+    return this.finish(result);
+  }
+
   async execute(): Promise<ExecuteResult> {
+    const resumed = phase6Resume(this.journal.events);
+    if (resumed !== null) return this.resumePhase6(resumed);
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
     // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
@@ -939,6 +945,7 @@ export class Run {
       }
       if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
       error = out.errors?.join('; ') ?? error;
+      docsErrors = out.errors ?? [];
     }
     if (!readme) return this.finish('phase-failed', error);
     await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
@@ -1002,6 +1009,8 @@ export class Run {
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
     if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p6.ok) return this.finish('phase-failed', p6.reason);
+    // The agents read the graph, so it is rebuilt from main with the documents this run just merged.
+    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, this.deps.log);
     return this.finish(result, reason);
   }
 
@@ -1033,6 +1042,11 @@ export class Run {
           this.budgetNoted.add(null);
           await this.journal.fact(OrchEvent.BudgetExceeded, { taskId: null, tokens: runTokens, cap: cfg.budgets.perRunTokens });
         }
+      }
+      const runCostUsd = this.accounting.total().costUsd;
+      if (runCostUsd > cfg.budgets.perRunCostUsd && !this.costAlerted) {
+        this.costAlerted = true;
+        await this.journal.fact(OrchEvent.RunCostAlert, { costUsd: runCostUsd, capUsd: cfg.budgets.perRunCostUsd });
       }
       for (const id of tasksToBlock(this.journal.state)) {
         const t = this.journal.state.tasks.get(id)!;

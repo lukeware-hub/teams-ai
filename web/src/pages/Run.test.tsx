@@ -134,7 +134,11 @@ describe('RunView', () => {
     expect(screen.getByTestId('readme-empty').textContent).toContain('sm');
     unmount();
     render(view({ detail: { ...detail, readme: '# Hello App\n\n- GET /hello' } }));
+    expect(screen.getByTestId('readme').querySelector('h3')).toBeNull();
+    fireEvent.click(screen.getByTestId('readme-toggle'));
     expect(screen.getByTestId('readme').querySelector('h3')!.textContent).toBe('Hello App');
+    fireEvent.click(screen.getByTestId('readme-toggle'));
+    expect(screen.getByTestId('readme').querySelector('h3')).toBeNull();
   });
   it('offers the sm README action, disabled while the writer run is going', () => {
     const onGenerate = vi.fn();
@@ -182,7 +186,9 @@ describe('RunView', () => {
       expect(screen.queryByTestId('redeploy')).toBeNull();
       expect(screen.queryByTestId('reprocess')).toBeNull();
       expect(screen.getByTestId('locked-notice').textContent).toContain('somente leitura');
-      expect(screen.getByRole('link', { name: 'nova spec no projeto' }).getAttribute('href')).toBe(`/projects/${detail.projectId}?novaSpec=1`);
+      fireEvent.click(screen.getByTestId('locked-new-spec'));
+      expect(screen.getByRole('dialog').textContent).toContain(`Nova spec · ${detail.projectId}`);
+      fireEvent.click(screen.getByTestId('dialog-close'));
       expect(screen.queryByTestId('readme-generate')).toBeNull();
       rerender(view({ events: [], ended: false, detail: { ...detail, status: 'interrupted', locked: true }, ...actions }));
       expect(screen.queryByTestId('resume')).toBeNull();

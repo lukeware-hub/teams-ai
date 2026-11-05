@@ -3,7 +3,8 @@ import type { Spec } from '../contracts/spec.js';
 import type { TaskState } from '../pipeline/task-state.js';
 import type { TestResult } from './junit.js';
 
-export type EvidenceStatus = 'passed' | 'failed' | 'missing' | 'blocked';
+/** `deferred`: the criterion's tests are post-deploy suites (e2e, smoke), merged but not run before deploy. */
+export type EvidenceStatus = 'passed' | 'failed' | 'missing' | 'blocked' | 'deferred';
 
 export interface EvidenceRow {
   criterion: string;
@@ -25,6 +26,8 @@ export function buildEvidenceMatrix(
   spec: Spec,
   tasks: Iterable<EvidenceTask>,
   results: readonly TestResult[],
+  /** What a task changes: the post-deploy suite, files that only support it (scripts, docs), or product code. A criterion owned by a suite task and support tasks gets its evidence in Phase 5. */
+  kindOf?: (task: PlanTask) => 'suite' | 'support' | 'code',
 ): EvidenceRow[] {
   const live = [...tasks].filter((t) => t.state !== 'superseded');
   return spec.acceptanceCriteria.map((ac) => {
@@ -34,6 +37,7 @@ export function buildEvidenceMatrix(
     if (tests.some((r) => r.status === 'failed')) status = 'failed';
     else if (tests.length > 0) status = 'passed';
     else if (owners.length > 0 && owners.every((t) => t.state === 'blocked')) status = 'blocked';
+    else if (kindOf && owners.length > 0 && owners.every((t) => t.state === 'merged' && kindOf(t.def) !== 'code') && owners.some((t) => kindOf(t.def) === 'suite')) status = 'deferred';
     else status = 'missing';
     return { criterion: ac.id, tasks: owners.map((t) => t.def.id), tests: tests.map((r) => r.id), status };
   });
@@ -41,10 +45,11 @@ export function buildEvidenceMatrix(
 
 /** Adds the Phase 5 e2e rows to the matrix per criterion (the matrix itself is built before deploy). */
 export function attachE2e(rows: readonly EvidenceRow[], e2e: ReadonlyArray<{ acId: string; status: NonNullable<EvidenceRow['e2e']>; reason?: string }> | undefined): EvidenceRow[] {
-  if (!e2e) return [...rows];
   return rows.map((r) => {
-    const e = e2e.find((x) => x.acId === r.criterion);
-    return e ? { ...r, e2e: e.status, ...(e.reason ? { e2eReason: e.reason } : {}) } : r;
+    const e = e2e?.find((x) => x.acId === r.criterion);
+    // The e2e run is the evidence of a deferred row; without it, or with an exemption, the criterion has none.
+    const status = r.status === 'deferred' ? (e && e.status !== 'not-applicable' ? e.status : 'missing') : r.status;
+    return e ? { ...r, status, e2e: e.status, ...(e.reason ? { e2eReason: e.reason } : {}) } : { ...r, status };
   });
 }
 
@@ -54,9 +59,9 @@ export function evidenceGate(results: readonly TestResult[]): string[] {
   return [];
 }
 
-/** Every criterion passed; a blocked one is not ready, since the code it needs never reached main. */
+/** Every criterion passed or waits for the post-deploy suites; a blocked one is not ready, since the code it needs never reached main. */
 export function readyForValidation(rows: readonly EvidenceRow[]): boolean {
-  return rows.every((r) => r.status === 'passed');
+  return rows.every((r) => r.status === 'passed' || r.status === 'deferred');
 }
 
 /** What the Test agent claims about one acceptance criterion in its review. */

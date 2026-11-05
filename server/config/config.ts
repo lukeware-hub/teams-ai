@@ -34,6 +34,11 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
 const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus, architecture: MODELS.opus };
 
+/** The architecture steps: the Settings screen sets their model as one. */
+export const ARCHITECTURE_KINDS = ['tech-spec', 'plan', 'services-plan', 'architecture'] as const satisfies readonly StepKind[];
+/** The refinement steps from the second cycle on: the Settings screen sets their model as one. */
+export const LATER_CYCLE_KINDS = ['refine', 'derive', 'coverage', 'backlog', 'answer'] as const satisfies readonly StepKind[];
+
 const positive = z.number().int().min(1);
 /** The most agents that prepare the plans at once. */
 export const PLAN_AGENTS_MAX = 5;
@@ -124,23 +129,46 @@ export const DEFAULT_AGENT_SETTING: AgentSetting = { model: MODELS.haiku, effort
 /** The setting the product owner and the scrum master take when their project has none: they review the documents, so they get the deeper model. */
 const REVIEWER_DEFAULT: AgentSetting = { model: MODELS.sonnet, effort: 'low' };
 
-/** The setting a role takes when its project has none. */
-export const defaultAgentSetting = (role: Role): AgentSetting => (role === 'po' || role === 'sm' ? REVIEWER_DEFAULT : DEFAULT_AGENT_SETTING);
+/** The two model settings a project keeps beside its roles: the chat and the graphify extraction. */
+export const SLOTS = ['chat', 'graphify'] as const;
+export type Slot = (typeof SLOTS)[number];
+export const isSlot = (key: string): key is Slot => (SLOTS as readonly string[]).includes(key);
 
-/** The manual settings a run uses: a role never set takes the default, and a role stored as null (automatic) takes none. */
-export function manualAgentSettings(stored: Partial<Record<Role, AgentSetting | null>> = {}): Partial<Record<Role, AgentSetting>> {
-  const out: Partial<Record<Role, AgentSetting>> = {};
-  for (const role of ROLES) {
-    const setting = role in stored ? stored[role] : defaultAgentSetting(role);
-    if (setting) out[role] = setting;
+/** Every key a project keeps a model setting under: the roles, then the slots. */
+export const SETTING_KEYS = [...ROLES, ...SLOTS] as const;
+export type SettingKey = (typeof SETTING_KEYS)[number];
+export type StoredSettings = Partial<Record<SettingKey, AgentSetting | null>>;
+
+/** The setting a slot takes when its project has none: the chat on Haiku, graphify on Sonnet, both at low effort. */
+const SLOT_DEFAULTS: Record<Slot, AgentSetting> = { chat: DEFAULT_AGENT_SETTING, graphify: { model: MODELS.sonnet, effort: 'low' } };
+
+/** The setting a key takes when its project has none. */
+export const defaultAgentSetting = (key: SettingKey): AgentSetting =>
+  isSlot(key) ? SLOT_DEFAULTS[key] : key === 'po' || key === 'sm' ? REVIEWER_DEFAULT : DEFAULT_AGENT_SETTING;
+
+/** A slot's setting in its project, else its default: a slot never goes automatic. */
+export const slotSettingOf = (stored: StoredSettings, slot: Slot): AgentSetting => stored[slot] ?? defaultAgentSetting(slot);
+
+/** What a key takes from its project's stored settings: its own setting, else the default; a role stored as null is automatic. */
+export function storedSettingOf(stored: StoredSettings, key: SettingKey): AgentSetting | null {
+  if (isSlot(key)) return slotSettingOf(stored, key);
+  return key in stored ? (stored[key] ?? null) : defaultAgentSetting(key);
+}
+
+/** The manual settings a run uses: a key never set takes the default, and a role stored as null (automatic) takes none. */
+export function manualAgentSettings(stored: StoredSettings = {}): Partial<Record<SettingKey, AgentSetting>> {
+  const out: Partial<Record<SettingKey, AgentSetting>> = {};
+  for (const key of SETTING_KEYS) {
+    const setting = storedSettingOf(stored, key);
+    if (setting) out[key] = setting;
   }
   return out;
 }
 
 export const Config = z.object({
   roles: RolesSchema.prefault({}),
-  /** Per project id, per role: the manual model and effort; a role absent here runs on the automatic choice. */
-  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting.nullable())).default({}),
+  /** Per project id, per role and slot: the manual model and effort; a role absent here runs on the automatic choice, a slot never does. */
+  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(SETTING_KEYS), AgentSetting.nullable())).default({}),
   /** Per project id: the time limit of each agent step in ms, set in Settings; a project absent here takes `budgets.step.timeoutMs`. */
   stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
   /** Per project id: whether its agents decide a block themselves, set in Settings; a project absent here does not. */
@@ -152,6 +180,8 @@ export const Config = z.object({
       /** Caps a task by what it costs instead of by tokens: `perTaskTokens` counts a cache read like an output token (R11.13 slice 8). */
       perTaskCostUsd: z.number().positive().optional(),
       perRunTokens: positive.default(15_000_000),
+      /** A run that spends more than this records one alert; cost only warns and never stops a run (owner decision). */
+      perRunCostUsd: z.number().positive().default(3),
       /** First run only measures; caps are enforced once calibrated (spec §8.5). */
       observeOnly: z.boolean().default(true),
     })
@@ -264,6 +294,8 @@ export const Config = z.object({
       workspaces: linuxPath.default('~/.teams-ai/workspaces'),
       secrets: linuxPath.default('~/.teams-ai/secrets'),
       runs: linuxPath.default('~/.teams-ai/runs'),
+      /** The running total of what the Jev charged: one line per charge. */
+      usage: linuxPath.default('~/.teams-ai/usage'),
       /** Scanner downloads and the trivy DB shared by the security gates of every task (R11.13 slice 4). */
       gateCache: linuxPath.default('~/.teams-ai/gate-cache'),
     })
@@ -274,6 +306,20 @@ export type Config = z.infer<typeof Config>;
 /** The model `routing.stepModels` gives a step; a services plan is a plan, so it falls back to the plan's model. */
 export const stepModelFor = (routing: Config['routing'], kind: StepKind): string | undefined =>
   routing.stepModels[kind] ?? (kind === 'services-plan' ? routing.stepModels.plan : undefined);
+
+/** The models of the automatic choice, shared by every project: the three task sizes, the architecture steps and the later refinement cycles. */
+export interface AutomaticModels {
+  tiers: { small: string; medium: string; large: string };
+  architecture: string;
+  laterCycle: string;
+}
+
+/** Reads the automatic models from the routing settings; a group with no model left in the file shows its default. */
+export const automaticModelsOf = (routing: Config['routing']): AutomaticModels => ({
+  tiers: { small: routing.models.small, medium: routing.models.medium, large: routing.models.large },
+  architecture: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? MODELS.opus,
+  laterCycle: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? MODELS.sonnet,
+});
 
 /** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */
 export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets']['step'] {

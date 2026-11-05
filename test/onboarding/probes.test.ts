@@ -51,7 +51,7 @@ describe('probes', () => {
 
   it('openrouter: one noul through Jev; ok reports model and cost, a 401 is red without the key', async () => {
     const ok = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13-20260917', answers: { probe: { type: 'noul', noul: 0.99 } }, usage: { input_tokens: 40, output_tokens: 2, cost: 0.0000017 } }), { status: 200 })) as typeof fetch;
-    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: ok }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · $0.0000017' });
+    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: ok }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · $0.0000' });
     const unauthorized = (async () => new Response(`invalid key ${KEY}`, { status: 401 })) as typeof fetch;
     const r = await openrouterKey({ exec: new FakeExec().exec, fetch: unauthorized }, KEY);
     expect(r.ok).toBe(false);

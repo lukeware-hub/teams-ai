@@ -44,7 +44,7 @@ async function fakeExec(spec: CommandSpec): Promise<CommandResult> {
   return result();
 }
 
-const deps = () => ({ exec: fakeExec, hostEnv, governor: new Governor(1) });
+const deps = () => ({ exec: fakeExec, hostEnv, governor: new Governor(1), model: 'claude-sonnet-5-5' });
 
 beforeEach(async () => {
   root = (await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-doc-graph-'))).replace(/\\/g, '/');
@@ -70,8 +70,7 @@ describe('document graph extraction', () => {
     const call = calls[0]!;
     expect(call.bin).toBe('graphify');
     expect(call.args).toEqual(['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', out]);
-    expect(call.env).toMatchObject({ GRAPHIFY_CLAUDE_CLI_MODEL: 'claude-sonnet-5-5', SSH_AUTH_SOCK: '', DOCKER_HOST: '' });
-    expect(call.env!.HOME).not.toBe(host);
+    expect(call.env).toMatchObject({ GRAPHIFY_CLAUDE_CLI_MODEL: 'claude-sonnet-5-5', SSH_AUTH_SOCK: '', DOCKER_HOST: '' });    expect(call.env!.HOME).not.toBe(host);
     expect(call.env!.HOME!.replace(/\\/g, '/').startsWith(parent)).toBe(true);
   });
 

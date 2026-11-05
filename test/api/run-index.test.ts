@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { listProjects, listRuns, readProject, runLiveness, SAFE_ID } from '../../server/api/run-index.js';
+import { listProjects, listRuns, readProject, runCost, runLiveness, SAFE_ID } from '../../server/api/run-index.js';
 import { writeRun } from '../fixtures/runs/write-run.js';
 
 const HELLO = path.resolve('test/fixtures/hello-app');
@@ -53,6 +53,13 @@ describe('run index', () => {
     expect(project.projectId).toBe('hello-app');
     expect(specs.map((s) => [s.specId, s.status])).toEqual([['hello-001', 'running']]);
     await expect(readProject(home)).rejects.toThrow(/project\.json/);
+  });
+
+  it('runCost is the cost of the run\'s state snapshot, and zero before the first one', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
+    await fs.mkdir(path.join(runs, 'hello-001-r2'), { recursive: true });
+    expect(await runCost(runs, 'hello-001-r1')).toBe(0.25);
+    expect(await runCost(runs, 'hello-001-r2')).toBe(0);
   });
 
   it('a run a human reopened shows running again until its next RUN_FINISHED', async () => {

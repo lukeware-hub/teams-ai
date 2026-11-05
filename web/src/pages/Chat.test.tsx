@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatApi, runApi, type ChatMessage } from '../api.js';
 import { ChatPage, plainError, usageLine } from './Chat.js';
@@ -84,12 +84,10 @@ describe('ChatPage', () => {
   it('has a Nova spec shortcut for the chosen project and the example question about it', async () => {
     vi.spyOn(runApi, 'projects').mockResolvedValue(projects as never);
     vi.spyOn(chatApi, 'messages').mockResolvedValue({ messages: [] });
-    const Hub = () => <output data-testid="hub">{useLocation().search}</output>;
     render(
       <MemoryRouter initialEntries={['/chat']}>
         <Routes>
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/projects/:projectId" element={<Hub />} />
         </Routes>
       </MemoryRouter>,
     );
@@ -97,7 +95,7 @@ describe('ChatPage', () => {
     expect((screen.getByTestId('chat-input') as HTMLTextAreaElement).value).toBe('Como crio uma nova spec?');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'other' } });
     fireEvent.click(screen.getByRole('button', { name: 'Nova spec' }));
-    expect(screen.getByTestId('hub').textContent).toBe('?novaSpec=1');
+    expect(screen.getByRole('dialog').textContent).toContain('Nova spec · other');
   });
 
   it('shows what an answer cost under it, and nothing for an old answer saved before the cost was measured', async () => {
@@ -109,9 +107,9 @@ describe('ChatPage', () => {
     page();
     await screen.findByText('Resposta nova.');
     expect(screen.getAllByTestId('usage')).toHaveLength(1);
-    expect(screen.getByTestId('usage').textContent).toContain('Custo estimado US$ 0.0421000 · 7 000 tokens lidos · 340 escritos · 14 s');
+    expect(screen.getByTestId('usage').textContent).toContain('Custo estimado US$ 0,0421 · 7 000 tokens lidos · 340 escritos · 14 s');
     expect(usageLine({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 0, turns: 1 })).toBe('10 tokens lidos · 2 escritos · menos de 1 s');
-    expect(usageLine({ inputTokens: 2, outputTokens: 1572, cacheReadTokens: 0, cacheWriteTokens: 24874, costUsd: 0.0039, seconds: 8, turns: 1 })).toBe('Custo estimado US$ 0.0039000 · 24 876 tokens lidos · 1 572 escritos · 8 s');
+    expect(usageLine({ inputTokens: 2, outputTokens: 1572, cacheReadTokens: 0, cacheWriteTokens: 24874, costUsd: 0.0039, seconds: 8, turns: 1 })).toBe('Custo estimado US$ 0,0039 · 24 876 tokens lidos · 1 572 escritos · 8 s');
   });
 
   it('brings back the earlier questions with the arrow keys, and Enter sends the one on screen', async () => {

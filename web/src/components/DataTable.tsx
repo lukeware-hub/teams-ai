@@ -8,8 +8,8 @@ type Sort = { key: string; direction: 'asc' | 'desc' } | null;
 // Numeric collation puts "T2" before "T10"; the facet options follow it.
 const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
 
-/** A table whose pages, search, facet and sort are read from the server one page at a time; the view feeds the header, filters and pager. */
-export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) => Promise<Page<T>>, facetLabel: (value: string) => string = (v) => v) {
+/** A table whose pages, search, facet and sort are read from the server one page at a time; the view feeds the header, filters and pager, and a new `reloadKey` reads the page again. */
+export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) => Promise<Page<T>>, facetLabel: (value: string) => string = (v) => v, reloadKey = '') {
   const [size, setSize] = useState<number>(PAGE_SIZES[1]);
   const [page, setPage] = useState(1);
   const [text, setText] = useState('');
@@ -28,14 +28,15 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
   const sortKey = sort?.key ?? null;
   const direction = sort?.direction ?? 'asc';
 
-  // The search waits for a pause in typing, then goes back to the first page.
+  // The search waits for a pause in typing, then goes back to the first page only when the text changed.
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (text.trim() === query) return;
       setQueryNow(text.trim());
       setPage(1);
     }, 250);
     return () => clearTimeout(timer);
-  }, [text]);
+  }, [text, query]);
 
   useEffect(() => {
     let live = true;
@@ -52,7 +53,7 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
     return () => {
       live = false;
     };
-  }, [scope, page, size, query, facet, sortKey, direction]);
+  }, [scope, page, size, query, facet, sortKey, direction, reloadKey]);
 
   const filtered = query !== '' || facet !== '';
   const total = data?.total ?? 0;

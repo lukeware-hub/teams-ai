@@ -818,6 +818,19 @@ describe('start, resume, stop', () => {
     expect((await post('/api/runs/..%2Fx/resume')).status).toBe(400);
   });
 
+  it('a run that failed in phase 6 resumes there once phases 4 and 5 passed; a failure in another phase does not', async () => {
+    // Phases 4 and 5 passed: a verification and a deploy that was verified. The run then failed in phase 6 and finished.
+    const passedThrough5 = (runId: string) => [started(runId), { type: 'VERIFICATION_PASSED', data: { round: 1 } }, { type: 'DEPLOY_APPLY', data: { attempt: 1 } }, { type: 'DEPLOY_VERIFIED', data: { attempt: 1 } }];
+    await writeRun(runs, 'hello-001-r1', [...passedThrough5('hello-001-r1'), { type: 'PHASE_FAILED', data: { phase: 6, reason: 'Phase 6 blocked: readme' } }, { type: 'RUN_FINISHED', data: { result: 'phase-failed', reason: 'Phase 6 blocked: readme' } }], state('phase-failed'));
+    onSpawn = async () => {};
+    const resumed = await post('/api/runs/hello-001-r1/resume');
+    expect(resumed.status).toBe(200);
+    expect(spawns.at(-1)!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r1', '--retry-blocked']);
+    // The same status from a failure in phase 5 is not a phase 6 resume.
+    await writeRun(runs, 'hello-001-r2', [...passedThrough5('hello-001-r2'), { type: 'PHASE_FAILED', data: { phase: 5, reason: 'deploy' } }, { type: 'RUN_FINISHED', data: { result: 'phase-failed' } }], state('phase-failed'));
+    expect((await post('/api/runs/hello-001-r2/resume')).status).toBe(409);
+  });
+
   it('stop signals the group and removes the pid; 409 without a live pid', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
     alive.add(950);

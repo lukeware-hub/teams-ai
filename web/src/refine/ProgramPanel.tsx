@@ -7,16 +7,17 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
-import { action, panel, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { action, panel, plural, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
+import { money } from '../pages/costs/format.js';
 
-const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam, publicam e marcam cada spec como concluída. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila.';
+const HELP = 'Depois do início, os agentes executam o backlog inteiro sozinhos, na ordem de prioridade e de dependência, até duas specs ao mesmo tempo quando elas não mexem no mesmo código: planejam, implementam, testam e publicam cada spec. Quando uma spec fica pronta para validação, a próxima segue sem esperar; só você a valida e conclui. Uma spec que falha é isolada e só bloqueia as que dependem dela; as demais seguem. Executar agora passa uma spec à frente da fila. O custo de cada spec soma todas as suas execuções, inclusive tentativas, conclusão e deploy.';
 
 const ITEM_HELP = {
   pending: 'Na fila: a spec espera a vez, por prioridade e por dependência de outras specs.',
   running: 'Os agentes estão executando esta spec agora.',
   completing: 'A spec foi entregue e está sendo concluída.',
-  delivered: 'A run entregou a spec. Ela só fica concluída quando você valida e conclui.',
+  delivered: 'A run entregou a spec e o código já está na main. A próxima spec segue sem esperar; esta só fica concluída quando você valida e conclui.',
   waiting: 'A spec espera um tempo depois de uma falha de ambiente e começa de novo sozinha.',
   done: 'A spec foi entregue e concluída.',
   partial: 'O código da spec já está na main, mas uma etapa depois dele falhou (como o deploy). Veja o motivo abaixo.',
@@ -40,7 +41,7 @@ const PILL = {
   interrupted: 'status-pill tone-warn',
 } as const;
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
-const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_5.5rem_9rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_9rem_5.5rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
 
 /** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
 const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
@@ -69,7 +70,7 @@ export function canStartRun(st: StartInput, busy: boolean): boolean {
 }
 
 /** The program that runs the backlog: every spec with where it stands, the run to follow and why one failed or waits. */
-const fmtCost = (v: number) => `US$ ${v.toFixed(2)}`;
+const fmtCost = money;
 
 /** `repo#7`: services keep their own repositories, so a number alone would name several pull requests. */
 export const prLabel = (pr: { number: number; url: string }): string => `${/github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ?? 'PR'}#${pr.number}`;
@@ -117,6 +118,15 @@ const isInterrupted = (program: ProgramView) => {
   return program.status !== 'finished' && now.length > 0 && now.every((i) => i.interrupted);
 };
 
+/** The specs whose run delivered them and that wait for the owner to validate them. */
+const awaitingOwner = (program: ProgramView) => program.items.filter((i) => i.status === 'delivered').length;
+
+/** Only validations are left: nothing runs, is queued or waits, so the backlog waits for the owner. */
+const onlyValidationsLeft = (program: ProgramView) => awaitingOwner(program) > 0 && !program.items.some((i) => i.status === 'running' || i.status === 'completing' || i.status === 'pending' || i.status === 'waiting');
+
+/** `1 aguarda sua validação` or `2 aguardam sua validação`. */
+const awaitingText = (n: number) => plural(n, 'aguarda sua validação', 'aguardam sua validação');
+
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
@@ -124,12 +134,14 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
   const running = program?.status !== 'finished';
   const now = program?.items.filter((i) => i.status === 'running' || i.status === 'completing') ?? [];
   const interrupted = program !== null && isInterrupted(program);
+  const waiting = program !== null && onlyValidationsLeft(program);
+  const awaiting = program ? awaitingOwner(program) : 0;
   return (
     <div className="card grid gap-4 px-6 py-5 max-md:p-4" role="status" data-testid="program-status-card">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3" data-testid="program-status-header">
         <div className="flex items-center gap-3" data-testid="program-status-title-row">
-          {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-interrupted"><Icon name="alert" size={18} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-status-spinner" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true" data-testid="program-status-icon-done"><Icon name="check" size={18} /></span>}
-          <b className="text-[1rem] text-ink" data-testid="program-status-label">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}`}</b>
+          {interrupted ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-interrupted"><Icon name="alert" size={18} /></span> : waiting ? <span className="grid size-5 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-status-icon-waiting"><Icon name="clock" size={18} /></span> : running ?<span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-status-spinner" /> : <span className="grid size-5 flex-none place-items-center text-good" aria-hidden="true" data-testid="program-status-icon-done"><Icon name="check" size={18} /></span>}
+          <b className="text-[1rem] text-ink" data-testid="program-status-label">{!program ? 'Preparando a execução do backlog…' : `${interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'} · ${done} de ${total} concluída${total === 1 ? '' : 's'}${awaiting > 0 ? ` · ${awaitingText(awaiting)}` : ''}`}</b>
         </div>
         {link && <Link to={link} className="link-button shrink-0">Acompanhar no projeto<Icon name="arrow-right" size={16} /></Link>}
       </div>
@@ -159,6 +171,8 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
   const interrupted = isInterrupted(program);
   const running = program.status !== 'finished';
+  const waiting = onlyValidationsLeft(program);
+  const awaiting = awaitingOwner(program);
   return (
     <section className={`${panel} gap-4`} data-testid="program-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="program-panel-header">
@@ -167,11 +181,12 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
           <h2 className={`${sectionHeading} ml-1`} data-testid="program-panel-title">Specs do backlog</h2>
           <InfoTip label="Execução do backlog" text={HELP} />
         </div>
-        <p className="m-0 flex items-center gap-2 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
-          {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
-          <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
-          {totalCost > 0 && <span data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
-          {unanswered > 0 && <Tipped text="Os agentes perguntaram e nenhum modelo respondeu. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
+        <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
+          {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : waiting ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-waiting"><Icon name="clock" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
+          <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
+          {awaiting > 0 && <span data-testid="program-panel-awaiting"> · {awaitingText(awaiting)}</span>}
+          {totalCost > 0 && <span className="whitespace-nowrap" data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+          {unanswered > 0 && <Tipped text="Um modelo foi consultado e falhou, ou falta a chave do Jev. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
         </p>
       </div>
       <progress data-testid="program-panel-progress-bar" className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />
@@ -179,7 +194,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
       <ol className="-mx-3 my-0 list-none p-0" data-testid="program-panel-list">
         {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
           <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
-            <span className="font-mono text-[0.8125rem] text-ink-faint tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
+            <span className="font-mono text-[0.8125rem] text-ink-soft tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
             <div className="grid min-w-0 gap-1" data-testid={`program-panel-body-${i.key}`}>
               <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
               {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
@@ -198,12 +213,12 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
               <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
-              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
-                {i.costUsd != null ? <span data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
-              </span>
               <span className="flex lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
                 {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
+              </span>
+              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums max-lg:ml-auto lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
+                {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
               </span>
             </div>
           </li>

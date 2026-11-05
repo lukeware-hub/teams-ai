@@ -16,7 +16,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
     <button
       type="button"
       data-testid="info-tip-button"
-      className="info-tip"
+      className="info-tip relative before:absolute before:-inset-1 before:content-['']"
       aria-label={label ? `${label}: ${text}` : text}
       onMouseEnter={(e) => show(e.currentTarget)}
       onMouseLeave={() => setAt(null)}

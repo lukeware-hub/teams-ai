@@ -54,6 +54,7 @@ const TABLE_ROWS: Record<string, unknown[]> = {
     { role: 'test', steps: 1, ok: 0, failed: 1, tokens: 10, costUsd: 0, durationMs: 200, created: null, started: null, finished: null, files: 0, tests: { passed: 4, failed: 1 }, lastAt: '2026-11-01T10:00:00.000Z', lastDoing: 'rodando as verificações' },
   ],
   timeline: [{ at: '2026-11-01T10:00:00.000Z', runId: 'shop-api-cart-1', specId: 'cart', text: 'Tarefa T1-cart mesclada na main (pull request #12)', tone: 'good', role: 'dev', taskId: 'T1-cart' }],
+  tasks: [{ specId: 'pay', runId: 'shop-api-pay-1', taskId: 'T2-pay', title: 'Cobrança', owner: 'dev', state: 'blocked', attempts: 1, reason: 'uma dependência desta tarefa está bloqueada', rawReason: 'uma dependência desta tarefa está bloqueada', pr: null }],
 };
 
 const serveTable = (_projectId: string, _repo: string, table: string, req: PageRequest) => Promise.resolve(queryPage(TABLE_ROWS[table] ?? [], {}, req));
@@ -101,6 +102,17 @@ describe('RepositoryPage', () => {
     renderAt();
     const pay = within(await screen.findByTestId('tasks-pay'));
     expect(pay.getByRole('link', { name: 'Abrir run' }).getAttribute('href')).toBe('/runs/shop-api-pay-1?task=T2-pay');
+  });
+
+  it('places the tasks table between the indicator cards and the delivery board', async () => {
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    renderAt();
+    const cards = await screen.findByTestId('repo-cards');
+    const tasks = screen.getByTestId('repo-tasks');
+    const board = screen.getByTestId('repo-board');
+    expect(cards.compareDocumentPosition(tasks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(tasks.compareDocumentPosition(board) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('offers the Swagger shortcut when the probe answers for the deployed address', async () => {

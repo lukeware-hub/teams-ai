@@ -12,7 +12,7 @@ import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, withMainSnapshot, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 import { listState, readState } from '../../docs/project-state.js';
-import { serviceWorkspace, type Workspace } from '../workspace.js';
+import { sameVersionRunEvents, serviceWorkspace, type Workspace } from '../workspace.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ReviewOutput } from '../../agents/outputs.js';
@@ -87,14 +87,43 @@ const OUTCOME = /; (?:first deploy failed|teardown of the failed first deploy|ro
 /** First line with text of a deploy failure detail, without the outcome: the failing criteria, the stage or the docker cause. */
 const headline = (detail: string): string => (detail.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '').replace(OUTCOME, '').slice(0, 300);
 
+/** The rollback note the services path appends to a failure; it says what rollback did, not what failed. */
+const ROLLBACK_SUFFIX = /; rollback failed for .*$/s;
+
+/** The failing tests a suite names, or the headline of a failure that names none: the same signature is the same cause. */
+export function failureSignature(detail: string): string {
+  const cause = detail.replace(ROLLBACK_SUFFIX, '');
+  const tests = [...cause.matchAll(/^\s*--- FAIL: (\S+)/gm)].map((m) => m[1]!);
+  return tests.length > 0 ? [...new Set(tests)].sort().join(' | ') : headline(cause);
+}
+
+/** The latest earlier failure at the same stage and service with the same signature: another fix would repeat its cause. */
+export function repeatedDeployCause(events: readonly StoredEvent[], now: { stage: string; service: string | null; detail: string }): StoredEvent | null {
+  const signature = failureSignature(now.detail);
+  return [...events].reverse().find((e) => e.type === OrchEvent.DeployFailed && e.data.stage === now.stage && ((e.data.service as string | undefined) ?? null) === now.service && failureSignature(String(e.data.detail)) === signature) ?? null;
+}
+
+/** The same cause from an attempt before this one, in this run or in an earlier run of the same spec version. */
+async function earlierSameCause(deps: PhaseDeps, attempt: number, stage: string, service: string | null, detail: string): Promise<StoredEvent | null> {
+  const runId = deps.journal.events[0]?.runId;
+  const earlierRuns = runId ? (await sameVersionRunEvents(deps.ws, deps.spec.specId, runId, deps.spec.specHash ?? '')).flat() : [];
+  return repeatedDeployCause([...earlierRuns, ...deps.journal.events.filter((e) => Number(e.data.attempt) < attempt)], { stage, service, detail });
+}
+
+/** The reason a repeated cause stops the deploy: no deploy-fix task could change what the same failure already did not change. */
+function sameCauseReason(same: StoredEvent, runId: string | undefined, stage: string, service: string | null, detail: string): string {
+  const where = same.runId === runId ? 'this run' : 'an earlier run';
+  return `deploy failed again with the same cause as attempt ${Number(same.data.attempt)} of ${where} at ${stage}${service ? ` (${service})` : ''}: ${failureSignature(detail)}; no new deploy-fix task`;
+}
+
 /** At most ten files, then how many more. */
 const fileList = (files: readonly string[]): string => (files.length > 10 ? `${files.slice(0, 10).join(', ')} and ${files.length - 10} more` : files.join(', '));
 
 /**
  * Every earlier deploy failure of the run with the fix task planned after it and what that fix changed, so a fix task
- * builds on the ones before it; when the previous fix merged and the same failure came back, it says to look elsewhere.
+ * builds on the ones before it. A failure that comes back with the same cause stops the deploy before this point.
  */
-function deployHistory(deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, service: string | null): string {
+function deployHistory(deps: PhaseDeps, attempt: number): string {
   const failures = new Map<number, { stage: string; detail: string; service: string | null; fix: string | null }>();
   let last: number | null = null;
   for (const e of deps.journal.events) {
@@ -110,20 +139,17 @@ function deployHistory(deps: PhaseDeps, attempt: number, stage: DeployStage, det
   if (failures.size === 0) return '';
   const tasks = deps.journal.state.tasks;
   // A replanned fix lives on in its replacements: their states and their last commit are its outcome.
-  const outcome = (id: string): { text: string; merged: boolean } => {
+  const outcome = (id: string): string => {
     const root = tasks.get(id);
     const parts = root?.state === 'superseded' && root.replacedBy.length > 0 ? root.replacedBy : [id];
     const states = parts.map((p) => tasks.get(p)?.state ?? 'planned');
     const commit = [...deps.journal.events].reverse().find((e) => e.type === OrchEvent.DevCommitted && parts.includes(String(e.data.taskId)));
     const who = parts[0] === id ? `${id} ${states[0]}` : `${id} replaced by ${parts.map((p, i) => `${p} ${states[i]}`).join(', ')}`;
     const what = commit ? `: ${String(commit.data.summary).slice(0, 300)} (files: ${fileList(commit.data.changedFiles as string[])})` : '';
-    return { text: `${who}${what}`, merged: states.every((s) => s === 'merged') };
+    return `${who}${what}`;
   };
-  const lines = [...failures.entries()].sort(([a], [b]) => a - b).map(([n, f]) => `- attempt ${n} failed at ${f.stage}${f.service ? ` (service ${f.service})` : ''}: ${headline(f.detail)}${f.fix ? `\n  then ${outcome(f.fix).text}` : ''}`);
-  const previous = failures.get(attempt - 1);
-  const repeated = previous?.fix && outcome(previous.fix).merged && previous.stage === stage && previous.service === service && headline(previous.detail) === headline(detail);
-  const note = repeated ? `\nThe fix of attempt ${attempt - 1} (${previous!.fix}) did not change this failure: look for another cause before changing the same lines again.` : '';
-  return `\n\nEarlier deploy attempts of this run:\n${lines.join('\n')}${note}`;
+  const lines = [...failures.entries()].sort(([a], [b]) => a - b).map(([n, f]) => `- attempt ${n} failed at ${f.stage}${f.service ? ` (service ${f.service})` : ''}: ${headline(f.detail)}${f.fix ? `\n  then ${outcome(f.fix)}` : ''}`);
+  return `\n\nEarlier deploy attempts of this run:\n${lines.join('\n')}`;
 }
 
 // Ids are assigned here and must stay unique across attempts and resumes (a resumed attempt re-issued
@@ -131,7 +157,7 @@ function deployHistory(deps: PhaseDeps, attempt: number, stage: DeployStage, det
 const fixTaskId = (deps: PhaseDeps) => `T950-deploy-fix-${[...deps.journal.state.tasks.keys()].filter((id) => id.startsWith('T950-deploy-fix-')).length + 1}`;
 const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: string, newPort: number | null = null, service: string | null = null): PlanTask => {
   const base = { id: fixTaskId(deps), title: `Fix deployment (${stage})`, criteriaRefs: [], dependsOn: [], origin: 'deploy-fix' as const };
-  const history = deployHistory(deps, attempt, stage, detail, service);
+  const history = deployHistory(deps, attempt);
   // A smoke failure is about the smoke tests, not the manifests: the Dev owns it and must know the contract.
   if (stage === 'smoke') {
     // The e2e suite runs next against the same service; fixing a request only in smoke failed the next attempt at e2e (live).
@@ -226,10 +252,12 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
   let intent = deployIntent(deps, tag); const envRerun = opts.envRerun ?? 0; const key = `deploy-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;
   await deps.environment?.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan }, null);
   const failed = async (stage: DeployStage, detail: string, rolledBack: boolean, rollbackHealthy: boolean | null, previous: string | null): Promise<Phase5Result> => {
+    const same = await earlierSameCause(deps, attempt, stage, null, detail);
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
     // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
     if (envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan! }, detail))) return { ok: false, reason: `deploy failed at ${stage}: a missing variable was created, retrying`, retryEnvironment: true };
+    if (same) return { ok: false, reason: sameCauseReason(same, deps.journal.events[0]?.runId, stage, null, detail) };
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     if (planGap(stage, detail)) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
     const newPort = stage === 'apply' && PORT_TAKEN.test(detail) ? await reassignPort(deps, intent.port) : null;
@@ -291,6 +319,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   for (const repo of services.repos) await deps.environment?.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, null);
   const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
   const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, own: { intent?: DeploymentIntent; rolledBack?: boolean; rollbackHealthy?: boolean | null; fixable?: boolean } = {}) => {
+    const same = repo ? await earlierSameCause(deps, attempt, stage, repo.service, detail) : null;
     // Every applied service goes back to its previous image, or away when this was its first deploy; a failed rollback is said.
     const restored: string[] = own.rolledBack && repo ? [repo.service!] : [];
     const broken: string[] = [];
@@ -309,6 +338,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     if (rolledBack) await journal.fact(OrchEvent.RollbackDone, { attempt, services: restored });
     // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
     if (repo && envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, detail))) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): a missing variable was created, retrying`, retryEnvironment: true as const };
+    if (same && repo) return { ok: false as const, reason: sameCauseReason(same, journal.events[0]?.runId, stage, repo.service, detail) };
     // The platform comes from the docs, never from the code: no task could fix it.
     if (!repo || attempt >= 3 || opts.fixTasks === false) return { ok: false as const, reason: `deploy failed on attempt ${attempt} at ${stage}${repo ? ` (${repo.service})` : ''}: ${detail}` };
     if (own.fixable === false || planGap(stage as DeployStage, detail)) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): ${detail}` };

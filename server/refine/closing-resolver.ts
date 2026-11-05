@@ -23,7 +23,8 @@ const resolving = new WeakSet<RefineSession>();
 
 async function resolveOnce(s: RefineSession): Promise<void> {
   // Before the review closes, only the stage documents are resolved: the later steps wait for the owner's Continuar.
-  if (s.state.reviewClosed !== true) return ignoreConflict(() => resolveStages(s));
+  // A follow-on request has no review step: its closing runs at once, since the team alone prepares it.
+  if (s.state.reviewClosed !== true && s.state.extension === undefined) return ignoreConflict(() => resolveStages(s));
   for (let round = 0; round < CLOSING_ROUNDS; round++) {
     const before = await s.closingSummary();
     if (before.ok) return;

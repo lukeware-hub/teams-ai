@@ -5,6 +5,15 @@ import { PINNED_SKILLS } from '../../server/skills/catalog.js';
 
 const agent = (name: string) => readFileSync(new URL(`../../.claude/agents/${name}.md`, import.meta.url), 'utf8');
 
+describe('agent prompts size tasks by capability', () => {
+  it('tell the SM that a task is one whole capability, never one task per file or layer', () => {
+    const sm = agent('sm');
+    expect(sm).toContain('A task delivers one whole capability');
+    expect(sm).toContain('planTasks');
+    expect(sm).not.toContain('small enough for one agent step');
+  });
+});
+
 describe('agent prompts for a project of services (R12.6)', () => {
   it('let the docs decide between one application and several services', () => {
     const sm = agent('sm');
@@ -16,6 +25,23 @@ describe('agent prompts for a project of services (R12.6)', () => {
 
   it("tell Front that a service's repository gets the design doc in the pack, never as a file to edit", () => {
     expect(agent('front')).toContain("In a service's repository the pack carries the project's design.md: follow it there and never create or edit docs/design.md in that repository");
+  });
+
+  it('make Sec check the OWASP groups, ASVS, MASVS and a standard-based category', () => {
+    const sec = agent('sec');
+    for (const topic of ['CSRF', 'Content Security Policy', 'secure headers', 'ASVS', 'MASVS', 'CORS', 'output encoding', 'rate limit', 'SSRF', 'IDOR', 'mass assignment', 'A01-broken-access-control / CWE-639']) {
+      expect(sec).toContain(topic);
+    }
+    expect(sec).toContain('a task goes back to Dev if and only if it has at least one `critical` or `high` finding');
+  });
+
+  it('make DevOps guarantee image security and Sec check the container hardening', () => {
+    const devops = agent('devops');
+    for (const topic of ['HIGH` and `CRITICAL', 'non-root `USER`', 'no secret in `ENV`', '.dockerignore', '.trivyignore', 'expiry date at most 30 days', 'cap_drop: [ALL]', 'no-new-privileges:true', 'no Docker socket mount', 'Never touch `.github/workflows`']) {
+      expect(devops).toContain(topic);
+    }
+    const sec = agent('sec');
+    for (const topic of ['Containers:', 'a mounted Docker socket', 'image scan was weakened or removed']) expect(sec).toContain(topic);
   });
 
   it('let a vulnerability with no fixed version pass the dependency scan only with a reason and a short expiry, which Sec holds the line on', () => {

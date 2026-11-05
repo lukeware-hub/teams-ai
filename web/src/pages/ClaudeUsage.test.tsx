@@ -32,7 +32,7 @@ describe('ClaudeUsagePanel', () => {
     render(<ClaudeUsagePanel />);
 
     expect(await screen.findByText('Max (5x)')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Seu uso' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Seu uso de tokens' })).toBeTruthy();
     expect(screen.getByText('Sessão atual')).toBeTruthy();
     expect(screen.getByText('Redefine às 20:10')).toBeTruthy();
     expect(screen.getByText('84% usado')).toBeTruthy();

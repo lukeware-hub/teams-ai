@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadAgents } from './agents/registry.js';
-import { agentsDecideFor, loadConfig, stepBudgetFor, type Config } from './config/config.js';
+import { agentsDecideFor, loadConfig, slotSettingOf, stepBudgetFor, type Config, type Slot } from './config/config.js';
 import { Project } from './contracts/project.js';
 import { generatedSecretNames, Spec } from './contracts/spec.js';
 import { writeFileAtomic } from './core/atomic-write.js';
@@ -26,8 +26,10 @@ import { licenseRoutes } from './api/license-routes.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
 import { usageRoutes } from './api/usage-routes.js';
+import { costRoutes } from './api/cost-routes.js';
+import { createCostScanner } from './usage/cost-scan.js';
 import { createClaudeUsage } from './usage/claude-usage.js';
-import { jevCostUsd } from './usage/jev-cost.js';
+import { jevTotalUsd, recordJevCost, seedJevLedger } from './usage/jev-ledger.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
 import { opsRoutes } from './api/ops-routes.js';
 import { runRoutes } from './api/run-routes.js';
@@ -115,6 +117,8 @@ async function prepareSkills(exec: Exec, env: NodeJS.ProcessEnv, stderr: (line: 
 async function startUiReal(port: number, io: CliIo): Promise<{ port: number; close(): Promise<void> }> {
   if (!(await hasScript(io.env))) throw new Error('the web UI needs util-linux `script` on PATH (apt install bsdutils)');
   const cfg = loadConfig(await fs.readFile(path.join(expandHome('~/.teams-ai'), 'config.json'), 'utf8').then(JSON.parse).catch(() => ({})));
+  // Before any Jev call of this process: the journals' past cost is written once, then the ledger takes over.
+  await seedJevLedger(cfg);
   const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
   const hasDist = await fs.access(path.join(staticDir, 'index.html')).then(() => true, () => false);
   if (!hasDist) io.stderr('web/dist not found: run `npm run web:build` (or `npm run web:dev` for the Vite dev server with /api proxied)');
@@ -129,6 +133,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
   const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents });
+  /** The model a project's chat or graphify setting fixes in Settings. */
+  const slotModelOf = async (projectId: string, slot: Slot): Promise<string> => slotSettingOf((await readUserConfig()).cfg.agentSettings[projectId] ?? {}, slot).model;
   const projectDirOf = async (projectId: string): Promise<string | null> => {
     for (const { dir } of (await readUserConfig()).cfg.projects) {
       const read = await readProject(dir).catch(() => null);
@@ -141,7 +147,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
     // The graph extraction shares the refinement governor, and runs in step homes of its own.
-    extractDocs: (dir, outDir) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
+    extractDocs: async (dir, outDir, projectId) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor, model: await slotModelOf(projectId, 'graphify') }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
     docGraphContext: (outDir, question, budgetTokens) => docGraphContext(graphify, outDir, question, budgetTokens),
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
@@ -198,6 +204,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     log: io.stderr,
     workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
     suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
+    chatModel: (projectId) => slotModelOf(projectId, 'chat'),
     newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
     refreshProjectGraph: async (projectId) => rebuildProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)),
     docs: async (projectId) => projectMainDocs(await locateProject((await readUserConfig()).cfg, projectId)),
@@ -212,7 +219,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       guard,
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
-        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota() }),
+        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}) }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
@@ -223,10 +230,11 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         ...settingsRoutes({}),
         ...usageRoutes({
           claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }),
-          jev: async () => {
-            const { paths } = (await readUserConfig()).cfg;
-            return jevCostUsd(expandHome(paths.workspaces), expandHome(paths.runs));
-          },
+          jev: async () => jevTotalUsd((await readUserConfig()).cfg),
+        }),
+        ...costRoutes({
+          scanner: createCostScanner({ config: async () => (await readUserConfig()).cfg, chatsDir: path.join(expandHome('~/.teams-ai'), 'chats') }),
+          jevLedgerUsd: async () => jevTotalUsd((await readUserConfig()).cfg),
         }),
       ],
       staticDir: hasDist ? staticDir : null,
@@ -336,6 +344,7 @@ export const chooseSpecId = (explicit: string | undefined, fromRun: string | nul
 export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: string | undefined, opts: { dryRun: boolean; maxParallel?: number; resumeRun?: string; draft?: boolean; complete?: boolean; readme?: boolean; deploy?: boolean; target?: 'docker-local'; sendBack?: boolean }): Promise<RunDeps> {
   const cfgFile = path.join(expandHome('~/.teams-ai'), 'config.json');
   const cfg: Config = loadConfig(await fs.readFile(cfgFile, 'utf8').then(JSON.parse).catch(() => ({})));
+  await seedJevLedger(cfg);
   const project = await readJson(path.join(projectDir, 'docs', 'project.json'), (v) => Project.parse(v));
   const ws = workspacePaths(cfg, project.projectId);
   const fromRun = opts.resumeRun ? await specForRun(ws, opts.resumeRun) : null;
@@ -448,7 +457,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       else {
         io.stdout(`run ${String(f.run)}: ${state.status}`);
         for (const t of state.tasks) io.stdout(`  ${t.id.padEnd(16)} ${t.state.padEnd(13)} attempts=${t.attempts}`);
-        io.stdout(`tokens: in=${state.tokens.inputTokens} out=${state.tokens.outputTokens} cost=$${state.tokens.costUsd}`);
+        io.stdout(`tokens: in=${state.tokens.inputTokens} out=${state.tokens.outputTokens} cost=$${state.tokens.costUsd.toFixed(4)}`);
       }
       return 0;
     }

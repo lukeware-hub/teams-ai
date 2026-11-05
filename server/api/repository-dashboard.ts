@@ -51,6 +51,8 @@ export interface DashboardSpecInput {
   status: string;
   /** The tasks in the spec's task list. */
   tasks: number;
+  /** The tasks listed in the spec's task.md, for a spec no run has started yet; empty otherwise. */
+  taskList?: Array<{ taskId: string; title: string }>;
   plan: boolean;
   blocked: boolean;
   activeRunId: string | null;
@@ -91,6 +93,11 @@ export interface DashboardTask {
   attempts: number;
   reason: string | null;
   pr: number | null;
+}
+
+/** A task as the tasks table lists it: the reason as the journal wrote it, kept for a task that did not finish. */
+export interface DashboardTaskRow extends DashboardTask {
+  rawReason: string | null;
 }
 
 export interface DashboardItem {
@@ -185,9 +192,10 @@ export interface DashboardLists {
   failures: DashboardItem[];
   blockers: DashboardItem[];
   agents: RoleActivity[];
+  tasks: DashboardTaskRow[];
 }
 
-export const DASHBOARD_TABLES = ['runs', 'timeline', 'failures', 'blockers', 'agents'] as const;
+export const DASHBOARD_TABLES = ['runs', 'timeline', 'failures', 'blockers', 'agents', 'tasks'] as const;
 export type DashboardTable = (typeof DASHBOARD_TABLES)[number];
 /** The row each paged dashboard table lists. */
 export interface DashboardListRow {
@@ -196,6 +204,7 @@ export interface DashboardListRow {
   failures: DashboardItem;
   blockers: DashboardItem;
   agents: RoleActivity;
+  tasks: DashboardTaskRow;
 }
 
 const cap = <T>(all: T[], n: number): Capped<T> => ({ total: all.length, list: all.slice(0, n) });
@@ -246,7 +255,7 @@ function specStateOf(spec: DashboardSpecInput, runs: DashboardRun[], dash: Dashb
 
 /** A spec's tasks across its runs: one state per task id, a merge in any run wins, a superseded task counts nowhere. */
 function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>) {
-  const best = new Map<string, DashboardTask>();
+  const best = new Map<string, DashboardTaskRow>();
   const plannedPlan = new Set<string>();
   // The newest run with a task list: a task it does not carry is history, unless it merged.
   const current = runs.filter((r) => r.kind === 'run' && tasksByRun.get(r.runId)).at(-1);
@@ -277,11 +286,15 @@ function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: M
         state,
         attempts: rt.attempts,
         reason: reason === undefined ? null : firstSentence(explainBlockReason(reason)),
+        rawReason: state === 'blocked' || state === 'failed' ? (reason ?? null) : null,
         pr: prs.get(id) ?? null,
       });
     }
   }
-  return { rows: [...best.values()], plannedPlan };
+  // A task of the spec's task list that no run has planned yet is pending: it has a title, and no owner is written for it yet.
+  const listedOnly = (spec.taskList ?? []).filter((t) => !plannedPlan.has(t.taskId) && !best.has(t.taskId));
+  const pending: DashboardTaskRow[] = listedOnly.map((t) => ({ specId: spec.specId, runId: null, taskId: t.taskId, title: t.title, owner: '', state: 'pending', attempts: 0, reason: null, rawReason: null, pr: null }));
+  return { rows: [...best.values(), ...pending], plannedPlan, listedOnly: listedOnly.length };
 }
 
 /** The spec's latest run that waits for validation: the one the owner validates. */
@@ -289,10 +302,10 @@ function latestAwaitingRun(specId: string, runs: DashboardRun[]): DashboardRun |
   return runs.filter((r) => r.specId === specId && r.status === 'awaiting-validation').sort((a, b) => b.n - a.n)[0];
 }
 
-function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>): { view: DashboardSpec; rows: DashboardTask[] } {
-  const { rows, plannedPlan } = specTasks(spec, runs, tasksByRun);
+function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Map<string, Map<string, TaskRuntime> | null>): { view: DashboardSpec; rows: DashboardTaskRow[] } {
+  const { rows, plannedPlan, listedOnly } = specTasks(spec, runs, tasksByRun);
   const done = spec.status === 'done';
-  const notStarted = done ? 0 : Math.max(0, spec.tasks - plannedPlan.size);
+  const notStarted = done ? 0 : Math.max(0, spec.tasks - plannedPlan.size - listedOnly);
   // A spec delivered before journals existed: its task list counts as delivered.
   const fallback = done && rows.length === 0 ? spec.tasks : 0;
   const count = (s: TaskState) => rows.filter((r) => r.state === s).length;
@@ -332,9 +345,9 @@ export async function loadRepoRuns(runsDir: string, rows: ReadonlyArray<{ runId:
 }
 
 /** Each spec's counts and task rows from its runs; the runs whose journal does not replay are in `unreadable`. */
-export function specViews(specs: DashboardSpecInput[], runs: DashboardRun[]): { specs: DashboardSpec[]; tasks: DashboardTask[]; unreadable: Set<string> } {
+export function specViews(specs: DashboardSpecInput[], runs: DashboardRun[]): { specs: DashboardSpec[]; tasks: DashboardTaskRow[]; unreadable: Set<string> } {
   const tasksByRun = new Map(runs.map((r) => [r.runId, tasksOf(r.events)] as const));
-  const out = { specs: [] as DashboardSpec[], tasks: [] as DashboardTask[], unreadable: new Set(runs.filter((r) => tasksByRun.get(r.runId) === null).map((r) => r.runId)) };
+  const out = { specs: [] as DashboardSpec[], tasks: [] as DashboardTaskRow[], unreadable: new Set(runs.filter((r) => tasksByRun.get(r.runId) === null).map((r) => r.runId)) };
   for (const spec of specs) {
     const { view, rows } = specView(spec, runs.filter((r) => r.specId === spec.specId).sort((a, b) => a.n - b.n), tasksByRun);
     out.specs.push(view);
@@ -362,12 +375,19 @@ export function dashboardPage<K extends DashboardTable>(input: DashboardInput, t
       return queryPage(lists.blockers, ITEM_TABLE, req) as Page<DashboardListRow[K]>;
     case 'agents':
       return queryPage(lists.agents, { text: (a) => [a.role] }, req) as Page<DashboardListRow[K]>;
+    case 'tasks':
+      return queryPage(lists.tasks, TASK_TABLE, req) as Page<DashboardListRow[K]>;
   }
 }
 
 const ITEM_TABLE: TableSpec<DashboardItem> = {
   text: (item) => [item.text, item.taskId ?? '', item.runId ?? ''],
   facet: (item) => item.kind,
+};
+
+const TASK_TABLE: TableSpec<DashboardTaskRow> = {
+  text: (task) => [task.title, task.taskId, task.specId],
+  facet: (task) => task.state,
 };
 
 function analyze(input: DashboardInput): { dashboard: RepoDashboard; lists: DashboardLists } {
@@ -550,5 +570,5 @@ function analyze(input: DashboardInput): { dashboard: RepoDashboard; lists: Dash
     retries,
     lastDeploy,
   };
-  return { dashboard, lists: { runs: runRows, timeline, failures, blockers, agents: agentRows } };
+  return { dashboard, lists: { runs: runRows, timeline, failures, blockers, agents: agentRows, tasks } };
 }

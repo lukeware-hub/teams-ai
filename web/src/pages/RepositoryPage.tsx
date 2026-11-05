@@ -7,6 +7,7 @@ import { usePolling } from '../usePolling.js';
 import { action, panel, sectionHeading, sectionTitle } from './project-shared.js';
 import { AgentActivity } from './repository/AgentActivity.js';
 import { DeliveryBoard } from './repository/DeliveryBoard.js';
+import { TasksTable } from './repository/TasksTable.js';
 import { FailuresBlockers } from './repository/FailuresBlockers.js';
 import { IndicatorCards } from './repository/IndicatorCards.js';
 import { RepoHeader } from './repository/RepoHeader.js';
@@ -80,6 +81,7 @@ export function RepositoryPage() {
       {dashboard && (
         <>
           <IndicatorCards dashboard={dashboard} />
+          <TasksTable projectId={projectId} repo={repoId} />
           <DeliveryBoard specs={dashboard.specs} tasks={dashboard.tasks.list} />
           <AgentActivity projectId={projectId} repo={repoId} />
           <RunsTable projectId={projectId} repo={repoId} />

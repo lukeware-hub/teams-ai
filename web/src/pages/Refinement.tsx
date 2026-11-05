@@ -14,6 +14,7 @@ import { afterStartPath, executionPath, projectPath } from '../routes.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { OptionGroup } from '../components/OptionGroup.js';
+import { money } from './costs/format.js';
 import { renderSpecMd } from '@server/refine/spec-md';
 import { planItems } from '@server/refine/plan-items';
 import { renderSpecsMd } from '@server/refine/specs-md';
@@ -72,6 +73,9 @@ const errorText = (text: string | null) => text
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
 /** The pause after the last keystroke before a stage document is saved on its own. */
 const AUTOSAVE_MS = 1500;
+
+/** The card each step of a request opens on the page: the owner's words, the impact, the replan, and the ready bar. */
+const REQUEST_STEP_TARGET: Record<string, string> = { pedido: 'step-card-request', impacto: 'step-card-impact', specs: 'step-card-replan', pronto: 'request-ready' };
 /** Whether an evaluation is open in the journal: it spans a stage's review, its score and its graph extraction, so the page shows the work from the first event to the last. */
 const evaluationOpen = (st: Pick<Snapshot['state'], 'evaluation'>): boolean => st.evaluation != null && st.evaluation.endedAt === null;
 /** The notice a click gets while a process is open: it says to wait, and the page frees itself when the process ends. */
@@ -1023,7 +1027,7 @@ export function RefinementView(p: ViewProps) {
           </div>
           <div data-testid="refinement-usage-cost">
             <dt data-testid="refinement-usage-cost-label">Custo estimado<InfoTip text="Estimativa em dólares das chamadas aos modelos de IA neste refinamento, calculada pelos preços de API." /></dt>
-            <dd data-testid="refinement-usage-cost-value">US$ {snap.tokens.costUsd.toFixed(2)}</dd>
+            <dd data-testid="refinement-usage-cost-value">{money(snap.tokens.costUsd)}</dd>
           </div>
           <div data-testid="refinement-usage-last-evaluation">
             <dt data-testid="refinement-usage-last-evaluation-label">Última avaliação<InfoTip text="Quanto a última avaliação levou, do clique em Avaliar ou Reavaliar até ela terminar." /></dt>
@@ -1107,7 +1111,7 @@ export function RefinementView(p: ViewProps) {
     return block?.id === 'graphed' ? null : block;
   })();
   const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
-  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · US$ ${snap.tokens.costUsd.toFixed(2)}`;
+  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${money(snap.tokens.costUsd)}`;
   const outdatedDocs = st.outdatedDocs ?? [];
   const stageScreen = (file: DocFile) => {
     const score = st.readiness?.docs?.[file];
@@ -1470,18 +1474,21 @@ export function RefinementView(p: ViewProps) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
+        <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
         <WizardShell
-          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" />}
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
           stepKey="request"
           meta={usageLine}
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
           actions={null}
         >
-          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
+          <div className="grid gap-4">
+          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}
           <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          </div>
         </WizardShell>
         {reevaluateDialog}
         {askDialog}
@@ -1499,8 +1506,10 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
-          {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
-          {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          <div className="grid gap-4">
+            {snap.docsRepo === true && <DocsSyncNotice docsSync={snap.docsSync} />}
+            {step === 'backlog' ? backlogScreen() : step === 'review' ? finalScreen() : step === 'architecture' ? architectureScreen() : stageScreen(step)}
+          </div>
         </WizardShell>
         {reevaluateDialog}
         {askDialog}

@@ -61,6 +61,27 @@ export async function buildLocatedProjectGraph(graphify: Graphify, located: Loca
   await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectMainDocs(located));
 }
 
+/** Projects whose graph is being built now, so a button click and a finished run never build the same graph together. */
+const building = new Set<string>();
+
+/** Builds the project's graph unless it is already being built; false when it is. */
+export async function buildLocatedProjectGraphOnce(graphify: Graphify, located: LocatedProject): Promise<boolean> {
+  const id = located.project.projectId;
+  if (building.has(id)) return false;
+  building.add(id);
+  try {
+    await buildLocatedProjectGraph(graphify, located);
+    return true;
+  } finally {
+    building.delete(id);
+  }
+}
+
+/** Rebuilds the graph in the background, so the caller does not wait; a failure goes to log. */
+export function refreshProjectGraph(graphify: Graphify, located: LocatedProject, log?: (line: string) => void): void {
+  buildLocatedProjectGraphOnce(graphify, located).catch((err: Error) => log?.(`project graph not refreshed: ${err.message}`));
+}
+
 /** One code graph of the project: each cloned repository's graph built again, then merged with the project's own description. */
 export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[], docs: readonly MainDoc[] = []): Promise<void> {
   for (const repo of [ws, ...cloned.map((service) => serviceWorkspace(ws, service))]) await graphify.update(repo.repo, graphDir(repo, null));

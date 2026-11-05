@@ -22,9 +22,6 @@ import { planPack, taskPack } from './superpowers-pack.js';
 import type { SpeckitStepFailure } from './state.js';
 import { withoutRequests } from './sections.js';
 
-/** The model and effort of the plan step: the setting the pilot measured for it (plan 107). The role's pin, which sets the builders, does not apply to it. */
-export const PLAN_STEP = { model: 'claude-sonnet-5-5', effort: 'low' } as const;
-
 export interface PlanDeps {
   draft: Draft;
   journal: Pick<CycleJournal, 'allocStepSeq' | 'fact' | 'state'>;
@@ -133,7 +130,7 @@ async function writeTasks(run: Run, item: PlanItem, plan: string): Promise<Speck
     pack: (repair) => taskPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, repository, repair, graphContext: run.graph }),
     run: async (pack) =>
       (await deps.runAgent<'speckit'>(
-        { kind: 'speckit', role: 'test', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
+        { kind: 'speckit', role: 'test', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
         { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
       )) as StepOutcome<SpeckitOutput>,
   });
@@ -184,7 +181,7 @@ async function writePlan(run: Run, item: PlanItem): Promise<SpeckitStepFailure |
     pack: (repair) => planPack({ specHash, inputDir: planInputDir(deps.draft), specId: item.specId, key: item.key, title: item.title, criteria, decisions, history, repair, repository: repositoryContextOf(source, item.repository), graphContext: run.graph }),
     run: async (pack) =>
       (await deps.runAgent<'speckit'>(
-        { kind: 'speckit', role: 'dev', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, model: PLAN_STEP.model, effort: PLAN_STEP.effort, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
+        { kind: 'speckit', role: 'dev', pack, cwd: staging, phase: 'refine', taskId: null, attempt: 1, extraAllow: [`Read(${absoluteRule(planInputDir(deps.draft))}/**)`] },
         { journal: deps.journal, stepDir: deps.draft.steps, specHash, signal: deps.signal },
       )) as StepOutcome<SpeckitOutput>,
   });

@@ -129,6 +129,15 @@ describe('Decider', () => {
     expect(records[0]!.attempts[0]).toMatchObject({ backend: 'jev', outcome: 'invalid', message: 'kind: choice "[REDACTED]" is not an option' });
   });
 
+  it('keeps the usage of a billed call that failed, on its attempt and in the decision total', async () => {
+    const billed = { inputTokens: 5, outputTokens: 2, costUsd: 0.04 };
+    const claude = { name: 'claude' as const, evaluate: async () => ({ ok: false as const, reason: 'unavailable' as const, message: 'timeout', usage: billed }) };
+    const { d, records } = decider({ claude }, { chain: ['claude'] });
+    await d.decide('gate-triage', 's', questions, { confidential: false });
+    expect(records[0]!.attempts[0]).toMatchObject({ backend: 'claude', outcome: 'unavailable', usage: billed });
+    expect(records[0]!.usage).toMatchObject({ inputTokens: 5, outputTokens: 2, costUsd: 0.04 });
+  });
+
   it('truncates an oversized state and marks it', async () => {
     const jev = new FakeBackend('jev', [ok({ kind: choiceAnswer('code', { code: 1 }) })]);
     const { d, records } = decider({ jev });

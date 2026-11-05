@@ -5,6 +5,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { hhmm } from '../refine/ProgramPanel.js';
 import { panel, sectionTitle } from './project-shared.js';
+import { money } from './costs/format.js';
 
 const REFRESH_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -23,7 +24,7 @@ const REASONS: Record<UnavailableReason, string> = {
 };
 
 const startOfDay = (at: Date) => new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
-const usd = (value: number) => `US$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+const usd = money;
 
 /** hoje, amanhã, or the weekday of a day within the week. */
 function dayName(at: Date, now: Date): string {
@@ -147,9 +148,9 @@ export function ClaudeUsagePanel() {
   return (
     <section data-testid="claude-usage-panel" className={`${panel} gap-3`} aria-labelledby="usage-title">
       <div data-testid="claude-usage-title-row" className={sectionTitle}>
-        <h2 data-testid="claude-usage-heading" className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso</h2>
+        <h2 data-testid="claude-usage-heading" className="flex-[0_1_auto] text-[1.125rem] leading-[1.3]" id="usage-title">Seu uso de tokens</h2>
         {usage?.available ? <span data-testid="claude-usage-plan" className="text-[0.8125rem] text-ink-soft">{usage.plan}</span> : null}
-        <InfoTip label="Seu uso" text={HELP} />
+        <InfoTip label="Seu uso de tokens" text={HELP} />
       </div>
       {usage ? <UsageBody usage={usage} now={now} /> : failed ? <p data-testid="claude-usage-error" className="error">{REASONS.failed}</p> : <Loading />}
       {jev !== null && (

@@ -22,10 +22,10 @@ const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 
 /** A graphify stand-in: one node per document of the folder, with the tokens of a small extraction. */
-async function extractDocs(dir: string, outDir: string, tokens = { input_tokens: 2500, output_tokens: 90 }): Promise<void> {
+async function extractDocs(dir: string, outDir: string): Promise<void> {
   const files = await fs.readdir(dir);
   await fs.mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
-  await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], ...tokens }));
+  await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], input_tokens: 2500, output_tokens: 90 }));
 }
 
 /** The given stages reviewed and continued in order, the agents approving each one. */
@@ -380,5 +380,24 @@ describe('the owner keeps working while the graph extraction runs', () => {
     await s.settled();
     expect(s.state.graphed ?? []).not.toContain('flow.md');
     await s.close();
+  });
+});
+
+describe('the five documents of a request in the graph', () => {
+  it('puts every document in the graph in one extraction, and extracts nothing again once they are there', async () => {
+    const extract = vi.fn(extractDocs);
+    const s = await RefineSession.create({ ...deps(), extractDocs: extract }, 'new-project', { repositories: true });
+    await s.graphDocs();
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect([...(s.state.graphed ?? [])].sort()).toEqual([...DOC_STAGES].sort());
+    await s.graphDocs();
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+
+  it('journals a failed extraction in plain words and leaves the documents out of the graph', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs: async () => { throw new Error('O Graphify caiu.'); } }, 'new-project', { repositories: true });
+    await s.graphDocs();
+    expect(s.state.graphed ?? []).toEqual([]);
+    expect(JSON.stringify(s.state.graphError)).toContain('O Graphify caiu.');
   });
 });

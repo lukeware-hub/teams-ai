@@ -220,7 +220,7 @@ export interface RefineState {
   /** The owner's request this draft follows up, when it was made in a project already in development. */
   extension?: ExtensionRequest;
   /** The SM's impact of the request on the backlog it follows, with the outline it was made from; `issues` names what it broke. */
-  impact?: { inputHash: string; impact: Impact | null; issues: string[]; cycle?: number };
+  impact?: { inputHash: string; impact: Impact | null; issues: string[]; cycle?: number; backlogCycle?: number };
   /** How the session was created; null on drafts from before it was kept. */
   mode: 'new-project' | 'new-spec' | 'continue' | 'backlog' | null;
   /** The backlog key a continued spec came from, which names its plan file; absent when it came from no backlog. */
@@ -394,7 +394,7 @@ export function closingChecks(s: RefineState, architectureCurrent: boolean): Clo
 /** The impact the SM made of the request is usable: it exists and it broke no rule. */
 const impactCheck = (s: RefineState): ClosingCheck => {
   // An impact made on an outline the backlog has since moved past is stale: the next detail run measures it again.
-  const stale = s.impact?.cycle !== undefined && s.impact.cycle !== s.backlog?.cycle;
+  const stale = s.impact?.backlogCycle !== undefined && s.impact.backlogCycle !== s.backlog?.cycle;
   // A new item that repeats a spec the backlog already delivers is not added: the request is covered by that spec.
   const before = new Set((s.extension?.before ?? []).map((i) => i.key));
   const covered = (s.impact?.impact?.duplicates ?? []).filter((d) => d.verdict === 'reuse' && !before.has(d.newKey));
@@ -718,7 +718,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
       break;
     case RefineEvent.ImpactDerived:
-      s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[], ...(typeof d.cycle === 'number' ? { cycle: d.cycle } : {}) };
+      s.impact = { inputHash: String(d.inputHash), impact: (d.impact ?? null) as Impact | null, issues: (d.issues ?? []) as string[], ...(typeof d.cycle === 'number' ? { cycle: d.cycle } : {}), ...(typeof d.backlogCycle === 'number' ? { backlogCycle: d.backlogCycle } : {}) };
       break;
     case RefineEvent.BacklogEnabled: {
       // `acFloor`: the highest criterion id in the draft before the briefing move removed this draft's own spec.json.

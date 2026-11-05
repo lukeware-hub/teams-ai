@@ -69,7 +69,7 @@ describe('one stage per screen', () => {
 
   it('shows the usage of the whole refinement as one line in the footer', () => {
     show(base());
-    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens · US$ 0.02');
+    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens · US$ 0,0200');
   });
 
   it('keeps the text the owner typed when moving to another screen', () => {

@@ -5,7 +5,7 @@ import { Icon } from './Icons.js';
  * A modal for reading long detail without leaving the page. It closes with the X, Escape or a click on the backdrop;
  * focus moves to the X when it opens and goes back to `returnFocus` (else whatever had focus) when it closes.
  */
-export function Dialog({ title, onClose, returnFocus, children }: { title: string; onClose: () => void; returnFocus?: HTMLElement | null; children: ReactNode }) {
+export function Dialog({ title, onClose, returnFocus, size, children }: { title: string; onClose: () => void; returnFocus?: HTMLElement | null; size?: 'large'; children: ReactNode }) {
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -54,7 +54,7 @@ export function Dialog({ title, onClose, returnFocus, children }: { title: strin
         if (pressedBackdrop.current && e.target === e.currentTarget) close.current();
       }}
     >
-      <div data-testid="dialog" ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div data-testid="dialog" ref={box} className={size === 'large' ? 'dialog dialog-large' : 'dialog'} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div data-testid="dialog-header" className="dialog-header">
           <h2 data-testid="dialog-title" id={titleId}>{title}</h2>
           <button data-testid="dialog-close" ref={closeButton} type="button" className="dialog-close" aria-label="Fechar" onClick={() => close.current()}>

@@ -3,10 +3,12 @@ import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashb
 import type { GraphView } from '@server/api/repository-graph.js';
 export type { GraphView };
 import type { Page, PageRequest } from '@server/api/paging.js';
-export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
+export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTable, DashboardTask, DashboardTaskRow, LastDeploy, RepoDashboard, RoleActivity, SpecState, TaskState, TimelineEntry } from '@server/api/repository-dashboard.js';
 export type { Page, PageRequest } from '@server/api/paging.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
+import type { CostFact, CostPeriod } from '@server/usage/cost-types.js';
+import type { CostOverview, ProjectCosts } from '@server/usage/cost-report.js';
 import type { DocsSyncView } from '@server/refine/docs-sync';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
@@ -62,6 +64,8 @@ export interface AgentSetting { model: AgentModel; effort: AgentEffort }
 /** `inUse` is the model and effort the role's next step runs on: its setting, or the automatic default. */
 export interface AgentRow { role: string; setting: AgentSetting | null; inUse: AgentSetting }
 export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting);
+/** The models the automatic choice uses on every project: the task sizes, the architecture steps and the later refinement cycles. */
+export interface AutomaticModels { tiers: { small: AgentModel; medium: AgentModel; large: AgentModel }; architecture: AgentModel; laterCycle: AgentModel }
 
 const S = '/api/settings';
 export const settingsApi = {
@@ -74,6 +78,9 @@ export const settingsApi = {
   agentsDecide: (projectId: string) => fetch(`${S}/agents-decide/${projectId}`).then((r) => json<{ agentsDecide: boolean }>(r)),
   setAgentsDecide: (projectId: string, agentsDecide: boolean) =>
     fetch(`${S}/agents-decide/${projectId}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agentsDecide }) }).then((r) => json<{ agentsDecide: boolean }>(r)),
+  automatic: () => fetch(`${S}/automatic`).then((r) => json<AutomaticModels>(r)),
+  setAutomatic: (models: AutomaticModels) =>
+    fetch(`${S}/automatic`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(models) }).then((r) => json<AutomaticModels>(r)),
   planAgents: () => fetch(`${S}/plan-agents`).then((r) => json<{ agents: number }>(r)),
   setPlanAgents: (agents: number) =>
     fetch(`${S}/plan-agents`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agents }) }).then((r) => json<{ agents: number }>(r)),
@@ -82,6 +89,14 @@ export const settingsApi = {
 export const usageApi = {
   claude: () => fetch('/api/usage/claude').then((r) => json<ClaudeUsage>(r)),
   jev: () => fetch('/api/usage/jev').then((r) => json<{ costUsd: number }>(r)),
+};
+
+const K = '/api/costs';
+export const costsApi = {
+  overview: (period: CostPeriod) => fetch(`${K}?period=${period}`).then((r) => json<CostOverview>(r)),
+  project: (projectId: string, period: CostPeriod) => fetch(`${K}/projects/${encodeURIComponent(projectId)}?period=${period}`).then((r) => json<ProjectCosts>(r)),
+  steps: (projectId: string, req: PageRequest, filter: { agente: string; spec: string }) =>
+    fetch(`${K}/projects/${encodeURIComponent(projectId)}/steps/page?${pageQuery(req)}&${new URLSearchParams(filter)}`).then((r) => json<Page<CostFact>>(r)),
 };
 
 export interface SpecRow {

@@ -57,7 +57,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
   const single = services
     ? null
     : { repoFiles: new Set((await git(worktree, ['ls-files'], deps.exec)).split('\n').filter((f) => f !== '')), ports: deps.workspacesRoot ? await assignDeployPort(deps.workspacesRoot, deps.ws.projectId, deps.exec) : { port: null, taken: [] as number[] } };
-  const check = (p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, ...require, repoFiles: single!.repoFiles, takenPorts: single!.ports.taken });
+  const check = (p: Plan) => validatePlan(p, deps.spec, { firstSpec: deps.firstSpec, ...require, repoFiles: single!.repoFiles, takenPorts: single!.ports.taken, sliceCeiling: true });
   let feedback: string | null = null;
   // Each attempt writes the whole plan again: every earlier rejection stays in the feedback, or a later plan brings it back.
   const rejected: string[] = [];
@@ -71,7 +71,7 @@ export async function runPhase2(deps: PhaseDeps, techSpecText: string): Promise<
           phase: 'phase2',
           taskId: null,
           attempt,
-          semantic: [((p: ServicesPlan) => validateServicesPlan(p, deps.spec, { services: names, newServices: services.newServices, repoFiles: services.repoFiles, takenPorts: services.takenPorts, ports: services.ports, ...require })) as never],
+          semantic: [((p: ServicesPlan) => validateServicesPlan(p, deps.spec, { services: names, newServices: services.newServices, repoFiles: services.repoFiles, takenPorts: services.takenPorts, ports: services.ports, ...require, sliceCeiling: true })) as never],
         })
       : await deps.runAgent<'plan'>({
           kind: 'plan',

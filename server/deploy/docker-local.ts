@@ -97,6 +97,18 @@ export class DockerLocalTarget implements DeployTarget {
   }
 
   private readonly services = new Map<string, string>();
+  private readonly serviceNames = new Map<string, string[]>();
+
+  /** Every service the compose file names, read once per file. */
+  private async names(intent: DeploymentIntent): Promise<string[]> {
+    const key = `${intent.contextDir}/${intent.compose}`;
+    const known = this.serviceNames.get(key);
+    if (known) return known;
+    const r = await this.compose(intent, ['config', '--services'], imageRef(intent), 60_000, false);
+    const names = r.exitCode === 0 ? r.stdout.split(/\s+/).filter((n) => n !== '') : [];
+    this.serviceNames.set(key, names);
+    return names;
+  }
 
   /**
    * The app's compose service. devops.md asks for the project id, but an agent may name it otherwise (live: `hello` for project
@@ -107,8 +119,7 @@ export class DockerLocalTarget implements DeployTarget {
     const key = `${intent.contextDir}/${intent.compose}`;
     const known = this.services.get(key);
     if (known) return known;
-    const r = await this.compose(intent, ['config', '--services'], imageRef(intent), 60_000, false);
-    const names = r.exitCode === 0 ? r.stdout.split(/\s+/).filter((n) => n !== '') : [];
+    const names = await this.names(intent);
     const own = intent.shared?.alias ?? intent.projectId;
     const chosen = names.includes(own) ? own : names.length === 1 ? names[0]! : own;
     this.services.set(key, chosen);
@@ -161,11 +172,15 @@ export class DockerLocalTarget implements DeployTarget {
     const ports = await this.publishedPorts(intent, service);
     const shared = intent.shared;
     if (!ports && !shared) return null;
+    // Every other service of the file joins the shared network under its own name too, so an e2e fixture (a second instance) is reachable by name.
+    const siblings = shared ? (await this.names(intent)).filter((n) => n !== service) : [];
     return [
       'services:',
       `  ${JSON.stringify(service)}:`,
       ...(ports ? [`    ports: !override ${JSON.stringify(ports)}`] : []),
-      ...(shared ? [`    networks: ${JSON.stringify({ default: {}, shared: { aliases: [shared.alias] } })}`, `networks: ${JSON.stringify({ shared: { name: shared.network, external: true } })}`] : []),
+      ...(shared ? [`    networks: ${JSON.stringify({ default: {}, shared: { aliases: [shared.alias] } })}`] : []),
+      ...siblings.flatMap((name) => [`  ${JSON.stringify(name)}:`, `    networks: ${JSON.stringify({ default: {}, shared: { aliases: [name] } })}`]),
+      ...(shared ? [`networks: ${JSON.stringify({ shared: { name: shared.network, external: true } })}`] : []),
     ].join('\n');
   }
 

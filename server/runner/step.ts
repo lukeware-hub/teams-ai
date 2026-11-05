@@ -314,13 +314,15 @@ async function bookSessionShare(s: ResultSummary, store: string, resume: boolean
   await writeTotals(store, { costUsd: s.costUsd ?? before?.costUsd ?? 0, durationApiMs: apiMs, usage: s.usage });
   if (!before) return;
   const costUsd = s.costUsd === null ? null : Math.round((s.costUsd - before.costUsd) * 1e6) / 1e6;
-  if ((costUsd ?? 0) < 0 || apiMs < before.durationApiMs) {
+  if ((costUsd ?? 0) < 0) {
     // The CLI started its totals over: the reported numbers are this step's own, and the journal says so.
     if (s.profile) s.profile = { ...s.profile, sessionTotalsReset: true };
     return;
   }
+  // The cost rose, so it still holds a delta; only the time went back, and the reported time is this step's own.
   s.costUsd = costUsd;
-  if (s.profile) s.profile = { ...s.profile, durationApiMs: apiMs - before.durationApiMs };
+  if (!s.profile) return;
+  s.profile = apiMs < before.durationApiMs ? { ...s.profile, sessionTotalsReset: true } : { ...s.profile, durationApiMs: apiMs - before.durationApiMs };
 }
 
 /** This step's own plugin folder for the SM's reuses and drafts; a sibling of the step HOME, never inside it. */

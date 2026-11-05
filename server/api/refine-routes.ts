@@ -165,7 +165,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/autopilot`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        resolveEverything(s).catch(logRunFailure(params));
+        // A follow-on request is resolved by the team alone: saving in the repositories stays with the owner.
+        resolveEverything(s, { byOwner: s.state.extension === undefined }).catch(logRunFailure(params));
         json(202, { ok: true });
       }),
     },

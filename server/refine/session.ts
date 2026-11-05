@@ -143,7 +143,7 @@ export interface SessionDeps {
   /** How many backlog items the plan preparation runs at once, read when it starts; one when absent. */
   speckitAgents?: () => Promise<number>;
   /** Extracts the documents of `dir` into the graph folder `outDir`; required by a repository session, which adds each stage to the graph. */
-  extractDocs?: (dir: string, outDir: string) => Promise<void>;
+  extractDocs?: (dir: string, outDir: string, projectId: string) => Promise<void>;
   /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   /** Binds the documentation repository at the Backlog step: the git and gh exec with the token, and the configured owner. */
@@ -545,13 +545,35 @@ export class RefineSession {
       for (const doc of [...(this.state.doneStages ?? []), file]) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
       // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
       const previous = await documentCounts(staging, file).catch(() => null);
-      await this.deps.extractDocs!(folder, staging);
+      await this.deps.extractDocs!(folder, staging, this.deps.draft.projectId);
       const counts = await documentCounts(staging, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
       await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
       if (advance) await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
       await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  /** A follow-on request ends with its five documents in the graph, as they are now, in one extraction; a failure is journaled in plain words. */
+  async graphDocs(): Promise<void> {
+    this.guard();
+    const files = DOC_STAGES.filter((f) => !(this.state.graphed ?? []).includes(f));
+    if (!this.deps.extractDocs || files.length === 0) return;
+    try {
+      const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
+      const folder = path.posix.join(staging, 'docs');
+      await fs.rm(folder, { recursive: true, force: true });
+      await fs.mkdir(folder, { recursive: true });
+      for (const doc of DOC_STAGES) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      await this.deps.extractDocs(folder, staging, this.deps.draft.projectId);
+      for (const file of files) {
+        const counts = await documentCounts(staging, file);
+        if (counts.nodes === 0) throw new Error(`O Graphify não encontrou conteúdo em ${file}.`);
+        await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      }
+    } catch (err) {
+      await this.journal.fact(RefineEvent.DocGraphFailed, { file: files[0], reason: err instanceof Error ? err.message : String(err) });
     }
   }
 

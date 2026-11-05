@@ -12,6 +12,8 @@ Write the implementation plan of the spec user-login, the backlog item "user-log
 
 - Each task is a "### Task N: <name>" block with **Files:** (the paths it creates or changes), **Criteria:** (the ids it delivers, separated by commas), its interfaces, and its test-first steps. Leave out commit, git and worktree steps.
 
+- A "### Task N" block is one whole capability with its tests, across the layers it touches, never one file or one layer. The bite-sized steps of the skill belong inside a block; a block is never a single step.
+
 - A fact or a rule comes from the six files or from the owner's decisions, and the plan cites the file for it. Never invent a business rule, and never change existing behavior to follow good practice, unless a failing test or a security fix requires it.
 
 - When nothing settles a point, take the smallest choice that changes nothing else, and record it under ## Assumptions as a bullet ending with "Reason: <why no document settles it>". An assumption is never presented as a fact.

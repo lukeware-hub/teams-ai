@@ -192,3 +192,29 @@ describe('JevOpenRouterBackend', () => {
     expect(() => backend([], { apiKey: '  ' })).toThrow(/OPENROUTER_API_KEY/);
   });
 });
+
+describe('onCost', () => {
+  const validTriage = { model: 'typesafe/jev-1.13', answers: { kind: { type: 'choice', choice: 'code', probabilities: { code: 1, 'flaky-test': 0, infra: 0, environment: 0, dependency: 0 }, confidence: 1 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.3 } };
+
+  it('gets the billed cost of an answered request', async () => {
+    const costs: number[] = [];
+    const { b } = backend([json(validTriage)], { onCost: (c) => costs.push(c) });
+    await b.evaluate({ state: 'S', questions: triage, escalateTo: 'po' });
+    expect(costs).toEqual([0.3]);
+  });
+
+  it('gets the cost of a billed response whose answers do not match', async () => {
+    const costs: number[] = [];
+    const { b } = backend([json({ ...validTriage, answers: {} })], { onCost: (c) => costs.push(c) });
+    const r = await b.evaluate({ state: 'S', questions: triage, escalateTo: 'po' });
+    expect(r.ok).toBe(false);
+    expect(costs).toEqual([0.3]);
+  });
+
+  it('gets nothing from a failed HTTP request', async () => {
+    const costs: number[] = [];
+    const { b } = backend([json({ error: 'nope' }, 400)], { onCost: (c) => costs.push(c), maxTries: 1 });
+    await b.evaluate({ state: 'S', questions: triage, escalateTo: 'po' });
+    expect(costs).toEqual([]);
+  });
+});

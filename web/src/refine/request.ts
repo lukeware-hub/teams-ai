@@ -10,13 +10,15 @@ const isStarted = (status: string | undefined): boolean => status !== undefined 
 export function requestNodes(st: RefineState): StepperStep[] {
   const planned = st.speckit?.status === 'done' && !st.speckit.stale;
   const steps = [
-    { key: 'pedido', label: 'Pedido', done: true },
-    { key: 'impacto', label: 'Impacto', done: st.impact?.impact != null },
-    { key: 'specs', label: 'Specs e plano', done: planned && st.backlog?.detail === true },
-    { key: 'pronto', label: 'Pronto', done: st.status === 'ready' && planned },
+    { key: 'pedido', label: 'Pedido' },
+    { key: 'impacto', label: 'Impacto' },
+    { key: 'specs', label: 'Specs e plano' },
+    { key: 'pronto', label: 'Pronto' },
   ];
-  const active = steps.findIndex((s) => !s.done);
-  return steps.map((s, i) => ({ key: s.key, label: s.label, state: s.done ? 'done' : i === active ? 'active' : 'todo' }));
+  // The steps run in order: a step is done only once every step before it is, so a later one never reads done early.
+  const doneFlags = [true, st.impact?.impact != null, planned && st.backlog?.detail === true, st.status === 'ready' && planned];
+  const open = doneFlags.indexOf(false);
+  return steps.map((s, i) => ({ key: s.key, label: s.label, state: open === -1 || i < open ? 'done' : i === open ? 'active' : 'todo' }));
 }
 
 /** The counts the impact card's chips show: the new specs of the replan, and what the SM found affected, documented and risky. */

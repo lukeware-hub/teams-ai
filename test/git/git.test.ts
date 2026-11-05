@@ -18,6 +18,7 @@ import {
   replayOnto,
   conflictMarkerFiles,
 } from '../../server/git/git.js';
+import { execCommand, type Exec } from '../../server/exec/command.js';
 
 let root: string;
 let origin: string;
@@ -125,6 +126,27 @@ describe('worktrees', () => {
     await fs.rm(wt, { recursive: true, force: true });
     await createWorktree(repo, wt, 'task/gone', 'main');
     expect(await git(wt, ['branch', '--show-current'])).toBe('task/gone');
+  });
+
+  it('clears the directory and adds the worktree again when the add says the directory already exists', async () => {
+    const wt = path.join(root, 'wt-race');
+    let failed = false;
+    const exec: Exec = async (spec) => {
+      if (!failed && spec.args.includes('add') && spec.args.includes('worktree')) {
+        failed = true;
+        return { exitCode: 128, stdout: '', stderr: `fatal: '${wt}' already exists`, timedOut: false } as Awaited<ReturnType<Exec>>;
+      }
+      return execCommand(spec);
+    };
+    await createWorktree(repo, wt, 'task/race', 'main', exec);
+    expect(failed).toBe(true);
+    expect(await git(wt, ['branch', '--show-current'])).toBe('task/race');
+  });
+
+  it('does not retry an add that failed for another reason', async () => {
+    const wt = path.join(root, 'wt-other');
+    const exec: Exec = async (spec) => (spec.args.includes('add') && spec.args.includes('worktree') ? ({ exitCode: 128, stdout: '', stderr: 'fatal: disk full', timedOut: false } as Awaited<ReturnType<Exec>>) : execCommand(spec));
+    await expect(createWorktree(repo, wt, 'task/other', 'main', exec)).rejects.toThrow(/disk full/);
   });
 
   it('recreates a worktree over a leftover directory git no longer registers', async () => {

@@ -120,6 +120,13 @@ describe('TaskRunner: implementing', () => {
     expect(agentCalls[0]!.pack.feedback).toBeUndefined();
   });
 
+  it('hands the Dev the blocking gates of the plan before its first attempt', async () => {
+    await new TaskRunner('T1', deps()).advance();
+    const rules = agentCalls[0]!.pack.principles.join('\n');
+    expect(rules).toContain('These blocking gates run on your change');
+    expect(rules).toMatch(/unit-test \(/);
+  });
+
   it('does not count the sandbox build cache under .tools as a change of the Dev', async () => {
     const cache: Agent = async (req) => {
       if (req.kind === 'security') return secApprove();
@@ -390,6 +397,34 @@ describe('TaskRunner: implementing', () => {
     await r.advance();
     expect(journal.state.tasks.get('T2')).toMatchObject({ state: 'merged', attempts: 0 });
     expect(journal.events.some((e) => e.type === OrchEvent.AlreadyOnMain && e.data.taskId === 'T2')).toBe(true);
+  });
+
+  it('a fix task whose Dev changes nothing is adopted as merged, since Phase 4 proves its criteria again', async () => {
+    const fix = makePlanTask({ id: 'T900-fix-1', criteriaRefs: ['AC-001'], affectedPaths: ['src/not-on-main.ts'], origin: 'fix' });
+    await journal.fact(RunEvent.TaskPlanned, { task: fix });
+    await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T900-fix-1', to: 'ready' });
+    const agent: Agent = async () => ok({ specHash: HASH, status: 'done', summary: 'the smoke test passes', changedFiles: [], commitMessage: 'fix: nothing' });
+    const r = new TaskRunner('T900-fix-1', deps({ plan: makePlan(spec, { tasks: [T1, fix] }), agent }));
+    await r.advance();
+    expect(journal.state.tasks.get('T900-fix-1')).toMatchObject({ state: 'merged', attempts: 0 });
+  });
+
+  it('blocks a task whose Dev changed nothing again after the SM answered, instead of spending more attempts', async () => {
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'rerun the gates', assumption: 'T1: gate → rerun' });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls === 1 ? devDone()(req) : ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' });
+    };
+    const failingGates: TaskRunnerDeps['gates'] = async () => {
+      const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+      return { results: [g], blockingFailure: g };
+    };
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates }));
+    for (let i = 0; i < 8 && state().state !== 'blocked'; i++) await r.advance();
+    expect(state().state).toBe('blocked');
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('changed nothing again');
   });
 
   it('pauses the run on a quota failure without consuming an attempt', async () => {
@@ -900,6 +935,21 @@ describe('TaskRunner: attempts, replan, block', () => {
     expect(journal.state.tasks.get('T1-r1')!.def.service).toBe('orders-api');
   });
 
+  it('reads a short dependency id as the one task whose id starts with it', async () => {
+    await journal.fact(RunEvent.TaskPlanned, { task: makePlanTask({ id: 'T2-docs', criteriaRefs: ['AC-002'], affectedPaths: ['docs'] }) });
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, dependsOn: ['T2'] }] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.state.tasks.get('T1-r1')!.def.dependsOn).toEqual(['T2-docs']);
+  });
+
+  it('names the valid ids when a replacement depends on an unknown task', async () => {
+    const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, dependsOn: ['T9'] }] }) : devDone()(req));
+    const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
+    for (let i = 0; i < 6; i++) await r.advance();
+    expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('depends on unknown task T9; valid ids: T1');
+  });
+
   it('drops a service the agent puts on a replacement when the plan has one repository', async () => {
     const agent: Agent = async (req) => (req.kind === 'replan' ? ok({ specHash: HASH, replacements: [{ ...replacement, service: 'billing-api' }] }) : devDone()(req));
     const r = new TaskRunner('T1', deps({ agent, gates: alwaysFailGates }));
@@ -1080,10 +1130,10 @@ describe('TaskRunner: gate fixes and repeated attempts', () => {
     await r.advance(); // Dev commits
     await r.advance(); // gates fail
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
-    await r.advance(); // Dev changes nothing: the SM answers once, the repeat fails the attempt
-    expect(agentCalls.map((c) => c.kind)).toEqual(['dev', 'dev', 'spec-gap', 'dev']);
+    await r.advance(); // Dev changes nothing: the SM answers once, the repeat blocks the task
+    expect(agentCalls.map((c) => c.kind).slice(0, 4)).toEqual(['dev', 'dev', 'spec-gap', 'dev']);
     expect(gateRuns).toBe(1);
-    expect(state()).toMatchObject({ state: 'implementing', attempts: 2 });
+    expect(state()).toMatchObject({ state: 'blocked', attempts: 1 });
   });
 });
 

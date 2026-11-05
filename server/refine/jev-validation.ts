@@ -2,6 +2,7 @@ import { redactSecrets } from '../core/redact.js';
 import { splitSections } from '../decide/windows.js';
 import { JevOpenRouterBackend } from '../decide/jev-openrouter.js';
 import type { Config } from '../config/config.js';
+import { recordJevCost } from '../usage/jev-ledger.js';
 
 export interface ValidationDocs {
   project: string;
@@ -93,6 +94,7 @@ export function openJev(cfg: Config, apiKey: string): JevOpenRouterBackend {
     maxTries: o.maxTries,
     backoffMs: o.backoffMs,
     sleep: async (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    onCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}),
   });
 }
 

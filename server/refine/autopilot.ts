@@ -1,5 +1,5 @@
 import { ConflictError, type RefineSession } from './session.js';
-import { resolveStages } from './closing-resolver.js';
+import { resolveClosing, resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
 import { type PatchRow, isApproval } from './state.js';
 import { additiveOnly } from './scope-guard.js';
@@ -15,6 +15,9 @@ export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, t
   if (!teamAlone) return true;
   return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
 }
+
+/** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
+export const runExtension = (s: RefineSession): Promise<void> => s.evaluate().then(() => resolveEverything(s, { byOwner: false }));
 
 /** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
 export const runExtension = (s: RefineSession): Promise<void> => s.evaluate().then(() => resolveEverything(s, { byOwner: false }));
@@ -44,18 +47,17 @@ const tolerate = async (run: () => Promise<unknown> | null | undefined): Promise
  * The owner's button for everything: with full autonomy the team answers every open question itself, accepts every suggestion,
  * reviews what changed, repairs and settles specs.md and prepares the plans, until nothing keeps the start closed.
  * After the last round a specs.md a reviewer still rejects is followed on the owner's behalf, since the owner chose this path.
- * A follow-on request the team runs alone (not by the owner's button) keeps that decision, and the save in the repositories, for the owner.
+ * A follow-on request the team runs alone decides everything too, and leaves only the save in the repositories and "Iniciar" to the owner.
  */
 export async function resolveEverything(s: RefineSession, { byOwner = true }: { byOwner?: boolean } = {}): Promise<void> {
   if (resolving.has(s)) return;
   resolving.add(s);
   const teamAlone = !byOwner && s.state.extension !== undefined;
-  const allowed = (p: PatchRow) => autoAcceptable(p, teamAlone);
   try {
     for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
-      // The documents: stages outdated by an edit are reviewed again, and the suggestions the rule allows are accepted.
-      await tolerate(() => resolveStages(s, allowed, teamAlone));
-      for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
+      // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted.
+      await tolerate(() => resolveStages(s, () => true, teamAlone));
+      for (const p of s.state.patches.filter((x) => x.status === 'pending')) await tolerate(() => s.accept(p.patchId, teamAlone));
       // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
@@ -68,12 +70,17 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
         await tolerate(() => s.settled());
       }
     }
-    // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision with his button.
-    if (byOwner && !s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
-    // Last: every document goes into the graph, and the owner's run saves the documents and specs in the repositories.
-    for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
-      await tolerate(() => s.addToGraph(file));
-      await tolerate(() => s.settled());
+    // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision to the team.
+    if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
+    // Last: the closing checks the request still fails (the architecture, the impact) are decided by the team, then every document goes into the graph in one extraction.
+    if (s.state.extension !== undefined) {
+      await tolerate(() => resolveClosing(s));
+      await tolerate(() => s.graphDocs());
+    } else {
+      for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
+        await tolerate(() => s.addToGraph(file));
+        await tolerate(() => s.settled());
+      }
     }
     if (byOwner) await tolerate(() => s.saveDocs());
   } finally {

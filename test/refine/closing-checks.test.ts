@@ -134,4 +134,13 @@ describe('the impact check of a follow-on request', () => {
     expect(failing({ ...request, impact: { inputHash: 'h', impact, issues: [] } }, true)).toEqual([]);
     expect(failing({ ...request, impact: { inputHash: 'h', impact: null, issues: ['o impacto cita a spec x'] } }, true)).toEqual(['impact']);
   });
+
+  it('is stale only when the backlog moved past the outline it was made on, not when a later run only detailed it', () => {
+    const impact = { requestId: 'pedido-1', summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] };
+    // Made on backlog cycle 13 by run 19: a later run on the same outline (cycle 13) keeps it current.
+    const request: RefineState = { ...greenState(), extension: { requestId: 'hello-001-pedido-1', title: 'T', text: 'Exportar.', at: 'x' } };
+    const made = { ...request, backlog: { ...request.backlog, cycle: 13 }, impact: { inputHash: 'h', impact, issues: [], cycle: 19, backlogCycle: 13 } } as RefineState;
+    expect(failing(made, true)).toEqual([]);
+    expect(failing({ ...made, backlog: { ...made.backlog, cycle: 14 } } as RefineState, true)).toEqual(['impact']);
+  });
 });

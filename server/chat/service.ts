@@ -21,8 +21,6 @@ import { withSources } from './sources.js';
 import type { ChatCorrection, ChatMessage, ChatStore, ChatUsage } from './store.js';
 
 const MAX_QUESTION = 2_000;
-/** The chat always answers with the small model: it only explains what the context and the guide say, and every question pays for the whole prompt. */
-export const CHAT_MODEL = 'haiku';
 const HISTORY_MESSAGES = 6;
 const TIMEOUT_MS = 120_000;
 
@@ -68,6 +66,8 @@ export interface ChatDeps {
   docs?: (projectId: string) => Promise<MainDoc[]>;
   /** Whether the project is confidential, so the chat may not search the web about it. A check that fails counts as confidential; without a check there is no search. */
   confidential?: (projectId: string) => Promise<boolean>;
+  /** The model the project's chat setting fixes; each answer records it with its cost. */
+  chatModel: (projectId: string) => Promise<string>;
   now?: () => Date;
 }
 
@@ -176,11 +176,13 @@ export class ChatService {
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);
+      const model = await this.deps.chatModel(projectId);
       const out = (await this.deps.runAgent<'chat'>(
-        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, model: CHAT_MODEL, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
+        { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), signal]), noQuotaWait: true, projectId },
       )) as StepOutcome<ChatOutput>;
-      const usage = usageOf(out.summary);
+      const measured = usageOf(out.summary);
+      const usage = measured ? { ...measured, model } : undefined;
       const sources = out.summary.webSearchSources ?? [];
       const queries = out.summary.webSearchQueries ?? [];
       const searched = queries.length > 0;

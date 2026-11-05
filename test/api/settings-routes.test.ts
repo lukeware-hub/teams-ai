@@ -20,11 +20,11 @@ afterEach(async () => {
 });
 
 describe('settings routes', () => {
-  it('lists the eight agents on manual Haiku at low by default, except the reviewers on Sonnet, then shows a manual pick', async () => {
+  it('lists the eight agents and the chat and graphify settings on manual Haiku at low by default, except the reviewers and graphify on Sonnet, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
-    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env']);
+    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'chat', 'graphify']);
     for (const a of first.agents) {
-      const model = a.role === 'po' || a.role === 'sm' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
+      const model = a.role === 'po' || a.role === 'sm' || a.role === 'graphify' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
       expect(a.setting).toEqual({ model, effort: 'low' });
     }
 
@@ -52,8 +52,20 @@ describe('settings routes', () => {
     expect(after.agents.find((a) => a.role === 'dev')!.setting).toBeNull();
   });
 
+  it('shows the automatic models of the machine and saves them, refusing a model the agents do not take', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/automatic`;
+    expect(await (await fetch(url)).json()).toEqual({ tiers: { small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-sonnet-5-5' });
+    const next = { tiers: { small: 'claude-haiku-5-5', medium: 'claude-opus-5-5', large: 'claude-opus-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-haiku-5-5' };
+    expect((await put(url, next)).status).toBe(200);
+    expect(await (await fetch(url)).json()).toEqual(next);
+    expect((await put(url, { ...next, architecture: 'gpt' })).status).toBe(400);
+    expect((await put(url, { tiers: next.tiers })).status).toBe(400);
+  });
+
   it('refuses an unknown role with 404 and a bad model, effort, mode or project id with 400', async () => {
     expect((await put(`${base()}/demo/qa`, { mode: 'auto' })).status).toBe(404);
+    expect((await put(`${base()}/demo/chat`, { mode: 'auto' })).status).toBe(400);
+    expect((await put(`${base()}/demo/graphify`, { mode: 'auto' })).status).toBe(400);
     expect((await put(`${base()}/demo/dev`, { mode: 'manual', model: 'gpt', effort: 'low' })).status).toBe(400);
     expect((await put(`${base()}/demo/dev`, { mode: 'manual', model: 'claude-opus-5-5', effort: 'turbo' })).status).toBe(400);
     expect((await put(`${base()}/demo/dev`, { mode: 'nope' })).status).toBe(400);
