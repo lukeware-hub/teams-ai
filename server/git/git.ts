@@ -128,7 +128,17 @@ async function createWorktreeUnlocked(repo: string, dir: string, branch: string,
     }
   }
   // --no-track: a remote base would otherwise write the branch upstream into the shared .git/config, racing any other git process (live: config.lock blocked tasks).
-  await git(repo, ['worktree', 'add', '--no-track', '-B', branch, dir, base], exec);
+  const add = () => git(repo, ['worktree', 'add', '--no-track', '-B', branch, dir, base], exec);
+  try {
+    await add();
+  } catch (error) {
+    // The directory came back between the removal and the add (another process wrote into it): clear it once more and retry.
+    if (!/already exists/.test(String(error instanceof Error ? error.message : error))) throw error;
+    await git(repo, ['worktree', 'prune'], exec);
+    await makeToolsWritable(dir);
+    await fs.rm(dir, { recursive: true, force: true });
+    await add();
+  }
 }
 
 /** Go keeps its module cache under .tools read-only, and a directory that cannot be written to cannot be emptied. */
