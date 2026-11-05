@@ -6,6 +6,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { PROJECTS, projectPath } from '../routes.js';
+import { useMediaQuery } from '../useMediaQuery.js';
 import { emptyState, panel, plural, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
 import { type Option, ErrorBlock, EscalationNote, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, shareOf, sumMoney, tokens, unpricedNote } from './costs/format.js';
@@ -62,6 +63,8 @@ function NotFound() {
 function ProjectView({ projectId, data, version, onRetry }: { projectId: string; data: ProjectCosts; version: number; onRetry: () => void }) {
   const { refinement, development, chat, specs } = data;
   const total = sumMoney([refinement.total, development.total, chat]);
+  // Same width as Tailwind's md breakpoint: below it the steps list is not mounted, so it fetches nothing.
+  const phone = useMediaQuery('(max-width: 767.98px)');
   return (
     <>
       <div data-testid="costs-indicators" className={stats}>
@@ -86,9 +89,7 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
             <SpecPanel specs={specs} />
           </div>
           <p className="m-0 hint md:hidden">A lista de specs e de steps aparece no computador. No celular, os totais e os agrupamentos acima mostram o custo.</p>
-          <div className="max-md:hidden">
-            <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />
-          </div>
+          {!phone && <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />}
         </>
       )}
       <footer data-testid="costs-chat" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.8125rem] text-ink-soft">
