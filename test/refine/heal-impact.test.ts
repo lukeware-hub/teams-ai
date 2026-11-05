@@ -25,13 +25,18 @@ describe('the request impact is measured again when it is missing or stale', () 
   });
 
   it('an impact made on an outline the backlog has since moved past is stale and fails the check', () => {
-    const state = { ...emptyRefineState(), extension: request, impact: { inputHash: 'h', impact: valid, issues: [], cycle: 1 }, backlog: { enabled: true, project: null, epics: [], items: [], cycle: 2 } } as unknown as RefineState;
+    const state = { ...emptyRefineState(), extension: request, impact: { inputHash: 'h', impact: valid, issues: [], cycle: 1, backlogCycle: 1 }, backlog: { enabled: true, project: null, epics: [], items: [], cycle: 2 } } as unknown as RefineState;
     const check = closingChecks(state, true).find((c) => c.id === 'impact');
     expect(check).toMatchObject({ ok: false, detail: expect.stringContaining('para trás') });
   });
 
   it('an impact made on the current outline passes the check', () => {
-    const state = { ...emptyRefineState(), extension: request, impact: { inputHash: 'h', impact: valid, issues: [], cycle: 2 }, backlog: { enabled: true, project: null, epics: [], items: [], cycle: 2 } } as unknown as RefineState;
+    const state = { ...emptyRefineState(), extension: request, impact: { inputHash: 'h', impact: valid, issues: [], cycle: 2, backlogCycle: 2 }, backlog: { enabled: true, project: null, epics: [], items: [], cycle: 2 } } as unknown as RefineState;
+    expect(closingChecks(state, true).find((c) => c.id === 'impact')).toMatchObject({ ok: true });
+  });
+
+  it('a later run that only detailed the same outline keeps the impact current', () => {
+    const state = { ...emptyRefineState(), extension: request, impact: { inputHash: 'h', impact: valid, issues: [], cycle: 9, backlogCycle: 2 }, backlog: { enabled: true, project: null, epics: [], items: [], cycle: 2 } } as unknown as RefineState;
     expect(closingChecks(state, true).find((c) => c.id === 'impact')).toMatchObject({ ok: true });
   });
 });
