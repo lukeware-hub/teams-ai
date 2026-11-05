@@ -5,6 +5,8 @@ import { execCommand } from '../../server/exec/command.js';
 import type { GateResult } from '../../server/exec/gate-runner.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
 import { runPhase4, type PhaseDeps } from '../../server/orchestrator/phases/index.js';
+import { eventsFile } from '../../server/orchestrator/workspace.js';
+import { EventStore } from '../../server/store/event-store.js';
 import type { AgentStepRequest } from '../../server/orchestrator/steps.js';
 import type { ResultSummary } from '../../server/runner/stream-events.js';
 import { makeFrozenSpec, makePlan, makePlanTask, makeProject } from '../fixtures/contracts.js';
@@ -111,6 +113,37 @@ describe('Phase 4 with blocked work', () => {
     expect(res.ok).toBe(false);
     expect(packs).toHaveLength(1);
     if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1']);
+  });
+
+  describe('a failure an earlier run of this spec already tried to fix', () => {
+    /** Writes the journal of an earlier run of the same spec version: a fix round, then the same criterion still uncovered. */
+    async function earlierRun(deps: PhaseDeps, uncoveredAcs: string[]): Promise<void> {
+      const runs = path.join(remote.root, 'runs');
+      Object.assign(deps.ws, { projectId: 'shop', runs });
+      const id = `${spec.specId}-r1`;
+      const s = await EventStore.open({ file: eventsFile(deps.ws, id), runId: id, specHash: HASH });
+      await s.append({ type: 'RUN_STARTED', data: { runId: id, specId: spec.specId, projectId: 'shop' } });
+      await s.append({ type: 'FIX_TASKS_PLANNED', data: { tasks: [], round: 1 } });
+      await s.append({ type: 'VERIFICATION_FAILED', data: { round: 2, failedTests: [], uncoveredAcs, matrix: [], gate: null } });
+      await s.close();
+    }
+
+    it('plans no new fix tasks and names the repeated cause, so the SM and the Dev are not paid for it again', async () => {
+      const deps = await setup([[fix()]]);
+      await earlierRun(deps, ['AC-002']);
+      const res = await runPhase4(deps, 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) { expect(res.fixTasks).toBeUndefined(); expect(res.reason).toMatch(/^verification failed again with the same cause as an earlier run.*AC-002/); }
+      expect(packs).toHaveLength(0);
+    });
+
+    it('still plans the fix when the earlier run failed on other criteria', async () => {
+      const deps = await setup([[fix()]]);
+      await earlierRun(deps, ['AC-001']);
+      const res = await runPhase4(deps, 1);
+      if (!res.ok) expect(res.fixTasks?.map((t) => t.id)).toEqual(['T900-fix-1']);
+      expect(packs).toHaveLength(1);
+    });
   });
 
   it('ends round 2 failed with the blocked criterion counted, so nothing is deployed', async () => {

@@ -10,8 +10,10 @@ import type { StepOutcome } from '../../runner/step.js';
 import { validatePlan, validateServicesPlan } from '../../validators/plan.js';
 import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
+import type { StoredEvent } from '../../store/event-store.js';
 import { OrchEvent } from '../events.js';
 import { fixTasksPack } from '../steps.js';
+import { sameVersionRunEvents } from '../workspace.js';
 import { blockReason } from './report.js';
 import { checkoutMain, pauseForFailure, PAUSED_AUTH, type PhaseDeps, type ServiceRepo } from './shared.js';
 
@@ -124,6 +126,17 @@ export async function smFixTasks(deps: PhaseDeps, repos: ServiceRepo[], input: {
   return { reason: `fix-tasks rejected twice: ${feedback ?? 'no answer'}` };
 }
 
+const sameSet = (a: readonly unknown[], b: readonly unknown[]) => JSON.stringify(a.map(String).sort()) === JSON.stringify(b.map(String).sort());
+
+/** The latest earlier run of this spec that failed verification ran a fix round and left the same criteria, tests and gate failing: another fix round repeats it. */
+export function repeatedVerificationFailure(earlier: ReadonlyArray<readonly StoredEvent[]>, now: { failedTests: readonly string[]; uncoveredAcs: readonly string[]; gate: string | null }): boolean {
+  if (now.failedTests.length === 0 && now.uncoveredAcs.length === 0) return false;
+  const run = [...earlier].reverse().find((events) => events.some((e) => e.type === OrchEvent.VerificationFailed));
+  const last = run?.filter((e) => e.type === OrchEvent.VerificationFailed).pop();
+  if (!run || !last) return false;
+  return run.some((e) => e.type === RunEvent.FixTasksPlanned) && sameSet(last.data.failedTests as string[], now.failedTests) && sameSet(last.data.uncoveredAcs as string[], now.uncoveredAcs) && (last.data.gate ?? null) === now.gate;
+}
+
 export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Result> {
   const repos: ServiceRepo[] = deps.services?.repos ?? (deps.plan && deps.gates ? [{ service: null, plan: deps.plan, ws: deps.ws, firstSpec: deps.firstSpec, gates: deps.gates }] : []);
   if (repos.length === 0 || !deps.tasks) throw new Error('Phase 4 needs plan, gates and tasks');
@@ -185,6 +198,11 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
   await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests, uncoveredAcs, matrix, gate: blocking?.name ?? null });
   if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria${blocking ? `; gate ${blocking.name} failed` : ''}` };
+  const runId = deps.journal.events[0]?.runId;
+  const earlier = runId ? await sameVersionRunEvents(deps.ws, deps.spec.specId, runId, deps.spec.specHash ?? '') : [];
+  if (repeatedVerificationFailure(earlier, { failedTests, uncoveredAcs, gate: blocking?.name ?? null })) {
+    return { ok: false, reason: `verification failed again with the same cause as an earlier run that already tried a fix round: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria (${uncoveredAcs.join(', ')}); no new fix round, change the spec, the plan or the tests first` };
+  }
   const sm = await smFixTasks(deps, repos, { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, cwd: (failing ?? repos[0]!).ws.repo });
   if ('reason' in sm) return { ok: false, reason: sm.reason };
   await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: sm.tasks, round });
