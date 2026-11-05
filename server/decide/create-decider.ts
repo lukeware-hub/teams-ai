@@ -13,6 +13,8 @@ export interface CreateDeciderDeps {
   secrets: Record<string, string>;
   accounting: Accounting;
   runEscalation: EscalationRunner;
+  /** The spec hash a Claude escalation must echo; empty where nothing escalates. */
+  specHash?: string;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   onDecision?: (record: DecisionRecord) => void;
@@ -27,7 +29,7 @@ export function createDecider(deps: CreateDeciderDeps): Decider {
   // A disabled local model is left out, so the decider records it as missing rather than as a call that failed.
   const backends: Partial<Record<BackendName, DecisionBackend>> = {
     ...(l.enabled ? { local: new LocalLogprobsBackend({ fetch: deps.fetch ?? globalThis.fetch, baseUrl: l.baseUrl, timeoutMs: l.timeoutMs, nProbs: l.nProbs }) } : {}),
-    claude: new ClaudeEscalateBackend(deps.runEscalation),
+    claude: new ClaudeEscalateBackend(deps.runEscalation, deps.specHash ?? ''),
   };
   const key = deps.secrets.OPENROUTER_API_KEY;
   if (typeof key === 'string' && key.trim() !== '') {

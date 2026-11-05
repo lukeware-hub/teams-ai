@@ -35,7 +35,7 @@ const summary: ResultSummary = {
 
 describe('buildEscalationPrompt', () => {
   it('carries the state, every question with its options or levels, and the answer rules', () => {
-    const p = buildEscalationPrompt('docker: Cannot connect', questions);
+    const p = buildEscalationPrompt('docker: Cannot connect', questions, HASH);
     expect(p).toContain('docker: Cannot connect');
     expect(p).toContain('"kind"');
     expect(p).toContain('infra');
@@ -44,6 +44,14 @@ describe('buildEscalationPrompt', () => {
     expect(p).toMatch(/choice.*one of the option names/i);
     expect(p).toMatch(/score.*index/i);
     expect(p).toMatch(/noul.*probability/i);
+  });
+
+  it('states the exact output shape: the hash, the answers by id, and each answer type', () => {
+    const p = buildEscalationPrompt('S', questions, HASH);
+    expect(p).toContain(HASH);
+    expect(p).toContain('"specHash"');
+    expect(p).toContain('"answers"');
+    expect(p).toMatch(/"type".*same type as its question/i);
   });
 });
 
@@ -100,10 +108,11 @@ describe('ClaudeEscalateBackend', () => {
         value: { specHash: HASH, answers: { kind: { type: 'choice', value: 'code' }, risk: { type: 'score', value: 0 }, drift: { type: 'noul', value: 0.1 } } },
         summary,
       };
-    });
+    }, HASH);
     const r = await b.evaluate({ state: 'S', questions, escalateTo: 'test' });
     expect(calls[0]!.role).toBe('test');
     expect(calls[0]!.prompt).toContain('S');
+    expect(calls[0]!.prompt).toContain(HASH);
     expect(r).toMatchObject({ ok: true, model: 'claude', usage: { inputTokens: 900, outputTokens: 60, costUsd: 0.012 } });
   });
 
@@ -114,7 +123,7 @@ describe('ClaudeEscalateBackend', () => {
       errors: ['killed after 20m'],
       summary,
       sandboxDisabled: false,
-    }));
+    }), HASH);
     expect(await failing.evaluate({ state: 'S', questions, escalateTo: 'test' })).toEqual({
       ok: false,
       reason: 'unavailable',
@@ -124,7 +133,7 @@ describe('ClaudeEscalateBackend', () => {
       ok: true,
       value: { specHash: HASH, answers: { kind: { type: 'choice', value: 'nope' }, risk: { type: 'score', value: 0 }, drift: { type: 'noul', value: 0.1 } } },
       summary,
-    }));
+    }), HASH);
     expect(await wrong.evaluate({ state: 'S', questions, escalateTo: 'test' })).toMatchObject({ ok: false, reason: 'invalid' });
   });
 });

@@ -11,7 +11,7 @@ export interface EscalationRequest {
 /** Runs one `decide` agent step (`claude -p --json-schema`); wired by createDecider's caller from runStep. */
 export type EscalationRunner = (req: EscalationRequest) => Promise<StepOutcome<DecideOutput>>;
 
-export function buildEscalationPrompt(state: string, questions: Questions): string {
+export function buildEscalationPrompt(state: string, questions: Questions, specHash: string): string {
   const shaped = Object.fromEntries(
     Object.entries(questions).map(([id, q]) => {
       if (q.type === 'choice') return [id, { type: q.type, instructions: q.instructions, options: q.options }];
@@ -26,6 +26,8 @@ export function buildEscalationPrompt(state: string, questions: Questions): stri
     '- For a "score" question, `value` is the level index (0 = first level); use a fraction between two indexes only when the state sits between them.',
     '- For a "noul" question, `value` is the probability (0 to 1) that the statement is true.',
     '- Answer every question id. Do not add ids.',
+    `- Output shape: { "specHash": "${specHash}", "answers": { "<question id>": { "type": "<choice|score|noul>", "value": ... } } }.`,
+    '- Each answer\'s "type" is the same type as its question; copy specHash exactly.',
     '',
     'STATE:',
     state,
@@ -71,10 +73,10 @@ export function fromEscalation(output: DecideOutput, questions: Questions): { ok
 export class ClaudeEscalateBackend implements DecisionBackend {
   readonly name = 'claude' as const;
 
-  constructor(private readonly run: EscalationRunner) {}
+  constructor(private readonly run: EscalationRunner, private readonly specHash: string) {}
 
   async evaluate(input: BackendInput): Promise<BackendResult> {
-    const outcome = await this.run({ role: input.escalateTo, prompt: buildEscalationPrompt(input.state, input.questions) });
+    const outcome = await this.run({ role: input.escalateTo, prompt: buildEscalationPrompt(input.state, input.questions, this.specHash) });
     if (!outcome.ok) return { ok: false, reason: 'unavailable', message: `${outcome.failure}: ${outcome.errors.join('; ')}` };
     const mapped = fromEscalation(outcome.value, input.questions);
     if (!mapped.ok) return { ok: false, reason: 'invalid', message: mapped.message };

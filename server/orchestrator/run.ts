@@ -629,6 +629,7 @@ export class Run {
       cfg,
       secrets,
       accounting: this.accounting,
+      specHash: spec.specHash!,
       runEscalation: async ({ role, prompt }) => {
         // A Claude escalation is a claude process like any other step: governed and breaker-observed (spec §7).
         const profile = cfg.roles[role];
