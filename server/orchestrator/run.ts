@@ -8,7 +8,7 @@ import { Accounting } from '../budget/accounting.js';
 import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
+import { agentsDecideFor, manualAgentSettings, stepBudgetFor, automaticStepOf, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -425,7 +425,7 @@ export class Run {
       journal: this.journal,
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
-      stepModel: (kind) => stepModelFor(cfg.routing, kind),
+      stepSetting: (kind) => automaticStepOf(cfg.routing, kind),
       agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
       docsRoot: this.deps.docs?.snapshot,

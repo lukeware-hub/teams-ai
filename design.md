@@ -1774,7 +1774,7 @@ Tela `/settings`, dentro do que já existe. Nenhuma forma nova de tela: as linha
 
 ### 34.1 Modelos e esforço, por projeto
 
-A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm só modelo fixo: não há `Automático`. `Graphify` não mostra esforço, porque o graphify não recebe esforço. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
+A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm modelo e esforço fixos: não há `Automático`. O esforço de `Graphify` vai ao graphify pela variável `CLAUDE_CODE_EFFORT_LEVEL`. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
 
 ### 34.2 Modelos automáticos, globais
 
@@ -1788,16 +1788,18 @@ Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Con
 | Arquitetura | passos de tech-spec, plano, services-plan e arquitetura |
 | Refinamento, ciclos seguintes | passos de refinamento a partir do segundo ciclo |
 
-Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro. Não há campo de esforço: o modo automático define o esforço por modelo.
+Cada linha tem um modelo e um esforço. O esforço de cada linha vale como escolhido, em qualquer modelo, como no modo manual. O padrão de cada linha é Baixo. Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro.
+
+O limite de esforço por modelo continua valendo só para a escolha do decider do Jev, quando ele responde. Nesse caso, Haiku e Opus ficam em Baixo e Sonnet vai até Alto.
 
 ```
 Modelos automáticos                                    (i)
 Usados pelos papéis em Automático, em todos os projetos.
-Tarefa pequena                  [ Haiku 5.5   v ]
-Tarefa média                    [ Sonnet 5.5  v ]
-Tarefa grande                   [ Sonnet 5.5  v ]
-Arquitetura                     [ Opus 5.5    v ]
-Refinamento, ciclos seguintes   [ Sonnet 5.5  v ]
+Tarefa pequena                  [ Haiku 5.5  v ]  [ Baixo  v ]
+Tarefa média                    [ Sonnet 5.5 v ]  [ Baixo  v ]
+Tarefa grande                   [ Sonnet 5.5 v ]  [ Baixo  v ]
+Arquitetura                     [ Opus 5.5   v ]  [ Baixo  v ]
+Refinamento, ciclos seguintes   [ Sonnet 5.5 v ]  [ Baixo  v ]
 ```
 
 ### 34.3 Fora desta tela

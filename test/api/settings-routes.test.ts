@@ -52,13 +52,23 @@ describe('settings routes', () => {
     expect(after.agents.find((a) => a.role === 'dev')!.setting).toBeNull();
   });
 
-  it('shows the automatic models of the machine and saves them, refusing a model the agents do not take', async () => {
+  it('shows the automatic models and efforts of the machine and saves them, refusing a model or effort the agents do not take', async () => {
     const url = `http://127.0.0.1:${api.port}/api/settings/automatic`;
-    expect(await (await fetch(url)).json()).toEqual({ tiers: { small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-sonnet-5-5' });
-    const next = { tiers: { small: 'claude-haiku-5-5', medium: 'claude-opus-5-5', large: 'claude-opus-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-haiku-5-5' };
+    const low = { model: 'claude-haiku-5-5', effort: 'low' };
+    expect(await (await fetch(url)).json()).toEqual({
+      tiers: { small: low, medium: { model: 'claude-sonnet-5-5', effort: 'low' }, large: { model: 'claude-sonnet-5-5', effort: 'low' } },
+      architecture: { model: 'claude-opus-5-5', effort: 'low' },
+      laterCycle: { model: 'claude-sonnet-5-5', effort: 'low' },
+    });
+    const next = {
+      tiers: { small: { model: 'claude-haiku-5-5', effort: 'max' }, medium: { model: 'claude-opus-5-5', effort: 'low' }, large: { model: 'claude-opus-5-5', effort: 'high' } },
+      architecture: { model: 'claude-opus-5-5', effort: 'medium' },
+      laterCycle: { model: 'claude-haiku-5-5', effort: 'low' },
+    };
     expect((await put(url, next)).status).toBe(200);
     expect(await (await fetch(url)).json()).toEqual(next);
-    expect((await put(url, { ...next, architecture: 'gpt' })).status).toBe(400);
+    expect((await put(url, { ...next, architecture: { model: 'gpt', effort: 'low' } })).status).toBe(400);
+    expect((await put(url, { ...next, laterCycle: { model: 'claude-haiku-5-5', effort: 'extreme' } })).status).toBe(400);
     expect((await put(url, { tiers: next.tiers })).status).toBe(400);
   });
 

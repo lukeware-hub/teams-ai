@@ -25,7 +25,11 @@ const envStatus = (over: Partial<Status['items']> = {}): Status => ({
   allOk: false,
 });
 
-const automatic = { tiers: { small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' }, architecture: 'claude-opus-5-5', laterCycle: 'claude-sonnet-5-5' } as const;
+const automatic = {
+  tiers: { small: { model: 'claude-haiku-5-5', effort: 'low' }, medium: { model: 'claude-sonnet-5-5', effort: 'low' }, large: { model: 'claude-sonnet-5-5', effort: 'low' } },
+  architecture: { model: 'claude-opus-5-5', effort: 'low' },
+  laterCycle: { model: 'claude-sonnet-5-5', effort: 'low' },
+} as const;
 
 function mockEnv() {
   vi.spyOn(settingsApi, 'planAgents').mockResolvedValue({ agents: 5 });
@@ -93,17 +97,29 @@ describe('SettingsPage', () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
     vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
-    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue({ ...automatic, architecture: 'claude-sonnet-5-5' } as never);
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue({ ...automatic, architecture: { model: 'claude-sonnet-5-5', effort: 'low' } } as never);
     render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     const select = (await screen.findByLabelText('Arquitetura')) as HTMLSelectElement;
     expect(select.value).toBe('claude-opus-5-5');
     expect(screen.getByLabelText('Tarefa pequena')).toBeTruthy();
     expect(screen.getByLabelText('Refinamento, ciclos seguintes')).toBeTruthy();
     fireEvent.change(select, { target: { value: 'claude-sonnet-5-5' } });
-    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...automatic, architecture: 'claude-sonnet-5-5' }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...automatic, architecture: { model: 'claude-sonnet-5-5', effort: 'low' } }));
   });
 
-  it('shows the chat and graphify settings beside the agents, on a fixed model with no automatic choice, and graphify without effort', async () => {
+  it('shows an effort beside each automatic model and saves a change to it', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue(automatic as never);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const effort = (await screen.findByLabelText('Esforço de Tarefa grande')) as HTMLSelectElement;
+    expect(effort.value).toBe('low');
+    fireEvent.change(effort, { target: { value: 'max' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...automatic, tiers: { ...automatic.tiers, large: { model: 'claude-sonnet-5-5', effort: 'max' } } }));
+  });
+
+  it('shows the chat and graphify settings beside the agents, on a fixed model and effort with no automatic choice', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
     const slots = [
@@ -116,10 +132,36 @@ describe('SettingsPage', () => {
     expect(await screen.findByLabelText('Modelo de Chat')).toBeTruthy();
     expect(screen.getByLabelText('Esforço de Chat')).toBeTruthy();
     expect(screen.getByLabelText('Modelo de Graphify')).toBeTruthy();
-    expect(screen.queryByLabelText('Esforço de Graphify')).toBeNull();
+    expect(screen.getByLabelText('Esforço de Graphify')).toBeTruthy();
     expect(screen.queryByLabelText('Modo de Chat')).toBeNull();
     expect(screen.queryByLabelText('Modo de Graphify')).toBeNull();
-    expect(screen.getByTestId('in-use-graphify').textContent).toBe('Em uso agora: Sonnet 5.5');
+    expect(screen.getByTestId('in-use-graphify').textContent).toBe('Em uso agora: Sonnet 5.5 · Baixo');
+  });
+
+  it('puts the chat and graphify model and effort in the agents\' first two columns, and keeps the mode column empty', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    const graphify = { role: 'graphify', setting: { model: 'claude-sonnet-5-5', effort: 'low' }, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } };
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: [...agents, graphify] as never });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    await openModelsCollapse();
+    const actions = await screen.findByTestId('settings-agent-actions-graphify');
+    expect(actions.children).toHaveLength(3);
+    expect(actions.children[0].contains(screen.getByLabelText('Modelo de Graphify'))).toBe(true);
+    expect(actions.children[1].contains(screen.getByLabelText('Esforço de Graphify'))).toBe(true);
+    expect(actions.children[2]).toBe(screen.getByTestId('settings-agent-spacer-graphify'));
+  });
+
+  it('saves a new graphify effort with its model', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    const graphify = { role: 'graphify', setting: { model: 'claude-sonnet-5-5', effort: 'low' }, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } };
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: [...agents, graphify] as never });
+    const setAgent = vi.spyOn(settingsApi, 'setAgent').mockResolvedValue({ setting: null, inUse: { model: 'claude-sonnet-5-5', effort: 'high' } });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    await openModelsCollapse();
+    fireEvent.change(await screen.findByLabelText('Esforço de Graphify'), { target: { value: 'high' } });
+    await waitFor(() => expect(setAgent).toHaveBeenCalledWith('demo', 'graphify', { mode: 'manual', model: 'claude-sonnet-5-5', effort: 'high' }));
   });
 
   it('shows every agent on automatic and saves a manual pick with the default model and effort', async () => {

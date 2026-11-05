@@ -4,7 +4,7 @@ import { loadAgents } from '../agents/registry.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { manualAgentSettings, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { automaticStepOf, manualAgentSettings, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
 import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
@@ -27,11 +27,6 @@ export interface AgentWiring {
   stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
   /** The agents that prepare the plan items at once; the governor admits that many steps, read per step. */
   speckitAgents?: () => Promise<number>;
-}
-
-/** From the second cycle on, `laterCycleModels` wins over `stepModels`. */
-export function refineStepModel(routing: Config['routing'], kind: StepKind, cycle: number): string | undefined {
-  return (cycle > 1 ? routing.laterCycleModels[kind] : undefined) ?? routing.stepModels[kind];
 }
 
 /** Where a step's settings go: a plan step works in the folder that is published, so its settings sit beside it. */
@@ -76,7 +71,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
       journal: ctx.journal,
       stepDir: ctx.stepDir,
       secretValues: () => [...Object.values(secrets), ...(apiKey ? [apiKey] : [])],
-      stepModel: (kind, cycle) => refineStepModel(w.cfg.routing, kind, cycle),
+      stepSetting: (kind, cycle) => automaticStepOf(w.cfg.routing, kind, cycle),
       specHash: ctx.specHash,
     });
   };
