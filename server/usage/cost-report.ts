@@ -86,10 +86,15 @@ export interface CostOverview {
   models: CostShare[];
   jevUnassignedUsd: number | null;
   unreadJournals: number;
+  /** Failed Claude escalations with no recorded cost; they add nothing to the totals. */
+  escalationsWithoutCost: number;
 }
 
 const byStageOf = (facts: readonly CostFact[]): Record<CostStage, CostMoney> =>
   Object.fromEntries(COST_STAGES.map((stage) => [stage, money(facts.filter((f) => f.stage === stage))])) as Record<CostStage, CostMoney>;
+
+/** A Claude escalation that failed in an older run: it was billed, but no cost was recorded for it. */
+const escalationWithoutCost = (f: CostFact): boolean => f.kind === 'decisao-claude' && f.costUsd === null;
 
 const runsOf = (facts: readonly CostFact[]): number => new Set(facts.map((f) => f.runId).filter((id): id is string => id !== null)).size;
 
@@ -121,6 +126,7 @@ export function overview(input: OverviewInput): CostOverview {
     models: sharesOf(facts, (f) => f.model ?? 'sem modelo', total.costUsd),
     jevUnassignedUsd: input.period === 'tudo' && input.jevLedgerUsd !== null ? round(Math.max(0, input.jevLedgerUsd - jevPaid)) : null,
     unreadJournals: input.unreadJournals,
+    escalationsWithoutCost: facts.filter(escalationWithoutCost).length,
   };
 }
 
@@ -163,6 +169,7 @@ export interface ProjectCosts {
   chat: CostMoney;
   specs: SpecRow[];
   unreadJournals: number;
+  escalationsWithoutCost: number;
 }
 
 export interface ProjectCostsInput {
@@ -193,6 +200,7 @@ export function projectCosts(input: ProjectCostsInput): ProjectCosts {
     chat: money(facts.filter((f) => f.stage === 'chat')),
     specs: specs.sort((a, b) => b.total - a.total || a.label.localeCompare(b.label)),
     unreadJournals: input.unreadJournals,
+    escalationsWithoutCost: facts.filter(escalationWithoutCost).length,
   };
 }
 

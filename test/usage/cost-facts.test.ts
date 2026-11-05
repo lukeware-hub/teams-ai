@@ -73,6 +73,20 @@ describe('factsOfJournal: decision calls', () => {
     ], run);
     expect(facts).toEqual([]);
   });
+
+  it('keeps a failed Claude escalation with no recorded cost as a call whose cost is unknown', () => {
+    const [fact] = factsOfJournal([
+      ev('DECISION_MADE', { record: { attempts: [{ backend: 'claude', model: 'claude', outcome: 'unavailable', usage: null }] } }),
+    ], run);
+    expect(fact).toEqual(expect.objectContaining({ kind: 'decisao-claude', provider: 'claude', costUsd: null }));
+  });
+
+  it('skips a Claude attempt that never called the model', () => {
+    const facts = factsOfJournal([
+      ev('DECISION_MADE', { record: { attempts: [{ backend: 'claude', model: 'claude', outcome: 'missing-backend', usage: null }] } }),
+    ], run);
+    expect(facts).toEqual([]);
+  });
 });
 
 describe('factsOfJournal: refinement', () => {

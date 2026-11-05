@@ -109,11 +109,16 @@ export function factsOfJournal(events: readonly StoredEvent[], ctx: JournalConte
         tokens: tokensOf(d.usage as Usage | undefined),
       });
     } else if (e.type === 'DECISION_MADE') {
-      const attempts = (d.record as { attempts?: Array<{ backend?: unknown; model?: unknown; usage?: Usage | null }> } | undefined)?.attempts ?? [];
+      const attempts = (d.record as { attempts?: Array<{ backend?: unknown; outcome?: unknown; model?: unknown; usage?: Usage | null }> } | undefined)?.attempts ?? [];
       for (const a of attempts) {
         const backend = DECISION_BACKENDS.get(String(a.backend));
-        if (!backend || !a.usage) continue;
-        out.push({ ...base, at: e.at, repository: null, taskId: null, attempt: 0, phase: 'decisao', kind: backend.kind, role: null, provider: backend.provider, model: text(a.model), costUsd: num(a.usage.costUsd), tokens: tokensOf(a.usage) });
+        if (!backend) continue;
+        if (a.usage) {
+          out.push({ ...base, at: e.at, repository: null, taskId: null, attempt: 0, phase: 'decisao', kind: backend.kind, role: null, provider: backend.provider, model: text(a.model), costUsd: num(a.usage.costUsd), tokens: tokensOf(a.usage) });
+        } else if (a.backend === 'claude' && (a.outcome === 'unavailable' || a.outcome === 'invalid')) {
+          // An escalation that failed before its cost was recorded was still billed: it stays a call whose cost is unknown.
+          out.push({ ...base, at: e.at, repository: null, taskId: null, attempt: 0, phase: 'decisao', kind: backend.kind, role: null, provider: backend.provider, model: text(a.model), costUsd: null, tokens: tokensOf(null) });
+        }
       }
     } else if (e.type === 'REFINE_DOCS_SCORED' && ctx.stage === 'refinement' && d.usage) {
       const usage = d.usage as Usage;
