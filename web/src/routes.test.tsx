@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { describe, expect, it } from 'vitest';
 import { ExecutionRedirect, NotFound } from './App.js';
 import { Breadcrumb } from './components/Breadcrumb.js';
-import { afterStartPath, executionPath, projectPath, refinePath, repoPath, runPath, validationPath } from './routes.js';
+import { afterStartPath, costsProjectPath, executionPath, projectPath, refinePath, repoPath, runPath, validationPath } from './routes.js';
 
 describe('route builders', () => {
   it('build every destination from ids', () => {
@@ -15,6 +15,7 @@ describe('route builders', () => {
     expect(refinePath('p', 's')).toBe('/refine/p/s');
     expect(runPath('r1')).toBe('/runs/r1');
     expect(validationPath('r1')).toBe('/runs/r1/validation');
+    expect(costsProjectPath('kayron-hub')).toBe('/costs/kayron-hub');
   });
 
   it('encodes ids that are not path safe', () => {
@@ -94,7 +95,7 @@ describe('no loose paths', () => {
     return statSync(p).isDirectory() ? sources(p) : /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) ? [p] : [];
   });
   it('pages build screen paths only through routes.ts', () => {
-    const loose = sources(__dirname).filter((f) => !/routes\.ts$|api\.ts$|App\.tsx$/.test(f)).filter((f) => /[`'"]\/(runs|refine)\/|[`'"]\/projects\/\$\{/.test(readFileSync(f, 'utf8')));
+    const loose = sources(__dirname).filter((f) => !/routes\.ts$|api\.ts$|App\.tsx$/.test(f)).filter((f) => /[`'"]\/(runs|refine|costs)\/|[`'"]\/projects\/\$\{/.test(readFileSync(f, 'utf8')));
     expect(loose).toEqual([]);
   });
 });

@@ -24,7 +24,7 @@ Hex values are sampled by eye from the screenshots and marked **≈** where they
 
 ## 1. Scope, mode and authority
 
-**Applies to** every screen in `web/src`: `/onboarding`, `/projects`, `/runs/:runId`, `/refine/:projectId/:specId`, `/status`.
+**Applies to** every screen in `web/src`: `/onboarding`, `/projects`, `/runs/:runId`, `/refine/:projectId/:specId`, `/costs`, `/costs/:projectId`, `/chat`, `/settings`.
 
 **Mode: Operate.** Every surface exists to let someone finish a task. Expression never outranks the task, the state, or the familiar affordance. The failure mode is not blandness, it is *strangeness without purpose* — over-decorated controls, mismatched form elements, gratuitous motion, invented affordances for standard jobs. The bar is **earned familiarity**: a category-fluent developer trusts the interface immediately and never pauses at a subtly-off control.
 
@@ -1095,7 +1095,7 @@ Every screen, onboarding included, lives in one shell that fills the window, the
 | Region | Spec |
 |---|---|
 | Shell | Full window height (`100dvh`), 16px around, the rail on the left and an empty column of the same width on the right, so the content is always exactly centered in the window; the whole shell is at most 1760px wide. The page itself never scrolls. |
-| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination — `Projetos` (folder) and `Status do ambiente` (chart) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. The rail shows icons only: no visible words. |
+| Rail | A rounded glass pill (`surface`, `line` border, lit rim but no top glint, because a straight glint floats off its round top), vertically centered. From top: the product mark (a `gradient-primary` tile with the grid glyph, links to `/`, named `Teams AI, início`), a hairline, then one 44px icon button per destination, in this order — `Projetos` (folder), `Custos` (coin), `Chat de dúvidas` (speech bubble) and `Configurações` (gear) — then the theme control stacked vertically (§3.10). The current destination has an `accent-soft` ground, `accent-ink` glyph, a small dot beside it and `aria-current="page"`. Every icon carries an `aria-label` and a `title`. The rail shows icons only: no visible words. |
 | Content area | Holds the current screen and scrolls inside. It has no background, border or edge of its own: the screen sits straight on the page gradient, and only the cards carry edges. |
 | Workspace | A screen with more than one panel uses the shared Workspace: from 1024px up the panels sit side by side, fill the window height and each scrolls on its own; below 1024px a tab bar shows one panel at a time, and hidden panels stay mounted so typed text survives. Panels can share a group: between 1024px and 1280px the refinement stacks Revisão and Verificação in one right column at full height with a single scroll, so neither is squeezed to half the window. |
 | Below 768px | The rail becomes a bottom bar across the window and the frame loses its border and radius, so the content gets the whole width. |
@@ -1650,3 +1650,119 @@ Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução 
 ### 32.3 Responsivo
 
 Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.
+
+## 33. Custos — `/costs` e `/costs/:projectId`
+
+Modo: **Operate.** A pessoa quer saber quanto foi gasto, onde, e qual agente gastou mais, sem interpretar gráfico. Todo número vem dos registros do sistema. O que não tem fonte diz que não tem.
+
+### 33.1 Decisões de produto
+
+- Refinamento e Desenvolvimento são sempre dois blocos, cada um com total próprio. Nenhum total mistura as duas etapas sem mostrar as duas partes.
+- Valor em dólar americano (`US$`), estimado a preços de API. A tela nunca diz que o valor foi cobrado: no plano de assinatura o custo não é cobrado por uso.
+- Período: `Hoje` (dia corrente no fuso do servidor), `7 dias`, `30 dias` e `Tudo`. Padrão: `Tudo`.
+- Sem gráfico de linha, pizza ou rosca. Participação é barra horizontal com o valor escrito ao lado.
+- Custo é alerta, nunca parada: a tela não tem ação que limite gasto.
+
+### 33.2 Visão global — `/costs`
+
+```text
+┌────┬──────────────────────────────────────────────────────────────────┐
+│ ◆  │ Custos                                           [ Atualizar ]   │
+│ ── │ Quanto cada projeto gastou, onde e com qual agente.              │
+│ ▤  │ ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )                         │
+│ $  │ ┌ Total ───────┐┌ Refinamento ┐┌ Desenvolvimento ┐┌ Chat ──────┐ │
+│ ▢  │ │ US$ 39,67    ││ US$ 6,10    ││ US$ 33,20       ││ US$ 0,12   │ │
+│ ⚙  │ │ 5,7 mi tokens││ 15%         ││ 84%             ││ 1%         │ │
+│ ☾  │ └──────────────┘└─────────────┘└─────────────────┘└────────────┘ │
+│    │ ┌ Por projeto ───────────────────────────────────────────────┐   │
+│    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total  Execuç.│   │
+│    │ │ kayron…  US$ 3,10     US$ 20,10        0,05  23,25   31    │   │
+│    │ │          ▇▇▇          ▇▇▇▇▇▇▇▇▇▇▇▇                         │   │
+│    │ └────────────────────────────────────────────────────────────┘   │
+│    │ ┌ Por agente ──────────────────┐┌ Por modelo ───────────────┐     │
+│    │ │ Refinamento · po  US$ 2,00 ▇▇ ││ opus   US$ 30,00 ▇▇▇▇▇▇▇ │     │
+│    │ │ Desenvolv.  · dev US$ 15,00 ▇▇││ sonnet US$  8,00 ▇▇      │     │
+│    │ └──────────────────────────────┘└───────────────────────────┘     │
+│    │ Jev fora de projetos: US$ 0,40 (i)    2 journals não lidos (i)   │
+└────┴──────────────────────────────────────────────────────────────────┘
+```
+
+Ordem de cima para baixo: cabeçalho com título, uma linha de apoio e `Atualizar` (secundário, à direita); chips de período; faixa de quatro indicadores (Total, Refinamento, Desenvolvimento, Chat); painel `Por projeto`, uma linha por projeto, clicável, que abre `/costs/:projectId`; dois painéis lado a lado, `Por agente` e `Por modelo`; rodapé com `Jev fora de projetos` e os avisos de leitura.
+
+### 33.3 Visão do projeto — `/costs/:projectId`
+
+```text
+Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
+( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )
+┌ Total ┐ ┌ Refinamento ┐ ┌ Desenvolvimento ┐ ┌ Chat ┐
+┌─ Refinamento ───────────────────┐ ┌─ Desenvolvimento ─────────────────┐
+│ US$ 3,10 · 18 steps          (i)│ │ US$ 20,10 · 212 steps          (i)│
+│ Por agente  po ▇▇ sm ▇ front ▇  │ │ Por agente  dev ▇▇▇▇ test ▇▇ sec ▇│
+│ Por modelo  …                   │ │ Por modelo  …                     │
+│ Por tipo    docs ▇ spec ▇ plano │ │ Por fase    Tarefas ▇▇▇ Plano ▇ … │
+│ Por modelo  Sonnet 5.5 · Haiku  │ │ Por repositório  api ▇▇ web ▇     │
+└─────────────────────────────────┘ └───────────────────────────────────┘
+┌─ Por spec ────────────────────────────────────────────────────────────┐
+│ Spec    Refinamento   Desenvolvimento   Total   Execuções             │
+└───────────────────────────────────────────────────────────────────────┘
+┌─ Steps ── Etapa [Todas ▾] Agente [Todos ▾] Spec [Todas ▾]  [busca] ───┐
+│ Data  Etapa  Spec  Run  Repo  Tarefa  Agente  Fase  Modelo  Tokens US$│
+│                                                      < 1 2 3 … >     │
+└───────────────────────────────────────────────────────────────────────┘
+Chat: US$ 0,12 · 14 respostas
+```
+
+Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abaixo, `Por spec` (uma linha por spec com as duas colunas de custo), a tabela paginada de `Steps` com filtros e busca, e a linha de Chat.
+
+### 33.4 Componentes
+
+- **Painel:** cabeçalho de §11.2 (ícone em bloco, rótulo pequeno, título e um chip de estado).
+- **Indicador:** faixa auto-ajustável de §11.2, com valor grande e uma linha de apoio.
+- **Barra de participação:** rótulo à esquerda, trilho de 6 px (§11.17), preenchimento `accent` liso, valor e percentual escritos à direita. A etapa vem sempre escrita ao lado da barra: a cor nunca é a única pista.
+- **Chips de período:** família única de chips (§3.9). Selecionado: `accent-soft` com texto `accent-ink` e `aria-pressed="true"`. Os chips quebram linha; não há rolagem horizontal.
+- **Tabelas:** §11.16. Números à direita, em algarismos tabulares. Abaixo de 44 rem viram cartões (`responsiveTable`).
+- **Carregamento:** esqueleto de §11.2 do tamanho do painel; aparece só após 300 ms.
+- **Atualização:** a cada 30 s, somente com a aba visível. Ao lado de `Atualizar`, o texto `Atualizado às HH:MM` mostra a última leitura boa.
+
+### 33.5 Estados
+
+| Estado | Texto ou visual |
+|---|---|
+| Sem custo no período | `Nenhum custo registrado neste período.`, com a linha `O custo aparece aqui depois que um refinamento ou um run chamar um modelo.` Os percentuais viram `Sem custo no período`. |
+| Erro de leitura | `Não foi possível ler os custos. Tente de novo.` com o botão `Tentar de novo`. O último valor lido continua visível. |
+| Journal que não pôde ser lido | Chip de aviso `N registros não lidos`, com ajuda: o total pode estar abaixo do real. |
+| Jev fora de projetos em período curto | `Indisponível neste período`. |
+| Chat sem registro de custo | Ajuda: respostas que falharam não têm custo registrado. |
+| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
+
+### 33.6 Ajuda (botões de informação)
+
+- **Total:** `Soma de refinamento, desenvolvimento e chat. Valores estimados a preços de API. No plano de assinatura, o custo não aparece cobrado.`
+- **Refinamento:** `Custo dos agentes e do Jev que refinaram documentos e specs, antes do desenvolvimento.`
+- **Desenvolvimento:** `Custo dos agentes que implementam, testam, revisam e publicam as specs, inclusive decisões automáticas.`
+- **Escalonamento para Claude:** `Decisões que o Claude tomou quando o Jev não bastou. O papel que pediu a decisão não fica registrado.`
+- **Retomada:** `Em runs retomados, o total pode ser diferente do custo da tabela de runs.`
+- **Jev fora de projetos:** `Custo do Jev que não pode ser ligado a um projeto, como validações de documentos de projetos apagados.`
+
+### 33.7 Formato
+
+- Dinheiro: `US$ 39,67` (vírgula decimal, pt-BR, sempre com `US$` antes do valor).
+- Tokens: forma compacta pt-BR (`5,7 mi tokens`).
+- Percentual sem casas decimais, com `%`.
+- Frases curtas, em sentença normal, sem jargão de sistema.
+
+### 33.8 Responsivo
+
+- Acima de 1024 px: os painéis lado a lado.
+- De 768 a 1023 px: um painel por linha.
+- Abaixo de 768 px: barra inferior do §25; indicadores em duas colunas; a lista de specs e a tabela de steps somem da tela e uma frase explica que aparecem no computador. Os totais e os agrupamentos continuam. Nenhuma rolagem horizontal da página, nem em 360 px.
+
+### 33.9 Acessibilidade
+
+- Foco visível em chips, linhas clicáveis e botões.
+- Cada barra tem o valor escrito; cada tabela tem cabeçalhos `th`.
+- A linha inteira do projeto abre `/costs/:projectId`; o nome do projeto é o link, e a linha inteira é a área de clique.
+
+### 33.10 Fora desta tela
+
+Limite de gasto, mudança de comportamento dos runs, série temporal, exportação.

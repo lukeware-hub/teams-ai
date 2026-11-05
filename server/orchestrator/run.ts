@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { AgentDefinition } from '../agents/registry.js';
 import type { OutputOf, StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
+import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
@@ -249,7 +250,7 @@ export class Run {
     this.maxParallel = deps.maxParallel ?? deps.cfg.concurrency.maxParallel;
     this.handoffs = journal.handoffs();
     this.budgetNoted = new Set(journal.events.filter((e) => e.type === OrchEvent.BudgetExceeded).map((e) => (e.data.taskId as string | null) ?? null));
-    this.rebuildAccounting();
+    replayAccounting(this.journal.events, this.accounting);
     this.governor = new Governor(deps.cfg.concurrency.maxClaudeProcesses);
     this.breaker = new QuotaBreaker(DEFAULT_BREAKER, this.clock);
   }
@@ -325,31 +326,6 @@ export class Run {
     return !successor && !repeatedBlock(this.journal.events) && (await this.autonomous());
   }
 
-  /** Budgets span the whole run, not one process: replay STEP_STARTED/STEP_FINISHED into the ledger. */
-  private rebuildAccounting(): void {
-    const started = new Map<string, Record<string, unknown>>();
-    for (const e of this.journal.events) {
-      if (e.type === OrchEvent.StepStarted) started.set(String(e.data.stepId), e.data);
-      if (e.type !== OrchEvent.StepFinished) continue;
-      const s = started.get(String(e.data.stepId));
-      const usage = e.data.usage as { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } | undefined;
-      if (!s || !usage) continue;
-      this.accounting.record({
-        role: s.role as Role,
-        phase: e.data.taskId ? 'phase3' : 'phase',
-        taskId: (e.data.taskId as string | null) ?? null,
-        attempt: Number(e.data.attempt ?? 0),
-        stepKind: e.data.kind as StepKind,
-        provider: 'claude',
-        model: 'unknown',
-        usage,
-        costUsd: (e.data.costUsd as number | null) ?? null,
-        durationMs: Number(e.data.durationMs ?? 0),
-        numTurns: Number(e.data.numTurns ?? 0),
-        at: e.at,
-      });
-    }
-  }
 
   private async afterMergeOnResume(taskId: string, branch: string): Promise<void> {
     const plan = this.plan ?? (await this.loadPlan());

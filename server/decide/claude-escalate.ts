@@ -77,15 +77,11 @@ export class ClaudeEscalateBackend implements DecisionBackend {
 
   async evaluate(input: BackendInput): Promise<BackendResult> {
     const outcome = await this.run({ role: input.escalateTo, prompt: buildEscalationPrompt(input.state, input.questions, this.specHash) });
-    if (!outcome.ok) return { ok: false, reason: 'unavailable', message: `${outcome.failure}: ${outcome.errors.join('; ')}` };
+    // The call is billed whether or not its answer is usable, so its usage travels with every result.
+    const billed = { inputTokens: outcome.summary.usage.inputTokens, outputTokens: outcome.summary.usage.outputTokens, costUsd: outcome.summary.costUsd };
+    if (!outcome.ok) return { ok: false, reason: 'unavailable', message: `${outcome.failure}: ${outcome.errors.join('; ')}`, usage: billed };
     const mapped = fromEscalation(outcome.value, input.questions);
-    if (!mapped.ok) return { ok: false, reason: 'invalid', message: mapped.message };
-    const u = outcome.summary.usage;
-    return {
-      ok: true,
-      answers: mapped.answers,
-      model: 'claude',
-      usage: { inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: outcome.summary.costUsd },
-    };
+    if (!mapped.ok) return { ok: false, reason: 'invalid', message: mapped.message, usage: billed };
+    return { ok: true, answers: mapped.answers, model: 'claude', usage: billed };
   }
 }

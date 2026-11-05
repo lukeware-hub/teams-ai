@@ -128,6 +128,7 @@ describe('ClaudeEscalateBackend', () => {
       ok: false,
       reason: 'unavailable',
       message: 'timeout: killed after 20m',
+      usage: { inputTokens: 900, outputTokens: 60, costUsd: 0.012 },
     });
     const wrong = new ClaudeEscalateBackend(async () => ({
       ok: true,
