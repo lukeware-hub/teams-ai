@@ -8,8 +8,20 @@ const shell = (path: string) => render(<MemoryRouter initialEntries={[path]}><Ap
 describe('AppShell', () => {
   it('names each destination in full for assistive tech, since the rail shows icons only', () => {
     shell('/projects');
-    for (const name of ['Projetos', 'Chat de dúvidas', 'Configurações']) expect(screen.getByRole('link', { name })).toBeTruthy();
+    for (const name of ['Projetos', 'Custos', 'Chat de dúvidas', 'Configurações']) expect(screen.getByRole('link', { name })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Status do ambiente' })).toBeNull();
+  });
+
+  it('lists the destinations in the order projects, costs, chat, settings', () => {
+    shell('/projects');
+    const rail = within(screen.getByTestId('app-shell-rail')).getAllByRole('link');
+    expect(rail.map((a) => a.getAttribute('aria-label'))).toEqual(['Teams AI, início', 'Projetos', 'Custos', 'Chat de dúvidas', 'Configurações']);
+  });
+
+  it('marks Custos on both cost screens', () => {
+    shell('/costs/kayron-hub');
+    expect(screen.getByRole('link', { name: 'Custos' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Projetos' }).getAttribute('aria-current')).toBeNull();
   });
 
   it('marks the destination that holds the current screen', () => {

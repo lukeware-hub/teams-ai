@@ -5,6 +5,8 @@ import { api } from './api.js';
 import { Loading } from './components/Loading.js';
 import { AppShell } from './components/AppShell.js';
 import { ChatPage } from './pages/Chat.js';
+import { CostsPage } from './pages/Costs.js';
+import { CostsProjectPage } from './pages/CostsProject.js';
 import { LicenseGuard } from './pages/LicenseGuard.js';
 import { Onboarding } from './pages/Onboarding.js';
 import { OnboardingGate, StatusRedirect } from './pages/OnboardingGate.js';
@@ -51,6 +53,8 @@ export function App() {
             <Route path="/" element={<Home />} />
             <Route path="/onboarding" element={<OnboardingGate><Onboarding /></OnboardingGate>} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/costs" element={<CostsPage />} />
+            <Route path="/costs/:projectId" element={<CostsProjectPage />} />
             <Route path="/status" element={<StatusRedirect />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects" element={<Projects />} />

@@ -16,17 +16,12 @@ import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, when } from './project-shared.js';
+import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, stat, statLabel, statValue, stats, when } from './project-shared.js';
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 max-md:px-4';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
 const dir = 'mt-2 block text-[0.8125rem] text-ink-soft wrap-anywhere';
 const desc = 'mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft';
-// Stat strip: at-a-glance health of the project before scrolling into the lists below.
-const stats = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3';
-const stat = 'edge-lit grid gap-[0.2rem] rounded-lg border px-6 py-[0.85rem] max-md:px-4';
-const statValue = 'text-[1.375rem] leading-[1.1] font-[650] tabular-nums';
-const statLabel = 'text-[0.8125rem] text-ink-soft';
 const section = 'grid min-w-0 gap-3';
 const sectionHead = 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2';
 // Section icon badge: breaks up stacked panels that would otherwise read as one grey wall.

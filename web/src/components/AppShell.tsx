@@ -7,6 +7,7 @@ import { ThemeSwitch } from './ThemeSwitch.js';
 // Each rail item and the paths that light it up.
 const NAV: ReadonlyArray<{ to: string; label: string; icon: IconName; paths: string[] }> = [
   { to: '/projects', label: 'Projetos', icon: 'folder', paths: ['/projects', '/refine', '/runs'] },
+  { to: '/costs', label: 'Custos', icon: 'coin', paths: ['/costs'] },
   { to: '/chat', label: 'Chat de dúvidas', icon: 'chat', paths: ['/chat'] },
   { to: '/settings', label: 'Configurações', icon: 'settings', paths: ['/settings'] },
 ];
@@ -15,7 +16,7 @@ function Rail({ active }: { active: (typeof NAV)[number] | undefined }) {
   return (
     <nav data-testid="app-shell-rail"
       aria-label="Navegação principal"
-      className="edge-lit z-10 flex items-center after:hidden gap-2 border-line bg-surface shadow-card max-md:order-last max-md:justify-around max-md:overflow-x-clip max-md:border-t max-md:px-3 max-md:py-2 md:sticky md:top-4 md:flex-col md:justify-self-center md:self-start md:rounded-[2rem] md:border md:px-2.5 md:py-4"
+      className="edge-lit z-10 flex items-center after:hidden gap-2 border-line bg-surface shadow-card max-md:order-last max-md:justify-around max-md:gap-0.5 max-md:overflow-x-clip max-md:border-t max-md:px-1 max-md:py-2 md:sticky md:top-4 md:flex-col md:justify-self-center md:self-start md:rounded-[2rem] md:border md:px-2.5 md:py-4"
     >
       <Link
         to="/"
