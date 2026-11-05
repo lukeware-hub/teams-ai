@@ -29,6 +29,7 @@ function overview(over: Partial<CostOverview> = {}): CostOverview {
     models: [{ key: 'opus', costUsd: 30, tokens: 0, steps: 5, share: 0.76 }],
     jevUnassignedUsd: 0.4,
     unreadJournals: 0,
+    escalationsWithoutCost: 0,
     ...over,
   };
 }
@@ -101,6 +102,14 @@ describe('CostsPage', () => {
     vi.spyOn(costsApi, 'overview').mockResolvedValue(overview({ unreadJournals: 2 }));
     renderAt();
     expect((await screen.findByTestId('costs-unread')).textContent).toContain('2 registros não lidos');
+  });
+
+  it('says how many escalations from older runs carry no cost, and says they are left out of the total', async () => {
+    vi.spyOn(costsApi, 'overview').mockResolvedValue(overview({ escalationsWithoutCost: 2 }));
+    renderAt();
+    const note = await screen.findByTestId('costs-escalation-note');
+    expect(note.textContent).toContain('2 chamadas de escalonamento para o Claude');
+    expect(note.textContent).toContain('Elas não entram no total.');
   });
 
   it('shows the Jev money no project owns, and no warning when no journal is unread', async () => {

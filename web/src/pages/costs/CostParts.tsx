@@ -143,6 +143,16 @@ export function ErrorBlock({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/** Failed escalations from older runs: billed, but their cost was never recorded, so the totals leave them out. */
+export function EscalationNote({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <p data-testid="costs-escalation-note" className="m-0 max-w-[70ch] text-[0.8125rem] text-ink-soft">
+      {plural(count, 'chamada', 'chamadas')} de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.
+    </p>
+  );
+}
+
 /** Journals that could not be read; the chip shows only when there are some. */
 export function UnreadChip({ count }: { count: number }) {
   if (count === 0) return null;

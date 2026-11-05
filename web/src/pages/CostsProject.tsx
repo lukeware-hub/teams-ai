@@ -7,7 +7,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { PROJECTS, projectPath } from '../routes.js';
 import { emptyState, panel, plural, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
-import { type Option, ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
+import { type Option, ErrorBlock, EscalationNote, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, sumMoney, tokens, unpricedNote } from './costs/format.js';
 import { AGENT_LABEL, CHAT_AGENT, HELP, labelOf } from './costs/labels.js';
 import { StagePanel } from './costs/StagePanel.js';
@@ -99,6 +99,7 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
         </span>
         <UnreadChip count={data.unreadJournals} />
       </footer>
+      <EscalationNote count={data.escalationsWithoutCost} />
     </>
   );
 }

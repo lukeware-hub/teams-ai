@@ -39,6 +39,7 @@ const project: ProjectCosts = {
   chat: money(0.12, 14),
   specs: [{ key: 'kayron-hub-001', label: 'kayron-hub-001', refinement: 3.1, development: 20.1, total: 23.2, runs: 31 }],
   unreadJournals: 0,
+  escalationsWithoutCost: 0,
 };
 
 const step: CostFact = {

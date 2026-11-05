@@ -5,7 +5,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { costsProjectPath } from '../routes.js';
 import { emptyState, panel, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
-import { ErrorBlock, Indicator, PanelTitle, PeriodChips, RefreshButton, ShareBar, ShareList, UnreadChip, UpdatedAt, headRow, numCell, shareRow, table, tableWrap } from './costs/CostParts.js';
+import { ErrorBlock, EscalationNote, Indicator, PanelTitle, PeriodChips, RefreshButton, ShareBar, ShareList, UnreadChip, UpdatedAt, headRow, numCell, shareRow, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, shareOf, tokens } from './costs/format.js';
 import { AGENT_LABEL, HELP, MODEL_LABEL, STAGE_LABEL, labelOf } from './costs/labels.js';
 import { useCostData, usePeriod } from './costs/useCostData.js';
@@ -68,6 +68,7 @@ function Overview({ data }: { data: CostOverview }) {
         <JevLine data={data} />
         <UnreadChip count={data.unreadJournals} />
       </footer>
+      <EscalationNote count={data.escalationsWithoutCost} />
     </>
   );
 }
