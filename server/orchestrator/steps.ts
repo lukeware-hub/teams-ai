@@ -197,16 +197,20 @@ export interface PlanTasks {
 export const taskRule = (file: string, ids: readonly string[]): string =>
   `This task builds the plan task${ids.length > 1 ? 's' : ''} ${ids.join(', ')} of ${file}: write each of its tests first, run the verifications the plan gives and read their output, and build only these tasks within this task's affected paths. Never change the plan file or .claude/, never ask a question in the chat (take the most reasonable choice and name it in the summary), and skip every git step: the orchestrator commits.`;
 
+/** The blocking gates run on every change and a failure costs a whole attempt, so the Dev learns them before writing, not from the rejection. */
+export const gateRules = (gates: ReadonlyArray<{ name: string; command: string; blocking: boolean }>): string =>
+  `These blocking gates run on your change and each failure costs an attempt: ${gates.filter((g) => g.blocking).map((g) => `${g.name} (${g.command})`).join('; ')}. Run the ones this sandbox allows before you finish. A test for a failure case must assert that failure and never accept the success status.`;
+
 export function devPack(
   base: PackBase,
   task: PlanTask,
-  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; plan?: PlanTasks },
+  opts: { code: CodeContext; handoffs: readonly HandoffSummary[]; feedback: string | null; e2eSuite?: string; plan?: PlanTasks; gates?: ReadonlyArray<{ name: string; command: string; blocking: boolean }> },
   role: Role = 'dev',
 ): ContextPackInput {
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []), ...(opts.gates?.some((g) => g.blocking) ? [gateRules(opts.gates)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
@@ -307,7 +311,7 @@ export const COVERAGE_CONTRACT =
 export function planRules(firstSpec: boolean | 'services', requireDelivery = false, requireSecurityTooling = false, requireE2e = false, requireCoverage = false): string {
   const lines = [
     'Plan rules (the orchestrator rejects a plan that breaks any of them):',
-    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath only when the spec asks for a Swagger/OpenAPI documentation page and one of its tasks builds that page (for example /docs), because the deploy checks that the path answers; a spec that asks for no documentation page has no deploy.docsPath; deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service',
+    '- deploy.kind is "api" or "front" (what the service is); an api sets deploy.docsPath only when the spec asks for a Swagger/OpenAPI documentation page and one of its tasks builds that page (for example /docs), because the deploy checks that the path answers; a spec that asks for no documentation page has no deploy.docsPath; deploy.port must be inside 20000-20099, the range the platform publishes to the host so the human can open the service; deploy.image, deploy.port and deploy.healthcheckPath (starting with /) are required unless deploy.kind is mobile',
     firstSpec === 'services'
       ? "- a datastore only one service uses publishes no host port: it stays on that service's private compose network, so two services' databases never collide on the host; a datastore several services share is a platform container in project.json, never a compose service"
       : '- a database or other datastore service in docker-compose (Postgres, MySQL, Redis, ...) publishes its own port to the host too, on a port outside 20000-20099; an integration test against a real database needs a route to it exactly like the app has for deploy.port, and one that only the compose-internal network can reach has none',

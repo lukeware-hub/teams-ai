@@ -160,6 +160,17 @@ describe('packs', () => {
     expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
   });
 
+  it('tells the dev which blocking gates run on the change and that a failure test must assert the failure, so it is not learned from a rejected attempt', () => {
+    const gates = [{ name: 'unit-test', command: 'npm test', blocking: true }, { name: 'lint', command: 'npm run lint', blocking: true }, { name: 'docs', command: 'npm run docs', blocking: false }];
+    const opts = { code: { source: 'none' as const }, handoffs: [], feedback: null };
+    const rules = devPack(base, task, { ...opts, gates }).principles.join('\n');
+    expect(rules).toContain('unit-test (npm test)');
+    expect(rules).toContain('lint (npm run lint)');
+    expect(rules).not.toContain('npm run docs');
+    expect(rules).toContain('never accept the success status');
+    expect(devPack(base, task, { ...opts, gates: [] }).principles).toEqual(devPack(base, task, opts).principles);
+  });
+
   it('a dev task of plan tasks builds its tasks test-first and never edits the plan file', () => {
     const own = makePlanTask({ id: 'T1', criteriaRefs: [spec.acceptanceCriteria[0]!.id], planTasks: ['T1', 'T2'] });
     const plan = { file: 'docs/specs/003-login/implementation-plan.md', ids: ['T1', 'T2'] };
@@ -351,6 +362,13 @@ describe('packs', () => {
     expect(rules).toContain('deploy.kind');
     expect(rules).toContain('deploy.docsPath');
     expect(rules).toContain('20000-20099');
+  });
+
+  it('plan rules name every deploy field the schema requires, so a plan is not rejected for a missing deploy.image (live: hello-word phase 2 failed three times)', () => {
+    const rules = planRules(true);
+    expect(rules).toContain('deploy.image');
+    expect(rules).toContain('deploy.healthcheckPath');
+    expect(rules).toContain('unless deploy.kind is mobile');
   });
 
   it('plan rules never ask a task for an image digest the docs do not give (live: kayron-hub Dockerfile tasks blocked)', () => {
