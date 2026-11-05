@@ -12,6 +12,7 @@ import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
 import { GraphPanel } from './repository/GraphPanel.js';
 import { BacklogExecution } from '../refine/BacklogExecution.js';
+import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
@@ -379,6 +380,7 @@ export function ProjectHubView(p: {
             </button>
           </div>
           {creating ? <NewSpecDialog projectId={projectId} openRequest={openRequest?.specId} onClose={closeNewSpec} /> : null}
+          {openRequest ? <RequestNotice projectId={projectId} specId={openRequest.specId} ready={openRequest.state === 'ready'} /> : null}
           {allConcluded ?<p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
           {pr.specs.length === 0 ? (
