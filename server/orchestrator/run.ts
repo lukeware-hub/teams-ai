@@ -193,6 +193,15 @@ export function repeatedBlock(events: readonly { type: string; data: Record<stri
   return signature !== '' && signature === blockSignature(before!.data.blocked);
 }
 
+/** The last return to the agents ended blocked again and merged no task: another return burns money the same way. */
+export function returnMadeNoProgress(events: readonly { type: string; data: Record<string, unknown> }[]): boolean {
+  const finishes = events.map((e, i) => (e.type === OrchEvent.RunFinished ? i : -1)).filter((i) => i >= 0);
+  if (finishes.length < 2) return false;
+  const [from, to] = finishes.slice(-2) as [number, number];
+  if (events[to]!.data.result !== 'blocked') return false;
+  return !events.slice(from, to).some((e) => e.type === RunEvent.TaskStateChanged && e.data.to === 'merged');
+}
+
 /** After a fix task's loop the run goes on unless a task is blocked. A fix task replanned into replacements is judged by its replacements. */
 export function fixTasksOutcome(state: RunState): 'merged' | 'blocked' {
   return [...state.tasks.values()].some((t) => t.state === 'blocked') ? 'blocked' : 'merged';
@@ -307,7 +316,7 @@ export class Run {
   /** The agents take the blocked tasks back on their own: the owner lets them decide, and fewer than MAX_AUTO_RETURNS returns ran. */
   async canReturnBlocked(): Promise<boolean> {
     const returns = this.journal.events.filter((e) => e.type === RunEvent.RunReopened && e.data.auto === true).length;
-    return returns < MAX_AUTO_RETURNS && !repeatedBlock(this.journal.events) && (await this.autonomous());
+    return returns < MAX_AUTO_RETURNS && !repeatedBlock(this.journal.events) && !returnMadeNoProgress(this.journal.events) && (await this.autonomous());
   }
 
   /** With the owner's agents deciding, a blocked run whose returns are spent starts one successor of the spec; a successor starts none, and a repeated block starts none. */
