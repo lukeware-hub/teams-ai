@@ -135,11 +135,15 @@ export function postDeployPaths(plan: Plan): string[] {
   return [suiteDir, ...smoke].filter((p) => p !== '');
 }
 
-/** A task that only changes post-deploy suites gets its criteria evidence from Phase 5, not from the unit gates. */
-export function onlyPostDeploy(plan: Plan, task: PlanTask): boolean {
+/** Files a unit test cannot cover: documentation, scripts and configuration. */
+const SUPPORT_FILE = /(^|\/)(scripts|docs)\/|\.(md|sh|ps1|ya?ml|json|toml|txt)$/i;
+
+/** What a task changes, for the evidence matrix: the post-deploy suite, files that only support it, or product code. */
+export function taskKind(plan: Plan, task: PlanTask): 'suite' | 'support' | 'code' {
   const paths = postDeployPaths(plan);
-  const inside = (p: string) => paths.some((f) => p === f || p.startsWith(`${f}/`));
-  return paths.length > 0 && task.affectedPaths.every(inside);
+  const inSuite = (p: string) => paths.some((f) => p === f || p.startsWith(`${f}/`));
+  if (paths.length > 0 && task.affectedPaths.every(inSuite)) return 'suite';
+  return task.affectedPaths.every((p) => inSuite(p) || SUPPORT_FILE.test(p)) ? 'support' : 'code';
 }
 
 const sameSet = (a: readonly unknown[], b: readonly unknown[]) => JSON.stringify(a.map(String).sort()) === JSON.stringify(b.map(String).sort());
@@ -209,7 +213,7 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   }
   const junit = dedupeJunit(results.flatMap((r) => r.junit ?? []));
   const planOf = (task: PlanTask) => (repos.find((r) => r.service === (task.service ?? null)) ?? repos[0]!).plan;
-  const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit, (task) => onlyPostDeploy(planOf(task), task));
+  const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit, (task) => taskKind(planOf(task), task));
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
   const uncoveredAcs = matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion);
   if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }

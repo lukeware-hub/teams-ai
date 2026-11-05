@@ -26,8 +26,8 @@ export function buildEvidenceMatrix(
   spec: Spec,
   tasks: Iterable<EvidenceTask>,
   results: readonly TestResult[],
-  /** True for a task that only writes post-deploy suites; its criteria get their evidence in Phase 5. */
-  postDeploy?: (task: PlanTask) => boolean,
+  /** What a task changes: the post-deploy suite, files that only support it (scripts, docs), or product code. A criterion owned by a suite task and support tasks gets its evidence in Phase 5. */
+  kindOf?: (task: PlanTask) => 'suite' | 'support' | 'code',
 ): EvidenceRow[] {
   const live = [...tasks].filter((t) => t.state !== 'superseded');
   return spec.acceptanceCriteria.map((ac) => {
@@ -37,7 +37,7 @@ export function buildEvidenceMatrix(
     if (tests.some((r) => r.status === 'failed')) status = 'failed';
     else if (tests.length > 0) status = 'passed';
     else if (owners.length > 0 && owners.every((t) => t.state === 'blocked')) status = 'blocked';
-    else if (postDeploy && owners.length > 0 && owners.every((t) => t.state === 'merged' && postDeploy(t.def))) status = 'deferred';
+    else if (kindOf && owners.length > 0 && owners.every((t) => t.state === 'merged' && kindOf(t.def) !== 'code') && owners.some((t) => kindOf(t.def) === 'suite')) status = 'deferred';
     else status = 'missing';
     return { criterion: ac.id, tasks: owners.map((t) => t.def.id), tests: tests.map((r) => r.id), status };
   });

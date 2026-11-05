@@ -127,6 +127,14 @@ describe('Phase 4 with blocked work', () => {
       if (res.ok) expect(res.matrix.map((r) => [r.criterion, r.status])).toEqual([['AC-001', 'passed'], ['AC-002', 'deferred']]);
     });
 
+    it('defers it too when a script and the README support the suite task (live: hello-word AC-014)', async () => {
+      const support = makePlanTask({ id: 'T5-script', criteriaRefs: ['AC-002'], affectedPaths: ['scripts/stop-service.sh', 'README.md'] });
+      const deps = await setup([[fix()]], { commands, tasks: [{ def: t1, state: 'merged' }, { def: e2eTask(['smoke/smoke_test.go']), state: 'merged' }, { def: support, state: 'merged' }] });
+      const res = await runPhase4(deps, 1);
+      expect(res.ok).toBe(true);
+      expect(packs).toHaveLength(0);
+    });
+
     it('still asks for a fix when the task also changes code outside the post-deploy suite', async () => {
       const res = await runPhase4(await run(['smoke/smoke_test.go', 'src/app.ts']), 1);
       expect(res.ok).toBe(false);

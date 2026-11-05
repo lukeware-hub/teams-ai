@@ -45,7 +45,18 @@ describe('buildEvidenceMatrix', () => {
 
   describe('deferred (evidence arrives after deploy)', () => {
     const e2eTask = (id: string, refs: string[], state: TaskState) => ({ def: makePlanTask({ id, criteriaRefs: refs, affectedPaths: ['e2e/e2e_test.go'] }), state });
-    const onlyE2e = (def: { affectedPaths: string[] }) => def.affectedPaths.every((p) => p.startsWith('e2e/'));
+    const supportTask = (id: string, refs: string[], state: TaskState) => ({ def: makePlanTask({ id, criteriaRefs: refs, affectedPaths: ['scripts/stop.sh', 'README.md'] }), state });
+    // e2e/ holds the post-deploy suite, scripts and docs support it, anything else is product code.
+    const onlyE2e = (def: { affectedPaths: string[] }) => (def.affectedPaths.every((p) => p.startsWith('e2e/')) ? 'suite' : def.affectedPaths.every((p) => p.startsWith('scripts/') || p.endsWith('.md')) ? 'support' : 'code') as 'suite' | 'support' | 'code';
+
+    it('defers a criterion whose merged tasks write the post-deploy suite and only support files beside it (live: hello-word AC-014)', () => {
+      const rows = buildEvidenceMatrix(spec, [e2eTask('T2-e2e', ['AC-002'], 'merged'), supportTask('T3-script', ['AC-002'], 'merged')], [], onlyE2e);
+      expect(rows[1]!.status).toBe('deferred');
+    });
+
+    it('keeps it missing when only support files own it, since no suite will prove it', () => {
+      expect(buildEvidenceMatrix(spec, [supportTask('T3-script', ['AC-002'], 'merged')], [], onlyE2e)[1]!.status).toBe('missing');
+    });
 
     it('defers a criterion with no executed test whose merged tasks only write post-deploy suites', () => {
       const rows = buildEvidenceMatrix(spec, [task('T1-create', ['AC-001'], 'merged'), e2eTask('T2-e2e', ['AC-002'], 'merged')], [result('[AC-001] a', 'passed', ['AC-001'])], onlyE2e);
