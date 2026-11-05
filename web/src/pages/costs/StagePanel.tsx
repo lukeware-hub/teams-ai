@@ -8,7 +8,7 @@ import { AGENT_LABEL, KIND_LABEL, MODEL_LABEL, PHASE_LABEL, labelOf } from './la
 export function StagePanel({ id, title, help, costs, development = false }: { id: string; title: string; help: string; costs: StageCosts; development?: boolean }) {
   const { total } = costs;
   return (
-    <section className={panel} data-testid={`costs-stage-${id}`}>
+    <section className={`${panel} content-start`} data-testid={`costs-stage-${id}`}>
       <PanelTitle icon="coin" title={title} help={help} />
       <p className="mt-2 mb-0 text-[0.875rem] text-ink-soft tabular-nums">
         <strong className="text-ink">{money(total.costUsd)}</strong> · {plural(total.steps, 'step', 'steps')}

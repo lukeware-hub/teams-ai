@@ -63,17 +63,17 @@ export function PeriodChips({ value, onChange }: { value: CostPeriod; onChange: 
   );
 }
 
-/** A flat accent bar for a share of a whole, with the percent written beside it. */
-export function ShareBar({ share }: { share: number }) {
+/** A flat accent bar for a share of a whole, with the percent beside it; `wide` fills the row and lines the percent up on the right. */
+export function ShareBar({ share, wide = false }: { share: number; wide?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
-      <span aria-hidden="true" className="relative h-1.5 w-32 max-w-full overflow-hidden rounded-pill bg-surface-muted">
+      <span aria-hidden="true" className={`relative h-1.5 ${wide ? 'flex-1' : 'w-32 max-w-full'} overflow-hidden rounded-pill bg-surface-muted`}>
         <span
           className="absolute inset-0 origin-left rounded-pill bg-accent transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]"
           style={{ transform: `scaleX(${Math.min(1, Math.max(0, share))})` }}
         />
       </span>
-      <span className="text-[0.8125rem] text-ink-soft tabular-nums">{percent(share)}</span>
+      <span className={`text-[0.8125rem] text-ink-soft tabular-nums ${wide ? 'w-12 text-right' : ''}`}>{percent(share)}</span>
     </span>
   );
 }
@@ -107,7 +107,7 @@ export function ShareList({ title, rows }: { title?: string; rows: ShareRow[] })
               </span>
               <span className="tabular-nums text-ink">{money(row.costUsd)}</span>
             </div>
-            <ShareBar share={row.share} />
+            <ShareBar share={row.share} wide />
           </li>
         ))}
       </ul>
