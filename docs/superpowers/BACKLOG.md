@@ -219,19 +219,20 @@ Os branches locais `feat/cost-dashboard`, `fix/deploy-fixture-network` e `fix/de
 
 ### Painel de custos (`feat/cost-dashboard`)
 
-- [ ] **[important] Trazer para a main os commits `6b326ee2`, `d4a5df2a` e `3538bbf3`.** Recontagem das chamadas ao retomar, escalação sem custo e layout de celular. Resolver os conflitos mantendo o lado da main (alerta de custo, `stepModelFor`, modelo real em `server/usage/cost-facts.ts`).
-- [ ] **[important] Corrigir `bad97715` antes de trazê-lo.** `server/decide/claude-escalate.ts:81` cobra uma falha de ambiente (`failure === 'environment'`) que nunca chegou ao modelo. Anexar o uso só quando a falha não for de ambiente, com teste em `test/usage/cost-facts.test.ts`.
+- [x] **[important] Recontagem das chamadas ao retomar (`6b326ee2`) já está na main.** Verificado ao aplicar o commit: o conteúdo é idêntico ao da main (`accounting-replay.ts` e `replayAccounting` em `2837fa87`), então nada a trazer.
+- [ ] **[important] Trazer para a main os commits `d4a5df2a` e `3538bbf3`.** Escalação sem custo e layout de celular. Mesclar só as linhas de `design.md` que não revertem §34.
+- [x] **[important] Corrigir `bad97715` antes de trazê-lo.** Feito em `935d58c5`: `server/decide/claude-escalate.ts` não anexa uso quando a falha é `environment`. Teste em `test/decide/claude-escalate.test.ts` ("books no usage when the step never reached the model"). O commit original não foi trazido, só a correção.
 - [ ] **[minor] Texto da nota de escalações sem custo.** `server/usage/cost-report.ts:97` conta toda chamada Claude sem custo, mas `web/src/pages/costs/CostParts.tsx:147-152` diz que são falhas de execuções antigas. Ajustar o texto ou a contagem.
 - [ ] **[minor] Lista de passos no celular.** `web/src/pages/CostsProject.tsx:90` esconde `StepsPanel` com `max-md:hidden`, mas o componente continua montado e busca a lista. Não montar nem buscar no celular.
 - [ ] **[minor] Papel e modelo da escalação retomada.** `server/orchestrator/accounting-replay.ts:44-58` grava o papel `system1` e o modelo `claude`. O caminho ao vivo (`server/runner/step.ts:393`) grava o papel e o modelo reais. Verificar se o orçamento por papel é afetado.
-- [ ] **[important] Não trazer a reversão de dinheiro e painéis.** Os commits `012519b2` e `1468199f` revertem as quatro casas decimais, o `ShareBar` e os ícones de ajuda que já estão na main (#54). Descartar essas partes.
+- [x] **[important] Não trazer a reversão de dinheiro e painéis.** Os commits `012519b2` e `1468199f` não foram trazidos. A main mantém as quatro casas decimais e os painéis (#54).
 - [ ] **[minor] Documentação do painel.** `docs/superpowers/FEATURES.md` e a seção de design §34 do branch estão desatualizados. Reescrever na main, a partir do estado atual do código.
 
 ### Configurações de modelos (`fix/deploy-fixture-network`)
 
-- [ ] **[minor] Confirmar com o dono que nada precisa voltar.** Os modelos automáticos sem esforço (`a1c860b6`) e a remoção do esforço do chat e do graphify foram superados pelo commit `2837fa87` (#56) da main. Só reabrir se o dono quiser o modelo automático sem esforço.
+- [x] **[minor] Nada a trazer deste branch.** Os modelos automáticos sem esforço (`a1c860b6`) e a remoção do esforço do chat e do graphify foram superados pelo commit `2837fa87` (#56) da main. Fechado no plano; reabrir só se o dono quiser o modelo automático sem esforço.
 
 ### Fallback de cota e código morto (`fix/dev-rules-upfront`)
 
 - [ ] **[minor] Código morto do disjuntor de cota.** `server/budget/quota-breaker.ts:47` (`pauseModel`) e `:52` (`modelPaused`) não têm chamador em produção, só teste. Remover ou ligar a um chamador real.
-- [ ] **[important] Esforço manual sem teto de política.** Segundo o revisor, um ajuste manual pula `effortFor` em `server/orchestrator/steps.ts` (linha 676 no branch). Um Opus manual com esforço `max` roda sem limite. Verificar na main se isso acontece e confirmar com o dono se é intencional; se não for, aplicar o teto.
+- [x] **[important] Esforço manual sem teto de política: intencional.** Na main, `server/orchestrator/steps.ts:678` diz que um esforço manual ou automático roda como fixado, e o texto da tela Configurações avisa que o manual pode gastar mais cota. Nenhuma mudança de código.
