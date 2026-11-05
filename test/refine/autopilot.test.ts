@@ -25,6 +25,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     settled: vi.fn(async () => undefined),
     evaluateStage: vi.fn(async () => undefined),
     addToGraph: vi.fn(async (file: string) => { (state.graphed as string[]).push(file); }),
+    graphDocs: vi.fn(async () => undefined),
     saveDocs: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
@@ -78,13 +79,14 @@ describe('resolveEverything', () => {
     expect(s.decideAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it('a follow-on request the team runs alone follows the specs.md, but leaves the save in the repositories to the owner', async () => {
+  it('a follow-on request the team runs alone follows the specs.md and graphs the five documents in one go, but leaves the save in the repositories to the owner', async () => {
     const s = fake({ status: 'ready', plansDone: true, specsApproved: () => false });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
     expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
     expect(s.saveDocs).not.toHaveBeenCalled();
-    expect(s.addToGraph.mock.calls.map((c) => c[0])).toEqual(['flow.md', 'stack.md', 'design.md']);
+    expect(s.graphDocs).toHaveBeenCalledTimes(1);
+    expect(s.addToGraph).not.toHaveBeenCalled();
   });
 
   it('a follow-on request the team runs alone accepts every suggestion, a rewording and a design change too, marked as automatic', async () => {

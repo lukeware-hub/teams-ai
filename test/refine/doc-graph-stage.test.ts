@@ -382,3 +382,22 @@ describe('the owner keeps working while the graph extraction runs', () => {
     await s.close();
   });
 });
+
+describe('the five documents of a request in the graph', () => {
+  it('puts every document in the graph in one extraction, and extracts nothing again once they are there', async () => {
+    const extract = vi.fn(extractDocs);
+    const s = await RefineSession.create({ ...deps(), extractDocs: extract }, 'new-project', { repositories: true });
+    await s.graphDocs();
+    expect(extract).toHaveBeenCalledTimes(1);
+    expect([...(s.state.graphed ?? [])].sort()).toEqual([...DOC_STAGES].sort());
+    await s.graphDocs();
+    expect(extract).toHaveBeenCalledTimes(1);
+  });
+
+  it('journals a failed extraction in plain words and leaves the documents out of the graph', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs: async () => { throw new Error('O Graphify caiu.'); } }, 'new-project', { repositories: true });
+    await s.graphDocs();
+    expect(s.state.graphed ?? []).toEqual([]);
+    expect(JSON.stringify(s.state.graphError)).toContain('O Graphify caiu.');
+  });
+});

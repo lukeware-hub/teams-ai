@@ -55,10 +55,13 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
     }
     // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision to the team.
     if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
-    // Last: every document goes into the graph, and the owner's run saves the documents and specs in the repositories.
-    for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
-      await tolerate(() => s.addToGraph(file));
-      await tolerate(() => s.settled());
+    // Last: every document goes into the graph (a request in one extraction), and the owner's run saves the documents and specs in the repositories.
+    if (s.state.extension !== undefined) await tolerate(() => s.graphDocs());
+    else {
+      for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {
+        await tolerate(() => s.addToGraph(file));
+        await tolerate(() => s.settled());
+      }
     }
     if (byOwner) await tolerate(() => s.saveDocs());
   } finally {

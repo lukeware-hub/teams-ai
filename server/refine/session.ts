@@ -555,6 +555,28 @@ export class RefineSession {
     }
   }
 
+  /** A follow-on request ends with its five documents in the graph, as they are now, in one extraction; a failure is journaled in plain words. */
+  async graphDocs(): Promise<void> {
+    this.guard();
+    const files = DOC_STAGES.filter((f) => !(this.state.graphed ?? []).includes(f));
+    if (!this.deps.extractDocs || files.length === 0) return;
+    try {
+      const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
+      const folder = path.posix.join(staging, 'docs');
+      await fs.rm(folder, { recursive: true, force: true });
+      await fs.mkdir(folder, { recursive: true });
+      for (const doc of DOC_STAGES) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      await this.deps.extractDocs(folder, staging);
+      for (const file of files) {
+        const counts = await documentCounts(staging, file);
+        if (counts.nodes === 0) throw new Error(`O Graphify não encontrou conteúdo em ${file}.`);
+        await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      }
+    } catch (err) {
+      await this.journal.fact(RefineEvent.DocGraphFailed, { file: files[0], reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   /** Why a document cannot be continued as it is, in plain words; null when it can. */
   private stageProblem(file: DocFile, text: string): string | null {
     if (text.trim() === '') return `A etapa ${file} está vazia.`;
