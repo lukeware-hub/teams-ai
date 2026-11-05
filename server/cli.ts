@@ -26,6 +26,8 @@ import { licenseRoutes } from './api/license-routes.js';
 import { onboardingRoutes } from './api/onboarding-routes.js';
 import { settingsRoutes } from './api/settings-routes.js';
 import { usageRoutes } from './api/usage-routes.js';
+import { costRoutes } from './api/cost-routes.js';
+import { createCostScanner } from './usage/cost-scan.js';
 import { createClaudeUsage } from './usage/claude-usage.js';
 import { jevTotalUsd, recordJevCost, seedJevLedger } from './usage/jev-ledger.js';
 import { defaultRunControl, isAlive, type RunControlDeps } from './api/run-control.js';
@@ -226,6 +228,10 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
         ...usageRoutes({
           claude: createClaudeUsage({ exec: execCommand, hostEnv: io.env, authMode: async () => (await readUserConfig()).cfg.claude.auth, now: () => Date.now() }),
           jev: async () => jevTotalUsd((await readUserConfig()).cfg),
+        }),
+        ...costRoutes({
+          scanner: createCostScanner({ config: async () => (await readUserConfig()).cfg, chatsDir: path.join(expandHome('~/.teams-ai'), 'chats') }),
+          jevLedgerUsd: async () => jevTotalUsd((await readUserConfig()).cfg),
         }),
       ],
       staticDir: hasDist ? staticDir : null,
