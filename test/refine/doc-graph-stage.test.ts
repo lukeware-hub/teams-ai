@@ -22,10 +22,10 @@ const draft = () => draftPaths(ws, 'hello-001');
 const deps = () => ({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir, retrieval: () => [] });
 
 /** A graphify stand-in: one node per document of the folder, with the tokens of a small extraction. */
-async function extractDocs(dir: string, outDir: string, tokens = { input_tokens: 2500, output_tokens: 90 }): Promise<void> {
+async function extractDocs(dir: string, outDir: string): Promise<void> {
   const files = await fs.readdir(dir);
   await fs.mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
-  await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], ...tokens }));
+  await fs.writeFile(path.join(outDir, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: files.map((file) => ({ id: file, source_file: file })), edges: [], input_tokens: 2500, output_tokens: 90 }));
 }
 
 /** The given stages reviewed and continued in order, the agents approving each one. */

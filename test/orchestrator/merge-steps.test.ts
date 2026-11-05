@@ -5,7 +5,7 @@ import { execCommand, type CommandSpec } from '../../server/exec/command.js';
 import { commitAll, createWorktree, git, headSha, withRepoLock } from '../../server/git/git.js';
 import { MergeQueue } from '../../server/git/merge-queue.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { docsMergeSteps, prBody, taskMergeSteps, type MergeStepsDeps } from '../../server/orchestrator/merge-steps.js';
+import { docsMergeSteps, prBody, prTitle, taskMergeSteps, type MergeStepsDeps } from '../../server/orchestrator/merge-steps.js';
 import type { HandoffSummary } from '../../server/knowledge/context-pack.js';
 import { makeFrozenSpec, makePlanTask } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -68,13 +68,28 @@ describe('prBody', () => {
   });
 });
 
+describe('prTitle', () => {
+  it('takes the type from the spec, so a fix task of a feature spec still reads feat', () => {
+    expect(prTitle(task, spec)).toBe('feat(T1): Add sum');
+    const fix = makePlanTask({ id: 'T900-fix-1', title: 'Deliver missing files', origin: 'fix' });
+    expect(prTitle(fix, spec)).toBe('feat(T900-fix-1): Deliver missing files');
+  });
+
+  it('maps a bug, maintenance and refactor spec to fix, chore and refactor', () => {
+    const bug = { actual: 'a', expected: 'b', reproduction: 'c' };
+    expect(prTitle(task, makeFrozenSpec({ type: 'bug', bug }))).toBe('fix(T1): Add sum');
+    expect(prTitle(task, makeFrozenSpec({ type: 'maintenance' }))).toBe('chore(T1): Add sum');
+    expect(prTitle(task, makeFrozenSpec({ type: 'refactor' }))).toBe('refactor(T1): Add sum');
+  });
+});
+
 describe('taskMergeSteps', () => {
   it('rebases, pushes, opens the PR, merges it guarded by the head sha and records the handoff', async () => {
     const d = deps();
     const steps = taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 'did T1');
     const out = await new MergeQueue().enqueue('T1', steps);
     expect(out).toEqual({ ok: true, pr: 1 });
-    expect(gh.prs[0]).toMatchObject({ state: 'MERGED', head: 'task/spec-001-T1', title: 'T1: Add sum' });
+    expect(gh.prs[0]).toMatchObject({ state: 'MERGED', head: 'task/spec-001-T1', title: 'feat(T1): Add sum' });
     expect(gh.prs[0]!.body).toContain('did T1');
     expect(gh.prs[0]!.body.endsWith('\n\nSpec: spec-001')).toBe(true);
     expect(gh.prs[0]!.mergeBody?.endsWith('\n\nSpec: spec-001')).toBe(true);

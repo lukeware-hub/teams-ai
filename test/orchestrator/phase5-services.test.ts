@@ -94,16 +94,16 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
 const failure = () => journal.events.find((e) => e.type === OrchEvent.DeployFailed)!.data;
 
 describe('Phase 5 with several services', () => {
-  it('a services deploy fix lists earlier failures with their service and compares a repeat within the same service', async () => {
+  it('stops a repeat within the same service with no new fix task, and names the service', async () => {
     const log: string[] = [];
     const { deps } = await setup(log, { e2eFails: 'e2e:inventory-api', detail: 'AC-002: failed' });
     await journal.fact(OrchEvent.DeployFailed, { attempt: 1, stage: 'e2e', detail: 'AC-002: failed', rolledBack: false, rollbackHealthy: null, service: 'inventory-api' });
     await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory-api' })] });
     for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
     const res = await runServicesPhase5(deps, 2);
-    const description = res.ok ? '' : res.fixTask?.description ?? '';
-    expect(description).toContain('- attempt 1 failed at e2e (service inventory-api): AC-002: failed');
-    expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
+    expect(res.ok).toBe(false);
+    expect(res.ok ? undefined : res.fixTask).toBeUndefined();
+    expect(res.ok ? '' : res.reason).toContain('same cause as attempt 1 of this run at e2e (inventory-api)');
   });
 
   it('calls a failure repeated even when the earlier one also reported a failed rollback', async () => {
@@ -113,7 +113,7 @@ describe('Phase 5 with several services', () => {
     await journal.fact(RunEvent.FixTasksPlanned, { tasks: [makePlanTask({ id: 'T950-deploy-fix-1', origin: 'deploy-fix', service: 'inventory-api' })] });
     for (const to of ['ready', 'implementing', 'validating', 'reviewing', 'rebasing', 'merging', 'merged']) await journal.fact(RunEvent.TaskStateChanged, { taskId: 'T950-deploy-fix-1', to });
     const res = await runServicesPhase5(deps, 2);
-    expect(res.ok ? '' : res.fixTask?.description ?? '').toContain('did not change this failure');
+    expect(res.ok ? '' : res.reason).toContain('same cause as attempt 1 of this run at e2e (inventory-api)');
   });
 
   it('never calls a failure repeated when the earlier one was in another service', async () => {

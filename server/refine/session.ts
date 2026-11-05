@@ -143,7 +143,7 @@ export interface SessionDeps {
   /** How many backlog items the plan preparation runs at once, read when it starts; one when absent. */
   speckitAgents?: () => Promise<number>;
   /** Extracts the documents of `dir` into the graph folder `outDir`; required by a repository session, which adds each stage to the graph. */
-  extractDocs?: (dir: string, outDir: string) => Promise<void>;
+  extractDocs?: (dir: string, outDir: string, projectId: string) => Promise<void>;
   /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   /** Binds the documentation repository at the Backlog step: the git and gh exec with the token, and the configured owner. */
@@ -545,7 +545,7 @@ export class RefineSession {
       for (const doc of [...(this.state.doneStages ?? []), file]) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
       // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
       const previous = await documentCounts(staging, file).catch(() => null);
-      await this.deps.extractDocs!(folder, staging);
+      await this.deps.extractDocs!(folder, staging, this.deps.draft.projectId);
       const counts = await documentCounts(staging, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
       await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
@@ -566,7 +566,7 @@ export class RefineSession {
       await fs.rm(folder, { recursive: true, force: true });
       await fs.mkdir(folder, { recursive: true });
       for (const doc of DOC_STAGES) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
-      await this.deps.extractDocs(folder, staging);
+      await this.deps.extractDocs(folder, staging, this.deps.draft.projectId);
       for (const file of files) {
         const counts = await documentCounts(staging, file);
         if (counts.nodes === 0) throw new Error(`O Graphify não encontrou conteúdo em ${file}.`);

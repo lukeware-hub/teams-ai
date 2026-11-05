@@ -31,6 +31,8 @@ export interface PlanCheckOptions {
   generatedSecretNames?: readonly string[];
   /** The task numbers (T1, T2, ...) of the spec's implementation plan; each needs a plan task that lists it in planTasks. */
   speckitTasks?: readonly string[];
+  /** The plan step's check: feature tasks may not outnumber the criteria. Fix revalidation leaves it off. */
+  sliceCeiling?: boolean;
 }
 
 export interface ServicesPlanCheckOptions extends Omit<PlanCheckOptions, 'firstSpec' | 'repoFiles'> {
@@ -118,10 +120,28 @@ export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: Servi
   return errors;
 }
 
+/** Feature tasks allowed per acceptance criterion: more tasks than criteria means the split follows files or layers. */
+const FEATURE_TASKS_PER_CRITERION = 1;
+
+/** Product work the SM planned: not devops infrastructure, not the scaffold, not an orchestrator fix. */
+const isFeatureTask = (task: PlanTask): boolean => task.origin === 'plan' && task.owner !== 'devops' && task.id !== scaffoldId(task.service ?? null);
+
+function sliceErrors(tasks: readonly PlanTask[], spec: Spec): string[] {
+  const features = tasks.filter(isFeatureTask);
+  const criteria = spec.acceptanceCriteria.length;
+  const ceiling = criteria * FEATURE_TASKS_PER_CRITERION;
+  if (features.length <= ceiling) return [];
+  const shared = spec.acceptanceCriteria
+    .map((ac) => ({ id: ac.id, owners: features.filter((t) => t.criteriaRefs.includes(ac.id)).map((t) => t.id) }))
+    .filter((s) => s.owners.length > 1)
+    .map((s) => `${s.id} by ${s.owners.join(', ')}`);
+  return [`the plan has ${features.length} feature tasks for ${criteria} acceptance criteria (at most ${ceiling}); merge the tasks that share a criterion${shared.length > 0 ? `: ${shared.join('; ')}` : ''}`];
+}
+
 const smokeCriteria = (spec: Spec): string[] => spec.acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
 
 /** The spec the plan answers, the task graph across every repository, criteria coverage and e2e exemptions. */
-function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eExemptions'>, spec: Spec, opts: Pick<PlanCheckOptions, 'requireE2e' | 'speckitTasks'>): string[] {
+function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eExemptions'>, spec: Spec, opts: Pick<PlanCheckOptions, 'requireE2e' | 'speckitTasks' | 'sliceCeiling'>): string[] {
   const errors: string[] = [];
 
   if (spec.specHash === null) errors.push('spec is not frozen');
@@ -152,12 +172,13 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
       covered.add(ref);
     }
     // Only the scaffold, devops infrastructure and orchestrator fix tasks may deliver no criterion.
-    const infra = task.owner === 'devops' || task.origin !== 'plan' || task.id === scaffoldId(task.service ?? null);
+    const infra = !isFeatureTask(task);
     if (task.criteriaRefs.length === 0 && !infra) errors.push(`task ${task.id} has no acceptance criterion; list the criteria it delivers in criteriaRefs (only the scaffold and tasks owned by devops may have none)`);
   }
   for (const ac of acIds) {
     if (!covered.has(ac)) errors.push(`acceptance criterion ${ac} is not covered by any task`);
   }
+  if (opts.sliceCeiling) errors.push(...sliceErrors(plan.tasks, spec));
   const planned = new Set(plan.tasks.flatMap((t) => taskPlanIds(t)));
   for (const id of opts.speckitTasks ?? []) {
     if (!planned.has(id)) errors.push(`the implementation plan's task ${id} has no plan task; list it in planTasks of the task that builds it`);

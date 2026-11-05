@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadAgents } from './agents/registry.js';
-import { agentsDecideFor, loadConfig, stepBudgetFor, type Config } from './config/config.js';
+import { agentsDecideFor, loadConfig, slotSettingOf, stepBudgetFor, type Config, type Slot } from './config/config.js';
 import { Project } from './contracts/project.js';
 import { generatedSecretNames, Spec } from './contracts/spec.js';
 import { writeFileAtomic } from './core/atomic-write.js';
@@ -133,6 +133,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
   const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents });
+  /** The model a project's chat or graphify setting fixes in Settings. */
+  const slotModelOf = async (projectId: string, slot: Slot): Promise<string> => slotSettingOf((await readUserConfig()).cfg.agentSettings[projectId] ?? {}, slot).model;
   const projectDirOf = async (projectId: string): Promise<string | null> => {
     for (const { dir } of (await readUserConfig()).cfg.projects) {
       const read = await readProject(dir).catch(() => null);
@@ -145,7 +147,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
     // The graph extraction shares the refinement governor, and runs in step homes of its own.
-    extractDocs: (dir, outDir) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
+    extractDocs: async (dir, outDir, projectId) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor, model: await slotModelOf(projectId, 'graphify') }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
     docGraphContext: (outDir, question, budgetTokens) => docGraphContext(graphify, outDir, question, budgetTokens),
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
@@ -202,6 +204,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     log: io.stderr,
     workspacesRoot: async () => expandHome((await readUserConfig()).cfg.paths.workspaces),
     suggestSpecId: async (projectId, description) => (await registry.suggestName('spec', { projectId, name: '', description })).id,
+    chatModel: (projectId) => slotModelOf(projectId, 'chat'),
     newSpec: (projectId, specId, description) => registry.newSpec(projectId, specId, description),
     refreshProjectGraph: async (projectId) => rebuildProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)),
     docs: async (projectId) => projectMainDocs(await locateProject((await readUserConfig()).cfg, projectId)),

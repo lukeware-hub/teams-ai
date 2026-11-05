@@ -5,7 +5,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { AgentSetting, RoleProfile, Role } from '../config/config.js';
+import type { AgentSetting, RoleProfile, Role, SettingKey } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { PlatformService, Project } from '../contracts/project.js';
@@ -16,7 +16,7 @@ import { repoName, stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
 import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
-import { effortFor, fallbackModel } from '../runner/model-policy.js';
+import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
 import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
@@ -318,7 +318,7 @@ export function planRules(firstSpec: boolean | 'services', requireDelivery = fal
     `- gates must include these blocking gates: ${REQUIRED_BLOCKING_GATES.join(', ')} (plus a blocking typecheck gate when commands.typecheck exists)`,
     '- every acceptance criterion is covered by at least one task (criteriaRefs); every task has at least one criterion or is infrastructure',
     '- every task id is T<n>-<slug>: a number plus 1 to 4 English kebab-case words saying what the task does (T1-create-endpoint, T2-add-login-form); never a bare T1',
-    '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; tasks small enough for one agent step',
+    '- dependsOn forms a DAG; affectedPaths are repository-relative paths or globs; a task delivers one whole capability (its logic, its tests and its interface across the layers it touches), never one task per file, layer or function; plan tasks of one capability join one task through planTasks',
     '- dependsOn names only a real dependency: the task needs code, an interface or a file that the other task creates. Writing the tasks in order is not a dependency; tasks that touch different files run in parallel, and a chain of dependsOn that is not needed makes the run sequential',
     OWNER_RULE,
     EVIDENCE_RULE,
@@ -643,8 +643,8 @@ export interface AgentStepDeps {
   sessionDir?: (taskId: string) => string;
   /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
   stepModel?: (kind: StepKind, attempt: number) => string | undefined;
-  /** A model and effort the user fixed for this role in this project; they win over the request and the routing, and skip `effortFor`. */
-  agentSetting?: (role: Role) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
+  /** A model and effort the user fixed for this role or slot in this project; they win over the request and the routing, and skip `effortFor`. */
+  agentSetting?: (key: SettingKey) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
   /** The pinned snapshot a documentation-repository project reads; every step gets a read-only grant of it. */
   docsRoot?: string;
@@ -669,13 +669,9 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
-  // A plan step carries its own model and effort (plan 107): the role's pin, which sets the builders, does not apply to it.
-  // The architecture step follows the role's setting in the Settings screen, as the owner asked.
-  const manual = req.kind === 'speckit' ? undefined : await deps.agentSetting?.(req.role);
-  const planned = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
-  // A step with a kept session belongs to its model; a manual setting is kept whatever the quota; only a fresh automatic step may move to the lower model.
-  const lower = sessionStore || manual ? undefined : fallbackModel(planned);
-  let model = lower && deps.breaker.modelPaused(planned) ? lower : planned;
+  // Every step follows its setting in the Settings screen: the chat has its own slot, every other step its role's.
+  const manual = await deps.agentSetting?.(req.kind === 'chat' ? 'chat' : req.role);
+  const model = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
   // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it.
   const effortOf = (m: string): Effort => (manual ? manual.effort : effortFor(m, req.effort));
   await deps.journal.fact(OrchEvent.StepStarted, {
@@ -728,12 +724,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     );
   try {
     outcome = await attempt(model);
-    // The step itself tests the lower model: it runs there at once, and the global pause comes only if that is out too.
-    if (!outcome.ok && outcome.failure === 'quota' && lower && model === planned) {
-      deps.breaker.pauseModel(planned, outcome.summary.rateLimit);
-      model = lower;
-      outcome = await attempt(model);
-    }
   } finally {
     release();
   }
@@ -753,7 +743,6 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     ok: outcome.ok,
     model,
     effort: effortOf(model),
-    ...(model !== planned ? { fellBackFrom: planned } : {}),
     failure: outcome.ok ? null : outcome.failure,
     usage: outcome.summary.usage,
     costUsd: outcome.summary.costUsd,

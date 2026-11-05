@@ -1,4 +1,3 @@
-import { MODELS } from '../config/config.js';
 import type { Effort } from '../decide/decisions/model-tier.js';
 
 /**
@@ -21,6 +20,3 @@ export function effortFor(model: string, effort: Effort | undefined): Effort {
       return asked;
   }
 }
-
-/** Where a step goes when its model has no quota left: only Opus has a lower model that may do its work. */
-export const fallbackModel = (model: string): string | undefined => (family(model) === 'opus' ? MODELS.sonnet : undefined);

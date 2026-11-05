@@ -8,7 +8,7 @@ import { Accounting } from '../budget/accounting.js';
 import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { agentsDecideFor, manualAgentSettings, stepBudgetFor, stepModelFor, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -373,7 +373,7 @@ export class Run {
   }
 
   /** The manual settings as they are now, so a model or effort changed during the run applies to the next step. */
-  private async manualSettings(): Promise<Partial<Record<Role, AgentSetting>>> {
+  private async manualSettings(): Promise<Partial<Record<SettingKey, AgentSetting>>> {
     const projectId = this.deps.project.projectId;
     return manualAgentSettings(this.deps.agentSettings ? await this.deps.agentSettings(projectId) : this.deps.cfg.agentSettings[projectId]);
   }

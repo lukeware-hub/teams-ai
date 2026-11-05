@@ -76,10 +76,19 @@ describe('Phase 5', () => {
     expect(task?.description).not.toContain('did not change this failure');
   });
 
-  it('says the previous fix did not change a failure that came back the same', async () => {
-    await earlierAttempt(1, 'smoke', 'AC-001: no smoke test', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'renamed the test', files: ['smoke/smoke.test.mjs'] });
-    const r = await runPhase5(deps('AC-001: no smoke test'), 2);
-    expect(r.ok ? null : r.fixTask?.description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure: look for another cause before changing the same lines again.');
+  it('stops at a failure that came back the same after the fix of an earlier attempt, with no new fix task (live: hello-word swagger docs, runs 3 and 4)', async () => {
+    const failure = 'e2e command exited 1\n    --- FAIL: TestE2E/[AC-014]_answers_400';
+    await earlierAttempt(1, 'smoke', failure, { id: 'T950-deploy-fix-1', state: 'merged', summary: 'renamed the test', files: ['e2e/e2e_test.go'] });
+    const r = await runPhase5(deps(failure), 2);
+    expect(r.ok).toBe(false);
+    expect(r.ok ? undefined : r.fixTask).toBeUndefined();
+    expect(r.ok ? '' : r.reason).toContain('same cause as attempt 1 of this run');
+  });
+
+  it('still plans a fix when the failing tests differ from the earlier attempt', async () => {
+    await earlierAttempt(1, 'smoke', 'e2e command exited 1\n    --- FAIL: TestE2E/[AC-014]_answers_400', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'renamed the test', files: ['e2e/e2e_test.go'] });
+    const r = await runPhase5(deps('e2e command exited 1\n    --- FAIL: TestE2E/[AC-034]_down'), 2);
+    expect(r.ok ? null : r.fixTask?.id).toBe('T950-deploy-fix-2');
   });
 
   it('lists an attempt replayed after a crash once, and an earlier fix that ended blocked by its state', async () => {
@@ -111,12 +120,10 @@ describe('Phase 5', () => {
   it('follows a replanned fix to its replacement, never to a fix whose id only starts the same', async () => {
     await replannedFix('merged');
     await journal.fact(OrchEvent.DevCommitted, { taskId: 'T950-deploy-fix-10', sha: 'fed', changedFiles: ['x'], summary: 'another fix' });
-    const r = await runPhase5(deps('AC-001: no smoke test'), 2);
+    const r = await runPhase5(deps('AC-002: smoke test failed'), 2);
     const description = r.ok ? '' : r.fixTask?.description ?? '';
     expect(description).toContain('then T950-deploy-fix-1 replaced by T950-deploy-fix-1-r1 merged: split the suite (files: smoke/a.mjs)');
     expect(description).not.toContain('another fix');
-    // Every replacement merged and the same failure came back: the note fires as for a fix that merged itself.
-    expect(description).toContain('The fix of attempt 1 (T950-deploy-fix-1) did not change this failure');
   });
 
   it('counts a replanned fix as a finished attempt only once every replacement ended, so a resumed run moves on', async () => {
@@ -139,11 +146,10 @@ describe('Phase 5', () => {
   it('gives a devops fix the history too', async () => {
     await earlierAttempt(1, 'verify', 'no response after 60 attempts', { id: 'T950-deploy-fix-1', state: 'merged', summary: 'fixed the healthcheck path', files: ['docker-compose.yml'] });
     const d = deps('unused');
-    const r = await runPhase5({ ...d, target: { ...d.target!, verify: async () => ({ healthy: false, detail: 'no response after 60 attempts' }) } } as PhaseDeps, 2);
+    const r = await runPhase5({ ...d, target: { ...d.target!, verify: async () => ({ healthy: false, detail: 'connection refused after 60 attempts' }) } } as PhaseDeps, 2);
     const task = r.ok ? null : r.fixTask;
     expect(task?.owner).toBe('devops');
     expect(task?.description).toContain('- attempt 1 failed at verify: no response after 60 attempts\n  then T950-deploy-fix-1 merged: fixed the healthcheck path');
-    expect(task?.description).toContain('did not change this failure');
   });
 
   it('reads the first line that has text, and keeps a long summary and file list short', async () => {

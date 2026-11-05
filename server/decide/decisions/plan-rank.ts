@@ -8,8 +8,8 @@ export const PLAN_RANK_LEVELS = [
   'poor: leaves acceptance criteria uncovered or carries a high delivery risk',
   'weak: covers the criteria only partly or with risky, tangled tasks',
   'adequate: covers every criterion with an ordinary risk',
-  'strong: covers every criterion with small, mostly independent tasks',
-  'excellent: covers every criterion with the fewest, smallest, independent tasks and a simple deploy',
+  'strong: covers every criterion with mostly independent tasks, each one a whole capability',
+  'excellent: covers every criterion with the fewest independent tasks, each one a whole capability, and a simple deploy',
 ];
 
 const key = (i: number) => `c${i}`;

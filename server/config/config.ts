@@ -124,23 +124,46 @@ export const DEFAULT_AGENT_SETTING: AgentSetting = { model: MODELS.haiku, effort
 /** The setting the product owner and the scrum master take when their project has none: they review the documents, so they get the deeper model. */
 const REVIEWER_DEFAULT: AgentSetting = { model: MODELS.sonnet, effort: 'low' };
 
-/** The setting a role takes when its project has none. */
-export const defaultAgentSetting = (role: Role): AgentSetting => (role === 'po' || role === 'sm' ? REVIEWER_DEFAULT : DEFAULT_AGENT_SETTING);
+/** The two model settings a project keeps beside its roles: the chat and the graphify extraction. */
+export const SLOTS = ['chat', 'graphify'] as const;
+export type Slot = (typeof SLOTS)[number];
+export const isSlot = (key: string): key is Slot => (SLOTS as readonly string[]).includes(key);
 
-/** The manual settings a run uses: a role never set takes the default, and a role stored as null (automatic) takes none. */
-export function manualAgentSettings(stored: Partial<Record<Role, AgentSetting | null>> = {}): Partial<Record<Role, AgentSetting>> {
-  const out: Partial<Record<Role, AgentSetting>> = {};
-  for (const role of ROLES) {
-    const setting = role in stored ? stored[role] : defaultAgentSetting(role);
-    if (setting) out[role] = setting;
+/** Every key a project keeps a model setting under: the roles, then the slots. */
+export const SETTING_KEYS = [...ROLES, ...SLOTS] as const;
+export type SettingKey = (typeof SETTING_KEYS)[number];
+export type StoredSettings = Partial<Record<SettingKey, AgentSetting | null>>;
+
+/** The setting a slot takes when its project has none: the chat on Haiku, graphify on Sonnet, both at low effort. */
+const SLOT_DEFAULTS: Record<Slot, AgentSetting> = { chat: DEFAULT_AGENT_SETTING, graphify: { model: MODELS.sonnet, effort: 'low' } };
+
+/** The setting a key takes when its project has none. */
+export const defaultAgentSetting = (key: SettingKey): AgentSetting =>
+  isSlot(key) ? SLOT_DEFAULTS[key] : key === 'po' || key === 'sm' ? REVIEWER_DEFAULT : DEFAULT_AGENT_SETTING;
+
+/** A slot's setting in its project, else its default: a slot never goes automatic. */
+export const slotSettingOf = (stored: StoredSettings, slot: Slot): AgentSetting => stored[slot] ?? defaultAgentSetting(slot);
+
+/** What a key takes from its project's stored settings: its own setting, else the default; a role stored as null is automatic. */
+export function storedSettingOf(stored: StoredSettings, key: SettingKey): AgentSetting | null {
+  if (isSlot(key)) return slotSettingOf(stored, key);
+  return key in stored ? (stored[key] ?? null) : defaultAgentSetting(key);
+}
+
+/** The manual settings a run uses: a key never set takes the default, and a role stored as null (automatic) takes none. */
+export function manualAgentSettings(stored: StoredSettings = {}): Partial<Record<SettingKey, AgentSetting>> {
+  const out: Partial<Record<SettingKey, AgentSetting>> = {};
+  for (const key of SETTING_KEYS) {
+    const setting = storedSettingOf(stored, key);
+    if (setting) out[key] = setting;
   }
   return out;
 }
 
 export const Config = z.object({
   roles: RolesSchema.prefault({}),
-  /** Per project id, per role: the manual model and effort; a role absent here runs on the automatic choice. */
-  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(ROLES), AgentSetting.nullable())).default({}),
+  /** Per project id, per role and slot: the manual model and effort; a role absent here runs on the automatic choice, a slot never does. */
+  agentSettings: z.record(z.string().min(1), z.partialRecord(z.enum(SETTING_KEYS), AgentSetting.nullable())).default({}),
   /** Per project id: the time limit of each agent step in ms, set in Settings; a project absent here takes `budgets.step.timeoutMs`. */
   stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
   /** Per project id: whether its agents decide a block themselves, set in Settings; a project absent here does not. */

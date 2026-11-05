@@ -38,7 +38,7 @@ export interface RegistryDeps {
   /** Whether a new project takes the documentation repository layout; the server default is the TEAMS_AI_DOCS_REPO_LAYOUT flag. */
   docsRepoLayout?: boolean;
   /** Extracts the documents of a folder into a graph folder for a repository session (plan increment B). */
-  extractDocs?: (dir: string, outDir: string) => Promise<void>;
+  extractDocs?: (dir: string, outDir: string, projectId: string) => Promise<void>;
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   cfg: () => Promise<Config>;
   home?: string;

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ConfigError, loadConfig, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { ConfigError, loadConfig, type AgentSetting, type Config, type SettingKey } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import { expandHome } from '../orchestrator/workspace.js';
 
@@ -67,12 +67,12 @@ export async function setGithubOwner(owner: string, home?: string): Promise<Conf
   });
 }
 
-/** Fixes one agent's model and effort in one project; `null` gives it back to the automatic choice. */
-export async function setAgentSetting(projectId: string, role: Role, setting: AgentSetting | null, home?: string): Promise<Config> {
+/** Fixes one agent's or slot's model and effort in one project; `null` gives a role back to the automatic choice. */
+export async function setAgentSetting(projectId: string, key: SettingKey, setting: AgentSetting | null, home?: string): Promise<Config> {
   return updateUserConfig(home, (raw, cfg) => {
-    const roles = { ...cfg.agentSettings[projectId] };
-    roles[role] = setting;
-    return { ...raw, agentSettings: { ...cfg.agentSettings, [projectId]: roles } };
+    const settings = { ...cfg.agentSettings[projectId] };
+    settings[key] = setting;
+    return { ...raw, agentSettings: { ...cfg.agentSettings, [projectId]: settings } };
   });
 }
 

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../server/config/config.js';
-import { CHAT_ALLOW, CHAT_MODEL, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
+import { CHAT_ALLOW, ChatService, ChatUnavailableError } from '../../server/chat/service.js';
 import { ChatStore, type ChatMessage } from '../../server/chat/store.js';
 import type { MainDoc } from '../../server/git/main-docs.js';
 import { ConflictError, NotFoundError } from '../../server/refine/session.js';
@@ -37,6 +37,7 @@ function make(runAgent: (req: Req) => Promise<unknown>, extra: { newSpec?: () =>
     workspacesRoot: async () => path.join(home, 'ws'),
     suggestSpecId,
     newSpec,
+    chatModel: async () => 'claude-haiku-5-5',
     now: () => new Date('2026-10-14T10:00:00.000Z'),
     log: extra.log,
     refreshProjectGraph: extra.refreshProjectGraph,
@@ -52,8 +53,7 @@ describe('ChatService.ask', () => {
     const { service, newSpec } = make(runAgent);
     const reply = await service.ask('hello-app', ' o que está sendo feito? ');
     expect(reply!).toEqual({ role: 'assistant', text: 'Está sendo feito o cumprimento.', at: '2026-10-14T10:00:00.000Z' });
-    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po', model: 'haiku' });
-    expect(CHAT_MODEL).toBe('haiku');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'chat', role: 'po' });
     expect(runAgent.mock.calls[0]![0].pack.feedback).toContain('o que está sendo feito?');
     expect((await service.messages('hello-app')).map((m) => [m.role, m.text])).toEqual([['user', 'o que está sendo feito?'], ['assistant', 'Está sendo feito o cumprimento.']]);
     expect(newSpec).not.toHaveBeenCalled();

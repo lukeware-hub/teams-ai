@@ -379,6 +379,11 @@ describe('packs', () => {
     expect(planRules(true)).toMatch(/dependsOn names only a real dependency/);
   });
 
+  it('plan rules ask for one task per whole capability, never one per file or layer', () => {
+    expect(planRules(true)).toContain('a task delivers one whole capability');
+    expect(planRules(true)).not.toContain('small enough for one agent step');
+  });
+
   it('plan rules ask every gate tool to build with the toolchain of the gate image', () => {
     expect(planRules(true)).toContain('must build with the toolchain of the gateImage');
   });
@@ -675,14 +680,24 @@ describe('runAgentStep', () => {
     expect(seen[1]).toMatchObject({ model: 'haiku', effort: 'low' });
   });
 
-  it('a plan step keeps its own model and effort, and the role pin that sets the builders does not apply to it', async () => {
+  it('a plan step runs on the Settings model and effort of its role, not on the model the step asks for', async () => {
     const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }));
     const seen: Array<{ model: string; effort?: string }> = [];
     d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
     d.agentSetting = (role) => (role === 'dev' ? { model: 'claude-haiku-5-5', effort: 'low' } : undefined);
     const pack = { kind: 'speckit', role: 'dev', specHash: HASH, principles: [], outputContract: '', criteria: [], feedback: 'Write the plan.', budgetTokens: 8000 };
     await runAgentStep({ kind: 'speckit', role: 'dev', pack, cwd: dir, phase: 'refine', taskId: null, attempt: 1, model: 'claude-sonnet-5-5', effort: 'low' } as never, d);
-    expect(seen[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low' });
+    expect(seen[0]).toMatchObject({ model: 'claude-haiku-5-5', effort: 'low' });
+  });
+
+  it('a chat step runs on the chat setting of its project, not on the product owner setting', async () => {
+    const d = await deps(async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', files: [], questions: [] }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.agentSetting = (key) => (key === 'chat' ? { model: 'claude-opus-5-5', effort: 'high' } : key === 'po' ? { model: 'claude-sonnet-5-5', effort: 'low' } : undefined);
+    const pack = { kind: 'chat', role: 'po', specHash: HASH, principles: [], outputContract: '', criteria: [], feedback: 'Explain.', budgetTokens: 8000 };
+    await runAgentStep({ kind: 'chat', role: 'po', pack, cwd: dir, phase: 'refine', taskId: null, attempt: 1 } as never, d);
+    expect(seen[0]).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' });
   });
 
   it('an architecture step runs on the manual setting of its role from the Settings screen, not on the Opus pin', async () => {
@@ -711,23 +726,15 @@ describe('runAgentStep', () => {
     expect(seen[1]).toMatchObject({ effort: 'medium' });
   });
 
-  it('journals the effort each step ran on, and the model and effort it ended on after a fallback', async () => {
-    const ok = { ok: true as const, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() };
-    const { d } = await seeing('opus', 'max', async (m) => (m === 'opus' ? quota() : ok));
+  it('an automatic Opus step stays on Opus when its quota is out: it fails there, and no fallback is journaled', async () => {
+    const { d, seen, out } = await seeing('opus', 'max', async () => quota());
+    expect(seen.map((s) => s.model)).toEqual(['opus']);
+    expect(out.ok).toBe(false);
     const started = d.journal.events.find((e) => e.type === OrchEvent.StepStarted)!.data;
     const finished = d.journal.events.find((e) => e.type === OrchEvent.StepFinished)!.data;
     expect(started).toMatchObject({ model: 'opus', effort: 'low' });
-    expect(finished).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high', fellBackFrom: 'opus' });
-  });
-
-  it('runs an Opus step on Sonnet when Opus is out of quota, without pausing the run', async () => {
-    const { d, seen, out } = await seeing('opus', undefined, async (m) => (m === 'opus' ? quota() : { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }));
-    expect(seen.map((s) => s.model)).toEqual(['opus', 'claude-sonnet-5-5']);
-    expect(out.ok).toBe(true);
-    expect(d.breaker.canStart()).toBe(true);
-    expect(d.breaker.modelPaused('opus')).toBe(true);
-    const finished = d.journal.events.find((e) => e.type === OrchEvent.StepFinished)!;
-    expect(finished.data).toMatchObject({ model: 'claude-sonnet-5-5', fellBackFrom: 'opus' });
+    expect(finished).toMatchObject({ model: 'opus', effort: 'low' });
+    expect(finished).not.toHaveProperty('fellBackFrom');
   });
 
   it('keeps a manual Opus setting on Opus when its quota is out, never falling back to Sonnet', async () => {

@@ -111,7 +111,7 @@ describe('orchestrator loop with the fake claude', () => {
     expect(tree).toContain('docs/specs/spec-001/plan.json');
     expect(tree).toContain('src/a/index.ts');
     expect(tree).toContain('src/b/index.ts');
-    expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'T1-a: Task T1-a', 'T2-b: Task T2-b']);
+    expect(gh.prs.map((p) => p.title)).toEqual(['docs(spec-001): technical spec', 'docs(spec-001): plan', 'feat(T1-a): Task T1-a', 'feat(T2-b): Task T2-b']);
     const steps = ['tech-spec/-/1', 'coverage/-/1', 'plan/-/1', 'dev/T1-a/1', 'security/T1-a/1', 'review/T1-a/1', 'dev/T2-b/1', 'security/T2-b/1', 'review/T2-b/1'];
     expect([...scenario.seen].sort()).toEqual([...steps].sort());
     // A task's security and review steps run side by side (R11.13 slice 5): only the place of the pair is fixed.
