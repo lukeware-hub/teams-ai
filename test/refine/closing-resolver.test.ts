@@ -45,6 +45,16 @@ describe('resolveClosing', () => {
     expect(s.runPlans).not.toHaveBeenCalled();
   });
 
+  it('accepts only the patches the given rule allows', async () => {
+    const s = fakeSession({
+      summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1')],
+      patches: [patch('keep', { file: 'briefing.md' }), patch('skip', { file: 'stack.md' })],
+    });
+    await resolveClosing(s as unknown as RefineSession, (p) => p.file === 'briefing.md');
+    expect(s.accept).toHaveBeenCalledTimes(1);
+    expect(s.accept).toHaveBeenCalledWith('keep', false);
+  });
+
   it('reviews each outdated stage again before the other checks', async () => {
     const s = fakeSession({
       summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'questions', ok: true, detail: '' }], 'h2')],

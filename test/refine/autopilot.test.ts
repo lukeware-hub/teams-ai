@@ -91,7 +91,7 @@ describe('resolveEverything', () => {
     expect(s.addToGraph).not.toHaveBeenCalled();
   });
 
-  it('a follow-on request the team runs alone accepts every suggestion, a rewording and a design change too, marked as automatic', async () => {
+  it('a follow-on request the team runs alone accepts only additions to its project documents, marked as automatic, and leaves the rest to the owner', async () => {
     const s = fake({ patches: [
       { patchId: 'add', status: 'pending', reason: '', find: 'O cliente paga.', replace: 'O cliente paga.\n- Exporta.', file: 'briefing.md' },
       { patchId: 'reword', status: 'pending', reason: '', find: 'a', replace: 'b', file: 'briefing.md' },
@@ -99,7 +99,9 @@ describe('resolveEverything', () => {
     ] });
     s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
     await resolveEverything(s as unknown as RefineSession, { byOwner: false });
-    for (const id of ['add', 'reword', 'design']) expect(s.accept).toHaveBeenCalledWith(id, true);
+    expect(s.accept).toHaveBeenCalledWith('add', true);
+    expect(s.accept).not.toHaveBeenCalledWith('reword', expect.anything());
+    expect(s.accept).not.toHaveBeenCalledWith('design', expect.anything());
   });
 
   it('a follow-on request the owner runs follows the specs.md and saves the documents, as his button says', async () => {

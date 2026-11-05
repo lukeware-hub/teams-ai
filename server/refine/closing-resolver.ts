@@ -8,12 +8,12 @@ export const CLOSING_ROUNDS = 3;
 export { safePatches };
 
 /** Resolves the closing checks with the agents, without the owner. It stops when the summary passes, when a round changes nothing, when the owner must act, or after CLOSING_ROUNDS. */
-export async function resolveClosing(s: RefineSession): Promise<void> {
+export async function resolveClosing(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true): Promise<void> {
   // One resolver per session: a second call while one runs does nothing.
   if (resolving.has(s)) return;
   resolving.add(s);
   try {
-    await resolveOnce(s);
+    await resolveOnce(s, allowed);
   } finally {
     resolving.delete(s);
   }
@@ -21,7 +21,7 @@ export async function resolveClosing(s: RefineSession): Promise<void> {
 
 const resolving = new WeakSet<RefineSession>();
 
-async function resolveOnce(s: RefineSession): Promise<void> {
+async function resolveOnce(s: RefineSession, allowed: (p: PatchRow) => boolean): Promise<void> {
   // Before the review closes, only the stage documents are resolved: the later steps wait for the owner's Continuar.
   // A follow-on request has no review step: its closing runs at once, since the team alone prepares it.
   if (s.state.reviewClosed !== true && s.state.extension === undefined) return ignoreConflict(() => resolveStages(s));
@@ -29,7 +29,7 @@ async function resolveOnce(s: RefineSession): Promise<void> {
     const before = await s.closingSummary();
     if (before.ok) return;
     try {
-      await resolveRound(s, before.checks.filter((c) => !c.ok).map((c) => c.id));
+      await resolveRound(s, before.checks.filter((c) => !c.ok).map((c) => c.id), allowed);
     } catch (err) {
       // A busy draft or a refused step is the owner's next move, so the resolver waits instead of forcing it.
       if (err instanceof ConflictError) return;
@@ -41,8 +41,8 @@ async function resolveOnce(s: RefineSession): Promise<void> {
 }
 
 /** One round, in the order the checks depend on: patches, then the checklist, then the architecture, then the plans. */
-async function resolveRound(s: RefineSession, failing: string[]): Promise<void> {
-  const accepted = await resolveStages(s);
+async function resolveRound(s: RefineSession, failing: string[], allowed: (p: PatchRow) => boolean): Promise<void> {
+  const accepted = await resolveStages(s, allowed);
   // A round re-evaluates when a patch was accepted, a question is open, or the request's impact is missing or stale: the heal runs the impact step again.
   if (accepted > 0 || failing.includes('questions') || failing.includes('impact')) await s.evaluate();
   if (s.state.architecture == null || (await s.isArchitectureStale())) {

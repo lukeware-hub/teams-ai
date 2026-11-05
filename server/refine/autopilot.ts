@@ -19,9 +19,6 @@ export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, t
 /** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
 export const runExtension = (s: RefineSession): Promise<void> => s.evaluate().then(() => resolveEverything(s, { byOwner: false }));
 
-/** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
-export const runExtension = (s: RefineSession): Promise<void> => s.evaluate().then(() => resolveEverything(s, { byOwner: false }));
-
 /** The rounds the team works through before it follows the specs.md on the owner's word. */
 const ROUNDS = 5;
 
@@ -53,11 +50,12 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
   if (resolving.has(s)) return;
   resolving.add(s);
   const teamAlone = !byOwner && s.state.extension !== undefined;
+  const allowed = (p: PatchRow) => autoAcceptable(p, teamAlone);
   try {
     for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
       // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted.
-      await tolerate(() => resolveStages(s, () => true, teamAlone));
-      for (const p of s.state.patches.filter((x) => x.status === 'pending')) await tolerate(() => s.accept(p.patchId, teamAlone));
+      await tolerate(() => resolveStages(s, allowed, teamAlone));
+      for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
       // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
       for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
       // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
@@ -74,7 +72,7 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
     if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
     // Last: the closing checks the request still fails (the architecture, the impact) are decided by the team, then every document goes into the graph in one extraction.
     if (s.state.extension !== undefined) {
-      await tolerate(() => resolveClosing(s));
+      await tolerate(() => resolveClosing(s, allowed));
       await tolerate(() => s.graphDocs());
     } else {
       for (const file of DOC_STAGES.filter((f) => !(s.state.graphed ?? []).includes(f))) {

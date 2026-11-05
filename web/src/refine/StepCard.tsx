@@ -9,7 +9,7 @@ const TILE = {
 } as const;
 
 /** One block of a step: a one-line header (icon tile, title with help, who fills it, state chip) that opens its content. The card in focus starts open and ringed. */
-export function StepCard({ id, icon, tone = 'accent', title, info, owner, chip, open = false, focus = false, wrapChip = false, children }: { id: string; icon: IconName; tone?: keyof typeof TILE; title: string; info: string; owner?: string; chip?: { label: string; tone?: string }; open?: boolean; focus?: boolean; wrapChip?: boolean; children: ReactNode }) {
+export function StepCard({ id, icon, tone = 'accent', title, info, owner, chip, open = false, focus = false, children }: { id: string; icon: IconName; tone?: keyof typeof TILE; title: string; info: string; owner?: string; chip?: { label: string; tone?: string }; open?: boolean; focus?: boolean; children: ReactNode }) {
   return (
     <details data-testid={`step-card-${id}`} data-focus={focus || undefined} open={open} className={`group card min-w-0 p-0 ${focus ? 'border-accent-line shadow-pop' : ''}`}>
       <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
