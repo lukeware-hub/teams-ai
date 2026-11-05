@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, writeDoc } from '../../server/refine/draft.js';
 import { ConflictError, RefineSession } from '../../server/refine/session.js';
+import { asTeamAlone } from '../../server/refine/team-rule.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
 let root = '';
@@ -153,6 +154,24 @@ describe('stage order, stamped sessions', () => {
     expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => [p.status, p.auto])).toEqual([['accepted', true]]);
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
+    await s.close();
+  });
+
+  it('the team alone leaves a rewording of a stage to the owner', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
+    await asTeamAlone(true, () => s.evaluateStage('flow.md'));
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => p.status)).toEqual(['pending']);
+    await s.close();
+  });
+
+  it('the team alone accepts on its own an addition to a stage, marked as automatic', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  B --> C[Extra]', reason: 'passo novo' }])];
+    await asTeamAlone(true, () => s.evaluateStage('flow.md'));
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => [p.status, p.auto])).toEqual([['accepted', true]]);
     await s.close();
   });
 

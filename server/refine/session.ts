@@ -34,6 +34,7 @@ import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.j
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
+import { autoAcceptable, inTeamAlone } from './team-rule.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
 import { requestTrace, type RequestTrace } from './trace.js';
@@ -1584,9 +1585,10 @@ export class RefineSession {
     else if ((this.state.graphed ?? []).includes(file)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
   }
 
-  /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends. */
+  /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends; the team alone takes only what autoAcceptable allows. */
   private async acceptSafePatches(file: DocFile): Promise<void> {
-    for (const p of safePatches(this.state.patches.filter((x) => x.file === file))) {
+    const teamAlone = inTeamAlone();
+    for (const p of safePatches(this.state.patches.filter((x) => x.file === file)).filter((x) => autoAcceptable(x, teamAlone))) {
       await this.applyPatchRow(p.patchId, true).catch((err) => {
         if (!(err instanceof ConflictError)) throw err;
       });

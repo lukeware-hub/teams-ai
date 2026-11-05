@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { autoAcceptable, resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
+import { resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
+import { autoAcceptable } from '../../server/refine/team-rule.js';
 
 /** A session stand-in: the state the test sets, and every call the autopilot makes is recorded. */
 function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: string; specsApproved?: () => boolean; plansDone?: boolean; specsMd?: unknown } = {}) {
