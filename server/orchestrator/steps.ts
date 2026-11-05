@@ -5,7 +5,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { AgentSetting, RoleProfile, Role, SettingKey } from '../config/config.js';
+import type { AgentSetting, AutomaticRow, RoleProfile, Role, SettingKey } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { PlatformService, Project } from '../contracts/project.js';
@@ -618,9 +618,11 @@ export interface AgentStepRequest<K extends StepKind> {
   denyRead?: readonly string[];
   /** Added to the agent's prompt for this step; see `StepRequest.systemExtra`. */
   systemExtra?: string;
-  /** Spec 10A.5 decisions 10/11: per-step model and effort; absent means the role profile. */
+  /** Spec 10A.5 decisions 10/11: per-step model and effort; absent means the role profile. A requested effort keeps the model-policy limit. */
   model?: string;
   effort?: Effort;
+  /** An effort the automatic choice set for this step (config `routing.efforts`): it runs as set, without the model-policy limit. */
+  routedEffort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
   /**
@@ -641,9 +643,9 @@ export interface AgentStepDeps {
   stepDir: (seq: number) => string;
   /** Where a task's session transcript is kept; `AgentStepRequest.session` has no effect without it. */
   sessionDir?: (taskId: string) => string;
-  /** A model for every step of one kind, ahead of the role profile (config `routing.stepModels`); `attempt` is the refinement cycle there. */
-  stepModel?: (kind: StepKind, attempt: number) => string | undefined;
-  /** A model and effort the user fixed for this role or slot in this project; they win over the request and the routing, and skip `effortFor`. */
+  /** The automatic model and effort of every step of one kind, ahead of the role profile (config `routing`); `attempt` is the refinement cycle there. */
+  stepSetting?: (kind: StepKind, attempt: number) => AutomaticRow | undefined;
+  /** A model and effort the user fixed for this role or slot in this project; they win over the request and the routing. */
   agentSetting?: (key: SettingKey) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
   /** The pinned snapshot a documentation-repository project reads; every step gets a read-only grant of it. */
@@ -671,9 +673,10 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const profile = deps.profile(req.role);
   // Every step follows its setting in the Settings screen: the chat has its own slot, every other step its role's.
   const manual = await deps.agentSetting?.(req.kind === 'chat' ? 'chat' : req.role);
-  const model = manual?.model ?? req.model ?? deps.stepModel?.(req.kind, req.attempt) ?? profile.model;
-  // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it.
-  const effortOf = (m: string): Effort => (manual ? manual.effort : effortFor(m, req.effort));
+  const auto = manual || req.model !== undefined ? undefined : deps.stepSetting?.(req.kind, req.attempt);
+  const model = manual?.model ?? req.model ?? auto?.model ?? profile.model;
+  // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it. A manual or automatic effort runs as set.
+  const effortOf = (m: string): Effort => manual?.effort ?? req.routedEffort ?? (auto && m === auto.model ? auto.effort : effortFor(m, req.effort));
   await deps.journal.fact(OrchEvent.StepStarted, {
     stepId: id,
     kind: req.kind,

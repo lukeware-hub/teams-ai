@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type AutomaticModels, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
+import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type AutomaticRow, type AutomaticSettings, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -27,7 +27,7 @@ const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlo
 const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
 const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto, com rede no shell só para pacotes e pesquisa na web livre. Com Sim, o botão Reprocessar não aparece na execução.';
 const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos agentes.';
-const HELP_AUTOMATIC = 'Modelos que os papéis em Automático usam, em todos os projetos deste computador. Tarefa pequena, média e grande seguem o tamanho de cada tarefa. Arquitetura são os passos de tech-spec, plano e arquitetura. Refinamento, ciclos seguintes são os passos de refinamento a partir do segundo ciclo. Cada escolha salva ao mudar.';
+const HELP_AUTOMATIC = 'Modelos e esforços que os papéis em Automático usam, em todos os projetos deste computador. Tarefa pequena, média e grande seguem o tamanho de cada tarefa. Arquitetura são os passos de tech-spec, plano e arquitetura. Refinamento, ciclos seguintes são os passos de refinamento a partir do segundo ciclo. Cada escolha salva ao mudar.';
 const AUTOMATIC_LOAD_ERROR = 'Não foi possível carregar os modelos automáticos.';
 type AutomaticKey = 'small' | 'medium' | 'large' | 'architecture' | 'laterCycle';
 const AUTOMATIC_ROWS: Array<{ key: AutomaticKey; label: string }> = [
@@ -37,11 +37,11 @@ const AUTOMATIC_ROWS: Array<{ key: AutomaticKey; label: string }> = [
   { key: 'architecture', label: 'Arquitetura' },
   { key: 'laterCycle', label: 'Refinamento, ciclos seguintes' },
 ];
-const modelOfRow = (models: AutomaticModels, key: AutomaticKey): AgentModel => (key === 'architecture' || key === 'laterCycle' ? models[key] : models.tiers[key]);
-const withModel = (models: AutomaticModels, key: AutomaticKey, model: AgentModel): AutomaticModels => {
-  if (key === 'architecture') return { ...models, architecture: model };
-  if (key === 'laterCycle') return { ...models, laterCycle: model };
-  return { ...models, tiers: { ...models.tiers, [key]: model } };
+const rowOf = (settings: AutomaticSettings, key: AutomaticKey): AutomaticRow => (key === 'architecture' || key === 'laterCycle' ? settings[key] : settings.tiers[key]);
+const withRow = (settings: AutomaticSettings, key: AutomaticKey, row: AutomaticRow): AutomaticSettings => {
+  if (key === 'architecture') return { ...settings, architecture: row };
+  if (key === 'laterCycle') return { ...settings, laterCycle: row };
+  return { ...settings, tiers: { ...settings.tiers, [key]: row } };
 };
 
 function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row: AgentRow; onFailed: () => void }) {
@@ -329,7 +329,7 @@ function PlanAgentsPanel() {
 }
 
 function AutomaticModelsCard() {
-  const [models, setModels] = useState<AutomaticModels | null>(null);
+  const [models, setModels] = useState<AutomaticSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
@@ -343,9 +343,9 @@ function AutomaticModelsCard() {
       active = false;
     };
   }, []);
-  const change = (key: AutomaticKey, model: AgentModel) => {
+  const change = (key: AutomaticKey, patch: Partial<AutomaticRow>) => {
     if (!models) return;
-    const next = withModel(models, key, model);
+    const next = withRow(models, key, { ...rowOf(models, key), ...patch });
     setModels(next);
     setError(null);
     queue.current = queue.current.then(() => settingsApi.setAutomatic(next)).then(setModels).catch(() => {
@@ -363,16 +363,22 @@ function AutomaticModelsCard() {
       {models === null && !error ? <Loading /> : null}
       {models ? (
         <ul className={`${rows} [&>li]:border-accent-line`} data-testid="settings-automatic-list">
-          {AUTOMATIC_ROWS.map(({ key, label }) => (
-            <li key={key} className={row} data-testid={`settings-automatic-${key}`}>
-              <span className={rowId}>{label}</span>
-              <div className={rowActions}>
-                <Select wrapperClassName="w-full md:w-[10rem]" aria-label={label} value={modelOfRow(models, key)} onChange={(e) => change(key, e.target.value as AgentModel)}>
-                  {AGENT_MODELS.map((m) => <option key={m} value={m}>{MODEL_LABELS[m]}</option>)}
-                </Select>
-              </div>
-            </li>
-          ))}
+          {AUTOMATIC_ROWS.map(({ key, label }) => {
+            const automaticRow = rowOf(models, key);
+            return (
+              <li key={key} className={row} data-testid={`settings-automatic-${key}`}>
+                <span className={rowId}>{label}</span>
+                <div className={rowActions}>
+                  <Select wrapperClassName="w-full md:w-[10rem]" aria-label={label} value={automaticRow.model} onChange={(e) => change(key, { model: e.target.value as AgentModel })}>
+                    {AGENT_MODELS.map((m) => <option key={m} value={m}>{MODEL_LABELS[m]}</option>)}
+                  </Select>
+                  <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Esforço de ${label}`} value={automaticRow.effort} onChange={(e) => change(key, { effort: e.target.value as AgentEffort })}>
+                    {AGENT_EFFORTS.map((e) => <option key={e} value={e}>{EFFORT_LABELS[e]}</option>)}
+                  </Select>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </section>

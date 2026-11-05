@@ -1230,17 +1230,18 @@ describe('TaskRunner: model tier', () => {
 
 describe('TaskRunner: tier routing', () => {
   const models = { small: 'sonnet', medium: 'sonnet', large: 'opus' };
+  const efforts = { small: 'low', medium: 'low', large: 'low' } as const;
   const agent: Agent = async (req) => (req.kind === 'review' ? approve() : devDone()(req));
 
   it('off sets nothing and journals nothing', async () => {
-    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'off', models } }));
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'off', models, efforts } }));
     await r.advance();
     expect(agentCalls[0]!.model).toBeUndefined();
     expect(journal.events.some((e) => e.type === OrchEvent.ModelTierChosen)).toBe(false);
   });
 
   it('shadow journals the choice and still runs the role profile', async () => {
-    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'shadow', models } }));
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'shadow', models, efforts } }));
     await r.advance();
     expect(agentCalls[0]!.model).toBeUndefined();
     const chosen = journal.events.filter((e) => e.type === OrchEvent.ModelTierChosen);
@@ -1249,16 +1250,22 @@ describe('TaskRunner: tier routing', () => {
   });
 
   it('on runs the Dev on the routed model but leaves the review on its profile', async () => {
-    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models } }));
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models, efforts } }));
     await r.advance(); await r.advance(); await r.advance();
     expect(agentCalls.find((c) => c.kind === 'dev')!.model).toBe('sonnet');
     expect(agentCalls.find((c) => c.kind === 'review')!.model).toBeUndefined();
     expect(journal.events.filter((e) => e.type === OrchEvent.ModelTierChosen)).toHaveLength(1);
   });
 
+  it('runs the Dev at the routed effort as set, and not at the model-policy limit', async () => {
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models: { small: 'haiku', medium: 'sonnet', large: 'opus' }, efforts: { ...efforts, small: 'medium' } } }));
+    await r.advance();
+    expect(agentCalls[0]).toMatchObject({ model: 'haiku', routedEffort: 'medium' });
+  });
+
   it('on with a manual setting for the role journals the choice as not applied and keeps the routed model off the step', async () => {
     const agentSetting = async (role: string) => (role === 'dev' ? { model: MODELS.opus, effort: 'high' as const } : undefined);
-    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models }, agentSetting }));
+    const r = new TaskRunner('T1', deps({ agent, routing: { tiers: 'on', models, efforts }, agentSetting }));
     await r.advance();
     expect(agentCalls[0]!.model).toBeUndefined();
     const chosen = journal.events.filter((e) => e.type === OrchEvent.ModelTierChosen);
@@ -1268,7 +1275,7 @@ describe('TaskRunner: tier routing', () => {
 
   it('defers to the decision layer when it answers', async () => {
     const decider = { decide: async (id: string) => (id === 'model-tier' ? { answered: true as const, backend: 'jev' as const, escalated: false, answers: { tier: { type: 'choice' as const, value: 'large', probabilities: { large: 0.9 }, confidence: 0.9 }, effort: { type: 'score' as const, value: 3, probabilities: {}, confidence: 0.9 } } } : { answered: false as const, reason: 'disabled' as const }) };
-    const r = new TaskRunner('T1', deps({ agent, decider, routing: { tiers: 'on', models: { small: 'haiku', medium: 'haiku', large: 'haiku' } } }));
+    const r = new TaskRunner('T1', deps({ agent, decider, routing: { tiers: 'on', models: { small: 'haiku', medium: 'haiku', large: 'haiku' }, efforts } }));
     await r.advance();
     expect(agentCalls[0]).toMatchObject({ model: 'opus', effort: 'max' });
   });

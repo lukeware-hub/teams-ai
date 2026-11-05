@@ -5,7 +5,7 @@ import { STEP_KINDS, type StepKind } from '../agents/outputs.js';
 import { DEFAULT_MAX_PARALLEL } from '../scheduler/scheduler.js';
 import { DEFAULT_POLICY } from '../scheduler/retry-policy.js';
 import { BACKEND_NAMES, DECISION_IDS, type DecisionConfig, type DecisionId } from '../decide/types.js';
-import { EFFORT_LEVELS } from '../decide/decisions/model-tier.js';
+import { EFFORT_LEVELS, type Effort } from '../decide/decisions/model-tier.js';
 
 /** Pinned model ids: an alias like `sonnet` resolves to whichever version the CLI ships, so a run would not be reproducible. */
 export const MODELS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5', opus: 'claude-opus-5-5' } as const;
@@ -199,6 +199,16 @@ export const Config = z.object({
       models: z.object({ small: z.string().min(1).default(MODELS.haiku), medium: z.string().min(1).default(MODELS.sonnet), large: z.string().min(1).default(MODELS.sonnet) }).prefault({}),
       stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default(ARCHITECTURE_MODELS),
       laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: MODELS.sonnet, derive: MODELS.sonnet, coverage: MODELS.sonnet, backlog: MODELS.sonnet, answer: MODELS.sonnet }),
+      /** The effort of each automatic group, shown beside its model in Settings: the task sizes, the architecture steps and the later cycles. */
+      efforts: z
+        .object({
+          small: z.enum(EFFORT_LEVELS).default('low'),
+          medium: z.enum(EFFORT_LEVELS).default('low'),
+          large: z.enum(EFFORT_LEVELS).default('low'),
+          architecture: z.enum(EFFORT_LEVELS).default('low'),
+          laterCycle: z.enum(EFFORT_LEVELS).default('low'),
+        })
+        .prefault({}),
     })
     .prefault({}),
   /**
@@ -307,19 +317,38 @@ export type Config = z.infer<typeof Config>;
 export const stepModelFor = (routing: Config['routing'], kind: StepKind): string | undefined =>
   routing.stepModels[kind] ?? (kind === 'services-plan' ? routing.stepModels.plan : undefined);
 
-/** The models of the automatic choice, shared by every project: the three task sizes, the architecture steps and the later refinement cycles. */
-export interface AutomaticModels {
-  tiers: { small: string; medium: string; large: string };
-  architecture: string;
-  laterCycle: string;
+/** The model and effort of one automatic row. */
+export interface AutomaticRow {
+  model: string;
+  effort: Effort;
 }
 
-/** Reads the automatic models from the routing settings; a group with no model left in the file shows its default. */
-export const automaticModelsOf = (routing: Config['routing']): AutomaticModels => ({
-  tiers: { small: routing.models.small, medium: routing.models.medium, large: routing.models.large },
-  architecture: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? MODELS.opus,
-  laterCycle: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? MODELS.sonnet,
+/** The rows of the automatic choice, shared by every project: the three task sizes, the architecture steps and the later refinement cycles. */
+export interface AutomaticSettings {
+  tiers: { small: AutomaticRow; medium: AutomaticRow; large: AutomaticRow };
+  architecture: AutomaticRow;
+  laterCycle: AutomaticRow;
+}
+
+/** Reads the automatic rows from the routing settings; a group with no model left in the file shows its default. */
+export const automaticSettingsOf = (routing: Config['routing']): AutomaticSettings => ({
+  tiers: {
+    small: { model: routing.models.small, effort: routing.efforts.small },
+    medium: { model: routing.models.medium, effort: routing.efforts.medium },
+    large: { model: routing.models.large, effort: routing.efforts.large },
+  },
+  architecture: { model: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? MODELS.opus, effort: routing.efforts.architecture },
+  laterCycle: { model: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? MODELS.sonnet, effort: routing.efforts.laterCycle },
 });
+
+/** The automatic model and effort of one step: a step from the second refinement cycle on takes `laterCycleModels`, else `stepModels`. */
+export const automaticStepOf = (routing: Config['routing'], kind: StepKind, cycle = 1): AutomaticRow | undefined => {
+  const later = cycle > 1 ? routing.laterCycleModels[kind] : undefined;
+  if (later) return { model: later, effort: routing.efforts.laterCycle };
+  const model = stepModelFor(routing, kind);
+  if (!model) return undefined;
+  return { model, effort: ARCHITECTURE_KINDS.some((k) => k === kind) ? routing.efforts.architecture : 'low' };
+};
 
 /** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */
 export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets']['step'] {

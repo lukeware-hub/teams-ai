@@ -501,28 +501,53 @@ describe('runAgentStep', () => {
     expect(await fs.readFile(path.join(dir, 'steps', '2', 'prompt.md'), 'utf8')).toBe(devResumePrompt('gate failed'));
   });
 
-  it('runs a step kind on the model routing.stepModels names, ahead of the role profile and behind an explicit model', async () => {
+  it('runs a step kind on the model routing names, ahead of the role profile and behind an explicit model', async () => {
     const models: string[] = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
     d.runStep = (async (req) => {
       models.push(req.model);
       return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
     }) as AgentStepDeps['runStep'];
-    d.stepModel = (kind) => (kind === 'dev' ? 'haiku' : undefined);
+    d.stepSetting = (kind) => (kind === 'dev' ? { model: 'haiku', effort: 'low' } : undefined);
     const req = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
     await runAgentStep(req, d);
     await runAgentStep({ ...req, model: 'opus' }, d);
-    d.stepModel = () => undefined;
+    d.stepSetting = () => undefined;
     await runAgentStep(req, d);
     // The fake role profile is `{ model: 'sonnet' }`.
     expect(models).toEqual(['haiku', 'opus', 'sonnet']);
   });
 
-  it('tells the step model chooser the attempt, so refinement can route by cycle', async () => {
+  it('runs an automatic step at the effort routing sets, even above the model-policy limit for its model', async () => {
+    const seen: Array<{ model?: string; effort?: string }> = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      seen.push({ model: req.model, effort: req.effort });
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.stepSetting = () => ({ model: 'haiku', effort: 'medium' });
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(seen).toEqual([{ model: 'haiku', effort: 'medium' }]);
+  });
+
+  it('runs a routed Dev step at the routed effort, while a requested effort keeps the model-policy limit', async () => {
+    const seen: Array<{ model: string; effort?: string }> = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      seen.push({ model: req.model, effort: req.effort });
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    await runAgentStep({ kind: 'dev', role: 'dev', pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'claude-haiku-5-5', routedEffort: 'medium' }, d);
+    await runAgentStep({ kind: 'dev', role: 'dev', pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'claude-haiku-5-5', effort: 'medium' }, d);
+    expect(seen).toEqual([{ model: 'claude-haiku-5-5', effort: 'medium' }, { model: 'claude-haiku-5-5', effort: 'low' }]);
+  });
+
+  it('tells the step setting chooser the attempt, so refinement can route by cycle', async () => {
     const seen: number[] = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
     d.runStep = (async () => ({ ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() })) as AgentStepDeps['runStep'];
-    d.stepModel = (_kind, attempt) => (seen.push(attempt), undefined);
+    d.stepSetting = (_kind, attempt) => (seen.push(attempt), undefined);
     await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 3 }, d);
     expect(seen).toEqual([3]);
   });

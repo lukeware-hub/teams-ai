@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { ARCHITECTURE_KINDS, ConfigError, LATER_CYCLE_KINDS, loadConfig, type AgentSetting, type AutomaticModels, type Config, type SettingKey } from '../config/config.js';
+import { ARCHITECTURE_KINDS, ConfigError, LATER_CYCLE_KINDS, loadConfig, type AgentSetting, type AutomaticSettings, type Config, type SettingKey } from '../config/config.js';
 import { updateFileAtomic } from '../core/atomic-write.js';
 import { expandHome } from '../orchestrator/workspace.js';
 
@@ -76,16 +76,18 @@ export async function setAgentSetting(projectId: string, key: SettingKey, settin
   });
 }
 
-/** Sets the automatic models of every project: the task sizes, the architecture steps and the later refinement cycles. The other routing settings stay. */
-export async function setAutomaticModels(models: AutomaticModels, home?: string): Promise<Config> {
+/** Sets the automatic rows of every project: the task sizes, the architecture steps and the later refinement cycles. The other routing settings stay. */
+export async function setAutomaticSettings(settings: AutomaticSettings, home?: string): Promise<Config> {
   const kinds = (group: readonly string[], model: string) => Object.fromEntries(group.map((kind) => [kind, model]));
+  const { tiers, architecture, laterCycle } = settings;
   return updateUserConfig(home, (raw, cfg) => ({
     ...raw,
     routing: {
       ...cfg.routing,
-      models: models.tiers,
-      stepModels: { ...cfg.routing.stepModels, ...kinds(ARCHITECTURE_KINDS, models.architecture) },
-      laterCycleModels: { ...cfg.routing.laterCycleModels, ...kinds(LATER_CYCLE_KINDS, models.laterCycle) },
+      models: { small: tiers.small.model, medium: tiers.medium.model, large: tiers.large.model },
+      efforts: { small: tiers.small.effort, medium: tiers.medium.effort, large: tiers.large.effort, architecture: architecture.effort, laterCycle: laterCycle.effort },
+      stepModels: { ...cfg.routing.stepModels, ...kinds(ARCHITECTURE_KINDS, architecture.model) },
+      laterCycleModels: { ...cfg.routing.laterCycleModels, ...kinds(LATER_CYCLE_KINDS, laterCycle.model) },
     },
   }));
 }

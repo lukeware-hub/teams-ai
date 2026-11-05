@@ -74,7 +74,7 @@ export interface TaskRunnerDeps {
   /** Model name for a tier on this role's Claude profile; null when the role runs on another provider. */
   tierModel: (role: Role, tier: ModelTier) => string;
   /** R11.13 slice 6: when the decision layer gives no tier, the task's own size picks one (config `routing`); absent means off. */
-  routing?: { tiers: 'off' | 'shadow' | 'on'; models: Record<ModelTier, string> };
+  routing?: { tiers: 'off' | 'shadow' | 'on'; models: Record<ModelTier, string>; efforts: Record<ModelTier, Effort> };
   /** The model and effort the user fixed for a role; absent means none is fixed. */
   agentSetting?: (role: Role) => Promise<AgentSetting | undefined>;
   policy: PolicyConfig;
@@ -174,7 +174,7 @@ export class TaskRunner {
     return { id: this.devSession.id, resumePrompt: devResumePrompt(feedback) };
   }
 
-  private async stepOverrides(role: Role, attempt: number): Promise<{ model?: string; effort?: Effort }> {
+  private async stepOverrides(role: Role, attempt: number): Promise<{ model?: string; effort?: Effort; routedEffort?: Effort }> {
     // One decision per attempt serves both the Dev and the Test step (in-memory; a resume decides again).
     if (this.tierAttempt !== attempt) {
       this.tierChoice = await chooseModelTier(this.task.def, attempt, this.deps.decider, this.ctx);
@@ -192,7 +192,8 @@ export class TaskRunner {
       this.routedAttempt = attempt;
       await this.deps.journal.fact(OrchEvent.ModelTierChosen, { taskId: this.taskId, attempt, tier: routed.tier, model: routing.models[routed.tier!], applied, source: routed.source });
     }
-    return applied && role !== 'test' ? { model: routing.models[routed.tier!] } : {};
+    if (!applied || role === 'test') return {};
+    return { model: routing.models[routed.tier!], routedEffort: routing.efforts[routed.tier!] };
   }
 
   private get ctx(): DecideContext {

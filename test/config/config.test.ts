@@ -28,6 +28,11 @@ describe('loadConfig', () => {
     expect(cfg.routing.models).toEqual({ small: 'claude-haiku-5-5', medium: 'claude-sonnet-5-5', large: 'claude-sonnet-5-5' });
   });
 
+  it('runs every automatic group at low effort unless the owner sets another', () => {
+    expect(loadConfig({}).routing.efforts).toEqual({ small: 'low', medium: 'low', large: 'low', architecture: 'low', laterCycle: 'low' });
+    expect(loadConfig({ routing: { efforts: { architecture: 'max' } } }).routing.efforts.architecture).toBe('max');
+  });
+
   it('merges partial overrides without dropping sibling defaults', () => {
     const cfg = loadConfig({ roles: { test: { model: 'haiku' } }, github: { owner: 'acme' } });
     expect(cfg.roles.test).toEqual({ model: 'haiku' });
