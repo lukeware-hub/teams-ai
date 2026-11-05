@@ -1734,7 +1734,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 | Journal que não pôde ser lido | Chip de aviso `N registros não lidos`, com ajuda: o total pode estar abaixo do real. |
 | Jev fora de projetos em período curto | `Indisponível neste período`. |
 | Chat sem registro de custo | Ajuda: respostas que falharam não têm custo registrado. |
-| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
+| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
 
 ### 33.6 Ajuda (botões de informação)
 
