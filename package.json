@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:budget": "tsx scripts/test-budget.ts",
     "refine:metrics": "tsx scripts/refine-metrics.ts",
+    "run:report": "tsx scripts/run-report.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "teams-ai": "tsx --no-warnings=ExperimentalWarning server/cli.ts",

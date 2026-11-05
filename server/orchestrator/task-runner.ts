@@ -397,7 +397,12 @@ export class TaskRunner {
     // A Dev that changes nothing after its commit failed a gate would fail the same gate again: the SM answers once, and a repeat fails the attempt.
     if (touched.length === 0 && (await this.repeatsLastCommit())) {
       const last = tail(this.deps.journal.lastFeedback(this.taskId) ?? '');
-      if (this.unchangedRounds > 0) return this.fail('code', `The Dev changed nothing again after the SM answered. Last feedback:\n${last}`);
+      if (this.unchangedRounds > 0) {
+        // Another attempt cannot help: the gate fails for a cause the Dev cannot change (live: gitleaks on node_modules, prettier on home dotfiles).
+        const reason = `The Dev changed nothing again after the SM answered, so the gate fails for a cause the code cannot fix. Last feedback:\n${last}`;
+        await this.askOwner(task.def, reason);
+        return this.block(reason);
+      }
       this.unchangedRounds += 1;
       return this.specGap(task.def, `Your last attempt changed nothing, so the same commit fails the same gates again. Last feedback:\n${last}\nName the defect: when a gate command is wrong, answer with gateFix; otherwise change the code.`);
     }
@@ -414,7 +419,7 @@ export class TaskRunner {
     if (changed.length === 0) {
       // An earlier run already delivered it (live: a replanned task whose pieces merged across two runs, or a new
       // version re-planning a delivered task); Phase 4 still proves its criteria.
-      if (this.deps.deliveredBefore.has(this.taskId) || (await this.alreadyOnMain(task.def))) {
+      if (this.deps.deliveredBefore.has(this.taskId) || task.def.origin === 'fix' || (await this.alreadyOnMain(task.def))) {
         await this.deps.journal.fact(OrchEvent.AlreadyOnMain, { taskId: this.taskId, paths: task.def.affectedPaths, summary: value.summary });
         await removeWorktree(this.deps.ws.repo, this.worktree, this.deps.exec);
         return this.transition('merged');
@@ -951,6 +956,7 @@ export class TaskRunner {
     // Validate before the journal reduces the replan: a bad replacement would be rejected by the reducer
     // after it was written, corrupting the log. Structural checks only; AC coverage of the whole plan is
     // not the replan's concern (spec §4.6: the replacements cover the original task's criteria).
+    value.replacements = this.expandShortDependencies(value.replacements);
     const errors = this.replanErrors(value.replacements);
     if (errors.length > 0) {
       if (opts.early) return false;
@@ -968,6 +974,17 @@ export class TaskRunner {
     return { ...value, replacements };
   }
 
+  /** The SM may write `T2` for the task `T2-name`: a short id that matches exactly one known or new task becomes that task's id. */
+  private expandShortDependencies(replacements: PlanTask[]): PlanTask[] {
+    const ids = [...this.deps.journal.state.tasks.keys(), ...replacements.map((r) => r.id)];
+    const full = (d: string): string => {
+      if (ids.includes(d)) return d;
+      const matches = ids.filter((id) => id.startsWith(`${d}-`));
+      return matches.length === 1 ? matches[0]! : d;
+    };
+    return replacements.map((r) => ({ ...r, dependsOn: r.dependsOn.map(full) }));
+  }
+
   private replanErrors(replacements: readonly PlanTask[]): string[] {
     const errors: string[] = [];
     const known = new Set(this.deps.journal.state.tasks.keys());
@@ -980,7 +997,7 @@ export class TaskRunner {
       if (known.has(r.id)) errors.push(`replacement ${r.id} reuses an existing task id`);
       for (const d of r.dependsOn) {
         if (d === this.taskId) errors.push(`${r.id} depends on the superseded task ${this.taskId}`);
-        else if (!known.has(d) && !newIds.has(d)) errors.push(`${r.id} depends on unknown task ${d}`);
+        else if (!known.has(d) && !newIds.has(d)) errors.push(`${r.id} depends on unknown task ${d}; valid ids: ${[...known, ...newIds].join(', ')}`);
       }
     }
     const wanted = new Set(this.task.def.criteriaRefs);
