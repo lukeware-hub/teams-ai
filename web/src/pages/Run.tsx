@@ -549,6 +549,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const phaseList = phases(unique);
   const activity = phaseActivity(unique);
   // The trigger gets focus back when the dialog closes.
+  const [readmeOpen, setReadmeOpen] = useState(false);
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
   // A link from the repository dashboard names the task to open: `?task=<id>` opens its dialog once, then the parameter goes.
   const [params, setParams] = useSearchParams();
@@ -908,7 +909,14 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 <section className="card" data-testid="readme">
                   {/* The title keeps its width; the path and the button wrap below it on narrow screens. */}
                   <header data-testid="run-readme-head" className="flex-wrap gap-3">
-                    <h2 data-testid="run-readme-title" className="basis-auto">README do projeto</h2>
+                    <h2 data-testid="run-readme-title" className="basis-auto">
+                      {detail.readme ? (
+                        <button type="button" data-testid="readme-toggle" className="m-0 inline-flex h-auto min-w-[auto] items-center gap-2 border-0 bg-transparent p-0 text-inherit [font:inherit] [letter-spacing:inherit] [text-transform:inherit] hover:bg-transparent" aria-expanded={readmeOpen} aria-controls="readme-body" onClick={() => setReadmeOpen((open) => !open)}>
+                          <span className={`text-ink-soft transition-transform ${readmeOpen ? 'rotate-90' : ''}`}><Icon name="chevron-right" size={16} /></span>
+                          README do projeto
+                        </button>
+                      ) : 'README do projeto'}
+                    </h2>
                     <span data-testid="run-readme-path" className="font-mono text-[0.75rem] text-ink-soft">docs/README.md</span>
                     {readmeAction && !detail.locked ? (
                       <ActionButton className="secondary h-10 px-3 text-[0.8125rem]" data-testid="readme-generate" busy={readmeAction.busy} onClick={readmeAction.onGenerate} icon={<Icon name="file" size={14} />}>
@@ -918,7 +926,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                   </header>
                   {readmeAction?.error ? <p className="error" data-testid="readme-error">{readmeAction.error}</p> : null}
                   {detail.readme ? (
-                    <Markdown source={detail.readme} />
+                    readmeOpen ? <div id="readme-body"><Markdown source={detail.readme} /></div> : null
                   ) : (
                     <p className="hint" data-testid="readme-empty">
                       Nenhum README gerado ainda. O Scrum Master (sm) escreve o resumo do projeto na fase de relatório, ao fim da run.

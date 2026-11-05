@@ -134,7 +134,11 @@ describe('RunView', () => {
     expect(screen.getByTestId('readme-empty').textContent).toContain('sm');
     unmount();
     render(view({ detail: { ...detail, readme: '# Hello App\n\n- GET /hello' } }));
+    expect(screen.getByTestId('readme').querySelector('h3')).toBeNull();
+    fireEvent.click(screen.getByTestId('readme-toggle'));
     expect(screen.getByTestId('readme').querySelector('h3')!.textContent).toBe('Hello App');
+    fireEvent.click(screen.getByTestId('readme-toggle'));
+    expect(screen.getByTestId('readme').querySelector('h3')).toBeNull();
   });
   it('offers the sm README action, disabled while the writer run is going', () => {
     const onGenerate = vi.fn();
