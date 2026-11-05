@@ -137,4 +137,16 @@ describe('ClaudeEscalateBackend', () => {
     }), HASH);
     expect(await wrong.evaluate({ state: 'S', questions, escalateTo: 'test' })).toMatchObject({ ok: false, reason: 'invalid' });
   });
+
+  it('books no usage when the step never reached the model (environment failure)', async () => {
+    const env = new ClaudeEscalateBackend(async () => ({
+      ok: false,
+      failure: 'environment',
+      errors: ['spawn failed'],
+      summary,
+      sandboxDisabled: false,
+    }), HASH);
+    const r = await env.evaluate({ state: 'S', questions, escalateTo: 'test' });
+    expect(r).toEqual({ ok: false, reason: 'unavailable', message: 'environment: spawn failed' });
+  });
 });
