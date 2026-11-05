@@ -352,8 +352,11 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     const request = journal.state.extension;
     const outline = items.map((i) => ({ key: i.key, title: i.title, rank: i.rank, dependsOn: [...i.dependsOn], started: kept.has(i.key), modules: (preplans[i.key]?.preplan?.modules ?? []).map((m) => m.name) }));
     const inputHash = sha256(canonicalJson({ request: request.text, outline }));
-    // An impact that broke a rule (no usable impact) is measured again on the next run, not kept for an unchanged outline.
-    if (journal.state.impact?.inputHash !== inputHash || journal.state.impact?.impact === null) {
+    // A usable impact of an unchanged outline is kept, restamped with this cycle so the closing sees it current; one that broke a rule is measured again.
+    const previousImpact = journal.state.impact;
+    if (previousImpact?.inputHash === inputHash && previousImpact.impact != null) {
+      if (previousImpact.cycle !== cycle) await journal.fact(RefineEvent.ImpactDerived, { cycle, inputHash, impact: previousImpact.impact, issues: [] });
+    } else {
       const scope = { known: new Set(items.map((i) => i.key)), kept, requestId: request.requestId };
       let issues: string[] = [];
       let impact: Impact | null = null;

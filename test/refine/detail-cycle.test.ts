@@ -842,6 +842,25 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     expect(impacts[0]!.data).toMatchObject({ cycle: 2, issues: [], impact: { summary: 'O pedido acrescenta a exportação.' } });
   });
 
+  it('keeps a usable impact of an unchanged outline, restamped with the new cycle, and does not ask the SM again', async () => {
+    const env = await setup();
+    const REQUEST = 'Pedido pedido-1';
+    await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
+    await env.journal.fact(RefineEvent.RequestReceived, { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar em PDF.', at: '2026-11-04T10:00:00.000Z' });
+    const outline = OUTLINE.map((i) => ({ ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: REQUEST }] }));
+    let impactCalls = 0;
+    const agent = fakeAgent(() => outline, (req) => {
+      if (req.kind !== 'impact') return undefined;
+      impactCalls += 1;
+      return ok({ specHash: H, impact: { requestId: 'pedido-1', summary: 'O pedido acrescenta a exportação.', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] } });
+    });
+    await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await env.run(agent, 1);
+    await env.run(agent, 2);
+    expect(impactCalls).toBe(1);
+    expect(env.events.filter((e) => e.type === RefineEvent.ImpactDerived).at(-1)!.data).toMatchObject({ cycle: 2, impact: { summary: 'O pedido acrescenta a exportação.' } });
+  });
+
   it('measures the impact again on the next run when the last one broke a rule', async () => {
     const env = await setup();
     const REQUEST = 'Pedido pedido-1';
