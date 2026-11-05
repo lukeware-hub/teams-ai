@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderCi, renderRelease, validateWorkflow } from '../../server/orchestrator/workflows.js';
+import { renderCi, renderRelease, renderRescan, validateWorkflow } from '../../server/orchestrator/workflows.js';
 import { makeFrozenSpec, makePlan } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec({ specId: 'hello-001' });
@@ -26,6 +26,7 @@ describe('workflow golden files', () => {
   it.each([['node', nodePlan], ['python', pythonPlan], ['go', goPlan], ['rust', rustPlan]] as const)('%s plan renders the committed golden files', async (name, plan) => {
     await expect(renderCi(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-ci.yml`);
     await expect(renderRelease(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-release.yml`);
+    await expect(renderRescan(plan)).toMatchFileSnapshot(`../fixtures/workflows/${name}-image-rescan.yml`);
   });
 
   it.each([['node', nodePlan], ['python', pythonPlan], ['go', goPlan], ['rust', rustPlan]] as const)('%s rendered files pass validation', (_n, plan) => {
@@ -112,5 +113,32 @@ describe('validateWorkflow', () => {
   it('the release image uses the plan image name and least privilege', () => {
     expect(release).toContain('ghcr.io/${{ github.repository_owner }}/todo-api');
     expect(release.match(/write/g)).toHaveLength(1);
+  });
+});
+
+describe('image scan policy', () => {
+  it('scans the image before it pushes and blocks on HIGH and CRITICAL', () => {
+    const text = renderRelease(nodePlan);
+    expect(validateWorkflow('release', text, nodePlan)).toEqual([]);
+    expect(text.indexOf('--severity HIGH,CRITICAL')).toBeLessThan(text.indexOf('push: true'));
+    expect(text).toContain('--exit-code 1');
+    expect(text).toContain('cyclonedx');
+  });
+
+  it('rejects a release without the image scan', () => {
+    const text = renderRelease(nodePlan).replace('--exit-code 1', '--exit-code 0');
+    expect(validateWorkflow('release', text, nodePlan).join(' ')).toContain('release is missing the image scan');
+  });
+
+  it('rejects a release that pushes before it scans', () => {
+    const early = renderRelease(nodePlan).replace('push: false', 'push: true');
+    expect(validateWorkflow('release', early, nodePlan).join(' ')).toContain('release must scan the image before it pushes');
+  });
+
+  it('renders a weekly rescan that opens an issue and holds issues: write only there', () => {
+    const text = renderRescan(nodePlan);
+    expect(validateWorkflow('rescan', text, nodePlan)).toEqual([]);
+    expect(text).toContain('cron');
+    expect(validateWorkflow('release', text, nodePlan).join(' ')).toContain('issues: write is not allowed');
   });
 });

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { SecurityOutput } from '../../server/agents/outputs.js';
+import { blockingFindings, SecurityOutput } from '../../server/agents/outputs.js';
 
 /** The part of a runStep outcome the verdict reads. */
 type Outcome = { ok: true; value: unknown } | { ok: false; failure: string; errors: readonly string[] };
@@ -18,4 +18,17 @@ export function secSmokeProblems(outcome: Outcome, vulnerableFile: string): stri
   // The agent may write the path relative, with ./ or absolute; the temp directory holds only the seeded file.
   if (files.some((f) => path.basename(f) === vulnerableFile)) return [];
   return [files.length === 0 ? `the sec reply has no findings, yet ${vulnerableFile} is vulnerable on purpose` : `no finding on ${vulnerableFile} (findings are on: ${files.join(', ')})`];
+}
+
+/**
+ * Verdict of one seeded case: a flawed case must come back with a critical or high finding on its file; a clean case
+ * must come back with no critical or high finding at all. Empty when it does.
+ */
+export function secSeededProblems(outcome: Outcome, file: string, flawed: boolean): string[] {
+  if (!outcome.ok) return [`the sec step failed (${outcome.failure}): ${outcome.errors.slice(0, 3).join('; ') || 'no detail'}`];
+  const reply = SecurityOutput.safeParse(outcome.value);
+  if (!reply.success) return ['the sec reply does not match SecurityOutput'];
+  const blocking = blockingFindings(reply.data);
+  if (!flawed) return blocking.length === 0 ? [] : [`false alarm: ${blocking.map((f) => `${f.severity} on ${f.file}`).join(', ')}`];
+  return blocking.some((f) => path.basename(f.file) === file) ? [] : [`no critical or high finding on ${file} (findings: ${reply.data.findings.map((f) => `${f.severity} on ${f.file}`).join(', ') || 'none'})`];
 }

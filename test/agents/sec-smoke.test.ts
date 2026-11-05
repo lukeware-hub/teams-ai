@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { secSmokeProblems } from '../../scripts/smoke/sec-check.js';
+import { secSeededProblems, secSmokeProblems } from '../../scripts/smoke/sec-check.js';
+import { SEC_CASES } from '../../scripts/smoke/sec-cases.js';
 
 const HASH = `sha256:${'a'.repeat(64)}`;
 const finding = (file: string) => ({ file, line: 2, severity: 'critical', category: 'command injection', problem: 'name reaches a shell', fix: 'use execFile with an argument array' });
@@ -40,5 +41,24 @@ describe('sec smoke verdict', () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('greet.js');
     expect(problems[0]).toContain('package.json');
+  });
+});
+
+describe('sec seeded verdict', () => {
+  const reviewed = (...found: Array<[string, string]>) => ({ ok: true as const, value: { specHash: HASH, decision: 'changes', findings: found.map(([file, severity]) => ({ file, line: 1, severity, category: 'x', problem: 'p', fix: 'f' })) } });
+
+  it('passes a flawed case with a blocking finding on its file and fails one with only a medium', () => {
+    expect(secSeededProblems(reviewed(['./server.js', 'high']), 'server.js', true)).toEqual([]);
+    expect(secSeededProblems(reviewed(['server.js', 'medium']), 'server.js', true)[0]).toContain('no critical or high finding on server.js');
+  });
+
+  it('passes a clean case with no blocking finding and flags a false alarm', () => {
+    expect(secSeededProblems(reviewed(['notes.js', 'low']), 'notes.js', false)).toEqual([]);
+    expect(secSeededProblems(reviewed(['notes.js', 'high']), 'notes.js', false)[0]).toContain('false alarm');
+  });
+
+  it('seeds the four named flaws and one clean control', () => {
+    expect(SEC_CASES.filter((c) => c.flawed).map((c) => c.name)).toEqual(['csrf', 'idor', 'cors', 'ssrf']);
+    expect(SEC_CASES.filter((c) => !c.flawed)).toHaveLength(1);
   });
 });

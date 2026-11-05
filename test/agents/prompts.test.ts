@@ -18,6 +18,23 @@ describe('agent prompts for a project of services (R12.6)', () => {
     expect(agent('front')).toContain("In a service's repository the pack carries the project's design.md: follow it there and never create or edit docs/design.md in that repository");
   });
 
+  it('make Sec check the OWASP groups, ASVS, MASVS and a standard-based category', () => {
+    const sec = agent('sec');
+    for (const topic of ['CSRF', 'Content Security Policy', 'secure headers', 'ASVS', 'MASVS', 'CORS', 'output encoding', 'rate limit', 'SSRF', 'IDOR', 'mass assignment', 'A01-broken-access-control / CWE-639']) {
+      expect(sec).toContain(topic);
+    }
+    expect(sec).toContain('a task goes back to Dev if and only if it has at least one `critical` or `high` finding');
+  });
+
+  it('make DevOps guarantee image security and Sec check the container hardening', () => {
+    const devops = agent('devops');
+    for (const topic of ['HIGH` and `CRITICAL', 'non-root `USER`', 'no secret in `ENV`', '.dockerignore', '.trivyignore', 'expiry date at most 30 days', 'cap_drop: [ALL]', 'no-new-privileges:true', 'no Docker socket mount', 'Never touch `.github/workflows`']) {
+      expect(devops).toContain(topic);
+    }
+    const sec = agent('sec');
+    for (const topic of ['Containers:', 'a mounted Docker socket', 'image scan was weakened or removed']) expect(sec).toContain(topic);
+  });
+
   it('let a vulnerability with no fixed version pass the dependency scan only with a reason and a short expiry, which Sec holds the line on', () => {
     // Live: GO-2026-5932 in golang.org/x/crypto, which nats.go pulls in, has no fixed version, so no upgrade could pass the gate.
     expect(agent('dev')).toContain('[[IgnoredVulns]] entry in osv-scanner.toml at the repository root');

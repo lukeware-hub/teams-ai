@@ -6,7 +6,7 @@ import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { Intent } from '../../server/orchestrator/events.js';
 import { Run, type RunDeps } from '../../server/orchestrator/run.js';
-import { renderCi, renderRelease, CI_PATH, RELEASE_PATH } from '../../server/orchestrator/workflows.js';
+import { renderCi, renderRelease, CI_PATH, RELEASE_PATH, RESCAN_PATH } from '../../server/orchestrator/workflows.js';
 import { worktreeDir } from '../../server/orchestrator/workspace.js';
 import { runStep } from '../../server/runner/step.js';
 import { makeFrozenSpec, makePlan, makeProject } from '../fixtures/contracts.js';
@@ -66,8 +66,8 @@ describe('workflow bootstrap (R8.3)', () => {
     await run.close();
   });
 
-  it('opens no PR when both files already exist and removes the docs worktree', { timeout: 60_000 }, async () => {
-    remote = await makeRemote({ 'README.md': 'seed', [CI_PATH]: 'a: 1\n', [RELEASE_PATH]: 'b: 2\n' });
+  it('opens no PR when all three files already exist and removes the docs worktree', { timeout: 60_000 }, async () => {
+    remote = await makeRemote({ 'README.md': 'seed', [CI_PATH]: 'a: 1\n', [RELEASE_PATH]: 'b: 2\n', [RESCAN_PATH]: 'c: 3\n' });
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     const gh = new FakeGh().install(exec);
     const d = deps(exec);
