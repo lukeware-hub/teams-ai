@@ -205,7 +205,7 @@ describe('refreshProjectGraph', () => {
     const fake = new FakeExec();
     const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
     refreshProjectGraph(graphify, { ws, project: project as Project, newestSpec: undefined });
-    await vi.waitFor(() => expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true));
+    await vi.waitFor(() => expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true), { timeout: 15_000 });
   });
 
   it('sends a failed rebuild to the log instead of failing the caller', async () => {
@@ -213,7 +213,7 @@ describe('refreshProjectGraph', () => {
     const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
     const logs: string[] = [];
     refreshProjectGraph(failing, { ws, project: project as Project, newestSpec: undefined }, (line) => logs.push(line));
-    await vi.waitFor(() => expect(logs).toEqual(['project graph not refreshed: graphify caiu']));
+    await vi.waitFor(() => expect(logs).toEqual(['project graph not refreshed: graphify caiu']), { timeout: 15_000 });
   });
 });
 

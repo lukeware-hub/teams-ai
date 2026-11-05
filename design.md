@@ -1671,19 +1671,19 @@ Modo: **Operate.** A pessoa quer saber quanto foi gasto, onde, e qual agente gas
 │ ── │ Quanto cada projeto gastou, onde e com qual agente.              │
 │ ▤  │ ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )                         │
 │ $  │ ┌ Total ───────┐┌ Refinamento ┐┌ Desenvolvimento ┐┌ Chat ──────┐ │
-│ ▢  │ │ US$ 39,67    ││ US$ 6,10    ││ US$ 33,20       ││ US$ 0,12   │ │
+│ ▢  │ │ US$ 39,6700  ││ US$ 6,1000  ││ US$ 33,2000     ││ US$ 0,1200 │ │
 │ ⚙  │ │ 5,7 mi tokens││ 15%         ││ 84%             ││ 1%         │ │
 │ ☾  │ └──────────────┘└─────────────┘└─────────────────┘└────────────┘ │
 │    │ ┌ Por projeto ───────────────────────────────────────────────┐   │
 │    │ │ Projeto  Refinamento  Desenvolvimento  Chat  Total  Execuç.│   │
-│    │ │ kayron…  US$ 3,10     US$ 20,10        0,05  23,25   31    │   │
+│    │ │ kayron…  US$ 3,1000   US$ 20,1000      0,0500  23,2500 31  │   │
 │    │ │          ▇▇▇          ▇▇▇▇▇▇▇▇▇▇▇▇                         │   │
 │    │ └────────────────────────────────────────────────────────────┘   │
 │    │ ┌ Por agente ──────────────────┐┌ Por modelo ───────────────┐     │
-│    │ │ Refinamento · po  US$ 2,00 ▇▇ ││ opus   US$ 30,00 ▇▇▇▇▇▇▇ │     │
-│    │ │ Desenvolv.  · dev US$ 15,00 ▇▇││ sonnet US$  8,00 ▇▇      │     │
+│    │ │ Refinamento · po US$ 2,0000 ▇▇││ opus   US$ 30,0000▇▇▇▇▇▇▇│     │
+│    │ │ Desenvolv. · dev US$ 15,0000▇▇││ sonnet US$  8,0000 ▇▇    │     │
 │    │ └──────────────────────────────┘└───────────────────────────┘     │
-│    │ Jev fora de projetos: US$ 0,40 (i)    2 journals não lidos (i)   │
+│    │ Jev fora de projetos: US$ 0,4000 (i)  2 journals não lidos (i)   │
 └────┴──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1696,7 +1696,7 @@ Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
 ( Hoje ) ( 7 dias ) ( 30 dias ) ( Tudo )
 ┌ Total ┐ ┌ Refinamento ┐ ┌ Desenvolvimento ┐ ┌ Chat ┐
 ┌─ Refinamento ───────────────────┐ ┌─ Desenvolvimento ─────────────────┐
-│ US$ 3,10 · 18 steps          (i)│ │ US$ 20,10 · 212 steps          (i)│
+│ US$ 3,1000 · 18 steps        (i)│ │ US$ 20,1000 · 212 steps        (i)│
 │ Por agente  po ▇▇ sm ▇ front ▇  │ │ Por agente  dev ▇▇▇▇ test ▇▇ sec ▇│
 │ Por modelo  …                   │ │ Por modelo  …                     │
 │ Por tipo    docs ▇ spec ▇ plano │ │ Por fase    Tarefas ▇▇▇ Plano ▇ … │
@@ -1709,7 +1709,7 @@ Projetos › kayron-hub › Custos          Atualizado às 10:42  [ Atualizar ]
 │ Data  Etapa  Spec  Run  Repo  Tarefa  Agente  Fase  Modelo  Tokens US$│
 │                                                      < 1 2 3 … >     │
 └───────────────────────────────────────────────────────────────────────┘
-Chat: US$ 0,12 · 14 respostas
+Chat: US$ 0,1200 · 14 respostas
 ```
 
 Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abaixo, `Por spec` (uma linha por spec com as duas colunas de custo), a tabela paginada de `Steps` com filtros e busca, e a linha de Chat.

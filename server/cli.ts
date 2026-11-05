@@ -457,7 +457,7 @@ export async function main(io: CliIo, factory: Factory = defaultFactory, hooks: 
       else {
         io.stdout(`run ${String(f.run)}: ${state.status}`);
         for (const t of state.tasks) io.stdout(`  ${t.id.padEnd(16)} ${t.state.padEnd(13)} attempts=${t.attempts}`);
-        io.stdout(`tokens: in=${state.tokens.inputTokens} out=${state.tokens.outputTokens} cost=$${state.tokens.costUsd}`);
+        io.stdout(`tokens: in=${state.tokens.inputTokens} out=${state.tokens.outputTokens} cost=$${state.tokens.costUsd.toFixed(4)}`);
       }
       return 0;
     }
