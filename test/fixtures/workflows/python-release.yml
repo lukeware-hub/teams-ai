@@ -29,6 +29,28 @@ jobs:
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
+      - name: Build to scan
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: image-scan:local
+      - name: Scan the image
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":/work -w /work aquasec/trivy:0.75.0 image --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+        env:
+          IMAGE: image-scan:local
+      - name: List the image components
+        if: always()
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":/work -w /work aquasec/trivy:0.75.0 image --format cyclonedx --output sbom.cdx.json "$IMAGE"
+        env:
+          IMAGE: image-scan:local
+      - name: Keep the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

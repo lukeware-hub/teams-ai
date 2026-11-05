@@ -169,6 +169,12 @@ describe('settings directory protection', () => {
     expect(sec.body).toMatch(/`medium` and `low` findings never block/);
   });
 
+  it('the sec prompt covers the OWASP groups, the standards and a CWE category, and keeps rate limiting as a non-blocking finding', async () => {
+    const { sec } = await loadAgents(AGENTS_DIR);
+    for (const topic of ['A01 Broken access control', 'A10 SSRF', 'ASVS', 'MASVS', 'CSRF', 'CWE-NNN']) expect(sec.body).toContain(topic);
+    expect(sec.body).toMatch(/missing rate limit on login, password reset or an expensive public endpoint is `medium` and never blocks/);
+  });
+
   it('the sec prompt names the notice the task runner appends to a cut diff and what to do about it', async () => {
     const { sec } = await loadAgents(AGENTS_DIR);
     expect(sec.body).toContain('[diff truncated');
