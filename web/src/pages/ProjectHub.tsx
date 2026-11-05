@@ -20,7 +20,7 @@ import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, mo
 
 const header = 'card flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 max-md:px-4';
 const title = 'm-0 text-[1.375rem] leading-[1.3] text-ink';
-const dir = 'mt-2 block text-[0.8125rem] text-ink-faint wrap-anywhere';
+const dir = 'mt-2 block text-[0.8125rem] text-ink-soft wrap-anywhere';
 const desc = 'mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft';
 // Stat strip: at-a-glance health of the project before scrolling into the lists below.
 const stats = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3';
@@ -247,7 +247,7 @@ export function ProjectHubView(p: {
                         <td data-testid={`project-hub-run-actions-${r.runId}`} className={responsiveCell}>
                           <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2">
                             {r.locked ? (
-                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-faint" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-soft" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
                                 Somente leitura
                               </span>

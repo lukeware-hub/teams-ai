@@ -16,7 +16,7 @@ export function AppFooter() {
             </a>
           </p>
         </div>
-        <p data-testid="app-footer-copyright" className="m-0 border-t border-line pt-3 text-center text-[0.75rem] leading-[1.55] text-ink-faint">
+        <p data-testid="app-footer-copyright" className="m-0 border-t border-line pt-3 text-center text-[0.75rem] leading-[1.55] text-ink-soft">
           © {year} Lukeware Soft Warehouse. Todos os direitos autorais reservados. Código sob licença privada — uso e distribuição não autorizados são proibidos.
         </p>
       </div>

@@ -1473,6 +1473,7 @@ export function RefinementView(p: ViewProps) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
+        <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
         <WizardShell
           stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
           stepKey="request"
