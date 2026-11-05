@@ -122,6 +122,20 @@ describe('SettingsPage', () => {
     expect(screen.getByTestId('in-use-graphify').textContent).toBe('Em uso agora: Sonnet 5.5 · Baixo');
   });
 
+  it('puts the chat and graphify model and effort in the agents\' first two columns, and keeps the mode column empty', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    const graphify = { role: 'graphify', setting: { model: 'claude-sonnet-5-5', effort: 'low' }, inUse: { model: 'claude-sonnet-5-5', effort: 'low' } };
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents: [...agents, graphify] as never });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    await openModelsCollapse();
+    const actions = await screen.findByTestId('settings-agent-actions-graphify');
+    expect(actions.children).toHaveLength(3);
+    expect(actions.children[0].contains(screen.getByLabelText('Modelo de Graphify'))).toBe(true);
+    expect(actions.children[1].contains(screen.getByLabelText('Esforço de Graphify'))).toBe(true);
+    expect(actions.children[2]).toBe(screen.getByTestId('settings-agent-spacer-graphify'));
+  });
+
   it('saves a new graphify effort with its model', async () => {
     mockEnv();
     vi.spyOn(runApi, 'projects').mockResolvedValue([project]);

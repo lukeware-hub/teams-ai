@@ -83,11 +83,13 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
           </>
         ) : null}
         {hasAutomatic ? (
-          <Select wrapperClassName="w-full md:w-[10rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
+          <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={`Modo de ${label}`} value={manual ? 'manual' : 'auto'} onChange={(e) => changeMode(e.target.value)}>
             <option value="auto" data-testid={`settings-agent-mode-auto-${agent.role}`}>Automático</option>
             <option value="manual" data-testid={`settings-agent-mode-manual-${agent.role}`}>Manual</option>
           </Select>
-        ) : null}
+        ) : (
+          <span aria-hidden="true" className="hidden md:block md:w-[8.5rem]" data-testid={`settings-agent-spacer-${agent.role}`} />
+        )}
       </div>
     </li>
   );
