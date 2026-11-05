@@ -11,6 +11,7 @@ import { androidToolchainOf, stackKind, type AndroidToolchain, type StackKind } 
 
 export const CI_PATH = '.github/workflows/ci.yml';
 export const RELEASE_PATH = '.github/workflows/release.yml';
+export const RESCAN_PATH = '.github/workflows/image-rescan.yml';
 
 const ACTIONS = {
   checkout: 'actions/checkout@v4',
@@ -28,6 +29,7 @@ const ACTIONS = {
   dotnet: 'actions/setup-dotnet@v4',
   android: 'android-actions/setup-android@v3',
   upload: 'actions/upload-artifact@v4',
+  script: 'actions/github-script@v7',
 } as const;
 
 type Step = Record<string, unknown>;
@@ -75,14 +77,30 @@ function setupStep(plan: Plan): Step[] {
 export const COMPOSE_UP = 'docker compose up -d --build --wait';
 export const COMPOSE_DOWN = 'docker compose down -v';
 
-/** Commands a CI/release run step may use: every plan command and every plan gate command. */
+const TRIVY_RUN = 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD":/work -w /work aquasec/trivy:0.75.0 image';
+/** Image policy, in one place: HIGH and CRITICAL with a fix block; the list of components is kept as an SBOM. */
+export const IMAGE_SCAN = `${TRIVY_RUN} --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"`;
+export const IMAGE_SBOM = `${TRIVY_RUN} --format cyclonedx --output sbom.cdx.json "$IMAGE"`;
+export const IMAGE_PULL = 'docker pull "$IMAGE"';
+const SCAN_COMMANDS = [IMAGE_SCAN, IMAGE_SBOM, IMAGE_PULL];
+
+/** The scan and SBOM steps of one image, read from the `IMAGE` variable. */
+const imageScanSteps = (image: string): Step[] => [
+  { name: 'Scan the image', run: IMAGE_SCAN, env: { IMAGE: image } },
+  { name: 'List the image components', if: 'always()', run: IMAGE_SBOM, env: { IMAGE: image } },
+  { name: 'Keep the SBOM', if: 'always()', uses: ACTIONS.upload, with: { name: 'sbom', path: 'sbom.cdx.json' } },
+];
+
+/** Commands a CI/release run step may use: every plan command, every plan gate command and the image scan. */
 export function allowedCommands(plan: Plan): Set<string> {
-  const out = new Set<string>();
+  const out = new Set<string>(SCAN_COMMANDS);
   for (const v of Object.values(plan.commands)) if (typeof v === 'string') out.add(v.trim());
   for (const g of plan.gates) out.add(g.command.trim());
   if (e2eCommand(plan)) { out.add(COMPOSE_UP); out.add(COMPOSE_DOWN); }
   return out;
 }
+
+export type WorkflowKind = 'ci' | 'release' | 'rescan';
 
 const dump = (doc: unknown): string => stringify(doc, { lineWidth: 0 });
 
@@ -151,6 +169,8 @@ export function renderApkRelease(plan: Plan, toolchain: AndroidToolchain): strin
   });
 }
 
+const SCAN_TAG = 'image-scan:local';
+
 export function renderRelease(plan: Plan): string {
   const toolchain = androidToolchainOf(planStack(plan));
   if (toolchain) return renderApkRelease(plan, toolchain);
@@ -160,6 +180,8 @@ export function renderRelease(plan: Plan): string {
     { uses: ACTIONS.buildx },
     { name: 'Log in to ghcr.io', uses: ACTIONS.login, with: { registry: 'ghcr.io', username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' } },
     { id: 'meta', uses: ACTIONS.meta, with: { images: image, tags: 'type=sha,prefix=,format=long\ntype=raw,value=latest\n' } },
+    { name: 'Build to scan', uses: ACTIONS.build, with: { context: '.', load: true, push: false, tags: SCAN_TAG } },
+    ...imageScanSteps(SCAN_TAG),
     { name: 'Build and push', uses: ACTIONS.build, with: { context: '.', push: true, tags: '${{ steps.meta.outputs.tags }}', labels: '${{ steps.meta.outputs.labels }}' } },
   ];
   return dump({
@@ -170,8 +192,30 @@ export function renderRelease(plan: Plan): string {
   });
 }
 
-export function renderWorkflows(plan: Plan): Array<{ path: string; kind: 'ci' | 'release'; text: string }> {
-  return [{ path: CI_PATH, kind: 'ci', text: renderCi(plan) }, { path: RELEASE_PATH, kind: 'release', text: renderRelease(plan) }];
+/** Weekly scan of the published image: new vulnerabilities appear after a release. A failure opens an issue. */
+export function renderRescan(plan: Plan): string {
+  const image = `ghcr.io/\${{ github.repository_owner }}/${plan.deploy.image}`;
+  const published = '${{ steps.meta.outputs.tags }}';
+  const issue = "await github.rest.issues.create({ ...context.repo, title: 'Image scan failed', body: `The weekly scan of the published image failed: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}` });";
+  const steps: Step[] = [
+    { uses: ACTIONS.checkout },
+    { name: 'Log in to ghcr.io', uses: ACTIONS.login, with: { registry: 'ghcr.io', username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' } },
+    { id: 'meta', uses: ACTIONS.meta, with: { images: image, tags: 'type=raw,value=latest\n' } },
+    { name: 'Pull the image', run: IMAGE_PULL, env: { IMAGE: published } },
+    ...imageScanSteps(published),
+    { name: 'Open an issue', if: 'failure()', uses: ACTIONS.script, with: { script: issue } },
+  ];
+  return dump({
+    name: 'image-rescan',
+    on: { schedule: [{ cron: '0 6 * * 1' }], workflow_dispatch: {} },
+    permissions: { contents: 'read' },
+    jobs: { rescan: { 'runs-on': 'ubuntu-latest', permissions: { contents: 'read', packages: 'read', issues: 'write' }, steps } },
+  });
+}
+
+export function renderWorkflows(plan: Plan): Array<{ path: string; kind: WorkflowKind; text: string }> {
+  const base = [{ path: CI_PATH, kind: 'ci' as const, text: renderCi(plan) }, { path: RELEASE_PATH, kind: 'release' as const, text: renderRelease(plan) }];
+  return androidToolchainOf(planStack(plan)) ? base : [...base, { path: RESCAN_PATH, kind: 'rescan' as const, text: renderRescan(plan) }];
 }
 
 interface Job { 'runs-on'?: unknown; steps?: unknown; permissions?: unknown }
@@ -181,7 +225,7 @@ interface Job { 'runs-on'?: unknown; steps?: unknown; permissions?: unknown }
  * array means valid. Rules: parses, required keys, least-privilege permissions, actions pinned by major
  * tag, and every `run` step is a command from the plan.
  */
-export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Plan): string[] {
+export function validateWorkflow(kind: WorkflowKind, text: string, plan: Plan): string[] {
   const errors: string[] = [];
   let doc: Record<string, unknown>;
   try {
@@ -208,7 +252,7 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
     const perms = raw.permissions;
     if (perms && typeof perms === 'object') {
       for (const [scope, level] of Object.entries(perms as Record<string, string>)) {
-        if (level === 'write' && !(kind === 'release' && scope === 'packages')) errors.push(`job ${id}: permission ${scope}: write is not allowed`);
+        if (level === 'write' && !((kind === 'release' && scope === 'packages') || (kind === 'rescan' && scope === 'issues'))) errors.push(`job ${id}: permission ${scope}: write is not allowed`);
       }
     }
     for (const step of raw.steps as Step[]) {
@@ -237,6 +281,10 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
       for (const [cmd, label] of [[COMPOSE_UP, 'compose up'], [e2e, 'e2e'], [COMPOSE_DOWN, 'compose down']] as const) if (!runs.includes(cmd.trim())) errors.push(`ci is missing the ${label} step (${cmd})`);
       if (!text.includes('SERVICE_URL')) errors.push('ci e2e step must set SERVICE_URL');
     }
+  } else if (kind === 'rescan') {
+    if (!text.includes('schedule')) errors.push('rescan must run on a schedule');
+    for (const cmd of [IMAGE_PULL, IMAGE_SCAN]) if (!runs.includes(cmd)) errors.push(`rescan is missing the step (${cmd})`);
+    if (!uses.some((u) => u.startsWith('actions/github-script@'))) errors.push('rescan must open an issue when it fails');
   } else {
     const toolchain = androidToolchainOf(planStack(plan));
     if (toolchain) {
@@ -257,6 +305,8 @@ export function validateWorkflow(kind: 'ci' | 'release', text: string, plan: Pla
       if (plan.deploy.image !== undefined && (!text.includes('ghcr.io') || !text.includes(plan.deploy.image))) errors.push(`release must push ghcr.io/<owner>/${plan.deploy.image}`);
       if (!text.includes('secrets.GITHUB_TOKEN')) errors.push('release must log in with GITHUB_TOKEN');
       if (!text.includes('type=sha') || !text.includes('type=raw,value=latest')) errors.push('release must tag the commit sha and latest');
+      if (!runs.includes(IMAGE_SCAN)) errors.push(`release is missing the image scan (${IMAGE_SCAN})`);
+      else if (text.indexOf('run: docker run') > text.indexOf('push: true')) errors.push('release must scan the image before it pushes');
     }
   }
   return errors;

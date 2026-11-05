@@ -7,6 +7,8 @@ export const repoPath = (projectId: string, repoId: string) => `${projectPath(pr
 export const refinePath = (projectId: string, specId: string) => `/refine/${id(projectId)}/${id(specId)}`;
 export const runPath = (runId: string) => `/runs/${id(runId)}`;
 export const validationPath = (runId: string) => `${runPath(runId)}/validation`;
+const COSTS = '/costs';
+export const costsProjectPath = (projectId: string) => `${COSTS}/${id(projectId)}`;
 
 /** Starting an execution always lands on the project, which follows it. */
 export const afterStartPath = executionPath;

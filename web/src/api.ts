@@ -7,6 +7,8 @@ export type { Capped, DashboardItem, DashboardRunRow, DashboardSpec, DashboardTa
 export type { Page, PageRequest } from '@server/api/paging.js';
 import type { Readiness } from '@server/refine/readiness';
 import type { ClaudeUsage } from '@server/usage/claude-usage';
+import type { CostFact, CostPeriod } from '@server/usage/cost-types.js';
+import type { CostOverview, ProjectCosts } from '@server/usage/cost-report.js';
 import type { DocsSyncView } from '@server/refine/docs-sync';
 export type ItemName = 'claude' | 'githubOwner' | 'ghLogin' | 'githubToken' | 'openrouterKey';
 export type LicenseView =
@@ -82,6 +84,14 @@ export const settingsApi = {
 export const usageApi = {
   claude: () => fetch('/api/usage/claude').then((r) => json<ClaudeUsage>(r)),
   jev: () => fetch('/api/usage/jev').then((r) => json<{ costUsd: number }>(r)),
+};
+
+const K = '/api/costs';
+export const costsApi = {
+  overview: (period: CostPeriod) => fetch(`${K}?period=${period}`).then((r) => json<CostOverview>(r)),
+  project: (projectId: string, period: CostPeriod) => fetch(`${K}/projects/${encodeURIComponent(projectId)}?period=${period}`).then((r) => json<ProjectCosts>(r)),
+  steps: (projectId: string, req: PageRequest, filter: { agente: string; spec: string }) =>
+    fetch(`${K}/projects/${encodeURIComponent(projectId)}/steps/page?${pageQuery(req)}&${new URLSearchParams(filter)}`).then((r) => json<Page<CostFact>>(r)),
 };
 
 export interface SpecRow {

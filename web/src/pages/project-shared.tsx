@@ -38,6 +38,11 @@ export const action = {
   danger: `${actionBase} border-bad-line text-bad hover:not-disabled:border-bad hover:not-disabled:bg-bad-soft [&+*]:ml-1`,
 };
 export const panel = 'card grid px-6 pt-5 pb-6 max-md:p-4';
+// Stat strip: at-a-glance figures above the lists, one card per figure.
+export const stats = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3';
+export const stat = 'edge-lit grid gap-[0.2rem] rounded-lg border px-6 py-[0.85rem] max-md:px-4';
+export const statValue = 'text-[1.375rem] leading-[1.1] font-[650] tabular-nums';
+export const statLabel = 'text-[0.8125rem] text-ink-soft';
 export const sectionTitle = 'flex min-w-0 items-center gap-1';
 export const sectionHeading = 'm-0 flex-none text-[0.875rem] font-semibold tracking-normal text-ink normal-case';
 export const emptyState = 'grid justify-items-center gap-1 rounded-lg border border-line bg-surface-sunken px-6 py-10 text-center text-ink-faint [&_svg]:mb-2 [&_p]:m-0 [&_p]:max-w-[52ch] [&_p]:text-ink [&_p+p]:text-ink-soft [&_button]:mt-3';

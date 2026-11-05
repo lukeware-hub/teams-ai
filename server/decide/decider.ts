@@ -108,7 +108,9 @@ export class Decider {
         result = { ok: false, reason: 'unavailable', message: (err as Error).message };
       }
       if (!result.ok) {
-        attempts.push({ ...skipped(name, result.reason), message: redactSecrets(result.message, known) });
+        // A billed call that failed keeps its usage on the attempt and in the decision total, so its cost is not lost.
+        attempts.push({ ...skipped(name, result.reason), usage: result.usage ?? null, message: redactSecrets(result.message, known) });
+        if (result.usage) usage = addUsage(usage, result.usage);
         continue;
       }
       usage = addUsage(usage, result.usage);

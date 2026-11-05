@@ -227,7 +227,7 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
 type Read = Awaited<ReturnType<typeof readProject>>;
 
 /** Each project's readable dirs in registration order: a started refinement registers its own dir, so one project spans several. */
-async function projectDirs(deps: IndexDeps): Promise<Map<string, Array<{ dir: string; read: Read }>>> {
+export async function projectDirs(deps: Pick<IndexDeps, 'cfg'>): Promise<Map<string, Array<{ dir: string; read: Read }>>> {
   const out = new Map<string, Array<{ dir: string; read: Read }>>();
   for (const { dir } of deps.cfg.projects) {
     const read = await readProject(dir).catch(() => null);
@@ -247,7 +247,7 @@ export const progressOf = (status: string): number => ({ done: 4, 'awaiting-vali
  * already delivered beats the stale own one. Another dir's copy only replaces a copy that has not started: a follow-on backlog's
  * run writes its status in its own dir, while the dir that first registered the spec still says planned.
  */
-function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['specs'] {
+export function mergeSpecs(dirs: ReadonlyArray<{ dir: string; read: Read }>): Read['specs'] {
   const out = new Map<string, Read['specs'][number]>();
   const owned = new Set<string>();
   const delivered = (s?: Read['specs'][number]) => s?.status === 'awaiting-validation' || s?.status === 'done';
