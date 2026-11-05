@@ -65,7 +65,8 @@ export interface BackendUsage {
 
 export type BackendResult =
   | { ok: true; answers: Answers; model: string; usage: BackendUsage }
-  | { ok: false; reason: 'unavailable' | 'invalid'; message: string };
+  /** `usage` is set when the call reached the model and was billed, even though it failed. */
+  | { ok: false; reason: 'unavailable' | 'invalid'; message: string; usage?: BackendUsage };
 
 export interface BackendInput {
   state: string;
