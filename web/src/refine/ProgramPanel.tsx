@@ -193,7 +193,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
       <ol className="-mx-3 my-0 list-none p-0" data-testid="program-panel-list">
         {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
           <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
-            <span className="font-mono text-[0.8125rem] text-ink-faint tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
+            <span className="font-mono text-[0.8125rem] text-ink-soft tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
             <div className="grid min-w-0 gap-1" data-testid={`program-panel-body-${i.key}`}>
               <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
               {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
