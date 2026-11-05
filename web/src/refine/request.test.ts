@@ -23,6 +23,11 @@ describe('the trail of a request', () => {
     expect(nodes.map((n) => [n.key, n.state])).toEqual([['pedido', 'done'], ['impacto', 'active'], ['specs', 'todo'], ['pronto', 'todo']]);
   });
 
+  it('does not mark a later step done while the impact is still open, even when its own data is ready', () => {
+    const nodes = requestNodes({ ...base, speckit: { status: 'done', stale: false }, status: 'ready' } as unknown as RefineState);
+    expect(nodes.map((n) => [n.key, n.state])).toEqual([['pedido', 'done'], ['impacto', 'active'], ['specs', 'todo'], ['pronto', 'todo']]);
+  });
+
   it('marks the impact done once the SM made it', () => {
     const nodes = requestNodes({ ...base, impact: { inputHash: 'h', impact: { summary: 's', affected: [], conflicts: [], duplicates: [], dependencies: [], risks: [] }, issues: [] } } as RefineState);
     expect(nodes.find((n) => n.key === 'impacto')?.state).toBe('done');

@@ -26,11 +26,11 @@ export function ClosingDialog({ projectId, specId, summary, busy, onCancel, onAu
         </details>
         <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="closing-hint">Até duas specs rodam ao mesmo tempo. Reparos e novas tentativas são automáticos; o custo aparece como alerta, sem parar o desenvolvimento.</p>
         {!summary.ok && <p role="status" className="m-0 text-[0.8125rem] text-ink-soft" data-testid="closing-unapproved-note">Itens reprovados não travam o início: cada um está na lista acima, com o que falta corrigir.</p>}
-        <div className="flex flex-wrap justify-end gap-2" data-testid="closing-actions">
-          <button type="button" data-testid="closing-cancel" onClick={onCancel}>Cancelar</button>
-          <button type="button" data-testid="closing-authorize" className="primary" disabled={busy} onClick={() => onAuthorize(summary.summaryHash)}>
+        <div className="grid gap-2" data-testid="closing-actions">
+          <button type="button" data-testid="closing-authorize" className="primary w-full" disabled={busy} onClick={() => onAuthorize(summary.summaryHash)}>
             Autorizo iniciar o desenvolvimento
           </button>
+          <button type="button" data-testid="closing-cancel" className="w-full" onClick={onCancel}>Cancelar</button>
         </div>
       </div>
     </Dialog>

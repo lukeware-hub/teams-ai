@@ -6,9 +6,10 @@ import { StepCard } from './StepCard.js';
 import { type ReadyCheck, type ReplanRow } from './request.js';
 
 /** The owner's own words, kept whole, and the section of the project briefing they sit under. */
-export function RequestCard({ text, heading, interpreted, understood }: { text: string; heading: string; interpreted: boolean; understood?: { requirements: number; rules: number } | null }) {
+export function RequestCard({ text, heading, interpreted, concluded = false, understood }: { text: string; heading: string; interpreted: boolean; concluded?: boolean; understood?: { requirements: number; rules: number } | null }) {
+  const chip = concluded ? { label: 'Concluído', tone: 'ok' } : interpreted ? { label: 'Interpretado', tone: 'ok' } : { label: 'Em análise' };
   return (
-    <StepCard id="request" icon="file" tone="accent" title="Seu pedido" info="O texto que você escreveu. Ele fica no briefing do projeto, na seção do pedido, e os agentes o seguem palavra por palavra." owner="Escrito por você" chip={interpreted ? { label: 'Interpretado', tone: 'ok' } : { label: 'Em análise' }} open>
+    <StepCard id="request" icon="file" tone="accent" title="Seu pedido" info="O texto que você escreveu. Ele fica no briefing do projeto, na seção do pedido, e os agentes o seguem palavra por palavra." owner="Escrito por você" chip={chip} open>
       <p data-testid="request-text" className="m-0 whitespace-pre-wrap rounded-lg bg-surface-sunken px-3 py-2.5 text-[0.9375rem] leading-[1.55] text-ink">{text}</p>
       <p className="m-0 mt-2 text-[0.8125rem] text-ink-soft">salvo em briefing.md › {heading}</p>
       {understood && <p data-testid="request-understood" className="m-0 mt-2 text-[0.9375rem] font-medium text-ink">Entendido: {plural(understood.requirements, 'requisito', 'requisitos')} · {plural(understood.rules, 'regra de negócio', 'regras de negócio')}</p>}

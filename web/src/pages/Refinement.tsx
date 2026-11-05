@@ -1477,7 +1477,7 @@ export function RefinementView(p: ViewProps) {
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
           actions={null}
         >
-          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
+          <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
           <ReplanCard rows={replanRows(st)} />
           {backlogScreen()}

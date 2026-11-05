@@ -9,6 +9,13 @@ describe('the cards of a request', () => {
     expect(screen.getByText('salvo em briefing.md › Pedido pedido-1')).toBeTruthy();
   });
 
+  it('shows the request as concluded once the agents are done, not as still in analysis', () => {
+    const { rerender } = render(<RequestCard text="Exportar." heading="Pedido pedido-1" interpreted={false} />);
+    expect(screen.getByTestId('step-card-chip-request').textContent).toBe('Em análise');
+    rerender(<RequestCard text="Exportar." heading="Pedido pedido-1" interpreted={true} concluded />);
+    expect(screen.getByTestId('step-card-chip-request').textContent).toBe('Concluído');
+  });
+
   it('says what the request understood, in the singular or the plural its numbers need', () => {
     const { rerender } = render(<RequestCard text="Exportar." heading="Pedido pedido-1" interpreted understood={{ requirements: 1, rules: 1 }} />);
     expect(screen.getByTestId('request-understood').textContent).toBe('Entendido: 1 requisito · 1 regra de negócio');
