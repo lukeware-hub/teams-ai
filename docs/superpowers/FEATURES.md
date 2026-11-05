@@ -171,6 +171,6 @@ Desenho em `specs/2026-11-04-teams-ai-add-specs-design.md`. O dono escreve o ped
 
 ## 22. Cost dashboard: global and per project, read only
 
-Status: in progress, on branch `feat/cost-dashboard`, with a draft pull request.
+Status: built on 2026-11-05 on branch `feat/cost-dashboard`, with a draft pull request (#49), and running in the local container. The screens are `/costs` and `/costs/:projectId`; the totals come from the journals and chats, and refinement and development are kept apart. Verified: the backend and screen tests pass, the full root and web suites pass (4.082 and 879 tests), the detector is clean, and the screens were measured in Chrome at 390 and 360 px, light and dark. Open: 30 of 55 runs agree with the runs table; the 25 differences are recorded in `BACKLOG.md` as a cost-accounting bug, and the owner decides whether to fix it before the draft is marked ready.
 
 Planned: a new screen `/costs` with a fourth icon in the side bar, and a per-project view `/costs/:projectId`. Both show the cost by stage, kept apart: refinement (the draft journals, with the Jev) and development (the run journals, with the Jev decisions), plus chat. They break cost down by project, repository, spec, run, step, agent role and model, with a period filter (today, 7 days, 30 days, all). The screen reads the journals and does not change how runs behave. The spend limit per project is a later step (item 3 of the owner's order), and it reuses this data.
