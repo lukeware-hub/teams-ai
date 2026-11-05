@@ -11,6 +11,11 @@ describe('the references of an impact', () => {
     expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'readme.md', effect: 'x', action: 'none' }] }), scope)).toEqual([expect.stringContaining('readme.md')]);
   });
 
+  it('accepts a section of one of the five documents, as the request section of briefing.md', () => {
+    expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'briefing.md › Pedido pedido-1', effect: 'acrescenta o pedido', action: 'none' }] }), scope)).toEqual([]);
+    expect(validateImpact(base({ affected: [{ kind: 'doc', ref: 'readme.md › Pedido pedido-1', effect: 'x', action: 'none' }] }), scope)).toEqual([expect.stringContaining('readme.md')]);
+  });
+
   it('names the architecture as one thing only', () => {
     expect(validateImpact(base({ affected: [{ kind: 'architecture', ref: 'architecture', effect: 'sem mudança', action: 'none' }] }), scope)).toEqual([]);
     expect(validateImpact(base({ affected: [{ kind: 'architecture', ref: 'banco', effect: 'x', action: 'review' }] }), scope)).toEqual([expect.stringContaining('arquitetura')]);

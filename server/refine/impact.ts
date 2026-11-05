@@ -65,7 +65,9 @@ export function validateImpact(impact: Impact, scope: { known: ReadonlySet<strin
     for (const k of [d.from, d.to]) if (!scope.known.has(k)) issues.push(`a dependência cita o item ${k}, que o backlog não tem`);
   }
   for (const a of impact.affected) {
-    if (a.kind === 'doc' && !(FIVE_DOCS as readonly string[]).includes(a.ref)) issues.push(`o impacto cita o documento ${a.ref}, que não é um dos cinco documentos`);
+    // A reference may name a section of the document ("briefing.md › Pedido pedido-1"): the document is what must be one of the five.
+    const doc = a.ref.split(' › ')[0]!.trim();
+    if (a.kind === 'doc' && !(FIVE_DOCS as readonly string[]).includes(doc)) issues.push(`o impacto cita o documento ${a.ref}, que não é um dos cinco documentos`);
     if (a.kind === 'architecture' && a.ref !== 'architecture') issues.push(`o impacto cita a arquitetura como ${a.ref}; a arquitetura é uma só`);
   }
   if (impact.summary.split(/[.!?](?:\s|$)/).filter((sentence) => sentence.trim() !== '').length > 2) issues.push('o resumo do impacto tem mais de duas frases');
