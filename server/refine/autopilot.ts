@@ -2,18 +2,19 @@ import { ConflictError, type RefineSession } from './session.js';
 import { resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
 import { type PatchRow, isApproval } from './state.js';
-import { additiveOnly } from './scope-guard.js';
+import { additiveOnly, reroutesEdge } from './scope-guard.js';
 
-/** The documents a request may change without the owner, and only by adding to them: stack and design stay with the owner. */
-const REQUEST_FILES: readonly string[] = ['project.md', 'flow.md', 'briefing.md'];
+/** The documents a request may change without the owner, and only by adding to them: the design stays with the owner. */
+const REQUEST_FILES: readonly string[] = ['project.md', 'flow.md', 'briefing.md', 'stack.md'];
 
 /**
- * Whether a pending suggestion is accepted without the owner. The team alone, on a follow-on request, takes only additions to its
- * project's own documents, so a removal, a rewording, an adjustment's approval or a stack or design change waits for the owner.
+ * Whether a pending suggestion is accepted without the owner. The team alone, on a follow-on request, takes additions to its
+ * project's own documents and the rerouting of a flow edge, so a removal, a rewording, an adjustment's approval or a design change waits for the owner.
  */
 export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, teamAlone: boolean): boolean {
   if (!teamAlone) return true;
-  return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
+  const adds = additiveOnly(p.find, p.replace) || (p.file === 'flow.md' && reroutesEdge(p.find, p.replace));
+  return REQUEST_FILES.includes(p.file) && adds && !isApproval(p);
 }
 
 /** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */

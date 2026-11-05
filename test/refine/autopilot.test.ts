@@ -129,9 +129,15 @@ describe('autoAcceptable: the team accepts on its own what only adds to the proj
     expect(autoAcceptable(patch({ file: 'project.md' }), true)).toBe(true);
   });
 
-  it('leaves to the owner a rewording, a change of stack or design, and an adjustment approval', () => {
+  it('accepts an addition to stack.md, and a flow edge rerouted through new nodes that keeps its ends', () => {
+    expect(autoAcceptable(patch({ file: 'stack.md' }), true)).toBe(true);
+    expect(autoAcceptable(patch({ file: 'flow.md', find: 'F -->|HTTP 200| G', replace: 'F -->|HTTP 200| T{"noite?"}\n  T -->|Não| G\n  T -->|Sim| U["boa-noite"]' }), true)).toBe(true);
+  });
+
+  it('leaves to the owner a rewording, a change of design, a flow edge that loses an end, and an adjustment approval', () => {
     expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), true)).toBe(false);
-    expect(autoAcceptable(patch({ file: 'stack.md' }), true)).toBe(false);
+    expect(autoAcceptable(patch({ file: 'stack.md', replace: 'outro texto' }), true)).toBe(false);
+    expect(autoAcceptable(patch({ file: 'flow.md', find: 'F -->|HTTP 200| G', replace: 'F -->|HTTP 200| T' }), true)).toBe(false);
     expect(autoAcceptable(patch({ file: 'design.md' }), true)).toBe(false);
     expect(autoAcceptable(patch({ find: '', replace: '## Ajuste aprovado: login-ajuste-1\n\ntexto\n' }), true)).toBe(false);
   });

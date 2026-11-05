@@ -29,6 +29,13 @@ export function patchChangesScope(find: string, replace: string): boolean {
   return [...new Set([...before.keys(), ...after.keys()])].some((key) => (before.get(key) ?? 0) !== (after.get(key) ?? 0));
 }
 
+/** One flow edge rerouted through new nodes: every end of the edge it finds stays in the replacement. */
+export function reroutesEdge(find: string, replace: string): boolean {
+  if (!find.includes('-->') || find.includes('\n')) return false;
+  const ends = find.replace(/\|[^|]*\|/g, '').split('-->').map((side) => /^[A-Za-z]\w*/.exec(side.trim())?.[0]);
+  return ends.every((id) => id !== undefined && new RegExp(`\\b${id}\\b`).test(replace));
+}
+
 /** A change that only adds to the text it finds: the find stays whole in the replacement (a clause joined by a comma may take the place of its final mark), and no structure of it is lost. */
 export function additiveOnly(find: string, replace: string): boolean {
   const bare = find.replace(/[.:;]+$/, '');

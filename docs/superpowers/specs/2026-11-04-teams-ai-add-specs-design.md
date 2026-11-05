@@ -17,7 +17,7 @@ Um pedido é um **backlog de acompanhamento** (follow-on): o mesmo motor de refi
 5. A saída do PO mantém todo item do backlog anterior e cita a seção do pedido em cada item novo.
 6. O SM mede o impacto: o que o pedido toca, o que conflita, o que repete, do que depende e os riscos. O impacto é validado (referências existentes, sem ciclo, sem ajuste direto de spec iniciada) e pedido de novo uma vez quando quebra regra.
 7. A chave do plano ignora as seções de pedido: planos de itens não tocados são reaproveitados.
-8. O pedido roda sozinho até "pronto". Aceita sozinho só acréscimos em project.md, flow.md e briefing.md; remoção, reescrita, mudança de stack ou de design e aprovação de ajuste esperam o dono.
+8. O pedido roda sozinho até "pronto". Aceita sozinho acréscimos em project.md, flow.md, briefing.md e stack.md, e o desvio de uma aresta do fluxo que mantém as suas pontas; remoção, reescrita, mudança de design e aprovação de ajuste esperam o dono.
 9. "Iniciar" é sempre o clique do dono. Quando há um programa rodando, o pedido entra nele: os itens novos entram na fila, os pendentes recebem a nova ordem e as dependências, o que começou ou foi entregue fica como está, e a mudança fica no histórico do programa.
 
 ## Limites conhecidos
