@@ -1774,7 +1774,7 @@ Tela `/settings`, dentro do que já existe. Nenhuma forma nova de tela: as linha
 
 ### 34.1 Modelos e esforço, por projeto
 
-A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm só modelo fixo: não há `Automático`. `Graphify` não mostra esforço, porque o graphify não recebe esforço. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
+A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` e `Graphify`, nesta ordem. Os papéis mantêm `Automático` e `Manual`. `Chat` e `Graphify` têm modelo e esforço fixos: não há `Automático`. O esforço de `Graphify` vai ao graphify pela variável `CLAUDE_CODE_EFFORT_LEVEL`. O cabeçalho da seção conta todas as linhas, por exemplo `10 manuais · 10 agentes`.
 
 ### 34.2 Modelos automáticos, globais
 

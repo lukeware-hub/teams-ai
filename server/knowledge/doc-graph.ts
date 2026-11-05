@@ -23,6 +23,8 @@ export interface DocGraphDeps {
   governor: Governor;
   /** The model the extraction runs on: the project's graphify setting. */
   model: string;
+  /** The effort the extraction runs at: the project's graphify setting. */
+  effort: string;
   clock?: () => Date;
 }
 
@@ -68,7 +70,7 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
           args: ['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', outDir],
           cwd: dir,
           timeoutMs: TIMEOUT_MS,
-          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: deps.model },
+          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: deps.model, CLAUDE_CODE_EFFORT_LEVEL: deps.effort },
         }),
       );
     } finally {
