@@ -86,6 +86,8 @@ export const requestDraftId = (projectId: string, number: number): string => {
   return slug(`${projectId.slice(0, 40 - suffix.length).replace(/-+$/, '')}${suffix}`, 'draftId');
 };
 /** Runs `task` once the last one queued under `key` is done: two requests of one project never race to make a draft. */
+const QUEUED_REASON = 'Há agentes trabalhando no pedido anterior. Aguarde um momento: o refinamento deste pedido começa sozinho quando eles terminarem.';
+
 function serialized<T>(queue: Map<string, Promise<unknown>>, key: string, task: () => Promise<T>): Promise<T> {
   const run = (queue.get(key) ?? Promise.resolve()).then(task);
   queue.set(key, run.catch(() => undefined));
@@ -123,6 +125,9 @@ export class SessionRegistry {
   private readonly sessions = new Map<string, Promise<RefineSession>>();
   /** The last request of each project: a request starts only after the one before it made its draft. */
   private readonly requests = new Map<string, Promise<unknown>>();
+  /** Per project: the last request run queued, and how many are queued or running. */
+  private readonly runChain = new Map<string, Promise<unknown>>();
+  private readonly queuedRuns = new Map<string, number>();
 
   private readonly programs: ProgramService;
 
@@ -289,15 +294,14 @@ export class SessionRegistry {
 
   /**
    * The owner's request in a project already in development: its draft is a follow-on backlog whose brief is the text, and its
-   * evaluation turns the text into specs. A project whose main has no backlog takes one spec instead. One open request at a time.
+   * evaluation turns the text into specs. A project whose main has no backlog takes one spec instead. A request is created at any time:
+   * while the agents work on an earlier one it waits in the project's queue, and its refinement starts by itself when they finish.
    */
   async addRequest(projectId: string, description: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
     const text = cleanDescription(stripControls(description));
     if (text === '') throw new RangeError('description is required');
     return serialized(this.requests, projectId, async () => {
-      const open = (await this.list()).find((row) => row.projectId === projectId && row.extension === true && row.state !== 'started');
-      if (open) throw new ConflictError(`o pedido ${open.specId} ainda não foi iniciado (/refine/${projectId}/${open.specId}): inicie-o antes de fazer outro`);
       const ws = await this.ws(projectId);
       await this.assertMirrorProject(ws);
       const main = await this.mainOf(ws);
@@ -321,9 +325,22 @@ export class SessionRegistry {
       await session.addRequest({ requestId: `pedido-${number}`, title, text, before, idBase: idSchemeOf(index)?.idBase });
       await session.enableBacklog();
       // The request runs on its own to ready: the team evaluates, decides what it can and waits for the owner only for what is his; "Iniciar" stays his.
-      runExtension(session).catch((err: Error) => console.error(`request ${projectId}/${draft.specId}: ${err.message}`));
+      this.enqueueRun(projectId, session, () => runExtension(session), draft.specId);
       return session;
     });
+  }
+
+  /** Runs one request after the ones queued before it in its project; the owner waiting on a button does not hold the queue, only agents at work. */
+  private enqueueRun(projectId: string, session: RefineSession, run: () => Promise<void>, specId: string): void {
+    const waiting = this.queuedRuns.get(projectId) ?? 0;
+    this.queuedRuns.set(projectId, waiting + 1);
+    const marked = waiting > 0 ? session.teamAutopilot('queued', [QUEUED_REASON]) : Promise.resolve();
+    const next = (this.runChain.get(projectId) ?? Promise.resolve())
+      .then(() => marked)
+      .then(run)
+      .catch((err: Error) => console.error(`request ${projectId}/${specId}: ${err.message}`))
+      .finally(() => this.queuedRuns.set(projectId, (this.queuedRuns.get(projectId) ?? 1) - 1));
+    this.runChain.set(projectId, next);
   }
 
   /** The number of a project's next request, one more than the requests it already made. */

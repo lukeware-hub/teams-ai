@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
+import { acceptAllPending, leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 import { autoAcceptable } from '../../server/refine/team-rule.js';
 
@@ -30,6 +30,8 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     closingSummary: vi.fn(async () => ({ ok: true, summaryHash: 'h', checks: [], repositories: [], assumptions: [] })),
     saveDocs: vi.fn(async () => undefined),
     teamAutopilot: vi.fn(async () => undefined),
+    settleChecklist: vi.fn(async () => { state.status = 'ready'; }),
+    reviewSpecsBeside: vi.fn(async () => {}),
     specsApproved: over.specsApproved ?? (() => true),
   };
   return s;
@@ -115,6 +117,28 @@ describe('resolveEverything', () => {
   });
 });
 
+describe('acceptAllPending: the owner takes every suggestion at once', () => {
+  const row = (patchId: string, status = 'pending') => ({ patchId, status, scopeChange: true, reason: '', find: 'a', replace: 'b', file: 'flow.md' });
+
+  it('accepts each pending suggestion, in order, and says how many', async () => {
+    const s = fake({ patches: [row('a'), row('b', 'accepted'), row('c')] });
+    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(2);
+    expect(s.accept.mock.calls.map((c) => c[0])).toEqual(['a', 'c']);
+  });
+
+  it('skips one that another change already covered and goes on with the rest', async () => {
+    const s = fake({ patches: [row('a'), row('b')] });
+    s.accept.mockRejectedValueOnce(new ConflictError('já foi coberto'));
+    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(1);
+    expect(s.accept.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+  });
+
+  it('accepts nothing and says zero when no suggestion waits', async () => {
+    const s = fake();
+    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(0);
+  });
+});
+
 describe('runExtension: the team starts and stops are journaled, so the screen asks the owner only for what is left', () => {
   const extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
 
@@ -122,6 +146,14 @@ describe('runExtension: the team starts and stops are journaled, so the screen a
     const s = fake({ status: 'ready', plansDone: true });
     s.state.extension = extension;
     await runExtension(s as unknown as RefineSession);
+    expect(s.teamAutopilot.mock.calls).toEqual([['started'], ['stopped', []]]);
+  });
+
+  it('runs again without a new evaluation when the owner already decided the suggestions', async () => {
+    const s = fake({ status: 'ready', plansDone: true });
+    s.state.extension = extension;
+    await runExtension(s as unknown as RefineSession, { evaluate: false });
+    expect(s.evaluate).not.toHaveBeenCalled();
     expect(s.teamAutopilot.mock.calls).toEqual([['started'], ['stopped', []]]);
   });
 
@@ -147,6 +179,44 @@ describe('runExtension: the team starts and stops are journaled, so the screen a
     (s.state.patches as unknown[]).push({ patchId: 'late', status: 'pending', scopeChange: false, reason: '', find: 'a', replace: 'b', file: 'flow.md' });
     await runExtension(s as unknown as RefineSession);
     expect(s.accept).toHaveBeenCalledWith('late', true);
+  });
+});
+
+describe('lean refinement: one evaluation, then the team settles what the reviewers found', () => {
+  const extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+
+  it('applies the fixes and settles the checks without evaluating again', async () => {
+    const s = fake({ status: 'answering', plansDone: true, questions: [{ questionId: 'q1', status: 'pending', blocking: true }], patches: [{ patchId: 'p1', status: 'pending', scopeChange: false, reason: '', find: 'a', replace: 'b', file: 'flow.md' }] });
+    s.state.extension = extension;
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    expect(s.accept).toHaveBeenCalledWith('p1', true);
+    expect(s.decideAnswer).toHaveBeenCalledWith('q1');
+    expect(s.settleChecklist).toHaveBeenCalled();
+    expect(s.reviewSpecsBeside).toHaveBeenCalled();
+    expect(s.evaluate).not.toHaveBeenCalled();
+  });
+
+  it('says why the team stopped when a cycle failed or a reviewer rejected specs.md, without blocking the start', () => {
+    const s = fake({ status: 'ready', plansDone: true });
+    s.state.error = 'A sessão do Claude expirou.';
+    s.state.specsMd = { hash: 'h1' } as never;
+    s.state.specsReview = { po: { specsHash: 'h1', verdict: 'rejected', findings: ['x'] }, sm: { specsHash: 'h1', verdict: 'approved', findings: [] } } as never;
+    expect(leftForOwner(s as unknown as RefineSession)).toEqual(['A sessão do Claude expirou.', expect.stringContaining('PO apontaram problemas no specs.md')]);
+  });
+
+  it('does not settle the checks while something still waits for the owner', async () => {
+    const s = fake({ status: 'answering', plansDone: true, patches: [{ patchId: 'scope', status: 'pending', scopeChange: true, reason: '', find: 'x', replace: 'y', file: 'design.md' }] });
+    s.state.extension = extension;
+    await resolveEverything(s as unknown as RefineSession, { byOwner: false });
+    expect(s.settleChecklist).not.toHaveBeenCalled();
+  });
+
+  it('keeps the owner path as it was: the owner button still evaluates again', async () => {
+    const s = fake({ status: 'answering', plansDone: true });
+    s.state.extension = extension;
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.evaluate).toHaveBeenCalled();
+    expect(s.settleChecklist).not.toHaveBeenCalled();
   });
 });
 

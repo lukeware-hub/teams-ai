@@ -259,6 +259,8 @@ export interface ViewProps {
   onAskSpecs?(): void | Promise<unknown>;
   /** The owner's button for everything: the team answers, decides, repairs and prepares until the start is clear. */
   onResolveAll?(): void | Promise<unknown>;
+  /** The owner accepts every suggestion at once; the agents run again on what was decided. */
+  onAcceptAll?(): void | Promise<unknown>;
   /** The owner follows with the specs.md although a reviewer rejected it. */
   onApproveSpecs?(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
@@ -1355,8 +1357,18 @@ export function RefinementView(p: ViewProps) {
   const unfiled = unfiledQuestions(st);
   const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
+  /** The suggestions the owner can take at once. */
+  const acceptable = st.patches.filter((x) => x.status === 'pending').length;
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
+            {acceptable > 0 && p.onAcceptAll && (
+              <div className="grid gap-2" data-testid="accept-all-block">
+                <p data-testid="accept-all-note" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>
+                <ActionButton data-testid="accept-all" className="primary h-10 justify-self-start" busy={serverBusy} disabled={locked || serverBusy} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
+                  Aceitar todas ({acceptable})
+                </ActionButton>
+              </div>
+            )}
             {byDoc.length > 0 && (
               <button type="button" className="secondary h-10 justify-self-start px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
                 {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
@@ -1492,8 +1504,14 @@ export function RefinementView(p: ViewProps) {
     const teamStopped = autopilot?.status === 'stopped';
     const needsFirst = openOwner > 0 && (autopilot === undefined ? !startOpen : teamStopped);
     // Where the request stands, said plainly: the team working, something waiting for the owner, or ready to start.
-    const requestStatus: RequestStatus = evaluating || speckitRunning || autopilot?.status === 'running'
+    // The team stopped with nothing to decide but a reason (the Claude login expired, a quota): the owner sees it and can run the team again.
+    const teamBlocked = teamStopped && openOwner === 0 && !startOpen && autopilot.reasons.length > 0;
+    const requestStatus: RequestStatus = autopilot?.status === 'queued'
+      ? { tone: 'working', title: 'Seu pedido está na fila', text: autopilot.reasons[0] || 'Há agentes trabalhando no pedido anterior. O refinamento começa sozinho quando eles terminarem.' }
+      : evaluating || speckitRunning || autopilot?.status === 'running'
       ? { tone: 'working', title: 'O time está refinando seu pedido', text: 'Você não precisa fazer nada agora. O botão libera sozinho quando o time terminar.' }
+      : teamBlocked
+        ? { tone: 'needs', title: 'O time parou', text: autopilot.reasons.join(' ') }
       : openOwner > 0
         ? { tone: 'needs', title: startOpen ? `${openOwner} ${openOwner === 1 ? 'sugestão do time espera' : 'sugestões do time esperam'} você` : `${openOwner} ${openOwner === 1 ? 'decisão espera' : 'decisões esperam'} você`, text: teamStopped && autopilot.reasons.length > 0 ? `O time não conseguiu decidir sozinho: ${autopilot.reasons.join(' ')}` : startOpen ? 'São opcionais: inicie o desenvolvimento sem decidir agora, ou veja em "Detalhes do time".' : 'Resolva os itens abaixo para liberar o desenvolvimento.' }
         : startOpen
@@ -1527,7 +1545,7 @@ export function RefinementView(p: ViewProps) {
           actions={null}
         >
           <div className="grid gap-4">
-          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={teamBlocked ? <ActionButton data-testid="team-retry" className="primary" busy={serverBusy} disabled={locked || serverBusy || !p.onResolveAll} onClick={() => void p.onResolveAll?.()} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton> : developButton} />
           {needsFirst && needsCard()}
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <details data-testid="request-details" className="group min-w-0">
@@ -1774,6 +1792,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onAskSpecs={act(() => refineApi.askSpecs(projectId, specId))}
         onResolveAll={act(() => refineApi.autopilot(projectId, specId))}
+        onAcceptAll={act(() => refineApi.acceptAll(projectId, specId))}
         onApproveSpecs={act(() => refineApi.approveSpecs(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}

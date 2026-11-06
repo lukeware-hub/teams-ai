@@ -159,21 +159,23 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
 export function Pagination({ view }: { view: TableView }) {
   if (view.matched <= PAGE_SIZES[0]) return null;
   return (
-    <nav data-testid="pagination" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" aria-label="Paginação">
-      <label data-testid="pagination-size" className="flex items-center gap-2 text-[0.8125rem] text-ink-soft">
+    <nav data-testid="pagination" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 max-sm:grid max-sm:grid-cols-2" aria-label="Paginação">
+      <label data-testid="pagination-size" className="flex items-center gap-2 text-[0.8125rem] text-ink-soft max-sm:col-span-2 max-sm:justify-between">
         <span data-testid="pagination-size-label">Itens por página</span>
         <Select wrapperClassName="w-20" value={view.size} onChange={(e) => view.setSize(Number(e.target.value))}>
           {PAGE_SIZES.map((n) => <option data-testid={`pagination-size-option-${n}`} key={n} value={n}>{n}</option>)}
         </Select>
       </label>
-      <div data-testid="pagination-controls" className="flex items-center gap-3">
-        <p data-testid="pagination-range" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums" aria-live="polite">{`${view.from}–${view.to} de ${view.matched}`}</p>
-        <button data-testid="pagination-previous" type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page <= 1} onClick={() => view.setPage(view.page - 1)}>
-          <Icon name="arrow-left" size={16} />
-        </button>
-        <button data-testid="pagination-next" type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0" disabled={view.page >= view.pages} onClick={() => view.setPage(view.page + 1)}>
-          <Icon name="arrow-right" size={16} />
-        </button>
+      <div data-testid="pagination-controls" className="flex items-center gap-3 max-sm:contents">
+      <p data-testid="pagination-range" className="m-0 text-[0.8125rem] text-ink-soft tabular-nums max-sm:order-last max-sm:col-span-2 max-sm:text-center" aria-live="polite">{`${view.from}–${view.to} de ${view.matched}`}</p>
+      <button data-testid="pagination-previous" type="button" aria-label="Página anterior" className="min-w-[auto] w-[var(--control-height)] flex-none px-0 max-sm:w-full" disabled={view.page <= 1} onClick={() => view.setPage(view.page - 1)}>
+        <Icon name="arrow-left" size={16} />
+        <span className="sm:hidden" aria-hidden="true">Anterior</span>
+      </button>
+      <button data-testid="pagination-next" type="button" aria-label="Próxima página" className="min-w-[auto] w-[var(--control-height)] flex-none px-0 max-sm:w-full" disabled={view.page >= view.pages} onClick={() => view.setPage(view.page + 1)}>
+        <span className="sm:hidden" aria-hidden="true">Próxima</span>
+        <Icon name="arrow-right" size={16} />
+      </button>
       </div>
     </nav>
   );

@@ -2,18 +2,21 @@ import { ConflictError, type RefineSession } from './session.js';
 import { resolveClosing, resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
 import { type PatchRow } from './state.js';
+import { leanRefine } from './limits.js';
+import { SPECS_REVIEWERS } from './specs-review.js';
 import { asTeamAlone, autoAcceptable } from './team-rule.js';
 
 /**
  * The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button.
  * The start and the stop are journaled, so the screen asks the owner only for what the team stopped on.
  */
-export async function runExtension(s: RefineSession): Promise<void> {
+export async function runExtension(s: RefineSession, { evaluate = true }: { evaluate?: boolean } = {}): Promise<void> {
   await s.teamAutopilot('started');
   let failure: string | null = null;
   try {
     await asTeamAlone(true, async () => {
-      await s.evaluate();
+      // After the owner decided the suggestions the documents are already evaluated: the team checks and prepares what changed.
+      if (evaluate) await s.evaluate();
       await resolveEverything(s, { byOwner: false });
     });
   } catch (err) {
@@ -22,6 +25,20 @@ export async function runExtension(s: RefineSession): Promise<void> {
   } finally {
     await s.teamAutopilot('stopped', [...(failure ? [failure] : []), ...leftForOwner(s)]);
   }
+}
+
+/** The owner's "accept all": every suggestion that waits is accepted, one another change already covered is skipped; returns how many were accepted. */
+export async function acceptAllPending(s: Pick<RefineSession, 'state' | 'accept'>): Promise<number> {
+  let accepted = 0;
+  for (const p of s.state.patches.filter((x) => x.status === 'pending')) {
+    try {
+      await s.accept(p.patchId);
+      accepted += 1;
+    } catch (err) {
+      if (!(err instanceof ConflictError)) throw err;
+    }
+  }
+  return accepted;
 }
 
 const countOf = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
@@ -35,6 +52,10 @@ export function leftForOwner(s: Pick<RefineSession, 'state'>): string[] {
   const patches = st.patches.filter((p) => p.status === 'pending').length;
   if (patches > 0) reasons.push(`${countOf(patches, 'sugestão muda', 'sugestões mudam')} o escopo e ${patches === 1 ? 'espera' : 'esperam'} a sua decisão.`);
   if (st.speckit?.status === 'failed') reasons.push('A preparação dos planos falhou.');
+  // A cycle that failed (the Claude login expired, a quota) says why, so the owner is not left with a silent stop.
+  if (st.error) reasons.push(st.error);
+  const rejectedBy = SPECS_REVIEWERS.filter((role) => st.specsReview?.[role]?.specsHash === st.specsMd?.hash && st.specsReview?.[role]?.verdict === 'rejected');
+  if (rejectedBy.length > 0) reasons.push(`${rejectedBy.map((role) => role.toUpperCase()).join(' e ')} apontaram problemas no specs.md; veja em "Verificação". O desenvolvimento não fica bloqueado.`);
   return reasons;
 }
 
@@ -76,23 +97,32 @@ export async function resolveEverything(s: RefineSession, { byOwner = true }: { 
   }
 }
 
+/** Whether a question or a suggestion still waits for a decision. */
+const leftOpen = (s: Pick<RefineSession, 'state'>): boolean => s.state.questions.some((q) => q.status === 'pending') || s.state.patches.some((p) => p.status === 'pending');
+
 async function runRounds(s: RefineSession, teamAlone: boolean): Promise<void> {
   const allowed = (p: PatchRow) => autoAcceptable(p, teamAlone);
+  const lean = teamAlone && leanRefine();
   for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
     // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted.
     await tolerate(() => resolveStages(s, allowed, teamAlone));
     for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
     // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
     for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
+    // Lean: the team evaluated once; with nothing left for the owner, what the reviewers found is applied, so their failed checks stand settled.
+    if (lean && !leftOpen(s)) await tolerate(() => s.settleChecklist());
     // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
     const backlog = s.state.backlog;
-    if (backlog?.enabled && s.state.status !== 'ready') await tolerate(() => s.evaluate());
+    if (!lean && backlog?.enabled && s.state.status !== 'ready') await tolerate(() => s.evaluate());
     await tolerate(() => s.startSpecs({ autonomous: true }));
     await tolerate(() => s.settled());
+    // Lean: the reviewers check the specs.md that was followed while the plans are written, so they add no minutes.
+    const beside = lean ? tolerate(() => s.reviewSpecsBeside()) : undefined;
     if (s.state.speckit?.status !== 'done' || s.state.speckit.stale) {
       await tolerate(() => s.runPlans());
       await tolerate(() => s.settled());
     }
+    await beside;
   }
   // A suggestion proposed after the last accept pass of a round is taken here, so none the team may accept is left behind.
   for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));

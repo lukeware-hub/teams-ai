@@ -885,7 +885,7 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     expect(env.events.filter((e) => e.type === RefineEvent.ImpactDerived).at(-1)!.data).toMatchObject({ impact: { summary: 'O pedido acrescenta a exportação.' } });
   });
 
-  it('asks the SM for the impact after the conflicts of the outline', async () => {
+  it('asks the SM for the impact beside the specs, before the conflicts of the outline, so it does not wait in line', async () => {
     const env = await setup();
     const REQUEST = 'Pedido pedido-1';
     await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}\n## ${REQUEST}\n\nExportar em PDF.\n`);
@@ -900,6 +900,8 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
     await env.run(agent, 1);
     expect(kinds).toContain('conflicts');
-    expect(kinds.indexOf('conflicts')).toBeLessThan(kinds.indexOf('impact'));
+    expect(kinds).toContain('impact');
+    // The impact starts with the specs, so it is asked before the conflicts, which need every pre-plan.
+    expect(kinds.indexOf('impact')).toBeLessThan(kinds.indexOf('conflicts'));
   });
 });

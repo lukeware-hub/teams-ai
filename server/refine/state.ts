@@ -290,7 +290,7 @@ export interface RefineState {
   /** The PO and the SM are answering the open plan questions now (true from their start until their end). */
   speckitAnswering?: boolean;
   /** The team resolving a follow-on request on its own: running, or stopped with the reasons the owner must decide what is left. */
-  autopilot?: { status: 'running' | 'stopped'; reasons: string[] };
+  autopilot?: { status: 'queued' | 'running' | 'stopped'; reasons: string[] };
   /** The plan preparation of a detailed backlog or a single spec; stale once a document, the backlog, the spec or an owner's answer changes after it. */
   speckit?: { status: 'running' | 'done' | 'failed'; startedAt?: string; running?: Array<{ command: string; itemKey?: string; startedAt?: string }>; steps: Array<{ command: string; itemKey?: string; startedAt?: string; endedAt?: string; basis?: string; reused?: boolean }>; total?: number; error?: string; detail?: string; failures?: SpeckitStepFailure[]; stale: boolean; features?: Record<string, string>; inputHash?: string };
 }
@@ -900,6 +900,15 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       // A failure before the preparation started still shows, with no step done and with only its own detail.
       s.speckit = { steps: [], stale: false, ...s.speckit, status: 'failed', error: String(d.reason), detail: String(d.detail ?? ''), failures: d.failures as SpeckitStepFailure[] | undefined };
       delete s.speckit.running;
+      break;
+    case RefineEvent.ChecklistSettled: {
+      const ids = new Set((d.ids as string[] | undefined) ?? []);
+      s.checklist = s.checklist.map((i) => (ids.has(i.id) && !i.passed ? { ...i, passed: true, detail: `${i.detail} (aceito pelo time, sem nova conferência)`.trim() } : i));
+      s.status = computeStatus(s);
+      break;
+    }
+    case RefineEvent.TeamAutopilotQueued:
+      s.autopilot = { status: 'queued', reasons: [String(d.reason ?? '')] };
       break;
     case RefineEvent.TeamAutopilotStarted:
       s.autopilot = { status: 'running', reasons: [] };

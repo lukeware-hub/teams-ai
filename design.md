@@ -1637,6 +1637,11 @@ Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em 
 - Clicar numa etapa da trilha abre os detalhes antes de rolar até o cartão.
 - O selo da Verificação mostra quantos itens falharam ("2 itens falharam"), não só "Pendente".
 - "Precisa de você" só aparece na frente depois que o time parou com algo que não conseguiu decidir (o servidor registra a parada e os motivos). Enquanto o time trabalha, ou quando nada sobrou, o cartão fica dentro de "Detalhes do time" e o motivo aparece no estado do topo.
+- O refinamento é enxuto só no pedido de continuação que o time faz sozinho: ele avalia uma vez, aplica as correções dos revisores e dá as verificações por resolvidas, sem reavaliar, a menos que sobre uma falha que uma conferência simples, sem agente, ainda aponte. Só os itens ainda não iniciados recebem plano e o impacto roda junto com as specs. A meta é deixar o pedido pronto para desenvolver em até 5 minutos, com teto de 10.
+- O specs.md é conferido por uma checagem simples, sem agente (critério repetido, tarefa que cita critério inexistente, critério sem tarefa). O PO e o SM o revisam em paralelo com o preparo dos planos; se apontarem problemas, o motivo aparece em "Verificação" e o desenvolvimento não fica bloqueado.
+- Um item já iniciado ou entregue nunca recebe o pedido novo como fonte: por isso o pedido novo não gera ajustes falsos nas specs que ele não toca.
+- Quando sugestões esperam o dono, "Precisa de você" oferece duas saídas: decidir uma por uma (o botão "Mostrar pendências" leva a cada documento, onde cada sugestão tem Aceitar e Rejeitar) ou "Aceitar todas (N)" de uma vez. Aceitar todas põe as sugestões nos documentos e chama os agentes de novo, que conferem e preparam só o que mudou, sem reavaliar tudo. O botão fica desativado enquanto o time trabalha.
+- Se o time parou sem nada para o dono decidir (a sessão do Claude expirou, a preparação dos planos falhou, um passo deu erro), o topo diz o motivo e o botão "Tentar de novo" ocupa o lugar de "Iniciar desenvolvimento".
 - O time aceita sozinho acréscimos em qualquer documento e reescritas que não mudam o escopo. Só mudança de escopo e aprovação de ajuste chegam ao dono.
 - O endereço `?etapa=<documento>` abre esse documento dentro da tela do pedido, com o botão Voltar para a tela do pedido.
 
@@ -1645,6 +1650,8 @@ Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em 
 ┌ Seu pedido · Escrito por você                              [ Interpretado ] ┐
 └───────────────────────────────────────────────────────────────────────────────┘
 ┌ Precisa de você (só se houver)                                [ 2 em aberto ] ┐
+│ Decida uma por uma, abaixo, ou aceite todas de uma vez: …                     │
+│ [ Aceitar todas (2) ]   [ Mostrar pendências (2) ]                            │
 └───────────────────────────────────────────────────────────────────────────────┘
 Pronto: ✓ impacto  ⏱ falta: planos e tarefas 0/1                [ Iniciar desenvolvimento ]
 ▸ Detalhes do time   impacto, replanejamento, backlog, planos e verificação
@@ -1667,7 +1674,8 @@ Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução 
 - Ao confirmar, a tela abre `/refine/<projeto>/<spec>`, onde os agentes organizam a spec no padrão das outras.
 - Um erro aparece dentro do modal e o texto digitado é mantido.
 - Fechar com texto digitado pede confirmação antes de descartar.
-- Se já existe um pedido aberto e não iniciado, o modal mostra o aviso e o botão `Continuar` no lugar do campo.
+- O formulário sempre aparece, mesmo com um pedido ainda em refinamento. Nesse caso uma nota diz "Os agentes ainda trabalham em <spec>. Você pode criar esta spec agora: ela entra na fila e o refinamento começa sozinho quando eles terminarem."
+- O pedido novo é criado na hora e abre com o estado "Seu pedido está na fila", sem gastar nenhuma chamada. Quando o time do pedido anterior para, o refinamento dele começa sozinho. Limite conhecido: o pedido seguinte parte dos documentos que o anterior já refinou, ainda que o dono não tenha decidido o anterior.
 
 ### 32.3 Responsivo
 

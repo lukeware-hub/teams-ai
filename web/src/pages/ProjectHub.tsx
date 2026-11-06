@@ -167,10 +167,10 @@ export function ProjectHubView(p: {
           <p data-testid="project-hub-desc" className={desc}>{pr.description}</p>
           <code data-testid="project-hub-dir" className={dir}>{pr.dir}</code>
         </div>
-        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3">
+        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3 max-sm:w-full max-sm:justify-items-stretch">
           {percent === null ? null : (
-            <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
-              <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
+            <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5 max-sm:flex-1" role="img" aria-label={`${percent}% concluído`}>
+              <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted max-sm:flex-1"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
               <span data-testid="project-hub-progress-value" className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
@@ -232,15 +232,15 @@ export function ProjectHubView(p: {
                   <tbody data-testid="project-hub-runs-tbody" className="@max-[44rem]:block">
                     {runsView.rows.length === 0 ? <tr data-testid="project-hub-runs-empty-row"><td data-testid="project-hub-runs-empty-cell" colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
                     {runsView.rows.map((r) => (
-                      <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
-                        <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={runPath(r.runId)} title={r.runId}>{runName(r)}</Link></td>
-                        <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
-                        <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
-                        <td data-testid={`project-hub-run-status-${r.runId}`} className={responsiveCell} data-label="Status">{chip(r.status)}</td>
-                        <td data-testid={`project-hub-run-tokens-${r.runId}`} className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
-                        <td data-testid={`project-hub-run-cost-${r.runId}`} className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
-                        <td data-testid={`project-hub-run-actions-${r.runId}`} className={responsiveCell}>
-                          <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2">
+                      <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow} @max-[44rem]:grid-cols-[1.3fr_1fr_1fr] @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`}>
+                        <td data-testid={`project-hub-run-name-${r.runId}`} className={`${responsiveCell} @max-[44rem]:whitespace-nowrap @max-[44rem]:text-[1rem] @max-[44rem]:before:hidden`} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={runPath(r.runId)} title={r.runId}>{runName(r)}</Link></td>
+                        <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell} @max-[44rem]:col-span-3 @max-[44rem]:text-[0.875rem] @max-[44rem]:text-ink-soft @max-[44rem]:before:hidden`} data-label="Spec" title={r.specId}>{r.specId}</td>
+                        <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell} @max-[44rem]:whitespace-normal @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Quando">{when(r.at)}</td>
+                        <td data-testid={`project-hub-run-status-${r.runId}`} className={`${responsiveCell} @max-[44rem]:col-span-2 @max-[44rem]:col-start-2 @max-[44rem]:row-start-1 @max-[44rem]:items-end! @max-[44rem]:before:hidden`} data-label="Status">{chip(r.status)}</td>
+                        <td data-testid={`project-hub-run-tokens-${r.runId}`} className={`num ${responsiveCell} @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Tokens">{grouped(r.tokens)}</td>
+                        <td data-testid={`project-hub-run-cost-${r.runId}`} className={`num ${responsiveCell} @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Custo">{money(r.cost)}</td>
+                        <td data-testid={`project-hub-run-actions-${r.runId}`} className={`${responsiveCell} @max-[44rem]:col-span-3 ${r.locked || (r.stoppable && ACTIVE.has(r.status)) || (r.kind === 'run' && (r.status === 'paused:auth' || r.status === 'interrupted')) ? '' : '@max-[44rem]:hidden'}`}>
+                          <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2 @max-[44rem]:w-full @max-[44rem]:flex-col @max-[44rem]:justify-start">
                             {r.locked ? (
                               <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-soft" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
@@ -374,7 +374,7 @@ export function ProjectHubView(p: {
               <Icon name="plus" size={14} />
             </button>
           </div>
-          {creating ? <NewSpecDialog projectId={projectId} openRequest={openRequest?.specId} onClose={closeNewSpec} /> : null}
+          {creating ? <NewSpecDialog projectId={projectId} queueBehind={openRequest && openRequest.state !== 'ready' ? openRequest.specId : undefined} onClose={closeNewSpec} /> : null}
           {openRequest ? <RequestNotice projectId={projectId} specId={openRequest.specId} ready={openRequest.state === 'ready'} /> : null}
           {allConcluded ?<p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
@@ -462,7 +462,7 @@ export function ProjectHubView(p: {
                 <li data-testid={`project-hub-draft-${d.specId}`} className={row} key={d.specId}>
                   <span data-testid={`project-hub-draft-id-${d.specId}`} className={rowId}>{d.specId}</span>
                   {chip(d.state)}
-                  <span data-testid={`project-hub-draft-actions-${d.specId}`} className={rowActions}>
+                  <span data-testid={`project-hub-draft-actions-${d.specId}`} className={`${rowActions} max-sm:flex-col-reverse`}>
                     <button type="button" className={action.danger} data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
                       Excluir
                       <Icon name="trash" size={14} />

@@ -217,7 +217,7 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('empty-new-spec'));
     expect(screen.getByTestId('new-spec-description')).toBeTruthy();
   });
-  it('an open request holds the form: its notice names it, and Continuar leads to it', () => {
+  it('an earlier request being refined does not hold the form: the form opens and says the new one waits in the queue', () => {
     const o = on();
     const drafts = [{ projectId: 'hello-app', specId: 'hello-app-pedido-1', state: 'answering' as const, registered: true, extension: true }];
     render(
@@ -226,9 +226,8 @@ describe('ProjectHubView', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
-    expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('new-spec-open-request').textContent).toContain('hello-app-pedido-1');
-    expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-app/hello-app-pedido-1');
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('hello-app-pedido-1');
   });
 
   it('Cancelar closes the form without making a request', () => {

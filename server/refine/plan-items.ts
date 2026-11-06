@@ -1,4 +1,5 @@
 // Shared with the web page, so this file imports no Node module.
+import { isStarted } from './coverage.js';
 import { buildSpecsIndex } from './specs-index.js';
 import type { RefineState } from './state.js';
 
@@ -14,8 +15,9 @@ export interface PlanItem {
   repository?: string;
 }
 
-/** The plans to write: each backlog item, or the single spec as one item. */
+/** The plans to write: each backlog item still to start, or the single spec as one item. A spec main already started was planned by its own run. */
 export function planItems(draftId: string, source: PlanSource): PlanItem[] {
-  if (source.backlog?.enabled) return buildSpecsIndex(draftId, source.backlog).specs;
+  const backlog = source.backlog;
+  if (backlog?.enabled) return buildSpecsIndex(draftId, backlog).specs.filter((item) => !isStarted(backlog.specs?.[item.key]?.spec?.status));
   return source.derived ? [{ key: source.featureKey ?? draftId, specId: draftId, title: source.derived.spec.objectives[0]! }] : [];
 }

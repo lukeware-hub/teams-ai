@@ -127,10 +127,10 @@ function plainIssue(scope: string, issue: { code: string; path: readonly Propert
 /** An item is touched by the request when it is new or its content changed; its rank follows the order, so it is not content. */
 const touchedBy = (old: BacklogItem | undefined, i: BacklogItem) => old === undefined || old.title !== i.title || old.scope !== i.scope || old.priority !== i.priority || old.dependsOn.join('\n') !== i.dependsOn.join('\n');
 
-/** The request is the source of every item it touches, so the orchestrator cites it instead of asking the owner. */
-function citeRequest(items: readonly BacklogItem[], previous: BacklogState | null, request: string): BacklogItem[] {
+/** The request is the source of every item it touches, so the orchestrator cites it instead of asking the owner; a started item keeps its sources (an adjustment changes it). */
+function citeRequest(items: readonly BacklogItem[], previous: BacklogState | null, request: string, started: ReadonlySet<string>): BacklogItem[] {
   const known = new Map((previous?.items ?? []).map((i) => [i.key, i] as const));
-  return items.map((i) => (touchedBy(known.get(i.key), i) && !i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request) ? { ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: request }] } : i));
+  return items.map((i) => (!started.has(i.key) && touchedBy(known.get(i.key), i) && !i.sources.some((s) => s.doc === 'briefing.md' && s.heading === request) ? { ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading: request }] } : i));
 }
 
 /** A follow-on request only adds: no item of the backlog it follows leaves. */
@@ -149,7 +149,7 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
   const kept = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
-  const items = request === undefined ? kept : citeRequest(kept, previous, request);
+  const items = request === undefined ? kept : citeRequest(kept, previous, request, new Set(started.map((s) => s.key)));
   const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories, docsRepo });
   if (rules.length > 0) return { ok: false, issues: rules };
   if (request !== undefined) {

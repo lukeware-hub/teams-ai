@@ -562,7 +562,7 @@ export interface RefineState {
   /** The owner's request this draft follows up, with the outline it followed as main had it. */
   extension?: { requestId: string; title: string; text: string; at: string; before?: Array<{ key: string; rank: number; dependsOn: string[] }> };
   /** The team resolving a request on its own: running, or stopped with the reasons the owner must decide what is left. */
-  autopilot?: { status: 'running' | 'stopped'; reasons: string[] };
+  autopilot?: { status: 'queued' | 'running' | 'stopped'; reasons: string[] };
   /** The SM's impact of the request, with the outline it was made from; `issues` names what it broke. */
   impact?: { inputHash: string; impact: RequestImpact | null; issues: string[] };
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
@@ -730,6 +730,8 @@ export const refineApi = {
   undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
   closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
+  /** Accepts every suggestion that waits and has the agents run again on what was decided. */
+  acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number }>(r)),
   autopilot: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/autopilot`).then((r) => json<{ ok: true }>(r)),
   askSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/ask`).then((r) => json<{ asked: boolean }>(r)),
   approveSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/approve`).then((r) => json<{ ok: true }>(r)),

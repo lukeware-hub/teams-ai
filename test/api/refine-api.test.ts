@@ -1,7 +1,7 @@
 import { mkdirSync, promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
@@ -165,6 +165,7 @@ beforeEach(async () => {
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await api.close();
   await registry.close();
   await remote?.cleanup();
@@ -1084,7 +1085,34 @@ describe('refine api', () => {
     expect(after.specsApproved).toBe(true);
   });
 
+  it('the owner autopilot of a new project keeps the full check: PO and SM both read specs.md before it is approved', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const before = calls.filter((c) => c.kind === 'specs-review').length;
+    expect((await call('POST', `${url}/autopilot`)).status).toBe(202);
+    for (let i = 0; i < 200 && !(await snapshot()).specsApproved; i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    expect((await snapshot()).specsApproved).toBe(true);
+    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThan(before);
+  });
+
   it('the autopilot answers the open questions, has the PO decide what the reviewers keep rejecting, and clears the start', async () => {
+    // The full path of the owner's button: the lean refinement follows specs.md at once, so this test turns it off.
+    vi.stubEnv('TEAMS_AI_REFINE_LEAN', '0');
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);

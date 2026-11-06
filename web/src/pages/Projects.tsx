@@ -399,7 +399,7 @@ export function ProjectsView(p: {
               : 'Serão apagados os specs, as execuções e os arquivos locais. Execuções em andamento são paradas. Não pode ser desfeito.'}
         </ConfirmDialog>
       ) : null}
-      {newSpecOf ? <NewSpecDialog projectId={newSpecOf} openRequest={p.drafts.find((d) => d.projectId === newSpecOf && d.extension === true && d.state !== 'started')?.specId} returnFocus={opener.current} onClose={() => setNewSpecOf(null)} /> : null}
+      {newSpecOf ? <NewSpecDialog projectId={newSpecOf} queueBehind={p.drafts.find((d) => d.projectId === newSpecOf && d.extension === true && d.state !== 'started' && d.state !== 'ready')?.specId} returnFocus={opener.current} onClose={() => setNewSpecOf(null)} /> : null}
       {graphOf ? (
         <Dialog title={`Grafo do código · ${graphOf}`} returnFocus={opener.current} onClose={() => setGraphOf(null)}>
           <div className="grid gap-3 p-5">

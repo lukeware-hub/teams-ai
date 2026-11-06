@@ -30,6 +30,7 @@ import { flowIsMermaid } from './sections.js';
 import { uniqueHeadingFixes } from './heading-fixes.js';
 import { detailBacklog, maxCriterionInDraft, retireDropped } from './detail-cycle.js';
 import { isStarted } from './coverage.js';
+import { leanRefine } from './limits.js';
 import { DOC_REL, draftHash, flowTemplate, keepBaseProject, readBase, readDerived, readDoc, readMainSpec, stackTemplate, writeBacklogMd, writeDerived, writeDoc, writeProject, writeSpecsIndex, type DocFile, type Draft } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { plainOutlineQuestion } from './question-choices.js';
@@ -359,6 +360,8 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
     criteria = checked.value.spec.acceptanceCriteria;
     objectives = checked.value.spec.objectives;
   }
+  // A request's review is a quick pass in the lean refinement: only what blocks the development, in short answers.
+  const quick = journal.state.extension !== undefined && leanRefine();
   const dctx = { confidential: confidential || derived.project.confidential === true };
   const notReady = !backlogMode && deps.decider ? await notReadyCriteria(criteria, decider!, dctx) : null;
 
@@ -371,7 +374,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       pack: withNote(fitPackBudget(refinePack({ role: 'front', specHash: hash, principles: deps.principles(), specId: draft.specId,
         projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'],
         derived, backlog, retrieval: [], history: journal.state.questions,
-        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle })), note),
+        rejected: journal.state.patches.filter((p) => p.status === 'rejected'), pending: journal.state.patches.filter((p) => p.status === 'pending'), findings: journal.state.findings, undoneMoves: journal.state.moves.filter((m) => m.status === 'undone'), jevValidation, projectBriefing: backlogMode, cycle, quick })), note),
       cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, ctx);
     frontRun = retryOnSchema((note) => askFront(note)) as Promise<StepOutcome<z.infer<typeof RefineOutput>>>;
   }
@@ -405,6 +408,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           notReady,
           projectBriefing: backlogMode,
           cycle,
+          quick,
         })),
         cwd: draft.root,
         phase: 'refine',

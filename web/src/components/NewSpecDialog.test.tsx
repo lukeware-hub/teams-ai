@@ -5,11 +5,11 @@ import { refineApi } from '../api.js';
 import { NewSpecDialog } from './NewSpecDialog.js';
 
 const Where = () => <output data-testid="where">{useLocation().pathname}</output>;
-const show = (onClose = vi.fn(), openRequest?: string) =>
+const show = (onClose = vi.fn(), queueBehind?: string) =>
   render(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
-        <Route path="*" element={<><NewSpecDialog projectId="hello-word" openRequest={openRequest} onClose={onClose} /><Where /></>} />
+        <Route path="*" element={<><NewSpecDialog projectId="hello-word" queueBehind={queueBehind} onClose={onClose} /><Where /></>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -78,9 +78,14 @@ describe('NewSpecDialog', () => {
     fireEvent.click(screen.getByTestId('discard-new-spec'));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
-  it('leads to the open request instead of the form', () => {
+  it('keeps the form open while the agents work on an earlier request, and says the new one waits in the queue', () => {
     show(vi.fn(), 'hello-word-pedido-1');
-    expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-word/hello-word-pedido-1');
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('hello-word-pedido-1');
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('fila');
+  });
+  it('shows no queue note when no agent is at work', () => {
+    show();
+    expect(screen.queryByTestId('new-spec-queue')).toBeNull();
   });
 });

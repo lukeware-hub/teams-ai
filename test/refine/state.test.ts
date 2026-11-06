@@ -671,3 +671,15 @@ describe('plan preparation state', () => {
     expect(s.questions.map((q) => q.questionId)).toEqual(['speckit-1']);
   });
 });
+
+describe('ChecklistSettled: the team applied what the reviewers found', () => {
+  it('marks the failed checks passed without touching the passed ones, and the session can become ready', () => {
+    const failing = [item('po.no-contradictions', false), ...allGreen.filter((i) => i.id !== 'po.no-contradictions')];
+    const events = [...cycle(1), { type: RefineEvent.Evaluated, data: { cycle: 1, checklist: failing, questions: [], discardedPatches: [] } }];
+    expect(reduceRefineEvents(events).status).not.toBe('ready');
+    const settled = reduceRefineEvents([...events, { type: RefineEvent.ChecklistSettled, data: { ids: ['po.no-contradictions'] } }]);
+    expect(settled.checklist.find((i) => i.id === 'po.no-contradictions')).toMatchObject({ passed: true, detail: '(aceito pelo time, sem nova conferência)' });
+    expect(settled.checklist.filter((i) => i.passed)).toHaveLength(allGreen.length);
+    expect(settled.status).toBe('ready');
+  });
+});

@@ -83,6 +83,52 @@ describe('the request screen keeps only what the owner needs in view', () => {
     expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(screen.getByTestId('step-card-needs'))).toBe(true);
   });
 
+  it('says why the team stopped with nothing to decide, and offers to run it again in place of the start button', () => {
+    const onResolveAll = vi.fn();
+    render(<MemoryRouter><RefinementView snap={request({ autopilot: { status: 'stopped', reasons: ['A sessão do Claude expirou.'] } })} busy={false} events={[]} onSaveDoc={vi.fn()} onEvaluate={vi.fn()} onAnswer={vi.fn()} onSkip={vi.fn()} onAccept={vi.fn()} onReject={vi.fn()} onSecret={vi.fn()} onStart={vi.fn()} onResolveAll={onResolveAll} /></MemoryRouter>);
+    expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('needs');
+    expect(screen.getByTestId('request-status-text').textContent).toContain('A sessão do Claude expirou.');
+    expect(screen.queryByTestId('start')).toBeNull();
+    fireEvent.click(screen.getByTestId('team-retry'));
+    expect(onResolveAll).toHaveBeenCalled();
+  });
+
+  describe('the owner takes the suggestions one by one or all at once', () => {
+    const stopped = { status: 'stopped', reasons: ['1 sugestão muda o escopo e espera a sua decisão.'] };
+    const renderWith = (snap: Snapshot, onAcceptAll = vi.fn()) => {
+      render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} onSaveDoc={vi.fn()} onEvaluate={vi.fn()} onAnswer={vi.fn()} onSkip={vi.fn()} onAccept={vi.fn()} onReject={vi.fn()} onSecret={vi.fn()} onStart={vi.fn()} onAcceptAll={onAcceptAll} /></MemoryRouter>);
+      return onAcceptAll;
+    };
+
+    it('offers to accept all, with how many, next to the way to decide one by one', () => {
+      renderWith(request({ patches: [patch, { ...patch, patchId: 'po-c1-1' }], autopilot: stopped }));
+      expect(screen.getByTestId('accept-all').textContent).toContain('Aceitar todas (2)');
+      expect(screen.getByTestId('pending-toggle')).toBeTruthy();
+    });
+
+    it('asks the agents to run again once, when the owner accepts all', () => {
+      const onAcceptAll = renderWith(request({ patches: [patch], autopilot: stopped }));
+      fireEvent.click(screen.getByTestId('accept-all'));
+      expect(onAcceptAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('says what accepting all does, so the owner knows the agents review again', () => {
+      renderWith(request({ patches: [patch], autopilot: stopped }));
+      expect(screen.getByTestId('accept-all-note').textContent).toContain('os agentes revisam de novo');
+    });
+
+    it('offers nothing when no suggestion waits', () => {
+      renderWith(request({ autopilot: stopped }));
+      expect(screen.queryByTestId('accept-all')).toBeNull();
+    });
+  });
+
+  it('says the request waits in the queue while the agents work on an earlier one', () => {
+    renderView(request({ autopilot: { status: 'queued', reasons: ['Há agentes trabalhando no pedido anterior.'] } }));
+    expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('working');
+    expect(screen.getByTestId('request-status-text').textContent).toContain('Há agentes trabalhando no pedido anterior.');
+  });
+
   it('says in the head what the owner should do: wait, decide, or start', () => {
     renderView(request({ patches: [patch] }));
     expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('needs');

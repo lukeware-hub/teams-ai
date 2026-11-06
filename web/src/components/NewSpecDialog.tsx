@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { refineApi } from '../api.js';
 import { action } from '../pages/project-shared.js';
 import { refinePath } from '../routes.js';
@@ -10,9 +10,9 @@ import { Icon } from './Icons.js';
 
 /**
  * The large modal where the user describes a new spec. Confirming starts the request and opens its refinement screen,
- * where the agents organize the spec. A request not yet started blocks a second one, so the modal leads to it instead.
+ * where the agents organize the spec. A request can be made at any time: while the agents work on an earlier one it waits in the queue.
  */
-export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: { projectId: string; openRequest?: string; returnFocus?: HTMLElement | null; onClose: () => void }) {
+export function NewSpecDialog({ projectId, queueBehind, returnFocus, onClose }: { projectId: string; queueBehind?: string; returnFocus?: HTMLElement | null; onClose: () => void }) {
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -48,12 +48,6 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
   return (
     <>
       <Dialog title={`Nova spec · ${projectId}`} size="large" returnFocus={returnFocus} onClose={tryClose}>
-        {openRequest ? (
-          <div data-testid="new-spec-open-request" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-line bg-accent-soft px-3.5 py-2.5 text-[0.875rem] text-ink">
-            <span>Já há um pedido aberto, ainda não iniciado: <b className="font-semibold">{openRequest}</b>. Continue-o antes de fazer outro.</span>
-            <Link className={action.secondary} data-testid="continue-open-request" to={refinePath(projectId, openRequest)}>Continuar</Link>
-          </div>
-        ) : (
           <form
             data-testid="new-spec-form"
             className="grid content-start gap-3"
@@ -64,6 +58,7 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
           >
             <label data-testid="new-spec-description-label" className="text-[0.8125rem] font-semibold" htmlFor="new-spec-description">Descreva o que adicionar ou mudar</label>
             <textarea className="min-h-[14rem] w-full min-w-0 resize-y p-3 text-[0.875rem] leading-normal" id="new-spec-description" data-testid="new-spec-description" rows={10} ref={field} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: o administrador precisa exportar o relatório mensal em PDF." />
+            {queueBehind ? <p data-testid="new-spec-queue" role="status" className="m-0 rounded-lg border border-accent-line bg-accent-soft px-3.5 py-2.5 text-[0.8125rem] leading-normal text-ink">Os agentes ainda trabalham em <b className="font-semibold">{queueBehind}</b>. Você pode criar esta spec agora: ela entra na fila e o refinamento começa sozinho quando eles terminarem.</p> : null}
             <p data-testid="new-spec-helper" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Os agentes leem os documentos e as specs, organizam a descrição no padrão das outras specs e medem o impacto. Você só responde o que eles não decidirem sozinhos.</p>
             {error ? <div className="error" role="alert" data-testid="new-spec-error">{error}</div> : null}
             <div data-testid="new-spec-actions" className="new-spec-actions flex flex-wrap justify-end gap-2">
@@ -74,7 +69,6 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
               <ActionButton type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={description.trim() === '' || suggesting} icon={<Icon name="arrow-right" size={14} />}>Criar spec</ActionButton>
             </div>
           </form>
-        )}
       </Dialog>
       {discarding ? (
         <ConfirmDialog title="Descartar a descrição?" confirmLabel="Descartar" confirmTestId="discard-new-spec" onCancel={() => setDiscarding(false)} onConfirm={onClose}>
