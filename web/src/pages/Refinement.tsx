@@ -1472,8 +1472,8 @@ export function RefinementView(p: ViewProps) {
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? 'Reprocessar' : 'Processar com agentes'}
       </ActionButton>
-      {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft">{continueBlock.hint}</p>}
-      {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
+      {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first">{continueBlock.hint}</p>}
+      {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn @3xl:order-first">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
       <ActionButton
         data-testid="wizard-continue"
         className="primary"

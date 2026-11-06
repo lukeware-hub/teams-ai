@@ -20,7 +20,7 @@ export function WizardShell({ stepper, stepKey, meta, back, actions, children }:
       <div data-testid="wizard-body" key={stepKey} className="step-in min-w-0 px-6 py-6 @max-2xl:px-4 @max-2xl:py-5">{children}</div>
       <footer data-testid="wizard-footer" className="border-t border-line px-6 py-4 @max-2xl:px-4">
         {meta && <p className="m-0 mb-3 text-[0.75rem] tabular-nums text-ink-soft" aria-live="polite" data-testid="wizard-meta">{meta}</p>}
-        <nav data-testid="wizard-nav" className="grid grid-cols-1 gap-3 @3xl:flex @3xl:flex-wrap @3xl:items-center @3xl:justify-between" aria-label="Navegação das etapas">
+        <nav data-testid="wizard-nav" className="grid grid-cols-1 gap-3 @3xl:flex @3xl:flex-wrap @3xl:items-end @3xl:justify-between" aria-label="Navegação das etapas">
           <button type="button" data-testid="wizard-back" className="secondary h-10 w-full border-line-strong text-ink enabled:hover:bg-surface-sunken @3xl:w-auto" onClick={back.onClick} disabled={back.disabled} title={back.disabled ? back.reason : undefined}>
             <Icon name="arrow-left" size={16} />
             Voltar
