@@ -1,6 +1,6 @@
 import type { DecideOutput } from '../agents/outputs.js';
 import { redactSecrets } from '../core/redact.js';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { AgentDefinition } from '../agents/registry.js';
 import type { OutputOf, StepKind } from '../agents/outputs.js';
@@ -24,7 +24,7 @@ import { TEST_GATE, withTestServices } from '../exec/test-services.js';
 import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
-import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
+import type { CodeContext, GraphAccess, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
 import { ensureProjectGraph, refreshProjectGraph } from '../knowledge/project-graph.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
@@ -62,6 +62,8 @@ import { readState, snapshotDesign, updateState } from '../docs/project-state.js
 
 export interface RunDeps {
   cfg: Config;
+  /** The global brain file the agents of this run may query; null (or absent) for a confidential project, which never sees it. */
+  brainGraph?: string | null;
   /** The project's manual model and effort per agent, read at each step; without it the run uses `cfg`. */
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting | null>>>;
   /** Whether the project's agents decide blocks themselves, read at each use; without it the run uses `cfg`. */
@@ -430,8 +432,18 @@ export class Run {
       secretValues: () => this.secretValues(),
       docsRoot: this.deps.docs?.snapshot,
       agentsDecide: () => this.autonomous(),
+      graphAccess: this.graphAccess(view),
       specHash: this.deps.spec.specHash!,
     };
+  }
+
+  /** The graphs the agents of a step may query, each only when its file exists: the repository's, the project's brain and the global brain. */
+  private graphAccess(view?: ServiceView): GraphAccess {
+    const found = (file: string | null | undefined): string | undefined => (file && existsSync(file) ? file : undefined);
+    const repoGraph = found(graphFile(graphDir(view ? this.wsOf(view) : this.deps.ws, null)));
+    const projectGraph = found(graphFile(path.posix.join(this.deps.ws.graph, 'project')));
+    const brainGraph = found(this.deps.brainGraph);
+    return { ...(repoGraph ? { repoGraph } : {}), ...(projectGraph ? { projectGraph } : {}), ...(brainGraph ? { brainGraph } : {}) };
   }
 
   /** The names the environment step made readable by the suites, on top of the machine's own generated secrets. */

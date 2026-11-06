@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,13 +13,13 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { buildGlobalBrainNow, scheduleGlobalBrain, type BrainDeps, type BrainProject } from './knowledge/brain.js';
+import { buildGlobalBrainNow, globalBrainFile, scheduleGlobalBrain, type BrainDeps, type BrainProject } from './knowledge/brain.js';
 import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph, setBrainSource, setGraphMergedHook } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
 import { refineRoot } from './refine/draft.js';
-import { expandHome, firstSpecForRun, firstSpecForSpec, nextRunId, specForRun, stateFile, workspacePaths, type Workspace } from './orchestrator/workspace.js';
+import { expandHome, firstSpecForRun, firstSpecForSpec, graphFile, nextRunId, specForRun, stateFile, workspacePaths, type Workspace } from './orchestrator/workspace.js';
 import { runStep } from './runner/step.js';
 import { startApi } from './api/server.js';
 import { licenseGuard } from './api/license-guard.js';
@@ -134,7 +134,17 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
-  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents });
+  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents,
+    // The agents of refinement query the brain of their project, and the global one unless the project is confidential.
+    graphAccess: async (projectId) => {
+      const live = (await readUserConfig()).cfg;
+      const dir = await projectDirOf(projectId);
+      const found = (file: string | null): string | undefined => (file && existsSync(file) ? file : undefined);
+      const projectGraph = found(graphFile(path.posix.join(workspacePaths(live, projectId).graph, 'project')));
+      const open = dir !== null && !(await isConfidential({ cfg: live, dir, projectId }));
+      const brainGraph = found(open ? globalBrainFile(path.join(expandHome(live.paths.workspaces), '_brain')) : null);
+      return { ...(projectGraph ? { projectGraph } : {}), ...(brainGraph ? { brainGraph } : {}) };
+    } });
   /** The model and effort a project's chat or graphify setting fixes in Settings. */
   const slotSettingIn = async (projectId: string, slot: Slot) => slotSettingOf((await readUserConfig()).cfg.agentSettings[projectId] ?? {}, slot);
   const projectDirOf = async (projectId: string): Promise<string | null> => {
@@ -434,7 +444,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const marker = await readDocsMarker(ws);
   const docs = await docsRunOf(ws, projectDir, marker);
   const { planFile, taskFile } = await planFilesFor(projectDir, specId, spec, docs);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs, brainGraph: (await isConfidential({ cfg, dir: projectDir, projectId: project.projectId })) ? null : globalBrainFile(path.join(expandHome(cfg.paths.workspaces), '_brain')) };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

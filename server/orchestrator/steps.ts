@@ -14,7 +14,7 @@ import type { Effort } from '../decide/decisions/model-tier.js';
 import type { ReviewProfile } from '../decide/decisions/pr-risk.js';
 import { repoName, stepId } from '../core/ids.js';
 import { redactSecrets } from '../core/redact.js';
-import { buildContextPack, estimateTokens, type CodeContext, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
+import { buildContextPack, estimateTokens, type CodeContext, type GraphAccess, type ContextPack, type ContextPackInput, type HandoffSummary } from '../knowledge/context-pack.js';
 import type { Hit } from '../knowledge/retrieval.js';
 import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
@@ -652,6 +652,8 @@ export interface AgentStepDeps {
   docsRoot?: string;
   /** Whether the owner lets the agents decide; a step that does not judge then gets full access (shell and web). */
   agentsDecide?: () => Promise<boolean>;
+  /** The graphs the agent may query; added to the pack of every step unless the request brings its own. */
+  graphAccess?: GraphAccess;
   specHash: string;
 }
 
@@ -667,7 +669,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const id = stepId(seq);
   const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
   const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
-  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(req.pack);
+  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
