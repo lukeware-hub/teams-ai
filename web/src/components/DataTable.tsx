@@ -156,7 +156,7 @@ export function TableFilters({ view, subject, placeholder, facetName }: { view: 
 }
 
 /** Page size choice, range and previous and next buttons under a table; hidden when every match fits the smallest page. */
-export function Pagination({ view }: { view: TableView }) {
+export function Pagination({ view }: { view: Pick<TableView, 'matched' | 'page' | 'pages' | 'size' | 'from' | 'to' | 'setPage' | 'setSize'> }) {
   if (view.matched <= PAGE_SIZES[0]) return null;
   return (
     <nav data-testid="pagination" className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 max-sm:grid max-sm:grid-cols-2" aria-label="Paginação">
