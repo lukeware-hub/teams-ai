@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { coverageGaps, coverageMatrix } from '@server/refine/coverage';
 import type { AcceptanceCriterion, BacklogView } from '../api.js';
+import { criterionSentence } from '../criterion.js';
 import { Icon } from '../components/Icons.js';
 import { BacklogPanel } from './BacklogPanel.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -9,7 +10,7 @@ const HELP = 'Cada seção do flow.md deve ser coberta por um item; cada item te
 const stat = 'rounded-md border px-[0.6rem] py-[0.3rem] text-[0.8125rem] font-semibold normal-case tracking-normal';
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 type Kind = 'sections' | 'items' | 'specs' | 'criteria' | 'tasks';
-const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
+const criterionText = (c: AcceptanceCriterion) => `${c.id}: ${criterionSentence(c)}`;
 
 /** A collapsible row with a chevron, a title and a count, styled like the backlog's épico rows. */
 function GroupSummary({ title, total }: { title: string; total: number }) {

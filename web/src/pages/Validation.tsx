@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { projectPath, refinePath, runPath } from '../routes.js';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { criterionSentence } from '../criterion.js';
 import { runApi, type AcceptanceCriterion, type GapCause, type GapDecision, type GapItem, type GapsReport, type Report, type RunDetail, type ServiceStatus } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Pagination, SortHeader, TableFilters, usePagedTable } from '../components/DataTable.js';
@@ -235,7 +236,10 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
     </div>
   );
 }
-const criterionText = (c: AcceptanceCriterion) => `Dado ${c.given}, quando ${c.when}, então ${c.then}`;
+const criterionText = (c: AcceptanceCriterion) => {
+  const sentence = criterionSentence(c);
+  return sentence[0]!.toUpperCase() + sentence.slice(1);
+};
 function deployFailure(deploy: Report['deploy']): string {
   if (deploy.attempts === 0) return 'Não publicado: a execução parou antes da publicação.';
   const f = deploy.lastFailure;
@@ -454,7 +458,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           <h2 data-testid="validation-script-title">Roteiro de teste manual</h2>
                           <InfoTip text="Passos sugeridos para você conferir cada critério de aceite no serviço publicado. As marcações ficam salvas só neste navegador." />
                         </div>
-                        {steps.length ? <span data-testid="validation-script-count" className="hint">{stepsDone} de {steps.length} {steps.length === 1 ? 'passo conferido' : 'passos conferidos'}</span> : null}
+                        {steps.length ? <span data-testid="validation-script-count" className="hint text-left">{stepsDone} de {steps.length} {steps.length === 1 ? 'passo conferido' : 'passos conferidos'}</span> : null}
                       </div>
                       {report.exploratoryScript.length === 0 ? <p data-testid="validation-script-empty" className="hint">Nenhum passo sugerido.</p> : null}
                       {report.exploratoryScript.map((block) => {

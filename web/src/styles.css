@@ -219,11 +219,16 @@
 /* Base */
 * { box-sizing: border-box; }
 html { background: var(--bg-ambient), var(--bg); background-attachment: fixed; scrollbar-color: var(--line-strong) transparent; scrollbar-gutter: stable; }
-body { margin: 0; color: var(--ink); font-family: var(--font-sans); font-size: 0.9375rem; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+/* Every text is justified and hyphenated; headings, controls, code and tooltips keep a plain left edge. */
+body { text-align: justify; text-justify: inter-word; hyphens: auto; margin: 0; color: var(--ink); font-family: var(--font-sans); font-size: 0.9375rem; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 ::selection { color: var(--accent-ink); background: var(--accent-soft); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 a { color: var(--accent-text); text-underline-offset: 3px; }
 code, pre { font-family: var(--font-mono); }
+h1, h2, h3, h4, h5, h6, input, select, textarea, pre, summary, .info-tip-bubble, .status-pill { text-align: left; hyphens: manual; }
+button, .primary-button, .link-button { text-align: center; hyphens: manual; }
+/* Inline code does not stretch: a line that holds it stays left aligned instead of opening wide gaps. */
+:has(> code) { text-align: left; }
 main { display: grid; align-content: start; gap: 1.25rem; padding: clamp(1rem, 3vw, 2rem); }
 h1 { margin: 0 0 0.15rem; font-size: 1.5rem; line-height: 1.2; letter-spacing: -0.02em; }
 h3 { margin: 1.1rem 0 0.5rem; color: var(--ink-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -326,7 +331,7 @@ td.num { color: var(--ink); font-weight: 500; }
 .dialog-body { display: grid; gap: 0.9rem; padding: 1.1rem 1.25rem 1.25rem; overflow: auto; color: var(--ink); line-height: 1.55; overflow-wrap: anywhere; }
 .confirm { display: grid; justify-items: center; gap: 0.5rem; width: min(100%, 24rem); padding: 1.75rem 1.5rem 1.25rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 24px 48px -12px rgb(0 0 0 / 0.35); text-align: center; animation: confirm-in 220ms var(--ease-out); }
 .confirm-icon { display: grid; place-items: center; width: 3rem; height: 3rem; margin-bottom: 0.5rem; border-radius: 14px; color: var(--bad); background: var(--bad-soft); box-shadow: inset 0 0 0 1px var(--bad-line); }
-.confirm h2 { margin: 0; color: var(--ink); font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
+.confirm h2 { text-align: center; margin: 0; color: var(--ink); font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; text-wrap: balance; }
 .confirm-subject { max-width: 100%; padding: 0.2rem 0.55rem; border-radius: 8px; color: var(--ink); background: var(--surface-muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
 .confirm p { margin: 0.25rem 0 0; color: var(--ink-soft); font-size: 0.875rem; line-height: 1.55; text-wrap: balance; }
 .confirm-actions { display: grid; grid-template-columns: 2.5rem 1fr; gap: 0.625rem; width: 100%; margin-top: 1.25rem; }

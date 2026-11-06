@@ -42,7 +42,7 @@ export const RUN_UI = {
   asideNote: 'mt-0 mb-3',
   headRow: HEAD_ROW,
   panelHead: `mb-[0.85rem] ${HEAD_ROW}`,
-  cardTitle: 'flex items-center justify-between gap-4',
+  cardTitle: 'flex flex-wrap items-center justify-between gap-x-4 gap-y-1',
   boxList: 'm-0 list-none divide-y divide-line overflow-hidden rounded-lg border border-line p-0',
   banner: 'card border-warn-line',
   bannerTitle: 'mb-[0.9rem] flex items-center gap-2 text-warn [&_svg]:flex-none',
