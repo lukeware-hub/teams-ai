@@ -40,7 +40,7 @@ export function requestSuggestPack(input: { specHash: string; requestText: strin
     'Write the user request below again in `text`, as a detailed, well structured spec the team can refine and develop.',
     '- Keep every fact and intent of the request; never drop or contradict it.',
     '- Say what to build, the rules, and verifiable acceptance criteria written as Given/When/Then.',
-    '- Use the graph context to name the existing modules and files the work touches, and say what already exists and must not be rebuilt.',
+    '- The graph context comes from the project code, its five documents and its existing specs, plans and tasks. Use it to name the modules, files and specs the work touches, and say what already exists and must not be rebuilt.',
     '- Never invent scope the request does not support; mark any assumption as "Suposição:".',
     '- Write the content in Brazilian Portuguese. Do not edit any file.',
     `### request\n${input.requestText.trim()}`,

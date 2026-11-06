@@ -32,6 +32,20 @@ export async function readProjectDocs(ws: Pick<Workspace, 'root' | 'repo'>, newe
   return readMainDocs(store, undefined);
 }
 
+/** The spec, plan and task files of every spec: docs/specs/<alias>/ in the legacy layout, docs/**\/specify/<alias>/ in a documentation repository. */
+const SPEC_FILE = /^docs\/(?:.+\/)?(?:specs|specify)\/[^/]+\/(?:spec|plan|implementation-plan|task)\.md$/;
+
+/** At most this many spec files go into the graph, so a project with dozens of specs keeps a build that finishes. */
+const MAX_SPEC_FILES = 300;
+
+/** The specs, plans and tasks of the project as origin/main has them, for the graph a new request is consulted against; none when main has none or cannot be read. */
+export async function readSpecFiles(ws: Pick<Workspace, 'root' | 'repo'>): Promise<MainDoc[]> {
+  const dir = (await isDocsRepo(ws)) ? docsStoreDir(ws) : ws.repo;
+  const listed = await runGit(dir, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs']).catch(() => '');
+  const paths = listed.split('\n').filter((p) => SPEC_FILE.test(p)).slice(0, MAX_SPEC_FILES);
+  return Promise.all(paths.map(async (file) => ({ file, text: await showFile(dir, 'origin/main', file).catch(() => null) })));
+}
+
 /** The five project documents as origin/main has them. `newestSpec` supplies the briefing when main has no root briefing. */
 export async function readMainDocs(repo: string, newestSpec: string | undefined): Promise<MainDoc[]> {
   const specBriefing = newestSpec !== undefined && SAFE_ID.test(newestSpec) ? `docs/specs/${newestSpec}/briefing.md` : null;

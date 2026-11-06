@@ -40,7 +40,7 @@ import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
-import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
+import { ImpactCard, ReadyBar, ReplanCard, RequestCard, type RequestStatus } from '../refine/RequestCards.js';
 import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail, understoodCounts } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
@@ -1362,12 +1362,16 @@ export function RefinementView(p: ViewProps) {
                 {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
               </button>
             )}
-            {pendingOpen && byDoc.map(({ file, count }) => (
-              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
-                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
-                <Icon name="arrow-right" size={16} />
-              </button>
-            ))}
+            {pendingOpen && byDoc.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {byDoc.map(({ file, count }) => (
+                  <button key={file} type="button" className="link-button" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                    {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
+                    <Icon name="arrow-right" size={16} />
+                  </button>
+                ))}
+              </div>
+            )}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
@@ -1481,6 +1485,17 @@ export function RefinementView(p: ViewProps) {
   // A follow-on request (design.md §31): its trail, its impact and its replan above the backlog's own cards, and the bar that starts it.
   if (st.extension) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
+    const startOpen = canStart && speckitReady && !specsGate;
+    // Only what blocks the start sits in front of the owner; optional suggestions wait inside the details.
+    const needsFirst = openOwner > 0 && !startOpen;
+    // Where the request stands, said plainly: the team working, something waiting for the owner, or ready to start.
+    const requestStatus: RequestStatus = evaluating || speckitRunning
+      ? { tone: 'working', title: 'O time está refinando seu pedido', text: 'Você não precisa fazer nada agora. O botão libera sozinho quando o time terminar.' }
+      : openOwner > 0
+        ? { tone: 'needs', title: startOpen ? `${openOwner} ${openOwner === 1 ? 'sugestão do time espera' : 'sugestões do time esperam'} você` : `${openOwner} ${openOwner === 1 ? 'decisão espera' : 'decisões esperam'} você`, text: startOpen ? 'São opcionais: inicie o desenvolvimento sem decidir agora, ou veja em "Detalhes do time".' : 'Resolva os itens abaixo para liberar o desenvolvimento.' }
+        : startOpen
+          ? { tone: 'ready', title: 'Tudo pronto para desenvolver', text: 'O time terminou o refinamento. Inicie quando quiser.' }
+          : { tone: 'working', title: 'Falta pouco para iniciar', text: startReason ?? 'O time prepara o que falta.' };
     // An address with `?etapa=<document>` opens that document of the request; Voltar leads back to the request screen.
     if (isDocStep(step) && new URLSearchParams(window.location.search).has('etapa')) {
       return (
@@ -1509,9 +1524,9 @@ export function RefinementView(p: ViewProps) {
           actions={null}
         >
           <div className="grid gap-4">
+          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          {needsFirst && needsCard()}
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
-          {openOwner > 0 && needsCard()}
-          <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
           <details data-testid="request-details" className="group min-w-0">
             <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.9375rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
               <span aria-hidden="true" className="text-ink-soft transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
@@ -1522,7 +1537,7 @@ export function RefinementView(p: ViewProps) {
               <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
               <ReplanCard rows={replanRows(st)} />
               {backlogStageHeading}
-              {openOwner === 0 && needsCard()}
+              {!needsFirst && needsCard()}
               {backlogCards()}
             </div>
           </details>

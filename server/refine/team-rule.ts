@@ -9,7 +9,8 @@ import { additiveOnly } from './scope-guard.js';
  */
 export function autoAcceptable(p: Pick<PatchRow, 'find' | 'replace'> & { scopeChange?: boolean }, teamAlone: boolean): boolean {
   if (!teamAlone) return true;
-  return !isApproval(p) && (additiveOnly(p.find, p.replace) || p.scopeChange === false);
+  // A removal always waits for the owner: the scope guard does not see a cut line of a diagram.
+  return !isApproval(p) && p.replace.trim() !== '' && (additiveOnly(p.find, p.replace) || p.scopeChange === false);
 }
 
 const teamScope = new AsyncLocalStorage<boolean>();

@@ -59,11 +59,17 @@ describe('the request screen keeps only what the owner needs in view', () => {
     expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(screen.getByTestId('step-card-needs'))).toBe(true);
   });
 
-  it('lifts "Precisa de você" above the start button when something waits for the owner', () => {
+  it('lifts "Precisa de você" out of the details, right under the status head, when something waits for the owner', () => {
     renderView(request({ patches: [patch] }));
     const needs = screen.getByTestId('step-card-needs');
     expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(needs)).toBe(false);
-    expect(needs.compareDocumentPosition(screen.getByTestId('request-ready')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('request-ready').compareDocumentPosition(needs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says in the head what the owner should do: wait, decide, or start', () => {
+    renderView(request({ patches: [patch] }));
+    expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('needs');
+    expect(screen.getByRole('heading', { name: /decisão espera você|decisões esperam você|sugest/ })).toBeTruthy();
   });
 
   it('opens the details before scrolling to a step of the stepper', () => {
@@ -84,6 +90,12 @@ describe('an address with ?etapa= opens that document of the request', () => {
     renderView(request());
     expect(screen.getByTestId('request-document')).toBeTruthy();
     expect(screen.queryByTestId('request-screen')).toBeNull();
+  });
+
+  it('shows the pending suggestions of that document so the owner can accept one', () => {
+    window.history.replaceState(null, '', '/?etapa=briefing.md');
+    renderView(request({ patches: [patch] }));
+    expect(screen.getByTestId('accept-po-c1-0')).toBeTruthy();
   });
 
   it('opens the request screen when the address names no step', () => {

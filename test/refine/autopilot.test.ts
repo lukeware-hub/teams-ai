@@ -138,6 +138,10 @@ describe('autoAcceptable: the team accepts on its own what adds to a document or
     expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.', scopeChange: false }), true)).toBe(true);
   });
 
+  it('leaves to the owner a removal, even when the scope guard sees no scope change', () => {
+    expect(autoAcceptable(patch({ replace: '', scopeChange: false }), true)).toBe(false);
+  });
+
   it('leaves to the owner a rewording that changes scope or is unchecked, and an adjustment approval', () => {
     expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.', scopeChange: true }), true)).toBe(false);
     expect(autoAcceptable(patch({ replace: 'O cliente paga por cartão.' }), true)).toBe(false);

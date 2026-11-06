@@ -1675,7 +1675,7 @@ Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spe
 ### 32.4 Botão "Sugestão"
 
 - Botão secundário com lâmpada, ao lado de `Criar spec`. Fica desativado com o campo vazio, durante o envio e durante a própria sugestão ("Sugerindo…").
-- Ao clicar, o servidor consulta o grafo de código do projeto (Graphify), vê o que já existe e devolve o texto reescrito em detalhe. O texto substitui o do campo para o usuário revisar; nada é criado até clicar em `Criar spec`.
+- Ao clicar, o servidor consulta o grafo do projeto (Graphify), que reúne o código, os cinco documentos e as specs, planos e tarefas já existentes. Ele só consulta, não valida: vê o que já existe e devolve o texto reescrito em detalhe. O texto substitui o do campo para o usuário revisar; nada é criado até clicar em `Criar spec`.
 - Um erro aparece dentro do modal e o texto digitado é mantido.
 
 ## 33. Custos — `/costs` e `/costs/:projectId`
