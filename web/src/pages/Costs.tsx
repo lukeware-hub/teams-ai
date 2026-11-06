@@ -22,7 +22,7 @@ export function CostsPage() {
           <h1 className="m-0 text-[1.375rem] leading-[1.3] text-ink">Custos</h1>
           <p className="mt-1.5 mb-0 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft">Quanto cada projeto gastou, onde e com qual agente.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-2">
           <UpdatedAt at={updatedAt} />
           <RefreshButton onClick={retry} />
         </div>
@@ -73,6 +73,9 @@ function Overview({ data }: { data: CostOverview }) {
   );
 }
 
+// A stage figure on the phone: third row, one of three columns, a rule above it.
+const stageCell = '@max-[44rem]:row-start-3 @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2 @max-[44rem]:text-left';
+
 function ProjectsPanel({ data }: { data: CostOverview }) {
   return (
     <section className={`${panel} content-start`} data-testid="costs-projects">
@@ -91,20 +94,20 @@ function ProjectsPanel({ data }: { data: CostOverview }) {
           </thead>
           <tbody>
             {data.projects.map((p) => (
-              <tr key={p.projectId ?? 'sem-projeto'} className={`${responsiveRow} relative`} data-testid={`costs-project-${p.projectId ?? 'sem-projeto'}`}>
-                <td className={responsiveCell} data-label="Projeto">
+              <tr key={p.projectId ?? 'sem-projeto'} className={`${responsiveRow} relative @max-[44rem]:grid-cols-3 @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`} data-testid={`costs-project-${p.projectId ?? 'sem-projeto'}`}>
+                <td className={`${responsiveCell} @max-[44rem]:col-span-2 @max-[44rem]:row-start-1 @max-[44rem]:text-[1rem] @max-[44rem]:font-semibold @max-[44rem]:before:hidden`} data-label="Projeto">
                   {p.projectId ? <Link to={costsProjectPath(p.projectId)} className="wrap-anywhere after:absolute after:inset-0 after:content-['']">{p.name}</Link> : p.name}
                 </td>
-                <td className={numCell} data-label="Refinamento">{money(p.byStage.refinement.costUsd)}</td>
-                <td className={numCell} data-label="Desenvolvimento">{money(p.byStage.development.costUsd)}</td>
-                <td className={numCell} data-label="Chat">{money(p.byStage.chat.costUsd)}</td>
-                <td className={numCell} data-label="Total">
-                  <span className="block">{money(p.total.costUsd)}</span>
-                  <span className="flex justify-end">
+                <td className={`${numCell} ${stageCell} @max-[44rem]:col-start-1`} data-label="Refinamento">{money(p.byStage.refinement.costUsd)}</td>
+                <td className={`${numCell} ${stageCell} @max-[44rem]:col-start-2`} data-label="Desenvolvimento">{money(p.byStage.development.costUsd)}</td>
+                <td className={`${numCell} ${stageCell} @max-[44rem]:col-start-3`} data-label="Chat">{money(p.byStage.chat.costUsd)}</td>
+                <td className={`${numCell} @max-[44rem]:col-span-3 @max-[44rem]:row-start-2 @max-[44rem]:items-stretch @max-[44rem]:py-1 @max-[44rem]:before:hidden`} data-label="Total">
+                  <span className="block @max-[44rem]:text-[1.25rem] @max-[44rem]:font-[650]">{money(p.total.costUsd)}</span>
+                  <span className="flex justify-end @max-[44rem]:justify-start @max-[44rem]:[&>span]:w-full @max-[44rem]:[&_[aria-hidden]]:flex-1">
                     <ShareBar share={shareOf(p.total.costUsd, data.total.costUsd)} />
                   </span>
                 </td>
-                <td className={numCell} data-label="Execuções">{p.runs}</td>
+                <td className={`${numCell} @max-[44rem]:col-start-3 @max-[44rem]:row-start-1 @max-[44rem]:items-end @max-[44rem]:text-right`} data-label="Execuções">{p.runs}</td>
               </tr>
             ))}
           </tbody>

@@ -24,7 +24,7 @@ export function CostsProjectPage() {
   if (error instanceof ApiError && error.status === 404) return <NotFound />;
   return (
     <main data-testid="costs-project-main" className="grid min-w-0 gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
         <Breadcrumb
           testId="costs-breadcrumb"
           trail={[
@@ -32,7 +32,7 @@ export function CostsProjectPage() {
             { label: 'Custos', testId: 'costs-breadcrumb-current' },
           ]}
         />
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-2">
           <UpdatedAt at={updatedAt} />
           <RefreshButton onClick={retry} />
         </div>
@@ -105,6 +105,9 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
   );
 }
 
+// A stage figure on the phone: third row, half of the width, a rule above it.
+const halfCell = '@max-[44rem]:row-start-3 @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2 @max-[44rem]:text-left';
+
 function SpecPanel({ specs }: { specs: SpecRow[] }) {
   return (
     <section className={panel} data-testid="costs-specs">
@@ -125,12 +128,12 @@ function SpecPanel({ specs }: { specs: SpecRow[] }) {
             </thead>
             <tbody>
               {specs.map((s) => (
-                <tr key={s.key} className={responsiveRow} data-testid={`costs-spec-${s.key}`}>
-                  <td className={`${responsiveCell} wrap-anywhere`} data-label="Spec">{s.label}</td>
-                  <td className={numCell} data-label="Refinamento">{money(s.refinement)}</td>
-                  <td className={numCell} data-label="Desenvolvimento">{money(s.development)}</td>
-                  <td className={numCell} data-label="Total">{money(s.total)}</td>
-                  <td className={numCell} data-label="Execuções">{s.runs}</td>
+                <tr key={s.key} className={`${responsiveRow} @max-[44rem]:grid-cols-2 @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`} data-testid={`costs-spec-${s.key}`}>
+                  <td className={`${responsiveCell} wrap-anywhere @max-[44rem]:row-start-1 @max-[44rem]:text-[1rem] @max-[44rem]:font-semibold @max-[44rem]:before:hidden`} data-label="Spec">{s.label}</td>
+                  <td className={`${numCell} ${halfCell} @max-[44rem]:col-start-1`} data-label="Refinamento">{money(s.refinement)}</td>
+                  <td className={`${numCell} ${halfCell} @max-[44rem]:col-start-2`} data-label="Desenvolvimento">{money(s.development)}</td>
+                  <td className={`${numCell} @max-[44rem]:col-span-2 @max-[44rem]:row-start-2 @max-[44rem]:py-1 @max-[44rem]:text-left @max-[44rem]:text-[1.25rem] @max-[44rem]:font-[650] @max-[44rem]:before:hidden`} data-label="Total">{money(s.total)}</td>
+                  <td className={`${numCell} @max-[44rem]:col-start-2 @max-[44rem]:row-start-1 @max-[44rem]:items-end @max-[44rem]:text-right`} data-label="Execuções">{s.runs}</td>
                 </tr>
               ))}
             </tbody>
