@@ -57,7 +57,7 @@ const USAGE_HELP = 'Lidos: tudo que o Claude leu para responder (contexto do pro
 /** What one answer cost, as one meta line (design.md §11.12). */
 export function usageLine(u: ChatUsage): string {
   const read = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
-  return [u.costUsd === null ? null : `Custo estimado ${price(u.costUsd)}`, `${grouped(read)} tokens lidos`, `${grouped(u.outputTokens)} escritos`, u.seconds < 1 ? 'menos de 1 s' : `${u.seconds} s`].filter(Boolean).join(' · ');
+  return [u.costUsd === null ? null : `Custo estimado ${price(u.costUsd)}`, `${grouped(read)} tokens lidos`, `${grouped(u.outputTokens)} escritos`, u.searches === undefined ? null : `${u.searches} ${u.searches === 1 ? 'busca' : 'buscas'} na web`, u.seconds < 1 ? 'menos de 1 s' : `${u.seconds} s`].filter(Boolean).join(' · ');
 }
 
 function Correction({ projectId, correction }: { projectId: string; correction: ChatCorrection }) {

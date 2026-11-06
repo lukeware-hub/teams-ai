@@ -4,7 +4,8 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { EnvironmentVariable } from '../../server/agents/outputs.js';
 import type { Plan } from '../../server/contracts/plan.js';
-import { citedVariables, mintEnvironment, MISSING_VARIABLE, prepareEnvironment, type EnvironmentHost } from '../../server/environment/service.js';
+import { citedVariables } from '../../server/orchestrator/stop-explain.js';
+import { mintEnvironment, MISSING_VARIABLE, prepareEnvironment, type EnvironmentHost } from '../../server/environment/service.js';
 import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
 
 let root: string;

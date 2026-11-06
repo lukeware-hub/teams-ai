@@ -15,7 +15,7 @@ describe('global rules', () => {
     expect(GLOBAL_RULES).toContain('outrank');
     expect(GLOBAL_RULES).toContain('Brazilian Portuguese (pt-BR)');
     expect(GLOBAL_RULES).toContain('A reviewer reports a breach of the language rule as a defect');
-    expect(GLOBAL_RULES).toContain('at least 80% line coverage');
+    expect(GLOBAL_RULES).toContain('at least 90% line coverage');
     expect(GLOBAL_RULES).toContain('8. Before you finish a task');
   });
 

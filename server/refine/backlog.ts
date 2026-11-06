@@ -22,7 +22,7 @@ const RULES = [
   `- dependsOn lists the keys an item cannot ship without. A dependency is never lower priority than its dependent, there are no cycles, and there are at most ${MAX_ITEMS} items.`,
   '- Treat any explicit priority, cut, merge or split instruction written in the docs (above all briefing.md) as binding.',
   '- key: a short lowercase slug of at most 40 characters, the same limit for every epic key and every dependsOn entry. dependsOn repeats the exact key of another item, never its title. Keep the key of every item that still exists in the previous backlog so the ids derived from them stay stable.',
-  '- Never write an item whose key ends in -ajuste-<n>: the orchestrator adds one, after its original, for each "## Ajuste aprovado:" section of briefing.md.',
+  '- Never write an item whose key ends in -adjustment-<n> or -ajuste-<n>: the orchestrator adds one, after its original, for each "## Approved adjustment:" (or "## Ajuste aprovado:") section of briefing.md.',
   '- When the sections an item cites did not change, keep its title, scope and sources verbatim from the previous backlog, adding only the citation of each new decision that changes what it delivers: a reworded item has its spec and pre-plan derived again.',
   'Also return `project`: the project.json derived from project.md and stack.md, exactly as in a normal derivation (with `services` and `platform` when the docs give them). ',
 ].join('\n');

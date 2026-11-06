@@ -244,7 +244,7 @@ describe('backlog detailing in the refinement cycle', () => {
     await writeFile(d.draft.flowMd, FLOW.replace('C --> D', 'C --> D2[Cotação]'));
   };
   const withoutFat = (d: Env) => writeFile(d.draft.flowMd, FLOW.replace('%% 4. Faturamento\n  D --> E\n', ''));
-  const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Ajuste aprovado'));
+  const approvals = (env: Env) => env.journal.state.patches.filter((p) => p.replace.startsWith('## Approved adjustment') || p.replace.startsWith('## Ajuste aprovado'));
 
   // A new top item builds on the foundation of a backlog that started: only a backlog with nothing started marks its first spec FIRST.
   const OUTLINE_FOUNDATION = [
@@ -358,7 +358,7 @@ describe('backlog detailing in the refinement cycle', () => {
     const { second, agent, detailing } = await secondDraft(deliveredThenChanged);
     expect(detailing).toEqual([]);
     expect(approvals(second)).toEqual([expect.objectContaining({ role: 'po', file: 'briefing.md', find: '', status: 'pending' })]);
-    expect(approvals(second)[0]!.replace).toMatch(/^## Ajuste aprovado: opme-ajuste-1\n/);
+    expect(approvals(second)[0]!.replace).toMatch(/^## Approved adjustment: opme-adjustment-1\n/);
     expect(approvals(second)[0]!.reason).toContain('flow.md › 3. OPME');
     expect(second.journal.state.status).toBe('answering');
     await second.run(agent, 3);
@@ -378,16 +378,16 @@ describe('backlog detailing in the refinement cycle', () => {
     const from = agent.calls.length;
     await second.run(agent, 3);
     const backlog = second.journal.state.backlog!;
-    expect(backlog.items.find((i) => i.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['opme'], rank: 4 });
+    expect(backlog.items.find((i) => i.key === 'opme-adjustment-1')).toMatchObject({ dependsOn: ['opme'], rank: 4 });
     const specCalls = agent.calls.slice(from).filter((c) => c.kind === 'spec');
-    expect(named(specCalls, 'Item')).toEqual(['opme-ajuste-1']);
+    expect(named(specCalls, 'Item')).toEqual(['opme-adjustment-1']);
     expect(specCalls[0]!.feedback).toContain('- big-001-opme:');
     expect(backlog.specs?.opme?.spec?.status).toBe('done');
     expect(approvals(second)).toHaveLength(1);
     expect(second.journal.state.status).toBe('ready');
     const entries = programEntries('big-001', backlog, { 'big-001-opme': 'done' });
     expect(entries.find((e) => e.key === 'opme')?.done).toBe(true);
-    expect(entries.find((e) => e.key === 'opme-ajuste-1')).toMatchObject({ dependsOn: ['big-001-opme'] });
+    expect(entries.find((e) => e.key === 'opme-adjustment-1')).toMatchObject({ dependsOn: ['big-001-opme'] });
   });
 
   // R11.7.5: an item that leaves the outline leaves main too, as a retired spec Phase 0 publishes.
@@ -405,7 +405,7 @@ describe('backlog detailing in the refinement cycle', () => {
     }, fakeAgent(() => OUTLINE.filter((i) => i.key !== 'fat')));
     expect(second.journal.state.backlog!.items.find((i) => i.key === 'fat')).toMatchObject({ dependsOn: ['opme'] });
     expect(second.journal.state.backlog!.specs?.fat?.spec?.status).toBe('done');
-    expect(approvals(second)).toEqual([expect.objectContaining({ status: 'pending', replace: expect.stringMatching(/^## Ajuste aprovado: fat-ajuste-1\n[\s\S]*remove essa funcionalidade/) })]);
+    expect(approvals(second)).toEqual([expect.objectContaining({ status: 'pending', replace: expect.stringMatching(/^## Approved adjustment: fat-adjustment-1\n[\s\S]*remove essa funcionalidade/) })]);
   });
 
   // Plan 80 review: an item main retired and a later outline brings back unchanged is planned again, not retired forever.

@@ -43,6 +43,30 @@ describe('NewSpecDialog', () => {
     expect((await screen.findByTestId('new-spec-error')).textContent).toBe('Falhou ao criar');
     expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('Exportar PDF');
   });
+  it('keeps Sugestão disabled until there is a description', () => {
+    show();
+    expect((screen.getByTestId('suggest-new-spec') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Exportar PDF' } });
+    expect((screen.getByTestId('suggest-new-spec') as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('replaces the text with the suggestion and creates nothing', async () => {
+    const suggest = vi.spyOn(refineApi, 'suggestRequest').mockResolvedValue({ text: '# Exportar PDF\n\nDetalhado.' });
+    const request = vi.spyOn(refineApi, 'request');
+    show();
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: '  Exportar PDF  ' } });
+    fireEvent.click(screen.getByTestId('suggest-new-spec'));
+    await waitFor(() => expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('# Exportar PDF\n\nDetalhado.'));
+    expect(suggest).toHaveBeenCalledWith('hello-word', 'Exportar PDF');
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('shows the suggestion error and keeps the typed text', async () => {
+    vi.spyOn(refineApi, 'suggestRequest').mockRejectedValue(new Error('Cota pausada'));
+    show();
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Exportar PDF' } });
+    fireEvent.click(screen.getByTestId('suggest-new-spec'));
+    expect((await screen.findByTestId('new-spec-error')).textContent).toBe('Cota pausada');
+    expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('Exportar PDF');
+  });
   it('closes at once when empty and asks before discarding typed text', () => {
     const onClose = vi.fn();
     show(onClose);

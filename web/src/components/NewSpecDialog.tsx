@@ -16,6 +16,7 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
   const navigate = useNavigate();
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -31,6 +32,17 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
     } catch (e) {
       setError((e as Error).message);
       setSubmitting(false);
+    }
+  };
+  const suggest = async () => {
+    setSuggesting(true);
+    setError(null);
+    try {
+      setDescription((await refineApi.suggestRequest(projectId, description.trim())).text);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSuggesting(false);
     }
   };
   return (
@@ -56,7 +68,10 @@ export function NewSpecDialog({ projectId, openRequest, returnFocus, onClose }: 
             {error ? <div className="error" role="alert" data-testid="new-spec-error">{error}</div> : null}
             <div data-testid="new-spec-actions" className="new-spec-actions flex flex-wrap justify-end gap-2">
               <button type="button" className={action.secondary} data-testid="cancel-new-spec" onClick={tryClose}>Cancelar</button>
-              <ActionButton type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={description.trim() === ''} icon={<Icon name="arrow-right" size={14} />}>Criar spec</ActionButton>
+              <ActionButton type="button" className={action.secondary} data-testid="suggest-new-spec" busy={suggesting} disabled={description.trim() === '' || submitting} title="Detalha o texto com o que o código do projeto já tem" onClick={() => void suggest()} icon={<Icon name="lightbulb" size={14} />}>
+                {suggesting ? 'Sugerindo…' : 'Sugestão'}
+              </ActionButton>
+              <ActionButton type="submit" className={action.primary} data-testid="new-spec" busy={submitting} disabled={description.trim() === '' || suggesting} icon={<Icon name="arrow-right" size={14} />}>Criar spec</ActionButton>
             </div>
           </form>
         )}

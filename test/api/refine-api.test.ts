@@ -31,6 +31,8 @@ let hangAgent: boolean;
 let agentStarted: boolean;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let graphBuilds: string[];
+let graphAsked: string[];
+let graphText: string;
 let registered: string[];
 const base = () => `http://127.0.0.1:${api.port}`;
 const call = (method: string, p: string, body?: unknown) =>
@@ -100,6 +102,8 @@ beforeEach(async () => {
   agentStarted = false;
   spawns = [];
   graphBuilds = [];
+  graphAsked = [];
+  graphText = '';
   registered = [];
   spawnShouldFail = false;
   registerShouldFail = false;
@@ -123,6 +127,7 @@ beforeEach(async () => {
   };
   registry = new SessionRegistry({
     repositoryFlow: false,
+    docsRepoLayout: false,
     cfg: async () => (await readUserConfig(home)).cfg,
     home,
     runAgent: ((req, ctx) => {
@@ -144,6 +149,10 @@ beforeEach(async () => {
     projectDir: async (projectId) => (registered.find((d) => d.includes(`/${projectId}/refine/`)) ?? null),
     buildGraph: async (projectId) => {
       graphBuilds.push(projectId);
+    },
+    projectGraphContext: async (projectId, question) => {
+      graphAsked.push(`${projectId}: ${question}`);
+      return graphText;
     },
     control,
     runsDir: async () => `${home}/runs`,
@@ -277,6 +286,25 @@ describe('refine api', () => {
     expect(calls.at(-1)?.prompt).toContain('Cliente se cadastra com nome e e-mail.');
     expect(calls.at(-1)?.prompt).toContain('then docs/flow.md, then the rest');
     expect((await snapshot()).docs['stack.md']).toBe(before);
+  });
+
+  it('suggests a detailed spec for a new request from the project code graph, saving nothing', async () => {
+    graphText = 'Node: GreetingService (src/greeting.ts)';
+    script['suggest/po'] = [{ text: '# Exportar PDF\n\nDetalhado.' }];
+    const res = await call('POST', '/api/projects/hello-app/requests/suggest', { description: '  Exportar PDF  ' });
+    expect(await res.json()).toEqual({ text: '# Exportar PDF\n\nDetalhado.' });
+    expect(graphAsked).toEqual(['hello-app: Exportar PDF']);
+    expect(calls.at(-1)?.prompt).toContain('Exportar PDF');
+    expect(calls.at(-1)?.prompt).toContain('GreetingService (src/greeting.ts)');
+    expect(await fs.readdir(`${home}/ws/_suggest`)).toEqual([]);
+    expect((await (await fetch(`${base()}/api/refine`)).json())).toEqual([]);
+  });
+
+  it('suggests without a code graph and refuses an empty description', async () => {
+    script['suggest/po'] = [{ text: 'Texto' }];
+    expect((await call('POST', '/api/projects/hello-app/requests/suggest', { description: 'Exportar PDF' })).status).toBe(200);
+    expect(calls.at(-1)?.prompt).toContain('(no code graph for this project yet)');
+    expect((await call('POST', '/api/projects/hello-app/requests/suggest', { description: '   ' })).status).toBe(400);
   });
 
   it('adjusts design.md from template images without saving, and deletes the images', async () => {

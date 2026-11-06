@@ -4,7 +4,7 @@ import { gateFileErrors, gateTerminationErrors } from './gate-files.js';
 import { specShare, type Spec } from '../contracts/spec.js';
 import { validateCoverage } from './coverage.js';
 import { checkScope } from './diff-guard.js';
-import { validateE2e, validateE2eExemptions } from './e2e.js';
+import { validateE2e, validateE2eExemptions, validateFrontExemptions, validateFrontTasks } from './e2e.js';
 import { docsPageErrors } from './docs-page.js';
 import { validateSecurityGates } from './security-tooling.js';
 
@@ -79,13 +79,18 @@ export function validatePlan(plan: Plan, spec: Spec, requested: PlanCheckOptions
   const opts = plan.deploy.kind === 'mobile' ? { ...requested, requireDelivery: false, requireE2e: false } : requested;
   // `service` belongs to a services plan; a run of this project would never find the repository it names.
   const named = plan.tasks.filter((t) => t.service !== undefined).map((t) => `task ${t.id} names service ${t.service}, but this project keeps its code in the project repository; remove service`);
-  return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts), ...docsPageErrors(plan.deploy, plan.tasks, spec)];
+  const front = opts.requireE2e ? validateFrontTasks(plan.tasks, () => plan.deploy.kind) : [];
+  return [...named, ...planWideErrors(plan, spec, opts), ...repositoryErrors(plan, spec, opts), ...docsPageErrors(plan.deploy, plan.tasks, spec), ...front];
 }
 
 /** A services plan: plan-wide checks once, then each service's own checks, prefixed with its name. */
 export function validateServicesPlan(plan: ServicesPlan, spec: Spec, opts: ServicesPlanCheckOptions): string[] {
   const errors = planWideErrors(plan, spec, opts);
   const names = Object.keys(plan.services);
+  if (opts.requireE2e) {
+    const kindOf = new Map(servicePlans(plan).map(({ service, plan: view }) => [service, view.deploy.kind]));
+    errors.push(...validateFrontTasks(plan.tasks, (t) => kindOf.get(t.service ?? '')));
+  }
   for (const task of plan.tasks) {
     if (task.service === undefined || !names.includes(task.service)) errors.push(`task ${task.id} must name one of the plan's services (${names.join(', ')})`);
   }
@@ -202,7 +207,7 @@ function planWideErrors(plan: Pick<Plan, 'specId' | 'specHash' | 'tasks' | 'e2eE
     if (cycle) errors.push(`dependency cycle: ${cycle.join(' -> ')}`);
   }
 
-  if (opts.requireE2e) errors.push(...validateE2eExemptions(plan, spec));
+  if (opts.requireE2e) errors.push(...validateE2eExemptions(plan, spec), ...validateFrontExemptions(plan.tasks, plan.e2eExemptions ?? []));
   return errors;
 }
 

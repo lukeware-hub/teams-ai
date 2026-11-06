@@ -1278,9 +1278,8 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
-  const backlogScreen = () => (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
-      {backlogStageHeading}
+  const failingChecks = st.checklist.filter((c) => !c.passed).length;
+  const needsCard = () => (
       <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
         {startMissing.length > 0 && <p data-testid="start-missing" role="status" className={notice}><b>Falta para iniciar o desenvolvimento:</b> {startMissing.join(' ')}</p>}
         {pendingSummary}
@@ -1291,6 +1290,9 @@ export function RefinementView(p: ViewProps) {
           </div>
         )}
       </StepCard>
+  );
+  const backlogCards = () => (
+    <>
       <StepCard id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} specs · em preparo` : 'Em preparo' }}>
         {backlogBlock(startLine)}
       </StepCard>
@@ -1300,9 +1302,16 @@ export function RefinementView(p: ViewProps) {
         {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
         {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       </StepCard>
-      <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : { label: 'Pendente' }}>
+      <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
         {verificationDetails}
       </StepCard>
+    </>
+  );
+  const backlogScreen = () => (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
+      {backlogStageHeading}
+      {needsCard()}
+      {backlogCards()}
     </div>
   );
   // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
@@ -1472,11 +1481,28 @@ export function RefinementView(p: ViewProps) {
   // A follow-on request (design.md §31): its trail, its impact and its replan above the backlog's own cards, and the bar that starts it.
   if (st.extension) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
+    // An address with `?etapa=<document>` opens that document of the request; Voltar leads back to the request screen.
+    if (isDocStep(step) && new URLSearchParams(window.location.search).has('etapa')) {
+      return (
+        <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-document">
+          <WizardShell
+            stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={() => navigate(window.location.pathname)} />}
+            stepKey={step}
+            meta={usageLine}
+            back={{ onClick: () => navigate(window.location.pathname), disabled: false }}
+            actions={null}
+          >
+            <div className="grid gap-4">{stageScreen(step)}</div>
+          </WizardShell>
+          {askDialog}
+        </div>
+      );
+    }
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
         <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
         <WizardShell
-          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => { document.querySelector('[data-testid="request-details"]')?.setAttribute('open', ''); document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
           stepKey="request"
           meta={usageLine}
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
@@ -1484,10 +1510,22 @@ export function RefinementView(p: ViewProps) {
         >
           <div className="grid gap-4">
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
-          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
-          <ReplanCard rows={replanRows(st)} />
-          {backlogScreen()}
+          {openOwner > 0 && needsCard()}
           <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          <details data-testid="request-details" className="group min-w-0">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.9375rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+              <span aria-hidden="true" className="text-ink-soft transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+              Detalhes do time
+              <span className="text-[0.8125rem] font-normal text-ink-soft">impacto, replanejamento, backlog, planos e verificação</span>
+            </summary>
+            <div className="mt-3 grid gap-4">
+              <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
+              <ReplanCard rows={replanRows(st)} />
+              {backlogStageHeading}
+              {openOwner === 0 && needsCard()}
+              {backlogCards()}
+            </div>
+          </details>
           </div>
         </WizardShell>
         {reevaluateDialog}

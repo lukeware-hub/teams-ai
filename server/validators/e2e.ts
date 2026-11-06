@@ -1,5 +1,5 @@
 import type { Spec } from '../contracts/spec.js';
-import type { Plan } from '../contracts/plan.js';
+import type { Plan, PlanTask } from '../contracts/plan.js';
 import { E2E_GATE, e2eCommand } from '../exec/e2e.js';
 
 const DISARMED = /\|\|\s*(true|exit\s+0|:)/;
@@ -42,6 +42,18 @@ export function validateE2eExemptions(plan: Pick<Plan, 'e2eExemptions'>, spec: S
   }
   if (known.size > 0 && [...known].every((id) => seen.has(id))) errors.push('e2eExemptions: at least one criterion must be covered by the e2e suite');
   return errors;
+}
+
+/** A screen is never exempt: a criterion a front task delivers runs in the e2e suite of a front service. */
+export function validateFrontExemptions(tasks: readonly Pick<PlanTask, 'id' | 'owner' | 'criteriaRefs'>[], exemptions: readonly { acId: string }[]): string[] {
+  const exempt = new Set(exemptions.map((x) => x.acId));
+  const errors = tasks.filter((t) => t.owner === 'front').flatMap((t) => t.criteriaRefs.filter((ac) => exempt.has(ac)).map((ac) => `e2eExemptions: ${ac} is delivered by the front task ${t.id}; a screen is never exempt from the e2e suite`));
+  return [...new Set(errors)];
+}
+
+/** A front task changes UI code only, so it belongs to a service that deploys a front (its own repository). */
+export function validateFrontTasks(tasks: readonly Pick<PlanTask, 'id' | 'owner' | 'service'>[], deployKindOf: (task: Pick<PlanTask, 'id' | 'owner' | 'service'>) => string | undefined): string[] {
+  return tasks.filter((t) => t.owner === 'front' && deployKindOf(t) !== 'front').map((t) => `front task ${t.id} must belong to a service with deploy.kind front (its own repository); a front inside an api service gets no browser test`);
 }
 
 /** The command names the suite, or the folder of a suite file, which runs it too (go test ./e2e/...). */

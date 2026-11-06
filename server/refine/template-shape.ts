@@ -2,7 +2,7 @@ import { docSections, normHeading, type DocSection } from './sections.js';
 import { TEMPLATE, type SuggestFile } from './suggest.js';
 
 /** Sections the code writes; a reshape keeps them word for word. */
-const MANAGED = /^(decisoes|decisions|ajuste aprovado)/;
+const MANAGED = /^(decisoes|decisions|ajuste aprovado|approved adjustment)/;
 const LEVEL = /^(#{1,6})\s/;
 
 const levelOf = (section: DocSection): number => LEVEL.exec(section.text)?.[1]?.length ?? 0;

@@ -26,6 +26,7 @@ import type { CycleDeps } from './cycle.js';
 import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, stripControls, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
 import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
+import { suggestRequest } from './request-suggest.js';
 import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
@@ -40,6 +41,8 @@ export interface RegistryDeps {
   /** Extracts the documents of a folder into a graph folder for a repository session (plan increment B). */
   extractDocs?: (dir: string, outDir: string, projectId: string) => Promise<void>;
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
+  /** The part of a project's code graph that answers a question, for the "Sugestão" of a new request; empty when the project has no graph. */
+  projectGraphContext?: (projectId: string, question: string, budgetTokens: number) => Promise<string>;
   cfg: () => Promise<Config>;
   home?: string;
   runAgent: RunAgent;
@@ -196,6 +199,16 @@ export class SessionRegistry {
       taken = [...drafts, ...onMain];
     }
     return suggestName({ runAgent: this.deps.runAgent, workspacesRoot: root, model: cfg.decisions.modelTiers.small }, { kind, ...input, taken });
+  }
+
+  /** "Sugestão" of the new spec modal: the typed text rewritten as a detailed spec from what the project's code already has; nothing is saved. */
+  async suggestRequest(projectId: string, description: string): Promise<string> {
+    slug(projectId, 'projectId');
+    const text = cleanDescription(description);
+    if (text === '') throw new RangeError('description is required');
+    const root = expandHome((await this.deps.cfg()).paths.workspaces, this.deps.home);
+    const { projectGraphContext } = this.deps;
+    return suggestRequest({ runAgent: inProject(this.deps.runAgent, projectId), workspacesRoot: root, graphContext: projectGraphContext && ((question, budget) => projectGraphContext(projectId, question, budget)) }, text);
   }
 
   async newProject(projectId: string, name: string, description?: string, firstSpecId?: string): Promise<RefineSession> {

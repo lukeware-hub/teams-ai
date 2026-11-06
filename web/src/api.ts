@@ -713,6 +713,7 @@ export const refineApi = {
   suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
   request: (projectId: string, description: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/requests`, { description }).then((r) => json<{ sessionId: string }>(r)),
+  suggestRequest: (projectId: string, description: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/requests/suggest`, { description }).then((r) => json<{ text: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   restartSpec: (projectId: string, specId: string) =>
@@ -770,6 +771,7 @@ export interface ChatUsage {
   costUsd: number | null;
   seconds: number;
   turns: number;
+  searches?: number;
 }
 export interface ChatMessage {
   role: 'user' | 'assistant';

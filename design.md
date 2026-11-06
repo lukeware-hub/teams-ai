@@ -1628,6 +1628,27 @@ Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pe
 
 Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.
 
+### 31.4 Tela enxuta: o time faz tudo e o dono só inicia
+
+Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em "Iniciar desenvolvimento" quando o refinamento automático termina.
+
+- Sempre visíveis: "Seu pedido", o bloco "Pronto" com o botão e, só quando algo espera o dono, "Precisa de você" acima do "Pronto".
+- Impacto, Replanejamento, Itens do backlog, Planos e Verificação ficam recolhidos num único bloco "Detalhes do time". Nada é apagado.
+- Clicar numa etapa da trilha abre os detalhes antes de rolar até o cartão.
+- O selo da Verificação mostra quantos itens falharam ("2 itens falharam"), não só "Pendente".
+- O time aceita sozinho acréscimos em qualquer documento e reescritas que não mudam o escopo. Só mudança de escopo e aprovação de ajuste chegam ao dono.
+- O endereço `?etapa=<documento>` abre esse documento dentro da tela do pedido, com o botão Voltar para a tela do pedido.
+
+```
+● Pedido ── ● Impacto ── ● Specs e plano ── ○ Pronto
+┌ Seu pedido · Escrito por você                              [ Interpretado ] ┐
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Precisa de você (só se houver)                                [ 2 em aberto ] ┐
+└───────────────────────────────────────────────────────────────────────────────┘
+Pronto: ✓ impacto  ⏱ falta: planos e tarefas 0/1                [ Iniciar desenvolvimento ]
+▸ Detalhes do time   impacto, replanejamento, backlog, planos e verificação
+```
+
 ## 32. Nova spec em modal
 
 Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução concluída) abre o mesmo modal grande, na própria tela, sem levar à página do projeto.
@@ -1650,6 +1671,12 @@ Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução 
 ### 32.3 Responsivo
 
 Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.
+
+### 32.4 Botão "Sugestão"
+
+- Botão secundário com lâmpada, ao lado de `Criar spec`. Fica desativado com o campo vazio, durante o envio e durante a própria sugestão ("Sugerindo…").
+- Ao clicar, o servidor consulta o grafo de código do projeto (Graphify), vê o que já existe e devolve o texto reescrito em detalhe. O texto substitui o do campo para o usuário revisar; nada é criado até clicar em `Criar spec`.
+- Um erro aparece dentro do modal e o texto digitado é mantido.
 
 ## 33. Custos — `/costs` e `/costs/:projectId`
 
@@ -1805,3 +1832,8 @@ Refinamento, ciclos seguintes   [ Sonnet 5.5 v ]  [ Baixo  v ]
 ### 34.3 Fora desta tela
 
 A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqui. Ela segue a configuração do arquivo.
+
+## 35. Chat — linha de uso de cada resposta
+
+- A linha abaixo de cada resposta do assistente mostra, nesta ordem: custo estimado, tokens lidos, tokens escritos, número de buscas na web e tempo.
+- As buscas aparecem como `1 busca na web` ou `N buscas na web`, com `0 buscas na web` quando a resposta não pesquisou. Mensagens salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.

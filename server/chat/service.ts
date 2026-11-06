@@ -182,9 +182,9 @@ export class ChatService {
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), signal]), noQuotaWait: true, projectId },
       )) as StepOutcome<ChatOutput>;
       const measured = usageOf(out.summary);
-      const usage = measured ? { ...measured, model } : undefined;
-      const sources = out.summary.webSearchSources ?? [];
       const queries = out.summary.webSearchQueries ?? [];
+      const usage = measured ? { ...measured, model, searches: queries.length } : undefined;
+      const sources = out.summary.webSearchSources ?? [];
       const searched = queries.length > 0;
       // The sources are the links the search returned, appended by the server: the model names them, it never writes an address.
       const answered = (value: ChatOutput): ChatOutput => ({ ...value, answer: withSources(value.answer, sources) });

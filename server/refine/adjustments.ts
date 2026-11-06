@@ -7,14 +7,19 @@ import type { BacklogState, PatchRow } from './state.js';
 
 /**
  * R11.7.4: a spec whose run started never changes. When the sections it cites change, the owner approves an adjustment
- * spec `<key>-ajuste-<n>` by accepting its `## Ajuste aprovado:` section in briefing.md, and the orchestrator, never the
- * agent, adds it to the backlog after the spec it changes.
+ * spec `<key>-adjustment-<n>` by accepting its `## Approved adjustment:` section in briefing.md, and the orchestrator, never
+ * the agent, adds it to the backlog after the spec it changes. The earlier spelling (`-ajuste-<n>`, `## Ajuste aprovado:`) is still read.
  */
-const ADJUSTMENT = /^([a-z0-9]+(?:-[a-z0-9]+)*)-ajuste-(\d+)$/;
+const ADJUSTMENT = /^([a-z0-9]+(?:-[a-z0-9]+)*)-(?:adjustment|ajuste)-(\d+)$/;
 
 const rootOf = (key: string) => ADJUSTMENT.exec(key)?.[1];
 const numberOf = (key: string) => Number(ADJUSTMENT.exec(key)?.[2] ?? 0);
-const approvalHeading = (key: string) => `Ajuste aprovado: ${key}`;
+/** The same adjustment under both spellings of its key: `opme-adjustment-2` and `opme-ajuste-2` are one. */
+const spellingsOf = (key: string): string[] => (rootOf(key) === undefined ? [key] : [`${rootOf(key)}-adjustment-${numberOf(key)}`, `${rootOf(key)}-ajuste-${numberOf(key)}`]);
+/** The heading an approval is written under: the English one. */
+const approvalHeading = (key: string) => `Approved adjustment: ${key}`;
+/** Every heading that approves `key`, under either spelling of the key and of the heading. */
+const approvalHeadings = (key: string): string[] => spellingsOf(key).flatMap((k) => [approvalHeading(k), `Ajuste aprovado: ${k}`]);
 
 export const isAdjustment = (key: string): boolean => ADJUSTMENT.test(key);
 
@@ -77,8 +82,8 @@ export function adjustmentsDue(backlog: Pick<BacklogState, 'items' | 'specs'>, d
     const was = feature(spec.derivedFrom.sources).map(hashOf);
     const cites = feature(sourceHashes(latest, docs));
     if (sameHashes(was, cites.map(hashOf))) return [];
-    const key = `${original.key}-ajuste-${numberOf(latest.key) + 1}`;
-    if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && p.replace.startsWith(`## ${approvalHeading(key)}\n`))) return [];
+    const key = `${original.key}-adjustment-${numberOf(latest.key) + 1}`;
+    if (patches.some((p) => (p.status === 'pending' || p.status === 'rejected') && approvalHeadings(key).some((h) => p.replace.startsWith(`## ${h}\n`)))) return [];
     const removed = cites.length > 0 && cites.every((s) => s.hash === null);
     return [{ key, specId: spec.specId, status: spec.status, changed: (removed ? cites : cites.filter((s) => !was.includes(hashOf(s)))).map((s) => `${s.doc} › ${s.heading}`), ...(removed ? { removed: true as const } : {}) }];
   });

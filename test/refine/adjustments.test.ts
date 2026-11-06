@@ -27,7 +27,7 @@ describe('approved adjustments', () => {
     const opme = item('opme', { dependsOn: ['caso'], priority: 'P2', size: 'L' });
     const items = adjustmentItems([item('caso'), opme], ['opme-ajuste-10', 'opme-ajuste-2', 'opme-ajuste-1', 'fat-ajuste-1']);
     expect(items.map((i) => [i.key, i.dependsOn])).toEqual([['opme-ajuste-1', ['opme']], ['opme-ajuste-2', ['opme-ajuste-1']], ['opme-ajuste-10', ['opme-ajuste-2']]]);
-    expect(items[0]).toMatchObject({ title: 'Ajuste 1: Item opme', epic: 'supr', priority: 'P2', size: 'L', sources: [{ doc: 'flow.md', heading: '3. OPME' }, { doc: 'briefing.md', heading: 'Ajuste aprovado: opme-ajuste-1' }] });
+    expect(items[0]).toMatchObject({ title: 'Ajuste 1: Item opme', epic: 'supr', priority: 'P2', size: 'L', sources: [{ doc: 'flow.md', heading: '3. OPME' }, { doc: 'briefing.md', heading: 'Approved adjustment: opme-ajuste-1' }] });
   });
 
   it('names what an adjustment changes, oldest first: its original and its earlier adjustments', () => {
@@ -56,8 +56,8 @@ describe('adjustments due', () => {
     adjustmentsDue({ items: items.map((i, n) => ({ ...i, rank: n + 1 })), specs }, d, patches).map((a) => a.key);
 
   it('asks for the first adjustment of a delivered or running spec whose cited section changed', () => {
-    expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }], specs: { opme: started('opme', opme, before, 'done') } }, after, [])).toEqual([{ key: 'opme-ajuste-1', specId: 'big-001-opme', status: 'done', changed: ['flow.md › 3. OPME'] }]);
-    expect(due({ opme: started('opme', opme, before, 'running') })).toEqual(['opme-ajuste-1']);
+    expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }], specs: { opme: started('opme', opme, before, 'done') } }, after, [])).toEqual([{ key: 'opme-adjustment-1', specId: 'big-001-opme', status: 'done', changed: ['flow.md › 3. OPME'] }]);
+    expect(due({ opme: started('opme', opme, before, 'running') })).toEqual(['opme-adjustment-1']);
   });
 
   // Review of plan 79: inserting a flow section renumbers every later one, and the PO must cite the new number.
@@ -67,20 +67,20 @@ describe('adjustments due', () => {
     const done = started('opme', opme, before, 'done');
     expect(due({ opme: done }, [recited], renumbered)).toEqual([]);
     const legacy = { ...done, spec: { ...done.spec!, derivedFrom: { ...done.spec!.derivedFrom!, sources: done.spec!.derivedFrom!.sources.map(({ doc, heading, hash }) => ({ doc, heading, hash })) } } };
-    expect(due({ opme: legacy }, [recited], renumbered)).toEqual(['opme-ajuste-1']);
+    expect(due({ opme: legacy }, [recited], renumbered)).toEqual(['opme-adjustment-1']);
   });
 
   // R11.7.5: a started item whose sections left the docs stays; the owner decides whether an adjustment removes it.
   it('asks to remove the feature when every section it cites left the docs, its approval aside', () => {
     const gone = { ...before, 'flow.md': before['flow.md'].replace('%% 3. OPME\n  C --> D\n', '') };
     const [due] = adjustmentsDue({ items: [{ ...opme, rank: 1 }], specs: { opme: started('opme', opme, before, 'done') } }, gone, []);
-    expect(due).toMatchObject({ key: 'opme-ajuste-1', removed: true, changed: ['flow.md › 3. OPME'] });
+    expect(due).toMatchObject({ key: 'opme-adjustment-1', removed: true, changed: ['flow.md › 3. OPME'] });
     expect(approvalPatch(due!).reason).toMatch(/saíram dos documentos/);
     expect(approvalPatch(due!).replace).toMatch(/remove essa funcionalidade/);
     const approved = '# Briefing\n\n## Ajuste aprovado: opme-ajuste-1\n\ntexto\n';
     const [first] = adjustmentItems([opme], ['opme-ajuste-1']);
     const rows = { opme: started('opme', opme, before, 'done'), 'opme-ajuste-1': started('opme-ajuste-1', first!, { ...before, 'briefing.md': approved }, 'done') };
-    expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }, { ...first!, rank: 2 }], specs: rows }, { ...gone, 'briefing.md': approved }, [])).toMatchObject([{ key: 'opme-ajuste-2', removed: true }]);
+    expect(adjustmentsDue({ items: [{ ...opme, rank: 1 }, { ...first!, rank: 2 }], specs: rows }, { ...gone, 'briefing.md': approved }, [])).toMatchObject([{ key: 'opme-adjustment-2', removed: true }]);
   });
 
   // Plan 80 review: an approval section is the owner's instruction, not the feature.
@@ -105,7 +105,7 @@ describe('adjustments due', () => {
     const changedAgain = docs('C --> D3[Cotação dupla]', approved);
     const rows = (status: SpecStatus) => ({ opme: started('opme', opme, before, 'done'), 'opme-ajuste-1': started('opme-ajuste-1', first!, derivedAt, status) });
     expect(due(rows('planned'), [opme, first!], changedAgain)).toEqual([]);
-    expect(due(rows('done'), [opme, first!], changedAgain)).toEqual(['opme-ajuste-2']);
+    expect(due(rows('done'), [opme, first!], changedAgain)).toEqual(['opme-adjustment-2']);
   });
 
   it('never asks again what is still pending or was rejected in this draft', () => {
@@ -113,7 +113,7 @@ describe('adjustments due', () => {
     const specs = { opme: started('opme', opme, before, 'done') };
     expect(due(specs, [opme], after, asked('pending'))).toEqual([]);
     expect(due(specs, [opme], after, asked('rejected'))).toEqual([]);
-    expect(due(specs, [opme], after, asked('pending', 'opme-ajuste-11'))).toEqual(['opme-ajuste-1']);
+    expect(due(specs, [opme], after, asked('pending', 'opme-ajuste-11'))).toEqual(['opme-adjustment-1']);
   });
 });
 

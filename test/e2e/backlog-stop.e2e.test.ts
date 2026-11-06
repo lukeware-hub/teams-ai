@@ -153,6 +153,7 @@ beforeEach(async () => {
   };
   registry = new SessionRegistry({
     repositoryFlow: false,
+    docsRepoLayout: false,
     cfg: async () => (await readUserConfig(home)).cfg,
     home,
     runAgent: fakeAgent as RunAgent,

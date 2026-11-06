@@ -7,6 +7,7 @@ import type { DeployTarget } from '../deploy/target.js';
 import type { StepOutcome } from '../runner/step.js';
 import { OrchEvent } from '../orchestrator/events.js';
 import type { PhaseDeps } from '../orchestrator/phases/shared.js';
+import { citedVariables } from '../orchestrator/stop-explain.js';
 import { environmentPack, type PackBase } from '../orchestrator/steps.js';
 import { applyRecipes, mintValues, type MintRecipe } from './executor.js';
 import { scanRepository, unknownVariables, type ScannedFile } from './scan.js';
@@ -62,12 +63,6 @@ export const RESERVED = /^(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_\w+|
 /** A recipe per name; a newer one replaces an older one. */
 const merged = (older: readonly EnvironmentVariable[], newer: readonly EnvironmentVariable[]): EnvironmentVariable[] => [...new Map([...older, ...newer].map((v) => [v.name, v] as const)).values()];
 
-/** Variable names a failure text cites, as the UI reads them: A_B style, minus what the platform provides. */
-export function citedVariables(text: string): string[] {
-  const names = text.match(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g) ?? [];
-  return [...new Set(names)].filter((n) => !/^(SERVICE_URL(_\w+)?|TEAMS_AI_IMAGE|AC_\d+)$/.test(n));
-}
-
 /** The text of a deploy or suite failure that says a variable or a credential is missing: the one case the environment step can fix. */
 export const MISSING_VARIABLE = /required variable|is missing a value|missing secret|declares secret .* not available|não foram? definid|not (?:been )?defined|is not set|variável de ambiente/i;
 
@@ -99,7 +94,7 @@ export async function prepareEnvironment(host: EnvironmentHost, repo: Environmen
   const known = new Set([...Object.keys(host.secrets), ...remembered.map((v) => v.name)]);
   const files = await scanRepository(repo.dir, { compose: repo.plan.delivery?.compose, e2eSuite: repo.plan.delivery?.e2eSuite });
   const wanted = new Set(unknownVariables(files, known));
-  for (const n of failure === null ? [] : citedVariables(failure)) if (!known.has(n)) wanted.add(n);
+  for (const n of failure === null ? [] : citedVariables(failure, Infinity)) if (!known.has(n)) wanted.add(n);
   for (const n of wanted) if (RESERVED.test(n)) wanted.delete(n);
   const fresh = wanted.size > 0 ? await askAgent(host, repo, files, [...wanted], failure) : [];
   const recipes = merged(remembered, fresh);

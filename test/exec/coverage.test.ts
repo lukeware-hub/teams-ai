@@ -22,9 +22,9 @@ describe('parseCoverageSummary', () => {
 
 describe('coveragePasses', () => {
   it('passes at or above the floor, fails below it, and fails closed on no summary', () => {
-    expect(coveragePasses({ linesPct: 80 })).toBe(true);
-    expect(coveragePasses({ linesPct: 80.1 })).toBe(true);
-    expect(coveragePasses({ linesPct: 79.9 })).toBe(false);
+    expect(coveragePasses({ linesPct: 90 })).toBe(true);
+    expect(coveragePasses({ linesPct: 90.1 })).toBe(true);
+    expect(coveragePasses({ linesPct: 89.9 })).toBe(false);
     expect(coveragePasses(null)).toBe(false);
   });
 

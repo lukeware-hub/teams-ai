@@ -2,7 +2,7 @@ import type { BACKLOG_DOCS, BacklogItem } from '../contracts/backlog.js';
 import { canonicalJson, sha256 } from '../contracts/hash.js';
 import type { RepositoryContext } from '../contracts/architecture.js';
 import type { SpecProvenance } from '../contracts/spec.js';
-import { approvalKey, sectionText, withoutApprovals } from './sections.js';
+import { approvalKey, approvalText, sectionText, withoutApprovals } from './sections.js';
 
 /** The target project's five docs by the names backlog items cite them with. */
 export type BacklogDocs = Record<(typeof BACKLOG_DOCS)[number], string>;
@@ -12,7 +12,12 @@ const HASH_VERSION = 2;
 
 /** briefing.md's approval sections count only for themselves, so accepting one changes no other cited section (R11.7.4). */
 const cited = (item: Pick<BacklogItem, 'sources'>, docs: BacklogDocs) =>
-  item.sources.map((s) => ({ doc: s.doc, heading: s.heading, text: sectionText(s.doc === 'briefing.md' && !approvalKey(s.heading) ? withoutApprovals(docs[s.doc]) : docs[s.doc], s.heading) }));
+  item.sources.map((s) => {
+    // An approval is found by its key, so it resolves under either spelling of its heading.
+    const key = approvalKey(s.heading);
+    const text = key === null ? sectionText(s.doc === 'briefing.md' ? withoutApprovals(docs[s.doc]) : docs[s.doc], s.heading) : approvalText(docs['briefing.md'], key);
+    return { doc: s.doc, heading: s.heading, text };
+  });
 
 /**
  * What a spec is derived from: the item itself and the text of every section it cites. The briefing and project.md

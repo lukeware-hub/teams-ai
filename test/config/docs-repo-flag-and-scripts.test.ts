@@ -17,7 +17,7 @@ describe('docs repository layout flag', () => {
     expect(lines).toContain('TEAMS_AI_DOCS_REPO_LAYOUT=1');
   });
 
-  it('sets the compose default to 1, and the code default stays off when the variable is unset', async () => {
+  it('sets the compose default to 1, the same as the code default when the variable is unset', async () => {
     const compose = await fs.readFile(path.resolve('docker-compose.yml'), 'utf8');
     expect(compose).toContain('TEAMS_AI_DOCS_REPO_LAYOUT: ${TEAMS_AI_DOCS_REPO_LAYOUT:-1}');
   });

@@ -32,14 +32,13 @@ const marker: DocsMarker = {
 };
 
 describe('docsRepoLayoutEnabled', () => {
-  it('is off when the variable is unset', () => {
-    expect(docsRepoLayoutEnabled({})).toBe(false);
+  it('is on when the variable is unset', () => {
+    expect(docsRepoLayoutEnabled({})).toBe(true);
   });
 
-  it('is on only when the variable is 1', () => {
+  it('is off only when the variable is 0', () => {
+    expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: '0' })).toBe(false);
     expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: '1' })).toBe(true);
-    expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: 'junk' })).toBe(false);
-    expect(docsRepoLayoutEnabled({ [DOCS_REPO_LAYOUT_ENV]: 'true' })).toBe(false);
   });
 });
 

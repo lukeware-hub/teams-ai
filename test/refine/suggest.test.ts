@@ -59,7 +59,7 @@ describe('reshapePack (Reformatar)', () => {
 
   it('keeps the recorded decisions word for word and marks a section that does not apply', () => {
     const feedback = reshape('briefing.md').feedback ?? '';
-    expect(feedback).toContain('"## Decisões" and "## Ajuste aprovado" word for word');
+    expect(feedback).toContain('"## Decisões" and "## Approved adjustment" (or "## Ajuste aprovado") word for word');
     expect(feedback).toContain('"- (not applicable)"');
   });
 });

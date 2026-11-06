@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Gate } from '../../server/contracts/plan.js';
 import { validatePlan } from '../../server/validators/plan.js';
-import { makeFrozenSpec, makePlan, REQUIRED_GATES } from '../fixtures/contracts.js';
+import { makeFrozenSpec, makePlan, makePlanTask, REQUIRED_GATES } from '../fixtures/contracts.js';
 
 const spec = makeFrozenSpec();
 const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/api.e2e.test.ts', readmeSections: ['Run'] };
@@ -98,5 +98,25 @@ describe('validatePlan e2eExemptions', () => {
   it('rejects exempting every criterion', () => {
     const all = spec.acceptanceCriteria.map((ac) => ({ acId: ac.id, reason: 'not observable over the service' }));
     expect(check(plan({}, { e2eExemptions: all }))).toContain('e2eExemptions: at least one criterion must be covered by the e2e suite');
+  });
+});
+
+describe('front tasks and e2e exemptions', () => {
+  const ui = makePlanTask({ id: 'T1-screens', owner: 'front', criteriaRefs: ['AC-001'] });
+  const deploy = (kind: 'api' | 'front') => ({ image: 'todo-api', port: 3000, healthcheckPath: '/health', manifests: ['deploy/k8s.yaml'], kind });
+
+  it('rejects an exemption of a criterion a front task delivers, since a screen is never exempt', () => {
+    const errors = check(plan({}, { deploy: deploy('front'), tasks: [ui], e2eExemptions: [{ acId: 'AC-001', reason: 'visual only, no test' }] }));
+    expect(errors).toContainEqual(expect.stringContaining('e2eExemptions: AC-001 is delivered by the front task T1-screens'));
+  });
+
+  it('rejects a front task in a service that does not deploy a front', () => {
+    const errors = check(plan({}, { deploy: deploy('api'), tasks: [ui] }));
+    expect(errors).toContainEqual(expect.stringContaining('front task T1-screens must belong to a service with deploy.kind front'));
+  });
+
+  it('accepts a front task in a service that deploys a front', () => {
+    const errors = check(plan({}, { deploy: deploy('front'), tasks: [ui] }));
+    expect(errors.join('\n')).not.toContain('deploy.kind front');
   });
 });

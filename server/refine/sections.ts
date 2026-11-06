@@ -157,11 +157,14 @@ export function onlySubsections(doc: string, heading: string): string[] | null {
   return citable.length > 0 ? citable.map((s) => s.heading) : null;
 }
 
-/** R11.7.4: the owner approves an adjustment with a section headed `Ajuste aprovado: <key>-ajuste-<n>`. */
-const APPROVAL = /^Ajuste aprovado:\s*`?([a-z0-9]+(?:-[a-z0-9]+)*-ajuste-\d+)`?$/i;
+/** R11.7.4: the owner approves an adjustment with a section headed `Approved adjustment: <key>-adjustment-<n>` (or the earlier `Ajuste aprovado:`). */
+const APPROVAL = /^(?:Approved adjustment|Ajuste aprovado):\s*`?([a-z0-9]+(?:-[a-z0-9]+)*-(?:adjustment|ajuste)-\d+)`?$/i;
 
 /** The adjustment key a section heading approves, or null. */
 export const approvalKey = (heading: string): string | null => APPROVAL.exec(heading)?.[1]!.toLowerCase() ?? null;
+
+/** The text of the section that approves `key`, under either spelling of its heading, or null. */
+export const approvalText = (doc: string, key: string): string | null => docSections(doc).find((s) => approvalKey(s.heading) === key)?.text ?? null;
 
 /** The doc without its approval sections, so an approval leaves the text of every other section as it was. */
 export function withoutApprovals(doc: string): string {
