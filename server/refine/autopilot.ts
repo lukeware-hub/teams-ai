@@ -4,8 +4,39 @@ import { DOC_STAGES } from './doc-stages.js';
 import { type PatchRow } from './state.js';
 import { asTeamAlone, autoAcceptable } from './team-rule.js';
 
-/** The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button. */
-export const runExtension = (s: RefineSession): Promise<void> => asTeamAlone(true, () => s.evaluate().then(() => resolveEverything(s, { byOwner: false })));
+/**
+ * The follow-on request the team runs on its own: evaluated, then resolved to ready without the owner's button.
+ * The start and the stop are journaled, so the screen asks the owner only for what the team stopped on.
+ */
+export async function runExtension(s: RefineSession): Promise<void> {
+  await s.teamAutopilot('started');
+  let failure: string | null = null;
+  try {
+    await asTeamAlone(true, async () => {
+      await s.evaluate();
+      await resolveEverything(s, { byOwner: false });
+    });
+  } catch (err) {
+    failure = `O time parou com um erro: ${err instanceof Error ? err.message : String(err)}`;
+    throw err;
+  } finally {
+    await s.teamAutopilot('stopped', [...(failure ? [failure] : []), ...leftForOwner(s)]);
+  }
+}
+
+const countOf = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** What the team could not settle, in plain words for the owner; empty when everything is settled. */
+export function leftForOwner(s: Pick<RefineSession, 'state'>): string[] {
+  const st = s.state;
+  const reasons: string[] = [];
+  const questions = st.questions.filter((q) => q.status === 'pending').length;
+  if (questions > 0) reasons.push(`O time não conseguiu decidir ${countOf(questions, 'pergunta', 'perguntas')}.`);
+  const patches = st.patches.filter((p) => p.status === 'pending').length;
+  if (patches > 0) reasons.push(`${countOf(patches, 'sugestão muda', 'sugestões mudam')} o escopo e ${patches === 1 ? 'espera' : 'esperam'} a sua decisão.`);
+  if (st.speckit?.status === 'failed') reasons.push('A preparação dos planos falhou.');
+  return reasons;
+}
 
 /** The rounds the team works through before it follows the specs.md on the owner's word. */
 const ROUNDS = 5;
@@ -63,6 +94,8 @@ async function runRounds(s: RefineSession, teamAlone: boolean): Promise<void> {
       await tolerate(() => s.settled());
     }
   }
+  // A suggestion proposed after the last accept pass of a round is taken here, so none the team may accept is left behind.
+  for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
   // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision to the team.
   if (!s.specsApproved() && s.state.specsMd !== undefined && s.state.specsMd !== null) await tolerate(() => s.approveSpecsAnyway());
   // Last: the closing checks the request still fails (the architecture, the impact) are decided by the team, then every document goes into the graph in one extraction.

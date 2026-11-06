@@ -1636,6 +1636,7 @@ Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em 
 - Impacto, Replanejamento, Itens do backlog, Planos e Verificação ficam recolhidos num único bloco "Detalhes do time". Nada é apagado.
 - Clicar numa etapa da trilha abre os detalhes antes de rolar até o cartão.
 - O selo da Verificação mostra quantos itens falharam ("2 itens falharam"), não só "Pendente".
+- "Precisa de você" só aparece na frente depois que o time parou com algo que não conseguiu decidir (o servidor registra a parada e os motivos). Enquanto o time trabalha, ou quando nada sobrou, o cartão fica dentro de "Detalhes do time" e o motivo aparece no estado do topo.
 - O time aceita sozinho acréscimos em qualquer documento e reescritas que não mudam o escopo. Só mudança de escopo e aprovação de ajuste chegam ao dono.
 - O endereço `?etapa=<documento>` abre esse documento dentro da tela do pedido, com o botão Voltar para a tela do pedido.
 

@@ -77,6 +77,10 @@ export const RefineEvent = {
   SpeckitStepDone: 'PLANS_STEP_DONE',
   SpeckitStepRepaired: 'PLANS_STEP_REPAIRED',
   AutopilotPaused: 'AUTOPILOT_PAUSED',
+  /** The team started resolving a follow-on request on its own: nothing waits for the owner while it runs. */
+  TeamAutopilotStarted: 'TEAM_AUTOPILOT_STARTED',
+  /** The team stopped: `{reasons}` in plain words, empty when everything is settled; what is listed is the owner's to decide. */
+  TeamAutopilotStopped: 'TEAM_AUTOPILOT_STOPPED',
   /** The plan preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
   /** The implementation plans of every item are written (plan 107): `{inputHash}`. An older build ignores it and shows the preparation as not done. */

@@ -1486,13 +1486,16 @@ export function RefinementView(p: ViewProps) {
   if (st.extension) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
     const startOpen = canStart && speckitReady && !specsGate;
-    // Only what blocks the start sits in front of the owner; optional suggestions wait inside the details.
-    const needsFirst = openOwner > 0 && !startOpen;
+    // "Precisa de você" sits in front only once the team stopped with something left; while it works, or when a request has no
+    // team record (an older one), only what blocks the start sits in front. The rest waits inside the details.
+    const autopilot = st.autopilot;
+    const teamStopped = autopilot?.status === 'stopped';
+    const needsFirst = openOwner > 0 && (autopilot === undefined ? !startOpen : teamStopped);
     // Where the request stands, said plainly: the team working, something waiting for the owner, or ready to start.
-    const requestStatus: RequestStatus = evaluating || speckitRunning
+    const requestStatus: RequestStatus = evaluating || speckitRunning || autopilot?.status === 'running'
       ? { tone: 'working', title: 'O time está refinando seu pedido', text: 'Você não precisa fazer nada agora. O botão libera sozinho quando o time terminar.' }
       : openOwner > 0
-        ? { tone: 'needs', title: startOpen ? `${openOwner} ${openOwner === 1 ? 'sugestão do time espera' : 'sugestões do time esperam'} você` : `${openOwner} ${openOwner === 1 ? 'decisão espera' : 'decisões esperam'} você`, text: startOpen ? 'São opcionais: inicie o desenvolvimento sem decidir agora, ou veja em "Detalhes do time".' : 'Resolva os itens abaixo para liberar o desenvolvimento.' }
+        ? { tone: 'needs', title: startOpen ? `${openOwner} ${openOwner === 1 ? 'sugestão do time espera' : 'sugestões do time esperam'} você` : `${openOwner} ${openOwner === 1 ? 'decisão espera' : 'decisões esperam'} você`, text: teamStopped && autopilot.reasons.length > 0 ? `O time não conseguiu decidir sozinho: ${autopilot.reasons.join(' ')}` : startOpen ? 'São opcionais: inicie o desenvolvimento sem decidir agora, ou veja em "Detalhes do time".' : 'Resolva os itens abaixo para liberar o desenvolvimento.' }
         : startOpen
           ? { tone: 'ready', title: 'Tudo pronto para desenvolver', text: 'O time terminou o refinamento. Inicie quando quiser.' }
           : { tone: 'working', title: 'Falta pouco para iniciar', text: startReason ?? 'O time prepara o que falta.' };

@@ -561,6 +561,8 @@ export interface RefineState {
   backlog?: BacklogView | null;
   /** The owner's request this draft follows up, with the outline it followed as main had it. */
   extension?: { requestId: string; title: string; text: string; at: string; before?: Array<{ key: string; rank: number; dependsOn: string[] }> };
+  /** The team resolving a request on its own: running, or stopped with the reasons the owner must decide what is left. */
+  autopilot?: { status: 'running' | 'stopped'; reasons: string[] };
   /** The SM's impact of the request, with the outline it was made from; `issues` names what it broke. */
   impact?: { inputHash: string; impact: RequestImpact | null; issues: string[] };
   mode?: 'new-project' | 'new-spec' | 'continue' | null;

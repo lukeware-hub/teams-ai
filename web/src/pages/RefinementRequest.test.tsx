@@ -66,6 +66,23 @@ describe('the request screen keeps only what the owner needs in view', () => {
     expect(screen.getByTestId('request-ready').compareDocumentPosition(needs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('keeps "Precisa de você" out of sight while the team works on its own, even with items open and the server idle', () => {
+    renderView(request({ patches: [patch], autopilot: { status: 'running', reasons: [] } }));
+    expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(screen.getByTestId('step-card-needs'))).toBe(true);
+    expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('working');
+  });
+
+  it('shows "Precisa de você" in front, with the reason, only after the team stopped with something left', () => {
+    renderView(request({ patches: [patch], autopilot: { status: 'stopped', reasons: ['1 sugestão muda o escopo e espera a sua decisão.'] } }));
+    expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(screen.getByTestId('step-card-needs'))).toBe(false);
+    expect(screen.getByTestId('request-status-text').textContent).toContain('O time não conseguiu decidir sozinho: 1 sugestão muda o escopo');
+  });
+
+  it('shows nothing in front when the team stopped with nothing left', () => {
+    renderView(request({ autopilot: { status: 'stopped', reasons: [] } }));
+    expect((screen.getByTestId('request-details') as HTMLDetailsElement).contains(screen.getByTestId('step-card-needs'))).toBe(true);
+  });
+
   it('says in the head what the owner should do: wait, decide, or start', () => {
     renderView(request({ patches: [patch] }));
     expect(screen.getByTestId('request-ready').getAttribute('data-tone')).toBe('needs');

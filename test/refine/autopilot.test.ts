@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveEverything, startIsClear } from '../../server/refine/autopilot.js';
+import { leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 import { autoAcceptable } from '../../server/refine/team-rule.js';
 
@@ -29,6 +29,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     graphDocs: vi.fn(async () => undefined),
     closingSummary: vi.fn(async () => ({ ok: true, summaryHash: 'h', checks: [], repositories: [], assumptions: [] })),
     saveDocs: vi.fn(async () => undefined),
+    teamAutopilot: vi.fn(async () => undefined),
     specsApproved: over.specsApproved ?? (() => true),
   };
   return s;
@@ -111,6 +112,48 @@ describe('resolveEverything', () => {
     await resolveEverything(s as unknown as RefineSession);
     expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
     expect(s.saveDocs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('runExtension: the team starts and stops are journaled, so the screen asks the owner only for what is left', () => {
+  const extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+
+  it('starts, resolves and stops with no reason when everything is settled', async () => {
+    const s = fake({ status: 'ready', plansDone: true });
+    s.state.extension = extension;
+    await runExtension(s as unknown as RefineSession);
+    expect(s.teamAutopilot.mock.calls).toEqual([['started'], ['stopped', []]]);
+  });
+
+  it('stops listing the question the team could not decide and the suggestion that changes scope', async () => {
+    const s = fake({ status: 'ready', plansDone: true, questions: [{ questionId: 'q1', status: 'pending', blocking: true }], patches: [{ patchId: 'scope', status: 'pending', scopeChange: true, reason: '', find: 'x', replace: 'y', file: 'design.md' }] });
+    s.state.extension = extension;
+    s.decideAnswer.mockRejectedValue(new ConflictError('O PO não conseguiu decidir'));
+    await runExtension(s as unknown as RefineSession);
+    expect(s.teamAutopilot).toHaveBeenLastCalledWith('stopped', ['O time não conseguiu decidir 1 pergunta.', '1 sugestão muda o escopo e espera a sua decisão.']);
+  });
+
+  it('still journals the stop, with the error, when the evaluation throws', async () => {
+    const s = fake();
+    s.state.extension = extension;
+    s.evaluate.mockRejectedValue(new Error('limite de rodadas'));
+    await expect(runExtension(s as unknown as RefineSession)).rejects.toThrow('limite de rodadas');
+    expect(s.teamAutopilot).toHaveBeenLastCalledWith('stopped', ['O time parou com um erro: limite de rodadas']);
+  });
+
+  it('takes in the last pass a suggestion proposed after the rounds, so none the team may accept is left', async () => {
+    const s = fake({ status: 'ready', plansDone: true });
+    s.state.extension = extension;
+    (s.state.patches as unknown[]).push({ patchId: 'late', status: 'pending', scopeChange: false, reason: '', find: 'a', replace: 'b', file: 'flow.md' });
+    await runExtension(s as unknown as RefineSession);
+    expect(s.accept).toHaveBeenCalledWith('late', true);
+  });
+});
+
+describe('leftForOwner', () => {
+  it('says nothing when nothing is left, and names a failed plan preparation', () => {
+    expect(leftForOwner({ state: { questions: [], patches: [] } } as never)).toEqual([]);
+    expect(leftForOwner({ state: { questions: [], patches: [], speckit: { status: 'failed' } } } as never)).toEqual(['A preparação dos planos falhou.']);
   });
 });
 

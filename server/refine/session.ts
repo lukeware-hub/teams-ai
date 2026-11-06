@@ -307,6 +307,8 @@ export class RefineSession {
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted', kind: 'interrupted' });
     // A restart in a pause between two cycles of one click: its end would be the restart, so its record is void.
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
+    // The team resolving a request on its own is cut by a restart too: it stops, and what is left is the owner's.
+    if (journal.state.autopilot?.status === 'running') await journal.fact(RefineEvent.TeamAutopilotStopped, { reasons: ['O time foi interrompido quando o servidor reiniciou.'] });
     // A plan preparation cut by a restart is failed too; the owner runs it again.
     if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.', kind: 'interrupted' });
     // An architecture decision cut by a restart is failed, so the owner decides again instead of waiting on it.
@@ -395,6 +397,12 @@ export class RefineSession {
       cycle: this.state.status === 'error' ? runs.cycle : undefined,
       speckit: this.state.speckit?.status === 'failed' ? runs.speckit : undefined,
     };
+  }
+
+  /** The team resolving a follow-on request on its own started or stopped; a stop lists in plain words what is left for the owner. */
+  async teamAutopilot(status: 'started' | 'stopped', reasons: string[] = []): Promise<void> {
+    if (status === 'started') await this.journal.fact(RefineEvent.TeamAutopilotStarted, {});
+    else await this.journal.fact(RefineEvent.TeamAutopilotStopped, { reasons });
   }
 
   /** The heal driver stops on this draft; a later failure, which the owner's action produces, lifts the pause. */
