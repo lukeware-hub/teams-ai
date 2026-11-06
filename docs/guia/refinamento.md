@@ -77,6 +77,8 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 
 Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
 
+Um documento grande é revisado em partes, cada uma com a sua própria passada de revisão. As sugestões de todas as partes aparecem juntas na mesma revisão da etapa. Se uma parte falhar, a etapa diz o motivo e você processa de novo.
+
 Depois das cinco etapas, a avaliação completa gera o backlog e as specs a partir dos documentos atuais, mas também não altera nenhum documento. Quando um agente encontra algo no documento errado, ele vira uma sugestão ou uma pergunta para o dono daquele documento. Você aceita, rejeita ou responde.
 
 ## Formato do modelo

@@ -660,3 +660,35 @@ describe('runStageCycle', () => {
     expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent stopped' });
   });
 });
+
+/** A stage document of `count` sections, each about 99 thousand characters: one part of the review each. */
+const bigSections = (count: number) => Array.from({ length: count }, (_, i) => `## Parte ${i + 1}\n${`${'x'.repeat(999)}\n`.repeat(99)}`).join('');
+
+describe('runStageCycle reviews a document too big for one part in parts', () => {
+  it('reads each part in its own review, and merges what the parts propose', async () => {
+    const draft = await newDraft();
+    const doc = bigSections(3);
+    await writeDoc(draft, 'briefing.md', doc);
+    const journal = foldingJournal();
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind !== 'refine') return answer([]);
+      const index = /part (\d) of 3/.exec(req.pack.feedback ?? '')?.[1];
+      return answer(index ? [{ file: 'briefing.md', find: `## Parte ${index}`, replace: `## Parte ${index} revisada`, reason: 'r' }] : []);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(runAgent.mock.calls.filter(([req]) => req.kind === 'refine')).toHaveLength(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+    expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
+    expect(await readDoc(draft, 'briefing.md')).toBe(doc);
+  });
+
+  it('refuses a document with more parts than one review may read, and says how many', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', bigSections(41));
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: expect.stringMatching(/tem 41 partes; o limite é 40/) });
+  });
+});

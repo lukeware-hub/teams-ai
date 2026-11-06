@@ -1398,6 +1398,19 @@ Wireframe proposto:
 
 Escolhas do dono: o botão `Gerar specs.md` sai de vez; `Continuar` fica visível e desabilitado com a razão, em vez de sumir.
 
+### 26.12 Revisão de documento grande por partes
+
+A revisão de uma etapa lê o documento inteiro em partes de até 25 mil tokens estimados. Um documento que cabe numa parte é revisado como antes. Com mais de uma parte, cada chamada recebe a sua parte no lugar do documento inteiro, junto com a lista de títulos do documento e a linha de cada um.
+
+| Elemento | Especificação |
+|---|---|
+| Cortes | Só nos títulos, quando cabem. Um trecho sem títulos maior que uma parte é cortado entre linhas. Juntar as partes reproduz o documento sem diferença. |
+| Limite | 25 mil tokens estimados por parte; no máximo 40 partes por revisão. Acima disso a etapa falha com o motivo em palavras simples. |
+| Chamadas | Uma chamada de revisão por parte. Se uma parte falha, a etapa falha com o motivo dela. |
+| Sugestões | Todas as partes contribuem para as mesmas sugestões. Cada `find` é checado contra o documento inteiro e tem de aparecer uma vez só nele. |
+| Registro | Uma revisão por etapa, com as perguntas, os achados e as divergências das partes reunidos. |
+| Documentos anteriores | Seguem como resumo no prompt, como antes. Ler os anteriores pelo grafo fica para o incremento seguinte. |
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:
