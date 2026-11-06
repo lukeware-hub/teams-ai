@@ -97,6 +97,16 @@ describe('ChatService.ask', () => {
     expect((await prose.service.ask('hello-app', 'outra'))!.usage).toMatchObject({ costUsd: null, turns: 3 });
   });
 
+  it('keeps the count of graph queries on the answer only when the step measured it', async () => {
+    const base = { usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0.01, durationMs: 1000, numTurns: 1 };
+    const asked = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: { ...base, profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, graphQueries: 2, toolResultChars: 0 } } }));
+    expect((await asked.service.ask('hello-app', 'pergunta'))!.usage).toMatchObject({ graphQueries: 2 });
+    const none = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: { ...base, profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, graphQueries: 0, toolResultChars: 0 } } }));
+    expect((await none.service.ask('hello-app', 'pergunta'))!.usage).toMatchObject({ graphQueries: 0 });
+    const unmeasured = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: base }));
+    expect((await unmeasured.service.ask('hello-app', 'pergunta'))!.usage).not.toHaveProperty('graphQueries');
+  });
+
   it('brings the older messages that match the question into the prompt, with no search step, and keeps the prompt prefix the same for every question', async () => {
     const store = new ChatStore(path.join(home, 'chats'));
     const old = Array.from({ length: 10 }, (_, i): ChatMessage => ({ role: i % 2 ? 'assistant' : 'user', text: i === 0 ? 'Como funciona a comunicação assíncrona entre os microsserviços?' : `Mensagem ${i} sobre outro assunto`, at: '2026-10-14T10:00:00.000Z' }));
@@ -259,6 +269,25 @@ describe('ChatService project graph', () => {
     expect(reply!.text).toContain('[Guia](https://ok.example/guia)');
     expect(reply!.text).not.toContain('invented.example');
     expect(reply!.correction).toBeUndefined();
+  });
+
+  it('gives the chat the global brain only for a project that is certainly not confidential', async () => {
+    await fs.mkdir(path.join(home, 'ws', '_brain', 'graphify-out'), { recursive: true });
+    await fs.writeFile(path.join(home, 'ws', '_brain', 'graphify-out', 'graph.json'), '{"nodes":[{"id":"other::a"}]}');
+    // What the first step of an answer finds in its folder; the answer may run its step again for the labels.
+    const firstSeen = async (extra: Parameters<typeof make>[1]): Promise<string | null> => {
+      const values: Array<string | null> = [];
+      const runAgent = vi.fn(async (req: Req) => {
+        values.push(await fs.readFile(path.join(req.cwd, 'brain', 'graph.json'), 'utf8').catch(() => null));
+        return ok({ answer: 'Resposta.', correction: null });
+      });
+      await make(runAgent, extra).service.ask('hello-app', 'pergunta');
+      return values[0] ?? null;
+    };
+    expect(await firstSeen({ confidential: async () => false })).toBe('{"nodes":[{"id":"other::a"}]}');
+    expect(await firstSeen({ confidential: async () => true })).toBeNull();
+    expect(await firstSeen({ confidential: async () => { throw new Error('unreadable'); } })).toBeNull();
+    expect(await firstSeen({})).toBeNull();
   });
 
   it('does not search the web when the project does not allow it', async () => {

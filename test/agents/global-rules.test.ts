@@ -78,7 +78,10 @@ describe('agent prompts', () => {
 
 describe('code graph rule', () => {
   it('tells every agent to query the code graph before it edits, reviews or plans', () => {
-    expect(GLOBAL_RULES).toContain('9. Code graph.');
+    expect(GLOBAL_RULES).toContain('9. Code graph and brain.');
     expect(GLOBAL_RULES).toContain('graphify query');
+    // The brain: the project graph and the global one, which holds no confidential project.
+    expect(GLOBAL_RULES).toContain('run history and failures');
+    expect(GLOBAL_RULES).toContain('every project that is not confidential');
   });
 });

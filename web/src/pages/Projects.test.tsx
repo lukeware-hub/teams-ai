@@ -285,8 +285,18 @@ describe('ProjectsView', () => {
   });
 });
 
-describe('the graph link of a project card', () => {
-  it('goes to the screen of the project graph', () => {
+describe('the brain links of the projects page', () => {
+  it('goes from the page to the global brain', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('projects-brain-link').getAttribute('href')).toBe('/brain');
+  });
+
+  it('goes from a project card to the screen of the project graph', () => {
     const o = on();
     render(
       <MemoryRouter>

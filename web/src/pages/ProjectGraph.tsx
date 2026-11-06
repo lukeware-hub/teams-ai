@@ -21,17 +21,40 @@ const KIND_LABEL: Record<string, string> = { dev: 'desenvolvimento', review: 're
 
 /** What the agents asked the graph themselves; nothing is shown as zero until a step has been measured. */
 function queriesLine(q: GraphView['usage']['queries']): string {
-  if (q.steps === 0) return 'Consultas feitas pelos agentes: ainda não medido, conta a partir dos próximos passos.';
-  const kinds = Object.entries(q.byKind).filter(([, n]) => n > 0).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`);
-  return `Consultas feitas pelos agentes: ${q.total} em ${plural(q.steps, 'passo', 'passos')}${kinds.length ? ` (${kinds.join(', ')})` : ''}.`;
+  const parts = [
+    q.steps === 0 ? null : `entrega ${q.total} em ${plural(q.steps, 'passo', 'passos')}${Object.entries(q.byKind).some(([, n]) => n > 0) ? ` (${Object.entries(q.byKind).filter(([, n]) => n > 0).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join(', ')})` : ''}`,
+    q.refine.steps === 0 ? null : `refinamento ${q.refine.total} em ${plural(q.refine.steps, 'passo', 'passos')}`,
+    q.chat.steps === 0 ? null : `chat ${q.chat.total} em ${plural(q.chat.steps, 'resposta', 'respostas')}`,
+  ].filter((p) => p !== null);
+  return parts.length === 0 ? 'Consultas feitas pelos agentes: ainda não medido, conta a partir dos próximos passos.' : `Consultas feitas pelos agentes: ${parts.join(' · ')}.`;
 }
 
 // Hues spread by the golden angle stay apart however many communities there are.
 const colorFor = (rank: number) => `hsl(${Math.round((rank * 137.508) % 360)} 68% 58%)`;
 
-/** The project's code graph on a screen of its own: the map by community, a list to turn communities on and off, a search, and the node picked. */
-export function ProjectGraph() {
+const COMPOSITION_LABEL: Array<[keyof NonNullable<GraphView['composition']>, string]> = [
+  ['code', 'código'],
+  ['documents', 'documentos'],
+  ['tasks', 'tarefas e critérios'],
+  ['runs', 'execuções e falhas'],
+  ['chat', 'chat'],
+  ['costs', 'custos'],
+];
+
+/** What the brain of the project holds, by kind of node; kinds with none are left out. */
+function compositionLine(c: NonNullable<GraphView['composition']>): string {
+  const parts = COMPOSITION_LABEL.filter(([key]) => c[key] > 0).map(([key, label]) => `${c[key]} de ${label}`);
+  return parts.length === 0 ? '' : `Conteúdo: ${parts.join(' · ')}.`;
+}
+
+/**
+ * The brain on a screen of its own: the map by community, a list to turn communities on and off, a search, and the node picked.
+ * `scope` "project" is the brain of one project (the route has its id); "global" is the one brain that holds every project that is not
+ * confidential, where each project is one group.
+ */
+export function ProjectGraph({ scope = 'project' }: { scope?: 'project' | 'global' }) {
   const { projectId = '' } = useParams();
+  const global = scope === 'global';
   const [view, setView] = useState<GraphView | null | undefined>(undefined);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
@@ -44,7 +67,7 @@ export function ProjectGraph() {
   const first = useRef(true);
   const load = useCallback(
     () =>
-      runApi.projectGraph(projectId).then(
+      (global ? runApi.brainGraph() : runApi.projectGraph(projectId)).then(
         (next) => {
           if (first.current) setHidden(new Set((next.map?.communities ?? []).filter((c) => c.name === UNLINKED).map((c) => c.id)));
           first.current = false;
@@ -52,7 +75,7 @@ export function ProjectGraph() {
         },
         () => setView(null),
       ),
-    [projectId],
+    [projectId, global],
   );
   useEffect(() => {
     void load();
@@ -85,13 +108,14 @@ export function ProjectGraph() {
   // The GitHub page of the file of the node picked, asked when it is picked.
   useEffect(() => {
     setFileUrl(undefined);
-    if (!picked || picked.file === '') return;
+    // The GitHub page is asked per project; the global brain mixes projects, so it shows the file name only.
+    if (global || !picked || picked.file === '') return;
     let live = true;
     runApi.projectGraphFile(projectId, picked.repo, picked.file, picked.line).then((u) => live && setFileUrl(u), () => live && setFileUrl(null));
     return () => {
       live = false;
     };
-  }, [projectId, picked]);
+  }, [projectId, picked, global]);
 
   const toggle = (ids: readonly string[]) => {
     const next = new Set(hidden);
@@ -104,8 +128,7 @@ export function ProjectGraph() {
   const build = () => {
     setBuilding(true);
     setBuildError(null);
-    runApi
-      .rebuildProjectGraph(projectId)
+    (global ? runApi.rebuildBrain() : runApi.rebuildProjectGraph(projectId))
       .then(() => load())
       .catch((err: unknown) => setBuildError(err instanceof Error ? err.message : 'não foi possível construir o grafo'))
       .finally(() => setBuilding(false));
@@ -118,21 +141,26 @@ export function ProjectGraph() {
 
   return (
     <main data-testid="project-graph-main" className="grid min-w-0 gap-4">
-      <Breadcrumb testId="project-graph-breadcrumb" trail={[{ label: projectId, to: projectPath(projectId), testId: 'project-graph-breadcrumb-project' }, { label: 'Grafo do código', testId: 'project-graph-breadcrumb-current' }]} />
+      <Breadcrumb
+        testId="project-graph-breadcrumb"
+        trail={global ? [{ label: 'Cérebro do Teams AI', testId: 'project-graph-breadcrumb-current' }] : [{ label: projectId, to: projectPath(projectId), testId: 'project-graph-breadcrumb-project' }, { label: 'Cérebro do projeto', testId: 'project-graph-breadcrumb-current' }]}
+      />
       <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1 data-testid="project-graph-title" className="m-0 text-[1.375rem] leading-[1.3] text-ink">Grafo do código</h1>
+          <h1 data-testid="project-graph-title" className="m-0 text-[1.375rem] leading-[1.3] text-ink">{global ? 'Cérebro do Teams AI' : 'Cérebro do projeto'}</h1>
           {view?.available ? (
             <>
-              <p data-testid="graph-counts" className="mt-1.5 mb-0 text-[0.9375rem] text-ink-soft">{`${view.nodes} nós · ${view.links} ligações · ${plural(view.communities, 'comunidade', 'comunidades')}`}</p>
+              <p data-testid="graph-counts" className="mt-1.5 mb-0 text-[0.9375rem] text-ink-soft">{`${view.nodes} nós · ${view.links} ligações · ${global ? plural(view.communities, 'projeto', 'projetos') : plural(view.communities, 'comunidade', 'comunidades')}`}</p>
+              {global ? <p data-testid="brain-note" className="mt-0.5 mb-0 text-[0.8125rem] text-ink-soft">Todos os projetos que não são confidenciais. Um projeto confidencial nunca entra aqui.</p> : null}
+              {view.composition && compositionLine(view.composition) ? <p data-testid="graph-composition" className="mt-0.5 mb-0 text-[0.8125rem] text-ink-soft">{compositionLine(view.composition)}</p> : null}
               {view.status?.updatedAt ? <p data-testid="graph-updated" className="mt-0.5 mb-0 text-[0.8125rem] text-ink-soft">{`Atualizado em ${when(view.status.updatedAt)}`}</p> : null}
             </>
           ) : null}
         </div>
-        {view?.available ? <div className="max-sm:w-full">{buildButton('Atualizar grafo')}</div> : null}
+        {view?.available ? <div className="max-sm:w-full">{buildButton(global ? 'Atualizar o cérebro' : 'Atualizar grafo')}</div> : null}
       </header>
       {view === undefined ? <Loading /> : null}
-      {view === null ? <p data-testid="graph-error" className="error m-0" role="alert">Não foi possível ler o grafo. Tente de novo mais tarde.</p> : null}
+      {view === null ? <p data-testid="graph-error" className="error m-0" role="alert">{global ? 'Não foi possível ler o cérebro. Tente de novo mais tarde.' : 'Não foi possível ler o grafo. Tente de novo mais tarde.'}</p> : null}
       {view?.status?.failure ? (
         <p data-testid="graph-failure" className="error m-0" role="alert">
           {`A última atualização do grafo falhou em ${when(view.status.failure.at)}: ${view.status.failure.message}. ${view.available ? 'O grafo abaixo é o da versão anterior. ' : ''}Use o botão para tentar de novo.`}
@@ -141,21 +169,25 @@ export function ProjectGraph() {
       {buildError ? <p data-testid="graph-build-error" className="error m-0" role="alert">{buildError}</p> : null}
       {view && !view.available ? (
         <section className={`${panel} justify-items-start gap-3`}>
-          <p data-testid="graph-empty" className="m-0 text-ink-soft">O grafo deste projeto ainda não foi construído. Ele é gerado ao importar o projeto por link e a cada entrega.</p>
-          {buildButton('Construir grafo')}
+          <p data-testid="graph-empty" className="m-0 text-ink-soft">{global ? 'O cérebro do Teams AI ainda não foi construído. Ele junta o grafo de cada projeto que não é confidencial, e aparece depois que um projeto tem grafo.' : 'O grafo deste projeto ainda não foi construído. Ele é gerado ao importar o projeto por link e a cada entrega.'}</p>
+          {buildButton(global ? 'Construir o cérebro' : 'Construir grafo')}
         </section>
       ) : null}
       {view?.available && map ? (
         <>
-          <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
-            {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
-          </p>
-          <p data-testid="graph-queries" className="m-0 text-[0.875rem] text-ink-soft">{queriesLine(view.usage.queries)}</p>
-          {view.usage.queries.steps >= ALERT_STEPS && view.usage.queries.total === 0 ? (
-            <p data-testid="graph-queries-none" className="m-0 text-[0.875rem] text-ink" role="status">
-              {`Nenhum agente consultou o grafo nos últimos ${view.usage.queries.steps} passos. O contexto entregue pelo sistema continua chegando.`}
-            </p>
-          ) : null}
+          {global ? null : (
+            <>
+              <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
+                {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
+              </p>
+              <p data-testid="graph-queries" className="m-0 text-[0.875rem] text-ink-soft">{queriesLine(view.usage.queries)}</p>
+              {view.usage.queries.steps >= ALERT_STEPS && view.usage.queries.total === 0 ? (
+                <p data-testid="graph-queries-none" className="m-0 text-[0.875rem] text-ink" role="status">
+                  {`Nenhum agente consultou o grafo nos últimos ${view.usage.queries.steps} passos. O contexto entregue pelo sistema continua chegando.`}
+                </p>
+              ) : null}
+            </>
+          )}
           {map.truncated ? <p data-testid="graph-truncated" className="m-0 text-[0.8125rem] text-ink-soft">{`O mapa mostra os ${map.nodes.length} nós mais ligados de ${view.nodes}.`}</p> : null}
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="grid min-w-0 gap-3">
@@ -164,7 +196,7 @@ export function ProjectGraph() {
                 <section data-testid="graph-node-detail" className={`${panel} gap-2`}>
                   <h2 className={sectionHeading}>{picked.label}</h2>
                   <p className="m-0 text-[0.875rem] text-ink-soft">
-                    {`${picked.file === '' ? 'sem arquivo' : `${picked.file}${picked.line ? `:${picked.line}` : ''}`} · ${plural(picked.edges, 'ligação', 'ligações')} · comunidade ${communities.find((c) => c.id === picked.community)?.name ?? ''}`}
+                    {`${picked.file === '' ? 'sem arquivo' : `${picked.file}${picked.line ? `:${picked.line}` : ''}`} · ${plural(picked.edges, 'ligação', 'ligações')} · ${global ? 'projeto' : 'comunidade'} ${communities.find((c) => c.id === picked.community)?.name ?? ''}`}
                   </p>
                   {fileUrl ? <a data-testid="graph-node-link" className="link-button" href={fileUrl} target="_blank" rel="noreferrer">Abrir no GitHub</a> : null}
                   {(neighbours.get(picked.id) ?? []).length > 0 ? (

@@ -47,7 +47,7 @@ const wrap = (h: (ctx: RouteContext) => Promise<void>) => async (ctx: RouteConte
   }
 };
 
-export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: string) => void }): Route[] {
+export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: string) => void; /** Called after the owner answers whether the project is confidential, so the global brain drops or takes the project at once. */ confidentialityChanged?: () => void }): Route[] {
   const { registry } = deps;
   const get = (params: Record<string, string>) => registry.get(params.projectId!, params.specId!);
   const idOf = async (s: { snapshot(): Promise<{ projectId: string; specId: string }> }) => {
@@ -332,6 +332,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/confidential`,
       handler: wrap(async ({ params, body, json }) => {
         await (await get(params)).answerConfidentiality(flag(await body(SMALL_BODY_MAX), 'confidential'));
+        deps.confidentialityChanged?.();
         json(200, { ok: true });
       }),
     },

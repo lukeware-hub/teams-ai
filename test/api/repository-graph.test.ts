@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraphView, communitiesOf, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
+import { buildBrainView, buildGraphView, communitiesOf, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
 
 const used = (taskId: string, step: string, source: string, nodes: number): StoredEvent =>
@@ -42,11 +42,19 @@ describe('graph view', () => {
     const finished = (kind: string, profile?: Record<string, unknown>) =>
       ({ seq: 1, at: '2026-11-06T00:00:00Z', runId: 'r1', specHash: 'h', type: 'STEP_FINISHED', kind: 'fact', data: { kind, ...(profile ? { profile } : {}) } }) as StoredEvent;
     const usage = graphUsage([{ runId: 'r1', events: [finished('dev', { toolCalls: {}, graphQueries: 2 }), finished('dev', { toolCalls: {}, graphQueries: 0 }), finished('review', { toolCalls: {}, graphQueries: 1 }), finished('dev', { toolCalls: {} }), finished('dev')] }]);
-    expect(usage.queries).toEqual({ total: 3, steps: 3, byKind: { dev: 2, review: 1 } });
+    expect(usage.queries).toEqual({ total: 3, steps: 3, byKind: { dev: 2, review: 1 }, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } });
   });
 
   it('starts with no queries measured', () => {
-    expect(graphUsage([]).queries).toEqual({ total: 0, steps: 0, byKind: {} });
+    expect(graphUsage([]).queries).toEqual({ total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } });
+  });
+
+  it('counts the refinement drafts and the chat answers apart from the delivery runs', () => {
+    const finished = (profile?: Record<string, unknown>) =>
+      ({ seq: 1, at: '2026-11-06T00:00:00Z', runId: 'd1', specHash: 'h', type: 'STEP_FINISHED', kind: 'fact', data: { kind: 'derive', ...(profile ? { profile } : {}) } }) as StoredEvent;
+    const usage = graphUsage([], { refine: [[finished({ toolCalls: {}, graphQueries: 2 }), finished({ toolCalls: {}, graphQueries: 0 }), finished()], [finished({ toolCalls: {}, graphQueries: 1 })]], chat: [1, undefined, 0] });
+    expect(usage.queries).toMatchObject({ total: 0, steps: 0, refine: { total: 3, steps: 3 }, chat: { total: 1, steps: 2 } });
+    expect(usage.queries.byKind).toEqual({});
   });
 
   it('keeps the usage even when the graph is not available', () => {

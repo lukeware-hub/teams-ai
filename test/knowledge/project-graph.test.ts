@@ -7,9 +7,10 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, setBrainSource, setGraphMergedHook, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
+import type { StoredEvent } from '../../server/store/event-store.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { makeRemote } from '../fixtures/git-remote.js';
 
@@ -209,6 +210,108 @@ describe('graph failure record', () => {
     const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
     await buildLocatedProjectGraphOnce(working, located);
     expect(graphFailure(project.projectId)).toBeNull();
+  });
+});
+
+describe('the brain notes in the project graph', () => {
+  afterEach(() => {
+    setBrainSource(null);
+    setGraphMergedHook(null);
+  });
+  const stamp = (type: string, data: Record<string, unknown>) => ({ seq: 1, at: '2026-11-06T10:00:00.000Z', runId: 'r1', specHash: 'h', type, kind: 'fact', data }) as StoredEvent;
+  const journal = { runId: 'r1', events: [stamp('RUN_STARTED', { specId: 'spec-a' }), stamp('TASK_PLANNED', { task: { id: 'T1', title: 'Registrar', description: 'd', criteriaRefs: ['AC-1'], affectedPaths: ['src/a.ts'] } })] };
+
+  /** A graphify that writes the merged graph the way merge-graphs would, with a note heading and a file node. */
+  const mergingGraphify = (written: { out?: string }) =>
+    ({
+      update: async () => ({ ratio: 1 }),
+      merge: async (_graphs: unknown, out: string) => {
+        written.out = out;
+        await fs.mkdir(path.join(out, 'graphify-out'), { recursive: true });
+        await fs.writeFile(path.join(out, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: [{ id: 'info::t1', label: 'T1 — Registrar', source_file: 'brain/tasks/spec-a.md' }, { id: 'api::a', label: 'src/a.ts', source_file: 'src/a.ts' }], links: [] }));
+        return true;
+      },
+    }) as unknown as Graphify;
+
+  it('writes the notes into the description folder and links each task to its files in the merged graph', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    setBrainSource(async () => ({ runs: [journal], chat: null }));
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(await fs.readFile(path.join(ws.graph, 'project-info', 'brain', 'tasks', 'spec-a.md'), 'utf8')).toContain('## T1 — Registrar');
+    const graph = JSON.parse(await fs.readFile(path.join(written.out!, 'graphify-out', 'graph.json'), 'utf8'));
+    expect(graph.links).toEqual([expect.objectContaining({ source: 'info::t1', target: 'api::a', relation: 'references' })]);
+  });
+
+  it('builds the graph without notes when the source fails', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    setBrainSource(async () => {
+      throw new Error('journals unreadable');
+    });
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(written.out).toBeDefined();
+    await expect(fs.access(path.join(ws.graph, 'project-info', 'brain'))).rejects.toThrow();
+  });
+
+  it('builds as before when no source was set', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(JSON.parse(await fs.readFile(path.join(written.out!, 'graphify-out', 'graph.json'), 'utf8')).links).toEqual([]);
+  });
+
+  it('tells the hook which project was merged', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const merged: string[] = [];
+    setGraphMergedHook((id) => merged.push(id));
+    await buildLocatedProjectGraph(mergingGraphify({}), { ws, project: project as Project, newestSpec: undefined });
+    expect(merged).toEqual(['kayron-hub']);
+  });
+});
+
+describe('ensureProjectGraph', () => {
+  const located = (ws: ReturnType<typeof workspacePaths>): LocatedProject => ({ ws, project: project as Project, newestSpec: undefined });
+  const graphPath = (ws: ReturnType<typeof workspacePaths>) => path.join(ws.graph, 'project', 'graphify-out', 'graph.json');
+
+  it('builds nothing when the project already has a graph', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    await fs.mkdir(path.dirname(graphPath(ws)), { recursive: true });
+    await fs.writeFile(graphPath(ws), '{}');
+    const fake = new FakeExec();
+    await ensureProjectGraph(new Graphify({ exec: fake.exec, readFile: async () => '{}' }), located(ws));
+    expect(fake.lines('graphify')).toEqual([]);
+  });
+
+  it('builds the graph when there is none and waits for it', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    await ensureProjectGraph(new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) }), located(ws));
+    expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true);
+  });
+
+  it('goes on after the time limit while the build keeps running', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    let done = false;
+    let calls = 0;
+    // Only the first update is slow; the rest of the build is quick, so it ends soon after.
+    const slow = { update: () => (calls++ === 0 ? new Promise<void>((resolve) => setTimeout(() => { done = true; resolve(); }, 400)) : Promise.resolve()), merge: async () => true } as unknown as Graphify;
+    const started = Date.now();
+    await ensureProjectGraph(slow, located(ws), { timeoutMs: 50 });
+    expect(Date.now() - started).toBeLessThan(300);
+    expect(done).toBe(false);
+    // The build goes on by itself; wait for it so the next test finds the project free.
+    await vi.waitFor(() => expect(done).toBe(true), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  });
+
+  it('goes on, logs and records the failure when the build fails', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
+    const logs: string[] = [];
+    await ensureProjectGraph(failing, located(ws), { log: (l) => logs.push(l) });
+    expect(logs[0]).toContain('graphify caiu');
+    expect(graphFailure(project.projectId)?.message).toBe('graphify caiu');
   });
 });
 

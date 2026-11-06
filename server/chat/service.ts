@@ -15,7 +15,7 @@ import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
 import type { MainDoc } from '../git/main-docs.js';
 import { ensureFreshGraph } from '../knowledge/project-graph.js';
-import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
+import { relatedMessages, stageBrainGraph, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import { needsLabels, withRecordPointer } from './answer.js';
 import { withSources } from './sources.js';
@@ -163,6 +163,8 @@ export class ChatService {
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);
+      // The global brain holds the other projects, so only a project that is certainly not confidential may read it: `webSearch` is true only then.
+      if (webSearch) await stageBrainGraph(cwd, path.join(root, '_brain', 'graphify-out', 'graph.json'));
       const model = await this.deps.chatModel(projectId);
       const out = (await this.deps.runAgent<'chat'>(
         { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
@@ -170,7 +172,8 @@ export class ChatService {
       )) as StepOutcome<ChatOutput>;
       const measured = usageOf(out.summary);
       const queries = out.summary.webSearchQueries ?? [];
-      const usage = measured ? { ...measured, model, searches: queries.length } : undefined;
+      const graphQueries = out.summary.profile?.graphQueries;
+      const usage = measured ? { ...measured, model, searches: queries.length, ...(typeof graphQueries === 'number' ? { graphQueries } : {}) } : undefined;
       const sources = out.summary.webSearchSources ?? [];
       const searched = queries.length > 0;
       // The sources are the links the search returned, appended by the server: the model names them, it never writes an address.

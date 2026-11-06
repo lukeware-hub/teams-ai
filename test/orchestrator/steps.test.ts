@@ -501,6 +501,27 @@ describe('runAgentStep', () => {
     expect(await fs.readFile(path.join(dir, 'steps', '2', 'prompt.md'), 'utf8')).toBe(devResumePrompt('gate failed'));
   });
 
+  it('adds the graphs the agent may query to the pack of any step, and keeps the ones a request brings', async () => {
+    const prompts: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push(req.prompt);
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.graphAccess = { projectGraph: '/ws/p/graph/project/graphify-out/graph.json', brainGraph: '/ws/_brain/graphify-out/graph.json' };
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    const req = { kind: 'dev' as const, role: 'dev' as const, pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
+    await runAgentStep(req, d);
+    expect(prompts[0]).toContain('## Graph access (the brain)');
+    expect(prompts[0]).toContain('/ws/_brain/graphify-out/graph.json');
+    await runAgentStep({ ...req, pack: { ...pack, graphAccess: { projectGraph: '/own/graph.json' } } }, d);
+    expect(prompts[1]).toContain('/own/graph.json');
+    expect(prompts[1]).not.toContain('/ws/_brain');
+    d.graphAccess = undefined;
+    await runAgentStep(req, d);
+    expect(prompts[2]).not.toContain('Graph access');
+  });
+
   it('runs a step kind on the model routing names, ahead of the role profile and behind an explicit model', async () => {
     const models: string[] = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));

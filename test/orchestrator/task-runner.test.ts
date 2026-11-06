@@ -567,6 +567,13 @@ describe('TaskRunner: reviewing', () => {
     expect(agentCalls.find((c) => c.kind === 'review')!.pack.changeSet).toContain('src/a.ts');
   });
 
+  it('journals the code context of the review and, apart, of the security step', async () => {
+    const r = await validated(async () => review('approve'));
+    await r.advance();
+    const steps = journal.events.filter((e) => e.type === OrchEvent.CodeContextUsed).map((e) => e.data.step);
+    expect(steps).toEqual(['dev', 'review', 'security']);
+  });
+
   it('hands the reviewer the Portuguese the task adds to its files and its commit messages', async () => {
     const dev: Agent = async (req) => {
       if (req.kind === 'security') return secApprove();
