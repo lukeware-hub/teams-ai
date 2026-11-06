@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { runApi, type GraphView } from '../../api.js';
 import type { GraphViewNode } from '@server/api/repository-graph.js';
 import { Icon } from '../../components/Icons.js';
-import { action, panel, sectionHeading, sectionTitle } from '../project-shared.js';
+import { action, panel, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
 const SIZE = 320;
 const RADIUS = 140;
@@ -84,10 +84,16 @@ export function GraphBody({ projectId }: { projectId: string }) {
           {buildButton('Construir grafo')}
         </div>
       )}
+      {view?.status?.failure && (
+        <p data-testid="graph-failure" className="error m-0" role="alert">
+          {`A última atualização do grafo falhou em ${when(view.status.failure.at)}: ${view.status.failure.message}. ${view.available ? 'O grafo abaixo é o da versão anterior.' : ''} Use o botão para tentar de novo.`}
+        </p>
+      )}
       {buildError && <p data-testid="graph-build-error" className="error m-0" role="alert">{buildError}</p>}
       {view?.available && (
         <div className="grid gap-3 text-[0.875rem]">
           <p data-testid="graph-counts" className="m-0">{`${view.nodes} nós · ${view.links} ligações · ${view.communities} comunidades`}</p>
+          {view.status?.updatedAt && <p data-testid="graph-updated" className="hint m-0">{`Atualizado em ${when(view.status.updatedAt)}`}</p>}
           <p data-testid="graph-usage" className="m-0">
             {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
           </p>

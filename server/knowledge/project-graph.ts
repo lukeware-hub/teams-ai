@@ -95,6 +95,20 @@ export async function ensureFreshGraph(graphFile: string, key: string, build: ()
 /** Projects whose graph is being built now, so a button click and a finished run never build the same graph together. */
 const building = new Set<string>();
 
+/** The last build that failed for each project; a good build clears it, so the screen can warn the owner. */
+const failures = new Map<string, GraphFailure>();
+
+export interface GraphFailure {
+  at: string;
+  message: string;
+}
+
+export const graphFailure = (projectId: string): GraphFailure | null => failures.get(projectId) ?? null;
+
+export function recordGraphFailure(projectId: string, err: Error): void {
+  failures.set(projectId, { at: new Date().toISOString(), message: err.message });
+}
+
 /** Builds the project's graph unless it is already being built; false when it is. */
 export async function buildLocatedProjectGraphOnce(graphify: Graphify, located: LocatedProject): Promise<boolean> {
   const id = located.project.projectId;
@@ -102,7 +116,11 @@ export async function buildLocatedProjectGraphOnce(graphify: Graphify, located: 
   building.add(id);
   try {
     await buildLocatedProjectGraph(graphify, located);
+    failures.delete(id);
     return true;
+  } catch (err) {
+    recordGraphFailure(id, err as Error);
+    throw err;
   } finally {
     building.delete(id);
   }

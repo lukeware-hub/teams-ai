@@ -34,6 +34,8 @@ export interface GraphView {
   top: GraphViewNode[];
   topLinks: Array<{ source: string; target: string }>;
   usage: { graph: number; grep: number; none: number; recent: GraphUse[] };
+  /** When the graph file was last written and why the last automatic build failed; the route fills both. */
+  status?: { updatedAt: string | null; failure: { at: string; message: string } | null };
 }
 
 /** The description of the project that the graph is merged with; it repeats the documents and has no file of its own. */

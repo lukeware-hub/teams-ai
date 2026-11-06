@@ -26,6 +26,23 @@ const open = () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('GraphPanel', () => {
+  it('shows when the graph was last updated and warns when the last update failed', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: { at: '2026-11-06T16:00:00.000Z', message: 'graphify caiu' } } }));
+    render(<GraphPanel projectId="p" />);
+    open();
+    await waitFor(() => expect(screen.getByTestId('graph-updated').textContent).toContain('Atualizado em'));
+    expect(screen.getByTestId('graph-failure').textContent).toContain('graphify caiu');
+    expect(screen.getByTestId('graph-failure').textContent).toContain('versão anterior');
+  });
+
+  it('shows no failure line when the last update worked', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: null } }));
+    render(<GraphPanel projectId="p" />);
+    open();
+    await waitFor(() => expect(screen.getByTestId('graph-updated')).toBeTruthy());
+    expect(screen.queryByTestId('graph-failure')).toBeNull();
+  });
+
   it('stays closed and fetches nothing until the owner opens it', () => {
     const spy = vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
     render(<GraphPanel projectId="p" />);
