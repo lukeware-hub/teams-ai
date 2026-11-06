@@ -49,7 +49,8 @@ export function stageAction(st: StageInput): StageAction {
   return 'evaluate';
 }
 
-/** The name of the stage a running evaluation belongs to, for a new project. */
-export function stageTitle(st: StageInput): string {
+/** The name of the stage a running evaluation belongs to, for a new project: the document under review when there is one. */
+export function stageTitle(st: StageInput, file?: string | null): string {
+  if (file) return `Avaliando ${file}`;
   return st.backlog?.enabled === true ? 'Avaliando o backlog' : 'Avaliando os documentos';
 }

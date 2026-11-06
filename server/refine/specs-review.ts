@@ -1,6 +1,7 @@
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
+import type { DocFile } from './draft.js';
 
 /** The two owners who approve specs.md: the PO for the requirements, the SM for the constraints and the plan. */
 export const SPECS_REVIEWERS = ['po', 'sm'] as const;
@@ -43,6 +44,7 @@ export function specsAskPack(input: { specHash: string; specsMd: string; finding
       ? '2. The owner gave you full autonomy: what no document settles you decide yourself, choosing the option you would recommend, and write the decision into the right document as `Assumption: <claim>. Reason: <why>.` Return no question at all.'
       : '2. What no document settles, and changes what gets built, you ask the owner, as few questions as possible and never one the documents answer.',
     'Write every question for a person who reads it in ten seconds: the text is one or two plain sentences that say what is unclear and why it matters, no file jargon, no acronyms. Give two to four options. Each option has a short label and a detail that says, in one sentence, what happens if it is chosen. Mark exactly one option as recommended, the one you would pick, and make the first option that one.',
+    'Each docPatch changes only the document its finding names: a patch to any other document is discarded.',
     'Mark every question blocking. Return an empty checklist. Write everything in Brazilian Portuguese.',
     '',
     `### specs.md\n${input.specsMd}`,
@@ -51,11 +53,12 @@ export function specsAskPack(input: { specHash: string; specsMd: string; finding
 }
 
 /** The PO decides one open question for the owner, who gave the team full autonomy: the decision goes into the right document as an assumption. */
-export function decideQuestionPack(input: { specHash: string; question: string }): ContextPackInput {
+export function decideQuestionPack(input: { specHash: string; question: string; file?: DocFile }): ContextPackInput {
   const feedback = [
     'The owner gave you full autonomy: decide this open question yourself, using what the documents say (docs/project.md, briefing.md, stack.md, flow.md, design.md, which you can read) and choosing what you would recommend.',
     `Question: ${input.question}`,
     'Write the decision into the right document as a docPatch, as `Assumption: <claim>. Reason: <why>.` Return no question and an empty checklist. Write everything in Brazilian Portuguese.',
+    ...(input.file ? [`Change only docs/${input.file}: a docPatch to any other document is discarded.`] : []),
   ].join('\n');
   return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 30_000 };
 }
@@ -64,7 +67,12 @@ export function decideQuestionPack(input: { specHash: string; question: string }
 const DOC_NAMES = /^[\[(\s]*(docs\/)?(project|briefing|stack|flow|design)\.md/i;
 
 /** Whether a reviewer's finding is about one of the five documents, so redoing a backlog item cannot fix it. */
-export const aboutADocument = (finding: string): boolean => DOC_NAMES.test(finding);
+/** The document a finding names, when it is about one of the five documents. */
+export const docNamedBy = (finding: string): DocFile | undefined => {
+  const named = DOC_NAMES.exec(finding);
+  return named ? (`${named[2]!.toLowerCase()}.md` as DocFile) : undefined;
+};
+export const aboutADocument = (finding: string): boolean => docNamedBy(finding) !== undefined;
 
 /** What the PO does with the findings that are about the documents: fix them there, so the specs are derived from sound documents. */
 export function specsDocsPack(input: { specHash: string; findings: ReadonlyArray<{ role: SpecsReviewer; text: string }> }): ContextPackInput {
@@ -73,6 +81,7 @@ export function specsDocsPack(input: { specHash: string; findings: ReadonlyArray
     ...input.findings.map((f) => `- ${f.role.toUpperCase()}: ${f.text}`),
     '',
     'Fix each one in the right document (docs/project.md, briefing.md, stack.md, flow.md, design.md, which you can read) with a docPatch: merge a section that appears more than once into a single one, close an open point by writing the decision the documents lean towards as `Assumption: <claim>. Reason: <why>.`, correct a wrong citation. Change nothing the owner decided, and add no feature.',
+    'Each docPatch changes only the document its finding names: a patch to any other document is discarded.',
     'Return no question and an empty checklist. Write everything in Brazilian Portuguese.',
   ].join('\n');
   return { kind: 'refine', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 30_000 };

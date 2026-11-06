@@ -100,7 +100,10 @@ const pinnedModel = z
 
 export const StepBudget = z.object({
   timeoutMs: positive.default(60 * 60_000),
+  /** The time limit of one stage review part: a review that runs longer is stopped. A review should take under a minute. */
+  reviewTimeoutMs: positive.default(2 * 60_000),
   maxTurns: positive.default(60),
+  /** Output tokens one stage review may write: it is sent to the CLI as CLAUDE_CODE_MAX_OUTPUT_TOKENS. */
   maxOutputTokens: positive.default(40_000),
 });
 
@@ -353,7 +356,8 @@ export const automaticStepOf = (routing: Config['routing'], kind: StepKind, cycl
 /** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */
 export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets']['step'] {
   if (projectId === undefined || !Object.hasOwn(cfg.stepTimeouts, projectId)) return cfg.budgets.step;
-  return { ...cfg.budgets.step, timeoutMs: cfg.stepTimeouts[projectId] };
+  const timeoutMs = cfg.stepTimeouts[projectId];
+  return { ...cfg.budgets.step, timeoutMs, reviewTimeoutMs: timeoutMs };
 }
 
 /** Whether the agents of one project decide its blocks themselves; a project absent from Settings does not. */

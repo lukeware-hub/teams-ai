@@ -107,6 +107,10 @@ export const RefineEvent = {
   /** The document could not be added to the graph: `{file, reason}`, in plain words for the owner. */
   DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
   DocGraphStale: 'REFINE_DOC_GRAPH_STALE',
+  /** The refinement waits for the Claude quota until `until` (ISO time): `{waitMs, until}`. */
+  QuotaWaiting: 'REFINE_QUOTA_WAITING',
+  /** A stage review that ran past its limit is not repeated automatically: `{file, ms}`. */
+  AutoReviewSkipped: 'REFINE_AUTO_REVIEW_SKIPPED',
   SpecsFeedback: 'REFINE_SPECS_FEEDBACK',
   SpecsQuestionsAsked: 'REFINE_SPECS_QUESTIONS_ASKED',
   SpecsOwnerApproved: 'REFINE_SPECS_OWNER_APPROVED',

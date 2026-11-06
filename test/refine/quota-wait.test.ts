@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import { QUOTA_RETRIES, QUOTA_WAIT_MAX_MS, withQuotaWait } from '../../server/refine/quota-wait.js';
 
 const T0 = new Date('2026-10-12T12:00:00Z');
@@ -23,8 +24,9 @@ function setup(outcomes: unknown[], resetsInMs = 60_000) {
     sleeps.push(ms);
     now += ms;
   });
+  const fact = vi.fn(async () => undefined);
   const agent = withQuotaWait(inner as never, breaker, { sleep, now: clock, log: () => undefined });
-  return { agent: () => agent({} as never, {} as never), inner, sleeps, sleep, breaker };
+  return { agent: () => agent({} as never, { journal: { fact } } as never), inner, sleeps, sleep, breaker, fact };
 }
 
 describe('withQuotaWait', () => {
@@ -59,6 +61,13 @@ describe('withQuotaWait', () => {
     const out = await withQuotaWait(t.inner as never, t.breaker, { sleep: t.sleep, now: () => T0, log: () => undefined })({} as never, { noQuotaWait: true } as never);
     expect(out).toBe(good);
     expect(t.sleep).not.toHaveBeenCalled();
+  });
+
+  it('journals the wait before it sleeps, with its length and the time it ends', async () => {
+    const t = setup([fail('quota'), good]);
+    expect(await t.agent()).toBe(good);
+    expect(t.fact).toHaveBeenCalledWith(RefineEvent.QuotaWaiting, expect.objectContaining({ waitMs: expect.any(Number), until: expect.any(String) }));
+    expect(t.sleep).toHaveBeenCalledTimes(1);
   });
 
   it('does not repeat a step the quota rejected when a person is waiting', async () => {

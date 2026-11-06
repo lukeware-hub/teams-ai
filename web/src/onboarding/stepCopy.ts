@@ -1,4 +1,5 @@
 import type { Benefit, StepPanel } from '../components/ItemCard.js';
+import { JEV_NOTE_TEXT, JEV_NOTE_TITLE, JEV_PANEL_SUPPORT } from '../jevCopy.js';
 
 export const GH_LOGIN = {
   benefits: [
@@ -57,11 +58,11 @@ export const LICENSE = {
 
 export const OPENROUTER = {
   benefits: [
-    { icon: 'lightbulb', title: 'Jev no refinamento', text: 'Confere se os documentos do projeto são consistentes.' },
-    { icon: 'lock', title: 'Gate 1 depende dela', text: 'Sem a chave, o refinamento não inicia.' },
+    { icon: 'lightbulb', title: JEV_NOTE_TITLE, text: JEV_NOTE_TEXT },
+    { icon: 'lock', title: 'Sem a chave', text: 'O refinamento não inicia.' },
   ] as const satisfies readonly Benefit[],
   panel: {
     headline: 'Chave do OpenRouter',
-    support: 'O Jev classifica e decide pontos do Gate 1. Informe a chave para liberar o refinamento.',
+    support: JEV_PANEL_SUPPORT,
   } satisfies StepPanel,
 };

@@ -6,7 +6,13 @@ export interface RunningStep {
   kind: string;
   role: string;
   model: string;
-  effort?: string;
+  effort?: string | null;
+  /** The part of the document this step reads, when the document is read in parts. */
+  part?: { index: number; total: number } | null;
+  /** The time limit of this step, in ms. */
+  limitMs?: number | null;
+  /** When the step started (ISO time). */
+  startedAt?: string;
 }
 
 const MODEL_NAME: Record<string, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5' };
@@ -27,10 +33,11 @@ export function runningSteps(events: StoredEvent[], cycle: number): RunningStep[
   return [...open.values()];
 }
 
-/** One step as the banner shows it: role, model and effort in use. */
+/** One step as the banner shows it: role, model, effort in use, and the part it reads. */
 export function runningStepLabel(step: RunningStep): string {
   const role = ROLE_NAME[step.role] ?? step.role;
   const model = MODEL_NAME[step.model] ?? step.model;
   const effort = step.effort ? `esforço ${EFFORT_NAME[step.effort] ?? step.effort}` : 'esforço não registrado';
-  return `${role} · ${model} · ${effort}`;
+  const part = step.part ? ` · parte ${step.part.index} de ${step.part.total}` : '';
+  return `${role} · ${model} · ${effort}${part}`;
 }

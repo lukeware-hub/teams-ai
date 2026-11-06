@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
 import { createNewProject, draftPaths, readDoc, writeDoc, type DocFile } from '../../server/refine/draft.js';
 import { DOC_STAGES } from '../../server/refine/doc-stages.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import { RefineSession } from '../../server/refine/session.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
@@ -327,6 +328,33 @@ describe('the Jev pass line', () => {
     await s.close();
   });
 
+  it('a review that ran past a minute is not repeated, and the journal says why', async () => {
+    // Every clock read is two minutes after the one before, so the first review seems to have run for two minutes.
+    let clock = 0;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 120_000));
+    try {
+      const s = await session(async () => low);
+      script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+      calls.length = 0;
+      await s.evaluateStage('flow.md');
+      expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
+      expect(s.events.some((e) => e.type === RefineEvent.AutoReviewSkipped)).toBe(true);
+      await s.close();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('joins the graph of each document into one staging graph, in the order of the stages', async () => {
+    const merge = vi.fn(async (_graphs: ReadonlyArray<{ dir: string; name: string }>, _outDir: string) => true);
+    const s = await RefineSession.create({ ...deps(), extractDocs, mergeDocGraphs: merge }, 'new-project', { repositories: true });
+    await s.graphDocs();
+    expect(merge).toHaveBeenCalledTimes(DOC_STAGES.length);
+    const joined = merge.mock.calls.at(-1)![0];
+    expect(joined.map((g) => g.name)).toEqual([...DOC_STAGES]);
+    await s.close();
+  });
+
   it('does not review a good document twice', async () => {
     const s = await session(async () => high);
     script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
@@ -384,14 +412,16 @@ describe('the owner keeps working while the graph extraction runs', () => {
 });
 
 describe('the five documents of a request in the graph', () => {
-  it('puts every document in the graph in one extraction, and extracts nothing again once they are there', async () => {
+  it('extracts each document alone, once, and extracts nothing again once they are there', async () => {
     const extract = vi.fn(extractDocs);
     const s = await RefineSession.create({ ...deps(), extractDocs: extract }, 'new-project', { repositories: true });
     await s.graphDocs();
-    expect(extract).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledTimes(DOC_STAGES.length);
+    // Each extraction reads one folder, which holds only its own document.
+    expect(extract.mock.calls.map((call) => call[0] as string).every((dir, i) => dir.endsWith(`/files/${DOC_STAGES[i]}/docs`))).toBe(true);
     expect([...(s.state.graphed ?? [])].sort()).toEqual([...DOC_STAGES].sort());
     await s.graphDocs();
-    expect(extract).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledTimes(DOC_STAGES.length);
   });
 
   it('journals a failed extraction in plain words and leaves the documents out of the graph', async () => {

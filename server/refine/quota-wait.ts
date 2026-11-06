@@ -1,6 +1,7 @@
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
 import { EMPTY_SUMMARY } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
+import { RefineEvent } from './events.js';
 
 /** The 5 hour usage window plus a margin; a longer reset (the 7 day window) is left to the human. */
 export const QUOTA_WAIT_MAX_MS = 5.5 * 3_600_000;
@@ -40,6 +41,7 @@ export function withQuotaWait(inner: RunAgent, breaker: QuotaBreaker, io: QuotaW
       if (wait > 0 && ctx.noQuotaWait && breaker.state().status === 'paused' && (breaker.state() as { reason: string }).reason !== 'window') return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: EMPTY_SUMMARY, sandboxDisabled: false };
       if (wait > 0 && wait <= QUOTA_WAIT_MAX_MS && !ctx.noQuotaWait) {
         io.log(`refinement waits ${Math.round(wait / 1000)}s for the Claude quota`);
+        await ctx.journal.fact(RefineEvent.QuotaWaiting, { waitMs: wait, until: new Date(io.now().getTime() + wait).toISOString() });
         await io.sleep(wait, ctx.signal);
       }
       const out = await inner(req, ctx);

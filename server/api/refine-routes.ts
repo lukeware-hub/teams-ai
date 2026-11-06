@@ -167,6 +167,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/stop`,
+      // The owner stops the running evaluation: its agent processes are killed, the review is journaled as stopped.
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        await s.abort();
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/autopilot`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
@@ -233,10 +243,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         const questionId = str(b, 'questionId');
         const asked = s.state.questions.find((q) => q.questionId === questionId);
-        const file = s.state.stages === true ? asked?.file : undefined;
+        // The answer is only kept: the stage's review runs when the owner clicks Reprocessar, with every answer kept so far.
         await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
-        // The answer goes to the agents at once: the stage's review runs in the background, as the Processar button starts it.
-        if (file && (DOC_STAGES as readonly string[]).includes(file)) s.reviewAfterAnswers(file as DocFile).catch(logRunFailure(params));
         // The last answer about specs.md sends the backlog to the agents again, with the owner's decisions.
         if (asked?.origin === 'specs') s.continueSpecsAfterAnswers()?.catch(logRunFailure(params));
         json(200, { ok: true });

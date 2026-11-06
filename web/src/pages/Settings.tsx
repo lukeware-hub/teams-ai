@@ -13,6 +13,9 @@ import { ClaudeUsagePanel } from './ClaudeUsage.js';
 import { emptyState, panel, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const ROLE_LABELS: Record<string, string> = { sm: 'Scrum Master', po: 'Product Owner', front: 'Front-end', dev: 'Desenvolvedor', test: 'Testes', sec: 'Segurança', devops: 'DevOps', env: 'Ambiente', chat: 'Chat', graphify: 'Graphify' };
+/** Shown beside an effort set to maximum: the step runs long and costs much more. */
+const EFFORT_MAX_NOTE = 'Esforço máximo pode levar vários minutos por passo e custar muito mais.';
+
 /** The chat and graphify settings: a model and effort fixed in Settings, never automatic. */
 const SLOT_ROLES = ['chat', 'graphify'];
 const MODEL_LABELS: Record<AgentModel, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5' };
@@ -91,6 +94,7 @@ function AgentLine({ projectId, row: agent, onFailed }: { projectId: string; row
           <span aria-hidden="true" className="hidden md:block md:w-[8.5rem]" data-testid={`settings-agent-spacer-${agent.role}`} />
         )}
       </div>
+      {manual && pick.effort === 'max' ? <p className="hint m-0" data-testid={`settings-agent-effort-max-note-${agent.role}`}>{EFFORT_MAX_NOTE}</p> : null}
     </li>
   );
 }
@@ -376,6 +380,7 @@ function AutomaticModelsCard() {
                     {AGENT_EFFORTS.map((e) => <option key={e} value={e}>{EFFORT_LABELS[e]}</option>)}
                   </Select>
                 </div>
+                {automaticRow.effort === 'max' ? <p className="hint m-0" data-testid={`settings-automatic-effort-max-note-${key}`}>{EFFORT_MAX_NOTE}</p> : null}
               </li>
             );
           })}

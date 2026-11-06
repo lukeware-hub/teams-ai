@@ -38,7 +38,7 @@ Antes da primeira etapa, a tela pergunta se o projeto é confidencial. Enquanto 
 
 Dentro de uma etapa:
 
-- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste.
+- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste. O Jev lê só o documento da etapa para dar a nota dele, e o Graphify extrai só esse documento.
 - **Continuar**: passa para a próxima etapa. Não exige nota nem revisão. Na última etapa, o botão vira **Quebrar o backlog**.
 - **Voltar**: volta para a etapa anterior, para revisar o que já foi concluído.
 
@@ -77,9 +77,13 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 
 Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
 
+Cada etapa também trabalha com um arquivo só: o agente do documento, o Jev e o Graphify recebem somente o documento da etapa. O agente vê um resumo dos documentos anteriores, só para consulta, e não abre os outros arquivos do projeto.
+
+Responder uma pergunta ou aceitar uma sugestão não reprocessa a etapa. A resposta fica guardada, e a etapa é reprocessada quando você clica em Reprocessar, com todas as respostas guardadas até ali.
+
 Um documento grande é revisado em partes, cada uma com a sua própria passada de revisão. As sugestões de todas as partes aparecem juntas na mesma revisão da etapa. Se uma parte falhar, a etapa diz o motivo e você processa de novo.
 
-Depois das cinco etapas, a avaliação completa gera o backlog e as specs a partir dos documentos atuais, mas também não altera nenhum documento. Quando um agente encontra algo no documento errado, ele vira uma sugestão ou uma pergunta para o dono daquele documento. Você aceita, rejeita ou responde.
+Depois das cinco etapas, a avaliação completa lê os cinco documentos juntos e gera o backlog e as specs a partir deles. Ela pode sugerir ajustes em qualquer um dos documentos, e cada sugestão aparece para você aceitar ou rejeitar. Quando um agente encontra algo no documento errado, ele vira uma sugestão ou uma pergunta para o dono daquele documento. Você aceita, rejeita ou responde.
 
 ## Formato do modelo
 
@@ -91,7 +95,7 @@ Se a spec depende de uma chave de outro serviço, a seção **Segredos** guarda 
 
 ## O Jev
 
-O Jev é uma verificação extra dos documentos, feita por outro serviço. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. A nota não impede o início: a análise pode começar a qualquer momento. Projetos marcados como confidenciais não enviam documentos ao Jev.
+O Jev é uma verificação extra dos documentos, feita por outro serviço. Em cada etapa ele dá a nota só ao documento da etapa; a conferência entre os cinco documentos fica para a avaliação final. Os pontos que ele aponta são conselhos: ajuste o que fizer sentido e reavalie. A nota não impede o início: a análise pode começar a qualquer momento. Projetos marcados como confidenciais não enviam documentos ao Jev.
 
 ## Backlog
 

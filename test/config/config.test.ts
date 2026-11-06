@@ -83,7 +83,7 @@ describe('loadConfig', () => {
 describe('stepBudgetFor', () => {
   it('gives a project its own time limit and every other project the budget default', () => {
     const cfg = loadConfig({ stepTimeouts: { demo: 45 * 60_000 } });
-    expect(stepBudgetFor(cfg, 'demo')).toEqual({ ...cfg.budgets.step, timeoutMs: 45 * 60_000 });
+    expect(stepBudgetFor(cfg, 'demo')).toEqual({ ...cfg.budgets.step, timeoutMs: 45 * 60_000, reviewTimeoutMs: 45 * 60_000 });
     expect(stepBudgetFor(cfg, 'other')).toEqual(cfg.budgets.step);
     expect(stepBudgetFor(cfg)).toEqual(cfg.budgets.step);
   });

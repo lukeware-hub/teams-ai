@@ -510,38 +510,23 @@ describe('runStageCycle', () => {
     expect(journal.state.findings.map((f) => f.text).sort()).toEqual(['do fluxo', 'do projeto']);
   });
 
-  it('the Jev reads the stage with the documents before it, and the first stage is not sent to it', async () => {
+  it('a patch to a document outside the stage is discarded, with its reason, and never proposed', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    const validate = vi.fn(async (_docs: unknown) => ({ available: true, decision: 'review', consistent: true, confidence: 0.9, model: 'jev', checks: {}, stateTruncated: false }));
+    await writeDoc(draft, 'flow.md', '# Fluxo\n\nO cliente paga.\n');
+    const patch = { file: 'flow.md', find: 'O cliente paga.', replace: 'O cliente paga agora.', reason: 'prazo' };
+    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([patch])) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.PatchProposed)).toBe(false);
+    expect(journal.events.find((e) => e.type === RefineEvent.StageReviewed)?.data.discardedPatches).toEqual([{ role: 'po', file: 'flow.md', reason: 'Esta etapa só altera briefing.md: o ajuste a flow.md foi descartado.' }]);
+  });
+
+  it('a stage review is asked with no tools and no earlier-stage Jev check', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
-    await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(validate).toHaveBeenCalledTimes(1);
-    const sent = validate.mock.calls[0]![0] as unknown as Record<string, string>;
-    expect(validate).toHaveBeenCalledWith(expect.anything(), 'briefing.md');
-    expect(sent.project).toContain('# Shop');
-    expect(sent).toMatchObject({ stack: '', design: '' });
-    expect(journal.events.find((e) => e.type === RefineEvent.DocsValidated)?.data).toMatchObject({ stage: 'briefing.md' });
-    await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 2, 'flow.md');
-    expect(validate).toHaveBeenCalledTimes(1);
-  });
-
-  it('a confidential project sends no document to the Jev', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    journal.state.confidential = true;
-    const validate = vi.fn(async (_docs: unknown) => ({ available: true, decision: 'review', consistent: true, confidence: 0.9, model: 'jev', checks: {}, stateTruncated: false }));
-    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([])) as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(validate).not.toHaveBeenCalled();
-  });
-
-  it('a Jev that fails is recorded as unavailable, and the review goes on', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    const validate = vi.fn(async (_docs: unknown) => { throw new Error('openrouter down'); });
-    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([])) as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.DocsValidated)?.data).toMatchObject({ available: false });
-    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'refine', review: true });
+    expect(journal.events.some((e) => e.type === RefineEvent.DocsValidated)).toBe(false);
   });
 
   it('a stage review is keyed by the documents of its stage, so a later document leaves its key as it was', async () => {
