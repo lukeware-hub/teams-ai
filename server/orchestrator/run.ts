@@ -692,7 +692,13 @@ export class Run {
       mergeQueue: this.mergeQueue,
       mergeDeps: this.mergeDeps(null),
       packBase: this.packBase,
-      godNodes: () => (this.deps.graphify ? this.deps.graphify.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []) : Promise.resolve([])),
+      // The central modules of the whole project when its graph exists (every service), else of the project repository.
+      godNodes: async () => {
+        const g = this.deps.graphify;
+        if (!g) return [];
+        const project = await g.godNodes(path.posix.join(this.deps.ws.graph, 'project'), 10).catch(() => []);
+        return project.length > 0 ? project : g.godNodes(graphDir(this.deps.ws, null), 10).catch(() => []);
+      },
       pause: (failure) => this.pauseFor(failure),
       plan: single,
       gates: single ? this.gatesFor({ service: null, plan: single }) : undefined,
