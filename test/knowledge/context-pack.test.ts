@@ -45,6 +45,7 @@ describe('buildContextPack', () => {
       adrs: [{ id: 'ADR-001', title: 'Stack', text: 'Node 22 + Fastify' }],
       assumptions: ['T1: titles are trimmed (SM, 2026-09-24)'],
       handoffs: [{ taskId: 'T0-scaffold', title: 'Scaffold', summary: 'Project skeleton with Fastify server', changedFiles: ['package.json', 'src/index.ts'], mergedAt: '2026-09-24T10:00:00Z' }],
+      graphAccess: { projectGraph: '/ws/p/graph/project/graphify-out/graph.json' },
       code: { source: 'graph', nodes: [{ label: 'createTodo()', file: 'src/todos/create.ts', line: 10 }], affected: [{ label: 'router.ts', relation: 'imports', file: 'src/router.ts', line: 3 }], truncated: false },
       retrieval: [{ chunkId: 'spec-001#2', docId: 'spec-001', kind: 'spec', title: 'Spec 1', heading: 'Decisions', snippet: 'max [discount] 5', text: 'The maximum discount is 5 percent.', score: 1 }],
       currentDocs: 'Current docs/README.md:\n# Todo',

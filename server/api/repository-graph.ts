@@ -45,12 +45,38 @@ export interface GraphMap {
   truncated: boolean;
 }
 
-/** What the agents asked the graph themselves: the queries they ran, over the finished steps that were counted, by kind of step. */
-export interface GraphQueries {
+/** The kinds of node the brain of a project holds. */
+export interface GraphComposition {
+  code: number;
+  documents: number;
+  tasks: number;
+  runs: number;
+  chat: number;
+  costs: number;
+}
+
+/** Queries and the counted steps they came from, for one source of agents. */
+export interface QueryCount {
   total: number;
   /** Finished agent steps that carry the count; steps recorded before it existed are not in it. */
   steps: number;
+}
+
+/**
+ * What the agents asked the graph themselves. The top fields are the delivery runs (their steps by kind); the refinement
+ * drafts and the chat answers are counted apart, because their agents get the graph as text and often ask nothing.
+ */
+export interface GraphQueries extends QueryCount {
   byKind: Record<string, number>;
+  refine: QueryCount;
+  chat: QueryCount;
+}
+
+/** Where the counts besides the delivery runs come from: the event lists of the refinement drafts and the stored chat answers. */
+export interface GraphUsageSources {
+  refine?: ReadonlyArray<readonly StoredEvent[]>;
+  /** One entry per stored chat answer: its graph query count, or undefined when it was not measured. */
+  chat?: ReadonlyArray<number | undefined>;
 }
 
 export interface GraphUse {
@@ -70,6 +96,8 @@ export interface GraphView {
   /** The most connected nodes, and the links between them only. */
   top: GraphViewNode[];
   usage: { graph: number; grep: number; none: number; recent: GraphUse[]; queries: GraphQueries };
+  /** How many nodes of each kind the brain of the project holds: its code, its documents and the notes written from its runs and chat. */
+  composition?: GraphComposition;
   /** Every node and link for the interactive map, with the communities the nodes fall into. */
   map?: GraphMap;
   /** When the graph file was last written and why the last automatic build failed; the route fills both. */
@@ -82,24 +110,41 @@ const DESCRIPTION_REPO = 'project-info';
 const LINK_BATCH = 10;
 
 interface RawGraph {
-  nodes?: Array<{ id: string; label?: string; repo?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
+  nodes?: Array<{ id: string; label?: string; repo?: string; file_type?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
   links?: Array<{ source: string; target: string }>;
 }
 
 function emptyUsage(): GraphView['usage'] {
-  return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {} } };
+  return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } };
 }
 
 /** How the agents used the code context, read from the runs' journals. */
-export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly StoredEvent[] }>): GraphView['usage'] {
+export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly StoredEvent[] }>, sources: GraphUsageSources = {}): GraphView['usage'] {
   const usage = emptyUsage();
+  // A finished step that carries the count; older steps have no `graphQueries` and would read as zero.
+  const countOf = (e: StoredEvent): number | null => {
+    const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
+    return e.type === 'STEP_FINISHED' && typeof queries === 'number' ? queries : null;
+  };
+  for (const events of sources.refine ?? []) {
+    for (const e of events) {
+      const n = countOf(e);
+      if (n === null) continue;
+      usage.queries.refine.steps += 1;
+      usage.queries.refine.total += n;
+    }
+  }
+  for (const n of sources.chat ?? []) {
+    if (typeof n !== 'number') continue;
+    usage.queries.chat.steps += 1;
+    usage.queries.chat.total += n;
+  }
   const all: GraphUse[] = [];
   for (const run of runs) {
     for (const e of run.events) {
       if (e.type === 'STEP_FINISHED') {
-        // Only steps recorded with the count are measured; older ones have no `graphQueries` and would read as zero.
-        const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
-        if (typeof queries !== 'number') continue;
+        const queries = countOf(e);
+        if (queries === null) continue;
         const kind = String(e.data.kind);
         usage.queries.steps += 1;
         usage.queries.total += queries;
@@ -114,6 +159,46 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
   }
   usage.recent = all.slice(-USAGE_ROWS).reverse();
   return usage;
+}
+
+/** The project a node of the global brain belongs to: the folder name the merge put in front of its id. */
+const projectOf = (id: string): string => id.split('::')[0] ?? '';
+
+/**
+ * A view of the global brain: the same shape as the graph of one project, but each project is one group, so the map colours
+ * the nodes by project. Nothing is read from the runs, so the usage is empty.
+ */
+export function buildBrainView(raw: string | null): GraphView {
+  const usage = emptyUsage();
+  let graph: RawGraph = {};
+  try {
+    graph = raw ? (JSON.parse(raw) as RawGraph) : {};
+  } catch {
+    graph = {};
+  }
+  const nodes = (graph.nodes ?? []).filter((n) => n.repo !== DESCRIPTION_REPO && projectOf(n.id) !== '');
+  if (nodes.length === 0) return { available: false, nodes: 0, links: 0, communities: 0, top: [], usage };
+  const kept = new Set(nodes.map((n) => n.id));
+  const links = (graph.links ?? []).filter((l) => kept.has(l.source) && kept.has(l.target));
+  const degree = new Map<string, number>();
+  for (const l of links) {
+    degree.set(l.source, (degree.get(l.source) ?? 0) + 1);
+    degree.set(l.target, (degree.get(l.target) ?? 0) + 1);
+  }
+  const sizes = new Map<string, number>();
+  for (const n of nodes) sizes.set(projectOf(n.id), (sizes.get(projectOf(n.id)) ?? 0) + 1);
+  const communities: GraphCommunity[] = [...sizes.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id, size]) => ({ id, name: id, size }));
+  const byDegree = [...nodes].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || (a.id < b.id ? -1 : 1));
+  const mapNode = (n: (typeof nodes)[number]): GraphMapNode => ({ id: n.id, label: n.label ?? n.id, repo: n.repo ?? '', file: n.source_file ?? '', line: lineOf(n.source_location), community: projectOf(n.id), edges: degree.get(n.id) ?? 0 });
+  const drawn = byDegree.slice(0, MAP_NODES);
+  const shown = new Set(drawn.map((n) => n.id));
+  const map: GraphMap = {
+    nodes: drawn.map(mapNode),
+    links: links.filter((l) => shown.has(l.source) && shown.has(l.target)).map((l) => ({ source: l.source, target: l.target })),
+    communities,
+    truncated: nodes.length > MAP_NODES,
+  };
+  return { available: true, nodes: nodes.length, links: links.length, communities: communities.length, top: byDegree.slice(0, TOP_NODES).map((n) => ({ ...mapNode(n), url: null })), usage, map };
 }
 
 /**
@@ -184,9 +269,24 @@ export async function linkNodes(view: GraphView, resolve: (node: GraphViewNode) 
   return { ...view, top };
 }
 
+/** What a node is, from the note it comes from or its file type; the notes of the brain live under `brain/`. */
+function compositionOf(nodes: ReadonlyArray<{ file_type?: string; source_file?: string }>): GraphComposition {
+  const count: GraphComposition = { code: 0, documents: 0, tasks: 0, runs: 0, chat: 0, costs: 0 };
+  for (const n of nodes) {
+    const file = n.source_file ?? '';
+    if (file.startsWith('brain/tasks/')) count.tasks += 1;
+    else if (file.startsWith('brain/runs/')) count.runs += 1;
+    else if (file === 'brain/chat.md') count.chat += 1;
+    else if (file === 'brain/costs.md') count.costs += 1;
+    else if (n.file_type === 'document') count.documents += 1;
+    else count.code += 1;
+  }
+  return count;
+}
+
 /** A small view of the project's graph file: counts, the most connected nodes and how the agents used it. */
-export function buildGraphView(raw: string | null, runs: Parameters<typeof graphUsage>[0]): GraphView {
-  const usage = graphUsage(runs);
+export function buildGraphView(raw: string | null, runs: Parameters<typeof graphUsage>[0], sources: GraphUsageSources = {}): GraphView {
+  const usage = graphUsage(runs, sources);
   let graph: RawGraph = {};
   try {
     graph = raw ? (JSON.parse(raw) as RawGraph) : {};
@@ -215,5 +315,5 @@ export function buildGraphView(raw: string | null, runs: Parameters<typeof graph
     communities: groups.list,
     truncated: nodes.length > MAP_NODES,
   };
-  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map };
+  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map, composition: compositionOf(nodes) };
 }

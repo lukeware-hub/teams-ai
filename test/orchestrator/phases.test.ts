@@ -267,6 +267,17 @@ describe('Phase 2', () => {
     expect(Object.keys(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/plan.json'])).services).sort()).toEqual(['inventory-api', 'orders-api']);
   });
 
+  it('gives the services plan the central modules of the graph, like the plan of one service', async () => {
+    const shop = makeProject({ projectId: 'shop', services: ['orders-api', 'inventory-api'] });
+    const origins = await cloneServices(deps(async () => ok(null)).ws);
+    const root = path.join(remote.root, 'workspaces');
+    const r = await runPhase2({ ...deps(async () => ok(makeServicesPlan(spec))), project: shop, workspacesRoot: root, godNodes: async () => [{ label: 'orders/handler.go', edges: 21 }] }, '# Tech spec');
+    for (const o of origins) await o.cleanup();
+    expect(r.ok).toBe(true);
+    expect(calls[0]!.kind).toBe('services-plan');
+    expect(calls[0]!.pack.feedback).toContain('orders/handler.go (21 edges)');
+  });
+
   it('holds each service of a services plan to its assigned port, with the semantic checks on', async () => {
     const shop = makeProject({ projectId: 'shop', services: ['orders-api', 'inventory-api'] });
     const origins = await cloneServices(deps(async () => ok(null)).ws);

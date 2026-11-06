@@ -23,6 +23,14 @@ export interface CodeContext {
   graphFile?: string;
 }
 
+/** The graph files an agent may query: the repository's, the project's brain and the global brain. Each is present only when its file exists. */
+export interface GraphAccess {
+  repoGraph?: string;
+  projectGraph?: string;
+  /** Left out for a confidential project. */
+  brainGraph?: string;
+}
+
 export interface ContextPackInput {
   kind: StepKind;
   role: string;
@@ -39,6 +47,8 @@ export interface ContextPackInput {
   assumptions?: readonly string[];
   handoffs?: readonly HandoffSummary[];
   code?: CodeContext;
+  /** Where the agent finds the graphs; rendered in every pack and never dropped, so the agent always knows the brain exists. */
+  graphAccess?: GraphAccess;
   retrieval?: readonly Hit[];
   /** The shared docs a docs step rewrites; they leave the pack right before the feedback, since the step can read them in its working directory. */
   currentDocs?: string;
@@ -71,6 +81,7 @@ export const SECTION_ORDER = [
   'assumptions',
   'handoffs',
   'code',
+  'graph-access',
   'retrieval',
   'current-docs',
   'feedback',
@@ -88,6 +99,25 @@ const HANDOFF_SUMMARY_CHARS = 400;
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/** Text safe to put inside a shell command the agent may run: letters, digits and a few separators only. */
+const plain = (s: string, max = 80) => s.replace(/[^\p{L}\p{N} ._/()-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+
+/** The graphs the agent may query and, for a step on a task, queries ready to run. */
+function renderGraphAccess(access: GraphAccess, task: PlanTask | undefined): string | null {
+  const files = [access.projectGraph ? `- project graph (code, documents, specs, tasks, run history and failures, costs, chat): ${access.projectGraph}` : null, access.repoGraph ? `- repository graph (the code of this repository): ${access.repoGraph}` : null, access.brainGraph ? `- global brain (every project of this machine that is not confidential): ${access.brainGraph}` : null].filter((l) => l !== null);
+  if (files.length === 0) return null;
+  const main = access.projectGraph ?? access.repoGraph ?? access.brainGraph!;
+  const ready = task
+    ? [`- graphify query "${plain(task.title)}" --graph ${main}`, ...task.affectedPaths.slice(0, 2).map((p) => `- graphify explain "${plain(p.split('/').pop() ?? p)}" --graph ${main}`)].filter((q) => !q.includes('""'))
+    : [];
+  return [
+    '## Graph access (the brain)',
+    'Query the graph before you edit, review, plan or write a document: it holds what the project knows. Use graphify query "<question>" --graph <file>, also graphify explain "<node>" and graphify path "<A>" "<B>".',
+    ...files,
+    ...(ready.length ? ['Ready queries for this step:', ...ready] : []),
+  ].join('\n');
 }
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -140,6 +170,8 @@ function render(input: ContextPackInput): Map<Section, string> {
       out.set('code', `## Code context (grep; code graph unavailable or too thin)\n${(input.code.grep ?? []).map((g) => `- ${g.file}:${g.line}: ${g.text}`).join('\n') || '- no matches'}`);
     }
   }
+  const access = input.graphAccess ? renderGraphAccess(input.graphAccess, input.task) : null;
+  if (access) out.set('graph-access', access);
   if (input.retrieval?.length) {
     out.set('retrieval', `## Retrieved context\n${input.retrieval.map((h) => `### ${h.title}${h.heading ? ` › ${h.heading}` : ''} (${h.kind})\n${h.text}`).join('\n')}`);
   }

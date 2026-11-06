@@ -16,6 +16,27 @@ afterEach(async () => {
 });
 
 describe('ensureFreshGraph', () => {
+  it('does not wait for or start a build again right after one that wrote no graph', async () => {
+    const build = vi.fn(async () => undefined);
+    const map = new Map<string, Promise<void>>();
+    await ensureFreshGraph(file, 'empty-project', build, map);
+    expect(build).toHaveBeenCalledTimes(1);
+    const started = Date.now();
+    await ensureFreshGraph(file, 'empty-project', build, map);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it('forgets an empty build once a graph exists', async () => {
+    const map = new Map<string, Promise<void>>();
+    await ensureFreshGraph(file, 'late-project', async () => undefined, map);
+    await fs.writeFile(file, '{}');
+    await fs.utimes(file, new Date(Date.now() - 2 * GRAPH_TTL_MS), new Date(Date.now() - 2 * GRAPH_TTL_MS));
+    const build = vi.fn(async () => { await fs.writeFile(file, '{}'); });
+    await ensureFreshGraph(file, 'late-project', build, map);
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
   it('builds nothing when the graph is younger than the limit', async () => {
     await fs.writeFile(file, '{}');
     const build = vi.fn(async () => undefined);

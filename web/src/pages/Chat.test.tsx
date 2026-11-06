@@ -110,6 +110,8 @@ describe('ChatPage', () => {
     expect(screen.getByTestId('usage').textContent).toContain('Custo estimado US$ 0,0421 · 7 000 tokens lidos · 340 escritos · 14 s');
     expect(usageLine({ inputTokens: 2, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 3, turns: 2, searches: 1 })).toBe('2 tokens lidos · 1 escritos · 1 busca na web · 3 s');
     expect(usageLine({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 0, turns: 1 })).toBe('10 tokens lidos · 2 escritos · menos de 1 s');
+    expect(usageLine({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 4, turns: 1, searches: 0, graphQueries: 1 })).toBe('10 tokens lidos · 2 escritos · 0 buscas na web · 1 consulta ao grafo · 4 s');
+    expect(usageLine({ inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: null, seconds: 4, turns: 1, graphQueries: 0 })).toBe('10 tokens lidos · 2 escritos · 0 consultas ao grafo · 4 s');
     expect(usageLine({ inputTokens: 2, outputTokens: 1572, cacheReadTokens: 0, cacheWriteTokens: 24874, costUsd: 0.0039, seconds: 8, turns: 1 })).toBe('Custo estimado US$ 0,0039 · 24 876 tokens lidos · 1 572 escritos · 8 s');
   });
 

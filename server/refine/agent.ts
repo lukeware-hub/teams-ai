@@ -6,6 +6,7 @@ import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
 import { automaticStepOf, manualAgentSettings, type AgentSetting, type Config, type Role } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
+import type { GraphAccess } from '../knowledge/context-pack.js';
 import { runAgentStep } from '../orchestrator/steps.js';
 import { expandHome } from '../orchestrator/workspace.js';
 import { agentPluginsRoot } from '../skills/plugins.js';
@@ -19,6 +20,8 @@ export interface AgentWiring {
   hostEnv: NodeJS.ProcessEnv;
   secretsDir: string;
   workspacesRoot: string;
+  /** The graphs the agents of one project may query (its brain, the global one unless it is confidential); read per step. */
+  graphAccess?: (projectId: string) => Promise<GraphAccess | undefined>;
   claudeJsonPath?: string;
   runStep?: typeof runStepFn;
   /** The agent settings of one project, read per step so a change applies to the next step. */
@@ -48,6 +51,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
     const caps = ctx.projectId && w.stepBudget ? await w.stepBudget(ctx.projectId) : w.cfg.budgets.step;
     return runAgentStep(req, {
       agentSetting: (role) => manual[role],
+      ...(ctx.projectId && w.graphAccess ? { graphAccess: await w.graphAccess(ctx.projectId) } : {}),
       runStep: w.runStep ?? runStepFn,
       stepDeps: {
         binary,

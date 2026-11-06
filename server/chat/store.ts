@@ -24,6 +24,8 @@ export interface ChatUsage {
   searches?: number;
   /** The model the answer ran on; absent in conversations saved before it was recorded. */
   model?: string;
+  /** How many times the answer asked the graph itself; absent when it was not measured, 0 when it asked nothing. */
+  graphQueries?: number;
 }
 
 export interface ChatMessage {

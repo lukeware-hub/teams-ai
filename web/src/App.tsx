@@ -61,6 +61,7 @@ export function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectHub />} />
             <Route path="/graph/:projectId" element={<ProjectGraph />} />
+            <Route path="/brain" element={<ProjectGraph scope="global" />} />
             <Route path="/projects/:projectId/:repoId" element={<RepositoryPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
             <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
