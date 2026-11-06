@@ -75,9 +75,12 @@ export function createCostScanner(deps: { config: () => Promise<Config>; chatsDi
         else facts.push(...read);
       };
 
+      // Costs show only registered projects and projects still in refinement, as on the Projects page.
+      const shown = new Set(catalog.keys());
       for (const projectId of await subdirs(workspaces)) {
         const refine = path.join(workspaces, projectId, 'refine');
         for (const draftId of await subdirs(refine)) {
+          shown.add(projectId);
           take(await readJournal(path.join(refine, draftId, 'events.ndjson'), () => ({ stage: 'refinement', projectId, specId: draftId, runId: null })));
         }
       }
@@ -105,7 +108,7 @@ export function createCostScanner(deps: { config: () => Promise<Config>; chatsDi
         return { ...f, repository: catalog.get(f.projectId)?.repositories.get(f.specId) ?? null };
       };
       return {
-        facts: facts.map(withRepository),
+        facts: facts.filter((f) => f.projectId === null || shown.has(f.projectId)).map(withRepository),
         projects: [...catalog].map(([projectId, c]) => ({ projectId, name: c.name })).sort((a, b) => a.name.localeCompare(b.name)),
         unreadJournals,
       };

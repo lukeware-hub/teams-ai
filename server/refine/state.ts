@@ -233,8 +233,10 @@ export interface RefineState {
   docsRepo?: boolean;
   /** The documents reviewed since their last edit, kept only by a repository session: a human edit takes a document out; an accepted patch or an answer keeps it. */
   reviewedStages?: DocFile[];
-  /** The documents in the Graphify graph; a later edit of a document takes it out until it is added again. */
+  /** The documents in the Graphify graph; a later edit of a document takes it out until it is added again, unless the edit gives back the text the graph holds. */
   graphed?: DocFile[];
+  /** The hash of each document's text when the graph took it in: the text the graph holds. */
+  graphedHash?: Partial<Record<DocFile, string>>;
   /** The document whose extraction runs now, if any. */
   graphing?: DocFile | null;
   /** The last document the extraction could not add, with the reason in plain words; cleared by the next success. */
@@ -714,7 +716,9 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       // A human edit makes the review of the document stale; an accepted patch or an answer is the review's own output and keeps it.
       if (s.reviewedStages && d.source !== 'patch' && d.source !== 'decision') s.reviewedStages = s.reviewedStages.filter((file) => file !== docName(d.file));
       // An accepted suggestion or an architecture decision keeps the document in the graph: its processing still counts after it.
-      if (s.graphed && d.source !== 'patch' && d.source !== 'decision') s.graphed = s.graphed.filter((file) => file !== docName(d.file));
+      // An edit that gives back the text the graph holds keeps it too: a reprocess restores the same text.
+      const sameAsGraph = s.graphedHash?.[docName(d.file)] === String(d.hash);
+      if (s.graphed && d.source !== 'patch' && d.source !== 'decision' && !sameAsGraph) s.graphed = s.graphed.filter((file) => file !== docName(d.file));
       break;
     case RefineEvent.RequestReceived:
       s.extension = { requestId: String(d.requestId), title: String(d.title), text: String(d.text), at: String(d.at), ...(Array.isArray(d.before) ? { before: d.before as ExtensionRequest['before'] } : {}), ...(typeof d.idBase === 'string' ? { idBase: d.idBase } : {}) };
@@ -783,6 +787,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.DocGraphed:
       s.graphed = [...new Set([...(s.graphed ?? []), docName(d.file)])];
+      s.graphedHash = { ...(s.graphedHash ?? {}), [docName(d.file)]: String(d.hash) };
       s.graphing = null;
       s.graphError = null;
       break;

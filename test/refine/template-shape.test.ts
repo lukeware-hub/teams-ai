@@ -38,6 +38,11 @@ describe('shapeProblem', () => {
     expect(shapeProblem('stack.md', ' \n', stackTemplate(), 'shop')).toMatch(/vazio/);
   });
 
+  it('refuses a text that keeps less than half of the document it replaces', () => {
+    const before = `${SHAPED_BRIEF}\n${'- Regra de negócio.\n'.repeat(100)}`;
+    expect(shapeProblem('briefing.md', SHAPED_BRIEF, before, 'shop')).toMatch(/perdeu conteúdo do documento/);
+  });
+
   it('ignores the title, which holds the name of the project', () => {
     const project = '# Loja online\n\n## Vision\n\nVender roupas pela internet.\n\n## Personas\n\n- Cliente: compra roupas.\n\n## Constraints\n\n- (none)\n\n## Stack\n\n- (none)\n\n## Principles\n\n- (none)\n\n## Deploy target\n\ndocker-local\n\n## GitHub owner\n\n- (none)\n';
     expect(shapeProblem('project.md', project, project, 'shop')).toBeNull();

@@ -7,11 +7,11 @@ import type { StepOutcome } from '../runner/step.js';
 import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { isConfidential, type CycleJournal, type RunAgent } from './cycle.js';
 import { DIGEST_NOTE, docDigest } from './docs-view.js';
-import { normHeading } from './sections.js';
+import { docSections, normHeading } from './sections.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
-import { fitPackBudget } from './fit-pack.js';
+import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { historyBlocks, PATCH_WORTH } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
@@ -19,6 +19,7 @@ import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeStage } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
+import { MAX_STAGE_PARTS, PART_TOKENS, stageParts } from './stage-parts.js';
 import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
@@ -28,7 +29,21 @@ const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'bri
 const VALIDATION_KEY: Record<DocFile, keyof ValidationDocs> = { 'project.md': 'project', 'briefing.md': 'briefing', 'stack.md': 'stack', 'flow.md': 'flow', 'design.md': 'design' };
 
 /** How much of each earlier document the review reads: every heading, with the start of its section. */
-const STAGE_DIGEST_CHARS = 2000;
+const STAGE_DIGEST_CHARS = 600;
+
+/** What the owner's review returns for one part of a document. */
+type RefineReview = z.infer<typeof RefineOutput>;
+
+/** The results of every part of one review as one: a patch that two parts both propose is kept once. */
+function mergeReviews(outcomes: readonly RefineReview[]) {
+  const docPatch = [...new Map(outcomes.flatMap((o) => o.docPatch).map((p) => [`${p.find}\u0000${p.replace}`, p] as const)).values()];
+  return {
+    docPatch,
+    questions: outcomes.flatMap((o) => o.questions),
+    findings: outcomes.flatMap((o) => o.findings ?? []),
+    contradictions: outcomes.flatMap((o) => o.contradictions ?? []),
+  };
+}
 
 export interface StageCycleDeps {
   draft: Draft;
@@ -86,8 +101,16 @@ function jevIndex(file: DocFile, score: DocScore): string[] {
   ];
 }
 
+/** One part of a stage document too big for one review: its text, and its place among the parts. */
+export interface ReviewPart {
+  index: number;
+  total: number;
+  text: string;
+}
+
 /** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[] }): ContextPackInput {
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[]; part?: ReviewPart }): ContextPackInput {
+  const part = input.part;
   const earlier = earlierDocs(input.file);
   // A section of an earlier document that this document names is read whole: the review quotes it, and a cut section hides what it says.
   const own = ` ${normHeading(input.docs[input.file])} `;
@@ -98,8 +121,12 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
   const context = earlier.length > 0
     ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest; the sections this document names are whole)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS, cited)}`)].join('\n\n')
     : '(no document before this stage)';
+  // With parts, the outline lists every heading of the whole document, so a part can say where the rest of it is.
+  const outline = part ? docSections(input.docs[input.file]).map((s) => `- ${s.heading} (line ${s.line + 1})`) : [];
   const feedback = [
-    `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
+    part
+      ? `You review only ${input.file}, the document of this stage, part ${part.index} of ${part.total}. Read the part below against the document charter in your instructions. Quote only text that is in this part; the outline lists the headings of the whole document.`
+      : `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
     '- Return an empty checklist: this stage does not evaluate the checklist.',
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
@@ -109,7 +136,8 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
     ...(input.jev ? [input.jev] : []),
     ...(input.score ? jevIndex(input.file, input.score) : []),
     context,
-    `### ${input.file} (this stage)\n${input.docs[input.file]}`,
+    `### ${input.file} (this stage${part ? `, part ${part.index} of ${part.total}` : ''})\n${part ? part.text : input.docs[input.file]}`,
+    ...(part ? [`### ${input.file} outline (the whole document)\n${outline.join('\n')}`] : []),
     ...historyBlocks({ specId: input.specId, decisions: [], history: input.history, rejected: input.rejected }),
   ].join('\n\n');
   return { kind: 'refine', role: input.role, specHash: input.specHash, principles: [...input.principles], outputContract: outputContract('refine'), criteria: [], feedback, budgetTokens: 60_000 };
@@ -160,15 +188,25 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     // A confidential project gets no Jev finding, and a blank document's zeros were never answered by the Jev.
     const score = journal.state.readiness?.docs?.[file];
     const indexed = score !== undefined && !confidential && docs[file].trim() !== '' && !(journal.state.outdatedDocs ?? []).includes(file);
-    const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected') })));
-    if (!review.ok) {
-      await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(`A revisão de ${file}`, review.failure, review.errors) });
-      return;
+    // A document too big for one review is read in parts, one review each; the parts' results are then reviewed as one.
+    const parts = stageParts(docs[file], PART_TOKENS);
+    if (parts.length > MAX_STAGE_PARTS) throw new PackTooLargeError(`O documento ${file} tem ${parts.length} partes; o limite é ${MAX_STAGE_PARTS}. Reduza ou divida o documento.`);
+    const outcomes: RefineReview[] = [];
+    for (const [i, text] of parts.entries()) {
+      const part = parts.length > 1 ? { index: i + 1, total: parts.length, text } : undefined;
+      const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected'), part })));
+      if (!review.ok) {
+        const label = part ? `A revisão da parte ${part.index} de ${part.total} de ${file}` : `A revisão de ${file}`;
+        await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(label, review.failure, review.errors) });
+        return;
+      }
+      outcomes.push(review.value);
     }
-    await propose(review.value.docPatch);
+    const merged = mergeReviews(outcomes);
+    await propose(merged.docPatch);
     // A visual scope gap Front finds goes to the owner through the PO, so it is never lost.
     const asker = role === 'front' ? 'po' : role;
-    const questions: Question[] = review.value.questions.map((q, i) => ({
+    const questions: Question[] = merged.questions.map((q, i) => ({
       questionId: `${role}-s${cycle}-${i}`,
       role: asker,
       text: q.text,
@@ -180,12 +218,12 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       cycle,
     }));
     // A finding keeps the document it names, as the stage knows it, and stands only when its quote is in that document.
-    const findings = (review.value.findings ?? []).flatMap(({ doc, severity, quote, text, fix }) => {
+    const findings = merged.findings.flatMap(({ doc, severity, quote, text, fix }) => {
       const named = namedDoc(doc, draft.specId);
       return named !== undefined && scope.includes(named) && docs[named].includes(quote) ? [{ cycle, role, doc: named, severity, quote, text, fix }] : [];
     });
     await journal.fact(RefineEvent.FindingsReported, { cycle, files: scope, findings });
-    const divergences = (review.value.contradictions ?? []).filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
+    const divergences = merged.contradictions.filter((c) => inScope(c.a.file, draft.specId, scope) && inScope(c.b.file, draft.specId, scope)).map((c) => c.fact);
     // Plan 103: a question that repeats a decided one is dropped unless its distinctFrom names a real difference. Nothing re-runs:
     // the patches above are already on record, so a second pass would propose them twice.
     const guarded = checkRepeats(questions, journal.state.questions, STAGE_REPEAT_OVERLAP);

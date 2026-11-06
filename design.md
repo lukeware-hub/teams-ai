@@ -1202,7 +1202,7 @@ Aparece no painel `REVISÃO DA ETAPA`, entre o cartão do Jev e os avisos. Cinco
 | `Sem pergunta obrigatória aberta` | nenhuma pergunta obrigatória da etapa está sem resposta |
 | `Sem sugestão pendente` | nenhuma sugestão da etapa espera aceitar ou rejeitar |
 | `Formato do modelo` | o texto tem a forma do modelo do documento (e `flow.md` é Mermaid) |
-| `No Graphify` | o documento está no grafo do Graphify depois da última edição |
+| `No Graphify` | o documento está no grafo do Graphify depois da última edição; uma edição que devolve o mesmo texto que o grafo guarda não conta |
 
 Enquanto o grafo trabalha, a última linha mostra um spinner e o botão `Continuar` lê `Adicionando ao Graphify…`. Depois, lê `No Graphify: n nós`. Se a extração falhou, a linha diz o motivo em palavras simples, e `Continuar` tenta de novo.
 
@@ -1397,6 +1397,32 @@ Wireframe proposto:
 ```
 
 Escolhas do dono: o botão `Gerar specs.md` sai de vez; `Continuar` fica visível e desabilitado com a razão, em vez de sumir.
+
+### 26.12 Revisão de documento grande por partes
+
+A revisão de uma etapa lê o documento inteiro em partes de até 25 mil tokens estimados. Um documento que cabe numa parte é revisado como antes. Com mais de uma parte, cada chamada recebe a sua parte no lugar do documento inteiro, junto com a lista de títulos do documento e a linha de cada um.
+
+| Elemento | Especificação |
+|---|---|
+| Cortes | Só nos títulos, quando cabem. Um trecho sem títulos maior que uma parte é cortado entre linhas. Juntar as partes reproduz o documento sem diferença. |
+| Limite | 25 mil tokens estimados por parte; no máximo 40 partes por revisão. Acima disso a etapa falha com o motivo em palavras simples. |
+| Chamadas | Uma chamada de revisão por parte. Se uma parte falha, a etapa falha com o motivo dela. |
+| Sugestões | Todas as partes contribuem para as mesmas sugestões. Cada `find` é checado contra o documento inteiro e tem de aparecer uma vez só nele. |
+| Registro | Uma revisão por etapa, com as perguntas, os achados e as divergências das partes reunidos. |
+| Documentos anteriores | Seguem como resumo no prompt, como antes. Ler os anteriores pelo grafo fica para o incremento seguinte. |
+
+### 26.13 Formatar pelo template (algoritmo)
+
+Antes da revisão e antes da sugestão, o documento recebe a forma do seu modelo por um algoritmo que não reescreve nenhum texto.
+
+| Elemento | Especificação |
+|---|---|
+| Quando | Na etapa, antes da revisão (Avaliar e Reprocessar). No Sugerir, antes de a sugestão começar. |
+| Como | Cada seção de nível 2 vai para o título do modelo cujas palavras o seu título contém. A lista de palavras é por arquivo. O próprio nome do título do modelo também conta. As subseções descem dois níveis. As seções que nenhum título recebe seguem depois, na ordem original. |
+| Decisões | As seções de decisões ficam como estão, depois dos títulos do modelo. |
+| Conferência | Toda linha de texto do documento tem que estar no resultado, e os títulos do modelo abrem o texto em ordem. Se não, a formatação é recusada e o motivo aparece nos avisos da revisão. |
+| Documento curto | Quando o algoritmo não consegue formatar um documento curto, o agente reescreve como antes. Um documento longo que o algoritmo não consegue formatar fica como está, com o motivo. |
+| Desfazer | A formatação é uma reorganização: o texto anterior fica guardado em disco. Não há botão de desfazer na tela. |
 
 ## 27. Projects, Run, Status
 

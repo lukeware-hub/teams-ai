@@ -133,6 +133,45 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
   });
 
+  it('refuses a long document the algorithm cannot lay out, and says why', async () => {
+    const draft = await newDraft();
+    const big = `${LOOSE_BRIEF}\n${'- Regra de negócio.\n'.repeat(4_000)}`;
+    await writeDoc(draft, 'briefing.md', big);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(await readDoc(draft, 'briefing.md')).toBe(big);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/texto do modelo: <item>/) }] });
+  });
+
+  it('lays out a long document by its template, with no agent answer', async () => {
+    const draft = await newDraft();
+    const doc = `# Loja\n\n## 1. Proposta de valor\n\nVender roupas online.\n\n## 2. Usuários e atores\n\n- Cliente: compra roupas.\n\n## 9. Registro\n\n${'Registro de fato, linha longa. '.repeat(3_000)}\n`;
+    await writeDoc(draft, 'project.md', doc);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(journal.events.some((e) => e.type === RefineEvent.DocReshaped)).toBe(true);
+    const laid = await readDoc(draft, 'project.md');
+    expect(laid).toContain('## Vision\n\n#### 1. Proposta de valor');
+    expect(laid.indexOf('## Vision')).toBeLessThan(laid.indexOf('## Personas'));
+    expect(laid).toContain('Registro de fato, linha longa.');
+  });
+
+  it('refuses a reshape that drops most of the text, and keeps the file', async () => {
+    const draft = await newDraft();
+    const long = `${LOOSE_BRIEF}\n${'- Regra de negócio.\n'.repeat(200)}`;
+    await writeDoc(draft, 'briefing.md', long);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(2);
+    expect(await readDoc(draft, 'briefing.md')).toBe(long);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/perdeu conteúdo do documento/) }] });
+  });
+
   it('keeps the text a person wrote while the reshape was running', async () => {
     const draft = await newDraft();
     await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);
@@ -533,6 +572,18 @@ describe('runStageCycle', () => {
     expect(review).toContain('(context only, a digest');
   });
 
+  it('an earlier document reaches the review as a short excerpt of each section, so a long section is cut', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(200)}FIM-DO-FLUXO\n`);
+    await writeDoc(draft, 'project.md', '# Projeto\n\nFIM-DO-PROJETO');
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### project.md (this stage)'))!;
+    expect(review).not.toContain('FIM-DO-FLUXO');
+    expect(review).toContain('[…]');
+  });
+
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
@@ -634,5 +685,38 @@ describe('runStageCycle', () => {
     const runAgent = vi.fn(async () => { throw 'agent stopped'; });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent stopped' });
+  });
+});
+
+/** A stage document of `count` sections, each about 99 thousand characters: one part of the review each. */
+const bigSections = (count: number) => Array.from({ length: count }, (_, i) => `## Parte ${i + 1}\n${`${'x'.repeat(999)}\n`.repeat(99)}`).join('');
+
+describe('runStageCycle reviews a document too big for one part in parts', () => {
+  it('reads each part in its own review, and merges what the parts propose', async () => {
+    const draft = await newDraft();
+    const doc = bigSections(3);
+    await writeDoc(draft, 'briefing.md', doc);
+    const journal = foldingJournal();
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind !== 'refine') return answer([]);
+      const index = /part (\d) of 3/.exec(req.pack.feedback ?? '')?.[1];
+      return answer(index ? [{ file: 'briefing.md', find: `## Parte ${index}`, replace: `## Parte ${index} revisada`, reason: 'r' }] : []);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(runAgent.mock.calls.filter(([req]) => req.kind === 'refine')).toHaveLength(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+    expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
+    // The template's layout comes first, so the document is laid out; its three parts are all still in it.
+    expect(await readDoc(draft, 'briefing.md')).toContain('## Parte 3');
+  });
+
+  it('refuses a document with more parts than one review may read, and says how many', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', bigSections(41));
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: expect.stringMatching(/tem 41 partes; o limite é 40/) });
   });
 });

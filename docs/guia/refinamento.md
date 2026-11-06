@@ -77,11 +77,13 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 
 Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
 
+Um documento grande é revisado em partes, cada uma com a sua própria passada de revisão. As sugestões de todas as partes aparecem juntas na mesma revisão da etapa. Se uma parte falhar, a etapa diz o motivo e você processa de novo.
+
 Depois das cinco etapas, a avaliação completa gera o backlog e as specs a partir dos documentos atuais, mas também não altera nenhum documento. Quando um agente encontra algo no documento errado, ele vira uma sugestão ou uma pergunta para o dono daquele documento. Você aceita, rejeita ou responde.
 
 ## Formato do modelo
 
-Ao processar uma etapa, o documento da etapa é reescrito no formato do seu modelo: as seções do modelo, na mesma ordem, com os textos de exemplo trocados pelo conteúdo real. Um texto que está em outra seção vai para a seção a que pertence, e nenhum fato é apagado. Só o documento da etapa é reescrito. O aviso no topo da tela traz **Desfazer**, que devolve o texto anterior enquanto o documento não mudou depois da reescrita. As decisões já registradas no briefing.md não são alteradas.
+Ao processar uma etapa, o documento da etapa é reescrito no formato do seu modelo: as seções do modelo, na mesma ordem, com os textos de exemplo trocados pelo conteúdo real. Um texto que está em outra seção vai para a seção a que pertence, e nenhum fato é apagado. Só o documento da etapa é reescrito. Um documento com mais de cerca de 80 KB não é reescrito de uma vez: a etapa segue só com a revisão, e a tela diz o motivo. A reescrita que devolve menos da metade do texto é recusada, e o documento fica como estava. O aviso no topo da tela só informa qual documento foi reescrito: o agente faz a reescrita sozinho e a tela não tem botão de desfazer. As decisões já registradas no briefing.md não são alteradas.
 
 ## Segredos
 

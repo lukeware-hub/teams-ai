@@ -2,7 +2,7 @@ import { docSections, normHeading, type DocSection } from './sections.js';
 import { TEMPLATE, type SuggestFile } from './suggest.js';
 
 /** Sections the code writes; a reshape keeps them word for word. */
-const MANAGED = /^(decisoes|decisions|ajuste aprovado|approved adjustment)/;
+export const MANAGED = /^(decisoes|decisions|ajuste aprovado|approved adjustment)/;
 const LEVEL = /^(#{1,6})\s/;
 
 const levelOf = (section: DocSection): number => LEVEL.exec(section.text)?.[1]?.length ?? 0;
@@ -36,6 +36,7 @@ const opensWith = (heads: string[], model: string[]): boolean => model.every((he
 export function shapeProblem(file: SuggestFile, text: string, before: string, projectId: string): string | null {
   const template = TEMPLATE[file](projectId);
   if (text.trim() === '') return 'o texto ficou vazio';
+  if (text.length < before.length * 0.5) return 'o texto perdeu conteúdo do documento';
   if (!opensWith(shape(text), shape(template))) return 'faltam seções do modelo ou elas estão fora de ordem';
   const placeholder = [...new Set(template.match(/<[^<>\n]+>/g) ?? [])].find((p) => text.includes(p));
   if (placeholder) return `ainda tem o texto do modelo: ${placeholder}`;
