@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, api, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type AutomaticRow, type AutomaticSettings, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
+import { AGENT_EFFORTS, AGENT_MODELS, api, refineApi, runApi, settingsApi, type AgentChoice, type AgentEffort, type AgentModel, type AgentRow, type AgentSetting, type AutomaticRow, type AutomaticSettings, type DraftRow, type Item, type ItemName, type ProjectRow, type Status } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
@@ -385,6 +385,13 @@ function AutomaticModelsCard() {
   );
 }
 
+/** The registered projects, then each project still in refinement once: its agents are set here too. */
+function settingsProjects(registered: Array<Pick<ProjectRow, 'projectId' | 'name'>>, drafts: DraftRow[]): Array<Pick<ProjectRow, 'projectId' | 'name'>> {
+  const known = new Set(registered.map((p) => p.projectId));
+  const pending = [...new Set(drafts.filter((d) => !d.registered && !known.has(d.projectId)).map((d) => d.projectId))];
+  return [...registered, ...pending.map((projectId) => ({ projectId, name: '' }))];
+}
+
 export function SettingsPage() {
   const [projects, setProjects] = useState<Array<Pick<ProjectRow, 'projectId' | 'name'>> | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -397,9 +404,10 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
-    runApi.projects().then((list) => {
-      setProjects(list);
-      setProjectId(list[0]?.projectId ?? '');
+    Promise.all([runApi.projects(), refineApi.list().catch(() => [] as DraftRow[])]).then(([list, drafts]) => {
+      const all = settingsProjects(list, drafts);
+      setProjects(all);
+      setProjectId(all[0]?.projectId ?? '');
     }).catch(() => setError('Não foi possível carregar os projetos.'));
   }, []);
 
