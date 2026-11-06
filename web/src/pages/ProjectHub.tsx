@@ -27,7 +27,8 @@ const sectionHead = 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2
 const sectionIcon = 'grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink';
 const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 text-[0.875rem] text-ink-soft';
 // Runs in flight stand out from the history instead of blending into the table.
-const live = '[&>td]:bg-good-soft [&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)]';
+// On a phone the whole card carries the live tint; cell by cell it would box every field.
+const live = '@min-[44rem]:[&>td]:bg-good-soft @min-[44rem]:[&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)] @max-[44rem]:bg-good-soft @max-[44rem]:shadow-[inset_3px_0_0_var(--good-live)]';
 // A group title spans the spec list; the first group's title needs no space above it.
 const groupHeading = 'col-span-full px-[0.6rem] pt-3 text-[0.75rem] font-[650] uppercase tracking-[0.07em] text-ink-soft first:pt-0';
 // Specs sit in the first group that names their status, so the human's work comes first; unknown statuses fall in the first group too.

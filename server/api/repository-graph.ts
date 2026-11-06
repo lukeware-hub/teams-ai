@@ -45,6 +45,14 @@ export interface GraphMap {
   truncated: boolean;
 }
 
+/** What the agents asked the graph themselves: the queries they ran, over the finished steps that were counted, by kind of step. */
+export interface GraphQueries {
+  total: number;
+  /** Finished agent steps that carry the count; steps recorded before it existed are not in it. */
+  steps: number;
+  byKind: Record<string, number>;
+}
+
 export interface GraphUse {
   runId: string;
   taskId: string;
@@ -61,7 +69,7 @@ export interface GraphView {
   communities: number;
   /** The most connected nodes, and the links between them only. */
   top: GraphViewNode[];
-  usage: { graph: number; grep: number; none: number; recent: GraphUse[] };
+  usage: { graph: number; grep: number; none: number; recent: GraphUse[]; queries: GraphQueries };
   /** Every node and link for the interactive map, with the communities the nodes fall into. */
   map?: GraphMap;
   /** When the graph file was last written and why the last automatic build failed; the route fills both. */
@@ -79,7 +87,7 @@ interface RawGraph {
 }
 
 function emptyUsage(): GraphView['usage'] {
-  return { graph: 0, grep: 0, none: 0, recent: [] };
+  return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {} } };
 }
 
 /** How the agents used the code context, read from the runs' journals. */
@@ -88,6 +96,16 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
   const all: GraphUse[] = [];
   for (const run of runs) {
     for (const e of run.events) {
+      if (e.type === 'STEP_FINISHED') {
+        // Only steps recorded with the count are measured; older ones have no `graphQueries` and would read as zero.
+        const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
+        if (typeof queries !== 'number') continue;
+        const kind = String(e.data.kind);
+        usage.queries.steps += 1;
+        usage.queries.total += queries;
+        usage.queries.byKind[kind] = (usage.queries.byKind[kind] ?? 0) + queries;
+        continue;
+      }
       if (e.type !== 'CODE_CONTEXT_USED') continue;
       const source = e.data.source === 'graph' || e.data.source === 'grep' ? e.data.source : 'none';
       usage[source] += 1;
