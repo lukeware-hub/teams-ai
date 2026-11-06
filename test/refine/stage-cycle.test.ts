@@ -133,7 +133,7 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
   });
 
-  it('leaves a document too big to rewrite in one answer, and says why', async () => {
+  it('refuses a long document the algorithm cannot lay out, and says why', async () => {
     const draft = await newDraft();
     const big = `${LOOSE_BRIEF}\n${'- Regra de negócio.\n'.repeat(4_000)}`;
     await writeDoc(draft, 'briefing.md', big);
@@ -142,7 +142,22 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect(suggestCalls(runAgent)).toHaveLength(0);
     expect(await readDoc(draft, 'briefing.md')).toBe(big);
-    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/grande demais/) }] });
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/texto do modelo: <item>/) }] });
+  });
+
+  it('lays out a long document by its template, with no agent answer', async () => {
+    const draft = await newDraft();
+    const doc = `# Loja\n\n## 1. Proposta de valor\n\nVender roupas online.\n\n## 2. Usuários e atores\n\n- Cliente: compra roupas.\n\n## 9. Registro\n\n${'Registro de fato, linha longa. '.repeat(3_000)}\n`;
+    await writeDoc(draft, 'project.md', doc);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(journal.events.some((e) => e.type === RefineEvent.DocReshaped)).toBe(true);
+    const laid = await readDoc(draft, 'project.md');
+    expect(laid).toContain('## Vision\n\n#### 1. Proposta de valor');
+    expect(laid.indexOf('## Vision')).toBeLessThan(laid.indexOf('## Personas'));
+    expect(laid).toContain('Registro de fato, linha longa.');
   });
 
   it('refuses a reshape that drops most of the text, and keeps the file', async () => {
@@ -692,7 +707,8 @@ describe('runStageCycle reviews a document too big for one part in parts', () =>
     expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
     expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(3);
     expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
-    expect(await readDoc(draft, 'briefing.md')).toBe(doc);
+    // The template's layout comes first, so the document is laid out; its three parts are all still in it.
+    expect(await readDoc(draft, 'briefing.md')).toContain('## Parte 3');
   });
 
   it('refuses a document with more parts than one review may read, and says how many', async () => {

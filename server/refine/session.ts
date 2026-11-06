@@ -23,7 +23,7 @@ import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { documentCounts } from '../knowledge/doc-graph.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
-import { reshapeBackup } from './reshape.js';
+import { formatStageDocument, reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
@@ -799,6 +799,8 @@ export class RefineSession {
   async suggest(file: SuggestFile): Promise<string> {
     this.guard();
     this.guardStage(file);
+    // The document takes its template's layout before the agent writes from it.
+    await formatStageDocument({ draft: this.deps.draft, journal: this.journal }, this.state.cycle, file);
     const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
     if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);

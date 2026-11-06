@@ -1411,6 +1411,19 @@ A revisão de uma etapa lê o documento inteiro em partes de até 25 mil tokens 
 | Registro | Uma revisão por etapa, com as perguntas, os achados e as divergências das partes reunidos. |
 | Documentos anteriores | Seguem como resumo no prompt, como antes. Ler os anteriores pelo grafo fica para o incremento seguinte. |
 
+### 26.13 Formatar pelo template (algoritmo)
+
+Antes da revisão e antes da sugestão, o documento recebe a forma do seu modelo por um algoritmo que não reescreve nenhum texto.
+
+| Elemento | Especificação |
+|---|---|
+| Quando | Na etapa, antes da revisão (Avaliar e Reprocessar). No Sugerir, antes de a sugestão começar. |
+| Como | Cada seção de nível 2 vai para o título do modelo cujas palavras o seu título contém. A lista de palavras é por arquivo. O próprio nome do título do modelo também conta. As subseções descem dois níveis. As seções que nenhum título recebe seguem depois, na ordem original. |
+| Decisões | As seções de decisões ficam como estão, depois dos títulos do modelo. |
+| Conferência | Toda linha de texto do documento tem que estar no resultado, e os títulos do modelo abrem o texto em ordem. Se não, a formatação é recusada e o motivo aparece nos avisos da revisão. |
+| Documento curto | Quando o algoritmo não consegue formatar um documento curto, o agente reescreve como antes. Um documento longo que o algoritmo não consegue formatar fica como está, com o motivo. |
+| Desfazer | A formatação é uma reorganização: o texto anterior fica guardado em disco. Não há botão de desfazer na tela. |
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:
