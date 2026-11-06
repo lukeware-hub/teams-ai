@@ -1202,7 +1202,7 @@ Aparece no painel `REVISÃO DA ETAPA`, entre o cartão do Jev e os avisos. Cinco
 | `Sem pergunta obrigatória aberta` | nenhuma pergunta obrigatória da etapa está sem resposta |
 | `Sem sugestão pendente` | nenhuma sugestão da etapa espera aceitar ou rejeitar |
 | `Formato do modelo` | o texto tem a forma do modelo do documento (e `flow.md` é Mermaid) |
-| `No Graphify` | o documento está no grafo do Graphify depois da última edição |
+| `No Graphify` | o documento está no grafo do Graphify depois da última edição; uma edição que devolve o mesmo texto que o grafo guarda não conta |
 
 Enquanto o grafo trabalha, a última linha mostra um spinner e o botão `Continuar` lê `Adicionando ao Graphify…`. Depois, lê `No Graphify: n nós`. Se a extração falhou, a linha diz o motivo em palavras simples, e `Continuar` tenta de novo.
 

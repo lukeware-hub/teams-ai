@@ -25,6 +25,20 @@ describe('confidentiality answer and document stages', () => {
   });
 });
 
+describe('the Graphify graph of the documents', () => {
+  const graphed = { type: RefineEvent.DocGraphed, data: { file: 'flow.md', hash: 'sha256:a', nodes: 38 } };
+
+  it('a human edit that gives back the graphed text keeps the document in the graph', () => {
+    const s = reduceRefineEvents([graphed, { type: RefineEvent.DocEdited, data: { file: 'flow.md', hash: 'sha256:a', source: 'human' } }]);
+    expect(s.graphed).toEqual(['flow.md']);
+  });
+
+  it('a human edit that changes the text takes the document out of the graph', () => {
+    const s = reduceRefineEvents([graphed, { type: RefineEvent.DocEdited, data: { file: 'flow.md', hash: 'sha256:b', source: 'human' } }]);
+    expect(s.graphed).toEqual([]);
+  });
+});
+
 describe('reduceRefineEvents reshapes', () => {
   it('folds a reshape into the list with its status, and an undo marks it undone', () => {
     const row = { reshapeId: 'reshape-c1', file: 'briefing.md', cycle: 1, role: 'po', afterHash: 'h' };
