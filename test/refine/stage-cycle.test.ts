@@ -133,6 +133,30 @@ describe('runStageCycle reshapes the stage document to its template', () => {
     expect(await readDoc(draft, 'briefing.md')).toBe(LOOSE_BRIEF);
   });
 
+  it('leaves a document too big to rewrite in one answer, and says why', async () => {
+    const draft = await newDraft();
+    const big = `${LOOSE_BRIEF}\n${'- Regra de negócio.\n'.repeat(4_000)}`;
+    await writeDoc(draft, 'briefing.md', big);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(0);
+    expect(await readDoc(draft, 'briefing.md')).toBe(big);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/grande demais/) }] });
+  });
+
+  it('refuses a reshape that drops most of the text, and keeps the file', async () => {
+    const draft = await newDraft();
+    const long = `${LOOSE_BRIEF}\n${'- Regra de negócio.\n'.repeat(200)}`;
+    await writeDoc(draft, 'briefing.md', long);
+    const journal = foldingJournal();
+    const runAgent = agentFor(() => reshaped(SHAPED_BRIEF));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(suggestCalls(runAgent)).toHaveLength(2);
+    expect(await readDoc(draft, 'briefing.md')).toBe(long);
+    expect(stageReviewed(journal)).toMatchObject({ discardedPatches: [{ role: 'po', file: 'briefing.md', reason: expect.stringMatching(/perdeu conteúdo do documento/) }] });
+  });
+
   it('keeps the text a person wrote while the reshape was running', async () => {
     const draft = await newDraft();
     await writeDoc(draft, 'briefing.md', LOOSE_BRIEF);

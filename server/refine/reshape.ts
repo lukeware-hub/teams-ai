@@ -7,11 +7,15 @@ import { retryOnSchema, withNote } from './agent-failure.js';
 import { dropCoveredPatches, type CycleJournal, type RunAgent } from './cycle.js';
 import { readDoc, writeDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent } from './events.js';
+import { estimateTokens } from '../knowledge/context-pack.js';
 import { fitPackBudget } from './fit-pack.js';
 import { isNotApplicable } from './not-applicable.js';
 import type { ReshapeRow } from './state.js';
 import { reshapePack, SUGGEST_ROLE, TEMPLATE, type SuggestFile } from './suggest.js';
 import { isUntouched, shapeProblem } from './template-shape.js';
+
+/** A document longer than this is never rewritten in one answer: the agent cannot write it back whole. */
+const MAX_RESHAPE_TOKENS = 20_000;
 
 /** The text a reshape replaced, kept on disk until the reshape is undone. */
 export const reshapeBackup = (draft: Draft, reshapeId: string): string => path.posix.join(draft.root, 'reshaped', `${reshapeId}.md`);
@@ -46,6 +50,10 @@ export async function reshapeStage(deps: ReshapeDeps, cycle: number, file: DocFi
   const refuse = (reason: string) => {
     discarded.push({ role, file, reason: `Não reorganizei ${file} no modelo: ${reason}.` });
   };
+  if (estimateTokens(before) > MAX_RESHAPE_TOKENS) {
+    refuse('o documento é grande demais para reescrever de uma vez');
+    return;
+  }
   const specHash = sha256(`reshape\n${before}`);
   const pack = fitPackBudget(reshapePack({ file, projectId: draft.projectId, specHash, current: before }));
   const ask = (note: string | null) => retryOnSchema(async (schema) => (await deps.runAgent<'suggest'>(

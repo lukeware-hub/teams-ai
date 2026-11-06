@@ -36,6 +36,7 @@ const opensWith = (heads: string[], model: string[]): boolean => model.every((he
 export function shapeProblem(file: SuggestFile, text: string, before: string, projectId: string): string | null {
   const template = TEMPLATE[file](projectId);
   if (text.trim() === '') return 'o texto ficou vazio';
+  if (text.length < before.length * 0.5) return 'o texto perdeu conteúdo do documento';
   if (!opensWith(shape(text), shape(template))) return 'faltam seções do modelo ou elas estão fora de ordem';
   const placeholder = [...new Set(template.match(/<[^<>\n]+>/g) ?? [])].find((p) => text.includes(p));
   if (placeholder) return `ainda tem o texto do modelo: ${placeholder}`;
