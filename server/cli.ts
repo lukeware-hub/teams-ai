@@ -13,7 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { buildLocatedProjectGraph, locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
+import { buildLocatedProjectGraph, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -143,12 +143,20 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     return null;
   };
   const graphify = new Graphify({ exec: execCommand, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
+  /** The project graphs being rebuilt for the "Sugestão" of a new spec, one build per project. */
+  const graphBuilds = new Map<string, Promise<void>>();
   const registry = new SessionRegistry({
     cfg: async () => (await readUserConfig()).cfg,
     runAgent,
     // The graph extraction shares the refinement governor, and runs in step homes of its own.
     extractDocs: async (dir, outDir, projectId) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor, ...(await slotSettingIn(projectId, 'graphify')) }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
     docGraphContext: (outDir, question, budgetTokens) => docGraphContext(graphify, outDir, question, budgetTokens),
+    // The merged graph of the project's code, as the chat reads it; a project with no graph yet gives no context.
+    projectGraphContext: async (projectId, question, budgetTokens) => {
+      const dir = path.posix.join(workspacePaths((await readUserConfig()).cfg, projectId).graph, 'project');
+      await ensureFreshGraph(path.posix.join(dir, 'graphify-out', 'graph.json'), projectId, async () => rebuildProjectGraph(graphify, await locateProject((await readUserConfig()).cfg, projectId)), graphBuilds, io.stderr);
+      return docGraphContext(graphify, dir, question, budgetTokens);
+    },
     validateDocs: createJevValidator(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     scoreDocs: createJevScorer(cfg, async () => loadSecrets(expandHome(cfg.paths.secrets))),
     secretsDir: expandHome(cfg.paths.secrets),

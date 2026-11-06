@@ -308,8 +308,8 @@ export function tokens(events: StoredEvent[]) {
     }
     if (e.type === 'DECISION_MADE') {
       const r = e.data.record as { attempts?: Array<{ backend: string; usage: { inputTokens: number; outputTokens: number; costUsd: number | null } | null }> } | undefined;
-      // Only a model call costs; a Claude escalation is booked from its own STEP_FINISHED, as the server's accounting does.
-      for (const a of r?.attempts ?? []) if (a.backend !== 'claude' && a.usage) book('decide', 'system1', a.usage, a.usage.costUsd);
+      // Every attempt that made a billed call costs. A Claude escalation runs without step events, so its decision record is its only trace.
+      for (const a of r?.attempts ?? []) if (a.usage) book('decide', 'system1', a.usage, a.usage.costUsd);
     }
   }
   const modelsByRole = Object.fromEntries(Object.entries(modelUses).map(([role, uses]) => [role, [...uses.values()].sort((a, b) => b.steps - a.steps)]));

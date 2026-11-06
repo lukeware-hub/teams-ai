@@ -4,7 +4,7 @@ import type { Config } from '../config/config.js';
 import type { Project } from '../contracts/project.js';
 import { readProject } from '../api/run-index.js';
 import { fetch as fetchRepo } from '../git/git.js';
-import { readProjectDocs, type MainDoc } from '../git/main-docs.js';
+import { readProjectDocs, readSpecFiles, type MainDoc } from '../git/main-docs.js';
 import { graphDir, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import type { Graphify } from './graphify.js';
 import { projectInfoMarkdown } from './project-info.js';
@@ -31,12 +31,17 @@ export async function projectMainDocs(located: LocatedProject | null): Promise<M
   return readProjectDocs(located.ws, located.newestSpec).catch(() => []);
 }
 
+/** What the project graph reads besides the code: the five documents and every spec, plan and task of main. The chat keeps the five documents only. */
+async function projectGraphDocs(located: LocatedProject): Promise<MainDoc[]> {
+  return [...(await projectMainDocs(located)), ...(await readSpecFiles(located.ws).catch(() => []))];
+}
+
 /** Rebuilds the merged graph from main as it is now: the repository is fetched, then merged with the documents. */
 export async function rebuildProjectGraph(graphify: Graphify, located: LocatedProject | null): Promise<void> {
   if (!located) throw new Error('project not found');
   // A failed fetch keeps the last copy of main, so the graph still builds.
   await fetchRepo(located.ws.repo).catch(() => undefined);
-  await mergeProjectGraph(graphify, located.ws, located.project, located.project.services ?? [], await projectMainDocs(located));
+  await mergeProjectGraph(graphify, located.ws, located.project, located.project.services ?? [], await projectGraphDocs(located));
 }
 
 /** The project's description, its main documents and the graphs its repositories already have, merged into the one graph the chat queries; nothing is written inside a repository. */
@@ -45,7 +50,11 @@ export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, proje
   await fs.rm(info, { recursive: true, force: true });
   await fs.mkdir(info, { recursive: true });
   await fs.writeFile(path.join(info, 'projeto.md'), projectInfoMarkdown(project));
-  for (const doc of docs) if (doc.text !== null) await fs.writeFile(path.join(info, doc.file), doc.text);
+  for (const doc of docs) {
+    if (doc.text === null) continue;
+    await fs.mkdir(path.dirname(path.join(info, doc.file)), { recursive: true });
+    await fs.writeFile(path.join(info, doc.file), doc.text);
+  }
   const infoGraph = path.posix.join(ws.graph, 'project-info-graph');
   await graphify.update(info, infoGraph);
   const repos = [{ dir: graphDir(ws, null), name: project.projectId }, ...services.map((service) => ({ dir: graphDir(serviceWorkspace(ws, service), null), name: service }))];
@@ -58,11 +67,47 @@ export async function buildLocatedProjectGraph(graphify: Graphify, located: Loca
   // A failed fetch keeps the last copy of main, so the graph still builds.
   await fetchRepo(located.ws.repo).catch(() => undefined);
   const present = await Promise.all((located.project.services ?? []).map(async (service) => ((await fs.access(serviceWorkspace(located.ws, service).repo).then(() => true, () => false)) ? service : null)));
-  await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectMainDocs(located));
+  await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectGraphDocs(located));
+}
+
+/** A project graph older than this is rebuilt in the background; a question never waits for it. */
+export const GRAPH_TTL_MS = 30 * 60_000;
+/** How long the first question of a project waits for its graph to be built. */
+export const GRAPH_WAIT_MS = 60_000;
+
+/**
+ * Without a graph the caller waits for the build (up to GRAPH_WAIT_MS); with an old one it goes on from it while the build runs.
+ * One build per key at a time; a failed build only reaches the log.
+ */
+export async function ensureFreshGraph(graphFile: string, key: string, build: () => Promise<void>, inFlight: Map<string, Promise<void>>, log?: (line: string) => void): Promise<void> {
+  const age = await fs.stat(graphFile).then((s) => Date.now() - s.mtimeMs, () => null);
+  if (age !== null && age < GRAPH_TTL_MS) return;
+  let running = inFlight.get(key);
+  if (!running) {
+    running = build()
+      .catch((err: Error) => log?.(`project graph not built for ${key}: ${err.message}`))
+      .finally(() => inFlight.delete(key));
+    inFlight.set(key, running);
+  }
+  if (age === null) await Promise.race([running, new Promise<void>((resolve) => setTimeout(resolve, GRAPH_WAIT_MS).unref())]);
 }
 
 /** Projects whose graph is being built now, so a button click and a finished run never build the same graph together. */
 const building = new Set<string>();
+
+/** The last build that failed for each project; a good build clears it, so the screen can warn the owner. */
+const failures = new Map<string, GraphFailure>();
+
+export interface GraphFailure {
+  at: string;
+  message: string;
+}
+
+export const graphFailure = (projectId: string): GraphFailure | null => failures.get(projectId) ?? null;
+
+export function recordGraphFailure(projectId: string, err: Error): void {
+  failures.set(projectId, { at: new Date().toISOString(), message: err.message });
+}
 
 /** Builds the project's graph unless it is already being built; false when it is. */
 export async function buildLocatedProjectGraphOnce(graphify: Graphify, located: LocatedProject): Promise<boolean> {
@@ -71,7 +116,11 @@ export async function buildLocatedProjectGraphOnce(graphify: Graphify, located: 
   building.add(id);
   try {
     await buildLocatedProjectGraph(graphify, located);
+    failures.delete(id);
     return true;
+  } catch (err) {
+    recordGraphFailure(id, err as Error);
+    throw err;
   } finally {
     building.delete(id);
   }

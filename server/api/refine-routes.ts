@@ -5,7 +5,7 @@ import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
 import { ConflictError, NotFoundError } from '../refine/session.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
-import { resolveEverything } from '../refine/autopilot.js';
+import { acceptAllPending, resolveEverything, runExtension } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -96,6 +96,11 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${P}/projects/:projectId/requests/suggest`,
+      handler: wrap(async ({ params, body, json }) => json(200, { text: await registry.suggestRequest(params.projectId!, str(await body(), 'description')) })),
+    },
+    {
+      method: 'POST',
       path: `${P}/projects/:projectId/specs/:specId/continue`,
       handler: wrap(async (ctx) => {
         const report = str(await optionalBody(ctx), 'report', true);
@@ -165,9 +170,23 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/autopilot`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        // A follow-on request is resolved by the team alone: saving in the repositories stays with the owner.
-        resolveEverything(s, { byOwner: s.state.extension === undefined }).catch(logRunFailure(params));
+        // A follow-on request is run again by the team alone, from its evaluation, and says why it stops: saving in the repositories stays with the owner.
+        (s.state.extension === undefined ? resolveEverything(s) : runExtension(s)).catch(logRunFailure(params));
         json(202, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/suggestions/accept-all`,
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        const waiting = s.state.patches.filter((p) => p.status === 'pending').length;
+        const accepted = await acceptAllPending(s);
+        // Nothing accepted while suggestions wait means the server was busy: the owner tries again, the agents do not start.
+        if (waiting > 0 && accepted === 0) throw new ConflictError('O time está trabalhando: espere ele terminar para aceitar as sugestões.');
+        // The agents run again on what the owner decided, with no new evaluation of the documents.
+        (s.state.extension === undefined ? resolveEverything(s) : runExtension(s, { evaluate: false })).catch(logRunFailure(params));
+        json(202, { ok: true, accepted });
       }),
     },
     {

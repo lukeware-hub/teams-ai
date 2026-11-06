@@ -2,16 +2,15 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { isApproval, type PatchRow } from './state.js';
 import { additiveOnly } from './scope-guard.js';
 
-/** The documents a request may change without the owner, and only by adding to them: stack and design stay with the owner. */
-const REQUEST_FILES: readonly string[] = ['project.md', 'flow.md', 'briefing.md'];
-
 /**
- * Whether a pending suggestion is accepted without the owner. The team alone, on a follow-on request, takes only additions to its
- * project's own documents, so a removal, a rewording, an adjustment's approval or a stack or design change waits for the owner.
+ * Whether a pending suggestion is accepted without the owner. The team alone, on a follow-on request, takes an addition to any
+ * document and a rewording that changes no scope, so it repairs contradictions, wording and stack gaps by itself. A change of
+ * scope (adding or cutting functionality) and an adjustment's approval always wait for the owner.
  */
-export function autoAcceptable(p: Pick<PatchRow, 'file' | 'find' | 'replace'>, teamAlone: boolean): boolean {
+export function autoAcceptable(p: Pick<PatchRow, 'find' | 'replace'> & { scopeChange?: boolean }, teamAlone: boolean): boolean {
   if (!teamAlone) return true;
-  return REQUEST_FILES.includes(p.file) && additiveOnly(p.find, p.replace) && !isApproval(p);
+  // A removal always waits for the owner: the scope guard does not see a cut line of a diagram.
+  return !isApproval(p) && p.replace.trim() !== '' && (additiveOnly(p.find, p.replace) || p.scopeChange === false);
 }
 
 const teamScope = new AsyncLocalStorage<boolean>();

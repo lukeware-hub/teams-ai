@@ -67,7 +67,7 @@ export const RefineEvent = {
   PreplanDerived: 'PREPLAN_DERIVED',
   /** The SM's map of items that change the same code and never run together: `{inputHash, pairs}`. */
   ConflictsDerived: 'CONFLICTS_DERIVED',
-  /** "Preparar planos" started: `{total, inputHash}`: the steps (the constitution plus four per backlog item) and the hash of the six inputs. */
+  /** "Preparar planos" started: `{total, inputHash}`: the steps (a plan, and a task list in a stamped draft, per item still to start) and the hash of the six inputs. */
   SpeckitStarted: 'PLANS_STARTED',
   /** The steps of an earlier preparation that this one keeps: `{steps}`, each with its command, item, basis and times. */
   SpeckitReused: 'PLANS_REUSED',
@@ -77,6 +77,14 @@ export const RefineEvent = {
   SpeckitStepDone: 'PLANS_STEP_DONE',
   SpeckitStepRepaired: 'PLANS_STEP_REPAIRED',
   AutopilotPaused: 'AUTOPILOT_PAUSED',
+  /** The team applied what the reviewers found, so the checks they failed stand settled without a new evaluation: `{ids}`. */
+  ChecklistSettled: 'CHECKLIST_SETTLED',
+  /** A follow-on request waits in the queue of its project: the agents work on an earlier request first. `{reason}` in plain words. */
+  TeamAutopilotQueued: 'TEAM_AUTOPILOT_QUEUED',
+  /** The team started resolving a follow-on request on its own: nothing waits for the owner while it runs. */
+  TeamAutopilotStarted: 'TEAM_AUTOPILOT_STARTED',
+  /** The team stopped: `{reasons}` in plain words, empty when everything is settled; what is listed is the owner's to decide. */
+  TeamAutopilotStopped: 'TEAM_AUTOPILOT_STOPPED',
   /** The plan preparation finished: `{inputHash}` of the documents and item specs it read. */
   SpeckitDone: 'SPECKIT_DONE',
   /** The implementation plans of every item are written (plan 107): `{inputHash}`. An older build ignores it and shows the preparation as not done. */

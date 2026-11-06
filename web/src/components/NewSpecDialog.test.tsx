@@ -5,11 +5,11 @@ import { refineApi } from '../api.js';
 import { NewSpecDialog } from './NewSpecDialog.js';
 
 const Where = () => <output data-testid="where">{useLocation().pathname}</output>;
-const show = (onClose = vi.fn(), openRequest?: string) =>
+const show = (onClose = vi.fn(), queueBehind?: string) =>
   render(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
-        <Route path="*" element={<><NewSpecDialog projectId="hello-word" openRequest={openRequest} onClose={onClose} /><Where /></>} />
+        <Route path="*" element={<><NewSpecDialog projectId="hello-word" queueBehind={queueBehind} onClose={onClose} /><Where /></>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -43,6 +43,30 @@ describe('NewSpecDialog', () => {
     expect((await screen.findByTestId('new-spec-error')).textContent).toBe('Falhou ao criar');
     expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('Exportar PDF');
   });
+  it('keeps Sugestão disabled until there is a description', () => {
+    show();
+    expect((screen.getByTestId('suggest-new-spec') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Exportar PDF' } });
+    expect((screen.getByTestId('suggest-new-spec') as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('replaces the text with the suggestion and creates nothing', async () => {
+    const suggest = vi.spyOn(refineApi, 'suggestRequest').mockResolvedValue({ text: '# Exportar PDF\n\nDetalhado.' });
+    const request = vi.spyOn(refineApi, 'request');
+    show();
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: '  Exportar PDF  ' } });
+    fireEvent.click(screen.getByTestId('suggest-new-spec'));
+    await waitFor(() => expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('# Exportar PDF\n\nDetalhado.'));
+    expect(suggest).toHaveBeenCalledWith('hello-word', 'Exportar PDF');
+    expect(request).not.toHaveBeenCalled();
+  });
+  it('shows the suggestion error and keeps the typed text', async () => {
+    vi.spyOn(refineApi, 'suggestRequest').mockRejectedValue(new Error('Cota pausada'));
+    show();
+    fireEvent.change(screen.getByTestId('new-spec-description'), { target: { value: 'Exportar PDF' } });
+    fireEvent.click(screen.getByTestId('suggest-new-spec'));
+    expect((await screen.findByTestId('new-spec-error')).textContent).toBe('Cota pausada');
+    expect((screen.getByTestId('new-spec-description') as HTMLTextAreaElement).value).toBe('Exportar PDF');
+  });
   it('closes at once when empty and asks before discarding typed text', () => {
     const onClose = vi.fn();
     show(onClose);
@@ -54,9 +78,14 @@ describe('NewSpecDialog', () => {
     fireEvent.click(screen.getByTestId('discard-new-spec'));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
-  it('leads to the open request instead of the form', () => {
+  it('keeps the form open while the agents work on an earlier request, and says the new one waits in the queue', () => {
     show(vi.fn(), 'hello-word-pedido-1');
-    expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-word/hello-word-pedido-1');
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('hello-word-pedido-1');
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('fila');
+  });
+  it('shows no queue note when no agent is at work', () => {
+    show();
+    expect(screen.queryByTestId('new-spec-queue')).toBeNull();
   });
 });

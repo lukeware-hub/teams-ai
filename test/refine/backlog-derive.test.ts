@@ -207,6 +207,11 @@ describe('a follow-on request only adds to the backlog it follows', () => {
     expect(sourcesOf(out, 'login')).not.toContainEqual({ doc: 'briefing.md', heading: REQUEST });
   });
 
+  it('never cites the request in an item whose spec started, so no adjustment is asked for work the request does not change', () => {
+    const out = postProcessBacklog(raw([item('login'), item('cart')]), previous(base), {}, [], [item('cart', { dependsOn: ['login'] })], undefined, false, REQUEST);
+    expect(sourcesOf(out, 'cart')).not.toContainEqual({ doc: 'briefing.md', heading: REQUEST });
+  });
+
   it('puts the request rule in the pack only when the draft follows a request', () => {
     expect(backlogPack(input({ request: REQUEST })).feedback).toContain(`REQUEST (mandatory): this draft follows up the owner's request, the section "${REQUEST}" of briefing.md.`);
     expect(backlogPack(input()).feedback).not.toContain('REQUEST (mandatory)');

@@ -31,7 +31,7 @@ export function PanelTitle({ icon, title, help }: { icon: IconName; title: strin
 /** One figure of the stat strip: its label and explanation, the value, and a line beneath it. */
 export function Indicator({ id, label, help, value, detail, share }: { id: string; label: string; help?: string; value: string; detail: string; share?: number }) {
   return (
-    <div data-testid={`costs-indicator-${id}`} className={`${stat} border-line bg-surface shadow-card`}>
+    <div data-testid={`costs-indicator-${id}`} className={`${stat} content-start border-line bg-surface shadow-card`}>
       <span className={`${statLabel} inline-flex items-center gap-1`}>
         {label}
         {help ? <InfoTip label={label} text={help} /> : null}
@@ -46,14 +46,14 @@ export function Indicator({ id, label, help, value, detail, share }: { id: strin
 /** The period choice: one button per period, the chosen one pressed. */
 export function PeriodChips({ value, onChange }: { value: CostPeriod; onChange: (next: CostPeriod) => void }) {
   return (
-    <div role="group" aria-label="Período" data-testid="costs-periods" className="flex flex-wrap gap-2">
+    <div role="group" aria-label="Período" data-testid="costs-periods" className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">
       {COST_PERIODS.map((period) => (
         <button
           key={period}
           type="button"
           data-testid={`costs-period-${period}`}
           aria-pressed={value === period}
-          className="min-w-[auto] px-3.5 text-[0.8125rem] text-ink-soft max-md:min-h-11 hover:text-ink aria-[pressed=true]:border-accent-line aria-[pressed=true]:bg-accent-soft aria-[pressed=true]:text-accent-ink"
+          className="min-w-[auto] px-3.5 text-[0.8125rem] max-sm:px-1 text-ink-soft max-md:min-h-11 hover:text-ink aria-[pressed=true]:border-accent-line aria-[pressed=true]:bg-accent-soft aria-[pressed=true]:text-accent-ink"
           onClick={() => onChange(period)}
         >
           {PERIOD_LABEL[period]}
@@ -144,12 +144,12 @@ export function ErrorBlock({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-/** Failed escalations from older runs: billed, but their cost was never recorded, so the totals leave them out. */
+/** Escalation calls from older runs with no cost recorded: the totals leave them out. */
 export function EscalationNote({ count }: { count: number }) {
   if (count === 0) return null;
   return (
     <p data-testid="costs-escalation-note" className="m-0 max-w-[70ch] text-[0.8125rem] text-ink-soft">
-      {plural(count, 'chamada', 'chamadas')} de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.
+      {plural(count, 'chamada', 'chamadas')} de escalonamento para o Claude em execuções antigas, sem custo registrado. Elas não entram no total.
     </p>
   );
 }

@@ -23,15 +23,12 @@ function breaker(start = T0) {
 }
 
 describe('QuotaBreaker', () => {
-  it('reset lets steps start again at once, the pause of every model included', () => {
+  it('reset lets steps start again at once', () => {
     const breaker = new QuotaBreaker(DEFAULT_BREAKER, () => new Date('2026-10-14T12:00:00Z'));
     breaker.onQuotaFailure(null);
-    breaker.pauseModel('haiku', null);
     expect(breaker.canStart()).toBe(false);
-    expect(breaker.modelPaused('haiku')).toBe(true);
     breaker.reset();
     expect(breaker.canStart()).toBe(true);
-    expect(breaker.modelPaused('haiku')).toBe(false);
   });
 
   it('stays closed while every window is under the threshold', () => {
@@ -128,22 +125,4 @@ describe('QuotaBreaker', () => {
     expect(b.state()).toMatchObject({ until: FIVE_H_RESET });
   });
 
-  it('pauses one model until its reset without closing the breaker for the others', () => {
-    const { b, clock } = breaker();
-    b.pauseModel('opus', info({ status: 'rejected' }));
-    expect(b.modelPaused('opus')).toBe(true);
-    expect(b.modelPaused('sonnet')).toBe(false);
-    expect(b.canStart()).toBe(true);
-    clock.now = new Date(FIVE_H_RESET.getTime() + 1000);
-    expect(b.modelPaused('opus')).toBe(false);
-  });
-
-  it('probes a model again after the first backoff when no reset is known', () => {
-    const { b, clock } = breaker();
-    b.pauseModel('opus', null);
-    clock.now = new Date(T0.getTime() + 4 * 60_000);
-    expect(b.modelPaused('opus')).toBe(true);
-    clock.now = new Date(T0.getTime() + 5 * 60_000);
-    expect(b.modelPaused('opus')).toBe(false);
-  });
 });

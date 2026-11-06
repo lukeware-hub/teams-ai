@@ -14,6 +14,7 @@ import type { StepOutcome } from '../runner/step.js';
 import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
 import type { MainDoc } from '../git/main-docs.js';
+import { ensureFreshGraph } from '../knowledge/project-graph.js';
 import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import { needsLabels, withRecordPointer } from './answer.js';
@@ -70,11 +71,6 @@ export interface ChatDeps {
   chatModel: (projectId: string) => Promise<string>;
   now?: () => Date;
 }
-
-/** A project graph older than this is rebuilt in the background; a question never waits for it. */
-const GRAPH_TTL_MS = 30 * 60_000;
-/** How long the first question of a project waits for its graph to be built. */
-const GRAPH_WAIT_MS = 60_000;
 
 /** Answers questions about a project and opens a correction spec when what is built goes against its spec. It never orders the orchestrator. */
 export class ChatService {
@@ -147,16 +143,7 @@ export class ChatService {
   private async ensureProjectGraph(projectId: string, graphFile: string): Promise<void> {
     const refresh = this.deps.refreshProjectGraph;
     if (!refresh) return;
-    const age = await fs.stat(graphFile).then((s) => Date.now() - s.mtimeMs, () => null);
-    if (age !== null && age < GRAPH_TTL_MS) return;
-    let build = this.refreshing.get(projectId);
-    if (!build) {
-      build = refresh(projectId)
-        .catch((err: Error) => this.deps.log?.(`project graph not built for ${projectId}: ${err.message}`))
-        .finally(() => this.refreshing.delete(projectId));
-      this.refreshing.set(projectId, build);
-    }
-    if (age === null) await Promise.race([build, new Promise<void>((resolve) => setTimeout(resolve, GRAPH_WAIT_MS).unref())]);
+    await ensureFreshGraph(graphFile, projectId, () => refresh(projectId), this.refreshing, this.deps.log);
   }
 
   /** One read-only agent step in a throwaway directory, like the name suggestion. */
@@ -182,9 +169,9 @@ export class ChatService {
         { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash, signal: AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), signal]), noQuotaWait: true, projectId },
       )) as StepOutcome<ChatOutput>;
       const measured = usageOf(out.summary);
-      const usage = measured ? { ...measured, model } : undefined;
-      const sources = out.summary.webSearchSources ?? [];
       const queries = out.summary.webSearchQueries ?? [];
+      const usage = measured ? { ...measured, model, searches: queries.length } : undefined;
+      const sources = out.summary.webSearchSources ?? [];
       const searched = queries.length > 0;
       // The sources are the links the search returned, appended by the server: the model names them, it never writes an address.
       const answered = (value: ChatOutput): ChatOutput => ({ ...value, answer: withSources(value.answer, sources) });

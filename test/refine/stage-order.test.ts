@@ -157,10 +157,19 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('the team alone leaves a rewording of a stage to the owner', async () => {
+  it('the team alone accepts on its own a rewording of a stage that changes no scope, marked as automatic', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
+    await asTeamAlone(true, () => s.evaluateStage('flow.md'));
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => [p.status, p.auto])).toEqual([['accepted', true]]);
+    await s.close();
+  });
+
+  it('the team alone leaves to the owner a rewording of a stage that cuts functionality', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: '', reason: 'corte' }])];
     await asTeamAlone(true, () => s.evaluateStage('flow.md'));
     expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => p.status)).toEqual(['pending']);
     await s.close();

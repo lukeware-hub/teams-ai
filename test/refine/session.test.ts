@@ -707,6 +707,26 @@ describe('RefineSession evaluation clock', () => {
     await again.close();
   });
 
+  it('a restart that finds the team running on its own stops it, and what is left is the owner\'s', async () => {
+    const s = await evaluated();
+    await s.teamAutopilot('started');
+    expect(s.state.autopilot).toEqual({ status: 'running', reasons: [] });
+    await s.close();
+    const again = await RefineSession.open(deps());
+    expect(again.state.autopilot).toEqual({ status: 'stopped', reasons: ['O time foi interrompido quando o servidor reiniciou.'] });
+    await again.close();
+  });
+
+  it('a stop records the reasons, and a stop with nothing left records none', async () => {
+    const s = await evaluated();
+    await s.teamAutopilot('started');
+    await s.teamAutopilot('stopped', ['O time não conseguiu decidir 1 pergunta.']);
+    expect(s.state.autopilot).toEqual({ status: 'stopped', reasons: ['O time não conseguiu decidir 1 pergunta.'] });
+    await s.teamAutopilot('stopped');
+    expect(s.state.autopilot).toEqual({ status: 'stopped', reasons: [] });
+    await s.close();
+  });
+
   it('a draft with no journal yet snapshots at seq zero', async () => {
     const s = await RefineSession.open(deps());
     expect((await s.snapshot()).seq).toBe(0);

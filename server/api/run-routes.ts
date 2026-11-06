@@ -16,7 +16,7 @@ import { removeTree } from '../core/remove-tree.js';
 import { addProject, removeProjectDirs, removeProjectSettings } from '../onboarding/config-store.js';
 import { repoName } from '../core/ids.js';
 import type { Graphify } from '../knowledge/graphify.js';
-import { buildLocatedProjectGraphOnce, buildProjectGraph, locateProject } from '../knowledge/project-graph.js';
+import { buildLocatedProjectGraphOnce, buildProjectGraph, graphFailure, locateProject, recordGraphFailure } from '../knowledge/project-graph.js';
 import { gateCacheDir } from '../orchestrator/run.js';
 import { expandHome, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import { OrchEvent } from '../orchestrator/events.js';
@@ -421,6 +421,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
   const specKey = (projectId: string, specId: string): string => `spec ${projectId}/${specId}`;
   const P = '/api';
   /** The architecture of one project as the repository pages read it; 404 for an unknown project. */
+  /** The clone of the project and of each of its services, by the repository tag the graph gives their nodes. */
+  const graphClones = async (projectId: string): Promise<Record<string, string>> => {
+    const located = await locateProject((await index()).cfg, projectId);
+    return located ? { [projectId]: located.ws.repo, ...Object.fromEntries((located.project.services ?? []).map((service) => [service, serviceWorkspace(located.ws, service).repo])) } : {};
+  };
   const repoSource = async (projectId: string) => {
     const idx = await index();
     const row = (await listProjects(idx)).find((p) => p.projectId === projectId);
@@ -543,10 +548,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       handler: async ({ params, json }) => {
         const { repoRuns } = await repoSource(params.projectId!);
         const ws = workspacePaths((await index()).cfg, params.projectId!, deps.home);
-        const raw = await fs.readFile(graphFile(path.posix.join(ws.graph, 'project')), 'utf8').catch(() => null);
-        const located = await locateProject((await index()).cfg, params.projectId!);
-        const clones: Record<string, string> = located ? { [params.projectId!]: located.ws.repo, ...Object.fromEntries((located.project.services ?? []).map((service) => [service, serviceWorkspace(located.ws, service).repo])) } : {};
-        json(200, await linkNodes(buildGraphView(raw, repoRuns), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, clones)));
+        const file = graphFile(path.posix.join(ws.graph, 'project'));
+        const raw = await fs.readFile(file, 'utf8').catch(() => null);
+        const updatedAt = await fs.stat(file).then((s) => s.mtime.toISOString(), () => null);
+        const linked = await linkNodes(buildGraphView(raw, repoRuns), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, await graphClones(params.projectId!)));
+        json(200, { ...linked, status: { updatedAt, failure: graphFailure(params.projectId!) } });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/graph/file`,
+      handler: async ({ params, query, json }) => {
+        const line = Number(query.get('line'));
+        const node = { id: '', label: '', repo: query.get('repo') ?? '', file: query.get('path') ?? '', line: line > 0 ? line : null, community: '', edges: 0, url: null };
+        json(200, { url: await graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, await graphClones(params.projectId!))(node) });
       },
     },
     {
@@ -637,7 +652,10 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           if (deps.graphify) {
             const ws = workspacePaths(cfg, read.project.projectId, deps.home);
             const docs = await readProjectDocs(ws, (await readProject(dir)).specs.at(-1)?.specId).catch(() => []);
-            buildProjectGraph(deps.graphify, ws, read.project, cloned, docs).catch((err: Error) => deps.log?.(`project graph not built: ${err.message}`));
+            buildProjectGraph(deps.graphify, ws, read.project, cloned, docs).catch((err: Error) => {
+              recordGraphFailure(read.project.projectId, err);
+              deps.log?.(`project graph not built: ${err.message}`);
+            });
           }
         }
         await addProject(dir, deps.home);

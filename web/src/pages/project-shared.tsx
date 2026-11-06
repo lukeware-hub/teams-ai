@@ -47,10 +47,10 @@ export const sectionTitle = 'flex min-w-0 items-center gap-1';
 export const sectionHeading = 'm-0 flex-none text-[0.875rem] font-semibold tracking-normal text-ink normal-case';
 export const emptyState = 'grid justify-items-center gap-1 rounded-lg border border-line bg-surface-sunken px-6 py-10 text-center text-ink-faint [&_svg]:mb-2 [&_p]:m-0 [&_p]:max-w-[52ch] [&_p]:text-ink [&_p+p]:text-ink-soft [&_button]:mt-3';
 // Spec and draft rows share the list's columns, so ids, chips and actions line up; the list bleeds into the panel padding.
-export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)_minmax(max-content,1fr)_auto] gap-x-3 p-0 max-lg:grid-cols-[minmax(0,1fr)_auto]';
-export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken';
+export const rows = 'my-0 -mx-[0.6rem] grid list-none grid-cols-[minmax(0,16rem)_minmax(max-content,1fr)_auto] gap-x-3 p-0 max-lg:grid-cols-[minmax(0,1fr)_auto] max-sm:grid-cols-1';
+export const row = 'col-span-full grid min-h-12 grid-cols-subgrid items-center gap-y-2 border-b border-line px-[0.6rem] py-2 last:border-b-0 hover:bg-surface-sunken max-sm:justify-items-start max-sm:gap-y-2.5 max-sm:py-3.5 max-sm:relative max-sm:[&>*:not(:last-child)]:relative max-sm:[&>*:not(:last-child)]:z-10';
 export const rowId = 'min-w-0 text-[0.875rem] font-medium text-ink wrap-anywhere';
-export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:flex-wrap max-lg:justify-start';
+export const rowActions = 'flex justify-end gap-2 max-lg:col-span-full max-lg:flex-wrap max-lg:justify-start max-sm:w-full max-sm:flex-col';
 // Inside a container narrower than 44rem a table becomes a list of cards: each row a card, each cell a line labelled by its column (data-label). The wrapper of the table must be a @container.
 export const responsiveTable = '@max-[44rem]:block @max-[44rem]:min-w-0';
 export const responsiveHead = '@max-[44rem]:hidden';

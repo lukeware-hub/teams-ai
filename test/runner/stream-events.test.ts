@@ -77,7 +77,7 @@ describe('summarizeStream', () => {
       apiErrorStatus: null,
       rateLimit: null,
       compactions: 0,
-      profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, toolResultChars: 0 },
+      profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, graphQueries: 0, toolResultChars: 0 },
     });
   });
 
@@ -114,6 +114,25 @@ describe('summarizeStream step profile', () => {
     const profile = summarizeStream(parseStreamJson(text)).profile!;
     expect(profile.toolCalls).toEqual({ Skill: 3 });
     expect(profile.skills).toEqual({ 'teams-ai-dev:test-driven-development': 2, 'teams-ai-dev:systematic-debugging': 1 });
+  });
+
+  it('counts the graphify queries of the agent and no other Bash command', () => {
+    const bash = (id: string, command: string) => JSON.stringify({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
+    const text = [
+      bash('m1', 'graphify query "where is the handler" --graph g.json'),
+      bash('m2', 'graphify explain Handler'),
+      bash('m3', 'graphify path A B'),
+      bash('m4', 'npm test'),
+      bash('m5', 'graphify update .'),
+      bash('m6', 'echo graphify query'),
+    ].join('\n');
+    const profile = summarizeStream(parseStreamJson(text)).profile!;
+    expect(profile.graphQueries).toBe(3);
+    expect(profile.toolCalls).toEqual({ Bash: 6 });
+  });
+
+  it('records zero graph queries when the agent asked the graph nothing', () => {
+    expect(summarizeStream(parseStreamJson(fixture('real-turns'))).profile!.graphQueries).toBe(0);
   });
 
   it('flags a tool result that says the sandbox could not start', () => {

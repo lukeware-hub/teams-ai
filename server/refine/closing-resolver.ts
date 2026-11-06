@@ -1,6 +1,8 @@
 import { ConflictError, type RefineSession } from './session.js';
 import type { DocFile } from './draft.js';
+import { leanRefine } from './limits.js';
 import { safePatches, type PatchRow } from './state.js';
+import { inTeamAlone } from './team-rule.js';
 
 /** Rounds at most: each one accepts the safe patches, evaluates, decides the architecture and prepares the plans that are still open. */
 export const CLOSING_ROUNDS = 3;
@@ -44,7 +46,10 @@ async function resolveOnce(s: RefineSession, allowed: (p: PatchRow) => boolean):
 async function resolveRound(s: RefineSession, failing: string[], allowed: (p: PatchRow) => boolean): Promise<void> {
   const accepted = await resolveStages(s, allowed);
   // A round re-evaluates when a patch was accepted, a question is open, or the request's impact is missing or stale: the heal runs the impact step again.
-  if (accepted > 0 || failing.includes('questions') || failing.includes('impact')) await s.evaluate();
+  // Lean: the team alone evaluates again only when the impact was never measured; the fixes it applied are not checked by another full cycle.
+  const lean = leanRefine() && inTeamAlone();
+  const again = lean ? failing.includes('impact') && s.state.impact?.impact == null : accepted > 0 || failing.includes('questions') || failing.includes('impact');
+  if (again) await s.evaluate();
   if (s.state.architecture == null || (await s.isArchitectureStale())) {
     await s.decideArchitecture();
     await s.settled();

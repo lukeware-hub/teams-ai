@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readMainDocs } from '../../server/git/main-docs.js';
+import { readMainDocs, readSpecFiles } from '../../server/git/main-docs.js';
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -25,6 +25,33 @@ async function mainWith(files: Record<string, string>): Promise<string> {
   git('update-ref', 'refs/remotes/origin/main', 'HEAD');
   return dir;
 }
+
+describe('readSpecFiles', () => {
+  it('gives the spec, plan and task of every spec of origin/main, and nothing else', async () => {
+    const repo = await mainWith({
+      'docs/project.md': 'Projeto',
+      'docs/specs/greeting/spec.md': 'Spec',
+      'docs/specs/greeting/implementation-plan.md': 'Plano',
+      'docs/specs/greeting/task.md': 'Tarefas',
+      'docs/specs/greeting/notes.md': 'Notas',
+    });
+    const files = await readSpecFiles({ root: repo, repo });
+    expect(files.map((f) => f.file).sort()).toEqual(['docs/specs/greeting/implementation-plan.md', 'docs/specs/greeting/spec.md', 'docs/specs/greeting/task.md']);
+    expect(files.find((f) => f.file.endsWith('task.md'))?.text).toBe('Tarefas');
+  });
+
+  it('reads the specify folders of a documentation repository too', async () => {
+    const repo = await mainWith({ 'docs/api-service/specify/login/plan.md': 'Plano do login' });
+    expect(await readSpecFiles({ root: repo, repo })).toEqual([{ file: 'docs/api-service/specify/login/plan.md', text: 'Plano do login' }]);
+  });
+
+  it('gives none when origin/main does not exist, instead of failing the graph', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'teams-ai-main-docs-'));
+    dirs.push(dir);
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+    expect(await readSpecFiles({ root: dir, repo: dir })).toEqual([]);
+  });
+});
 
 describe('readMainDocs', () => {
   it('gives the five documents of origin/main, with null for each one main does not have', async () => {

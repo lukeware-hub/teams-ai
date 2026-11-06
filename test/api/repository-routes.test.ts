@@ -38,6 +38,12 @@ describe('project graph routes', () => {
     await expect(find('GET', '/projects/:projectId/graph')({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 404 });
   });
 
+  it('answers no link for a graph file of a project it has no clone of', async () => {
+    const json = vi.fn();
+    await find('GET', '/graph/file')({ params: { projectId: 'shop' }, query: new URLSearchParams('repo=shop&path=a.ts&line=3'), json } as never);
+    expect(json).toHaveBeenCalledWith(200, { url: null });
+  });
+
   it('refuses to build the graph without graphify (501) and for an unknown project (404)', async () => {
     const rebuild = '/graph/rebuild';
     await expect(find('POST', rebuild)({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 501 });

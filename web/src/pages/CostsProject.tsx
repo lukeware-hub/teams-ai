@@ -6,6 +6,7 @@ import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Loading } from '../components/Loading.js';
 import { PROJECTS, projectPath } from '../routes.js';
+import { useMediaQuery } from '../useMediaQuery.js';
 import { emptyState, panel, plural, responsiveCell, responsiveHead, responsiveRow, stats } from './project-shared.js';
 import { type Option, ErrorBlock, EscalationNote, Indicator, PanelTitle, PeriodChips, RefreshButton, UnreadChip, UpdatedAt, headRow, numCell, table, tableWrap } from './costs/CostParts.js';
 import { money, ofTotal, shareOf, sumMoney, tokens, unpricedNote } from './costs/format.js';
@@ -23,7 +24,7 @@ export function CostsProjectPage() {
   if (error instanceof ApiError && error.status === 404) return <NotFound />;
   return (
     <main data-testid="costs-project-main" className="grid min-w-0 gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
         <Breadcrumb
           testId="costs-breadcrumb"
           trail={[
@@ -31,7 +32,7 @@ export function CostsProjectPage() {
             { label: 'Custos', testId: 'costs-breadcrumb-current' },
           ]}
         />
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 max-sm:w-full max-sm:flex-col max-sm:items-stretch max-sm:gap-2">
           <UpdatedAt at={updatedAt} />
           <RefreshButton onClick={retry} />
         </div>
@@ -62,6 +63,8 @@ function NotFound() {
 function ProjectView({ projectId, data, version, onRetry }: { projectId: string; data: ProjectCosts; version: number; onRetry: () => void }) {
   const { refinement, development, chat, specs } = data;
   const total = sumMoney([refinement.total, development.total, chat]);
+  // Same width as Tailwind's md breakpoint: below it the steps list is not mounted, so it fetches nothing.
+  const phone = useMediaQuery('(max-width: 767.98px)');
   return (
     <>
       <div data-testid="costs-indicators" className={stats}>
@@ -86,9 +89,7 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
             <SpecPanel specs={specs} />
           </div>
           <p className="m-0 hint md:hidden">A lista de specs e de steps aparece no computador. No celular, os totais e os agrupamentos acima mostram o custo.</p>
-          <div className="max-md:hidden">
-            <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />
-          </div>
+          {!phone && <StepsPanel projectId={projectId} agents={agentOptionsOf(data)} specs={specs.map((s) => ({ value: s.key, label: s.label }))} version={version} onRetry={onRetry} />}
         </>
       )}
       <footer data-testid="costs-chat" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.8125rem] text-ink-soft">
@@ -103,6 +104,9 @@ function ProjectView({ projectId, data, version, onRetry }: { projectId: string;
     </>
   );
 }
+
+// A stage figure on the phone: third row, half of the width, a rule above it.
+const halfCell = '@max-[44rem]:row-start-3 @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2 @max-[44rem]:text-left';
 
 function SpecPanel({ specs }: { specs: SpecRow[] }) {
   return (
@@ -124,12 +128,12 @@ function SpecPanel({ specs }: { specs: SpecRow[] }) {
             </thead>
             <tbody>
               {specs.map((s) => (
-                <tr key={s.key} className={responsiveRow} data-testid={`costs-spec-${s.key}`}>
-                  <td className={`${responsiveCell} wrap-anywhere`} data-label="Spec">{s.label}</td>
-                  <td className={numCell} data-label="Refinamento">{money(s.refinement)}</td>
-                  <td className={numCell} data-label="Desenvolvimento">{money(s.development)}</td>
-                  <td className={numCell} data-label="Total">{money(s.total)}</td>
-                  <td className={numCell} data-label="Execuções">{s.runs}</td>
+                <tr key={s.key} className={`${responsiveRow} @max-[44rem]:grid-cols-2 @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`} data-testid={`costs-spec-${s.key}`}>
+                  <td className={`${responsiveCell} wrap-anywhere @max-[44rem]:row-start-1 @max-[44rem]:text-[1rem] @max-[44rem]:font-semibold @max-[44rem]:before:hidden`} data-label="Spec">{s.label}</td>
+                  <td className={`${numCell} ${halfCell} @max-[44rem]:col-start-1`} data-label="Refinamento">{money(s.refinement)}</td>
+                  <td className={`${numCell} ${halfCell} @max-[44rem]:col-start-2`} data-label="Desenvolvimento">{money(s.development)}</td>
+                  <td className={`${numCell} @max-[44rem]:col-span-2 @max-[44rem]:row-start-2 @max-[44rem]:py-1 @max-[44rem]:text-left @max-[44rem]:text-[1.25rem] @max-[44rem]:font-[650] @max-[44rem]:before:hidden`} data-label="Total">{money(s.total)}</td>
+                  <td className={`${numCell} @max-[44rem]:col-start-2 @max-[44rem]:row-start-1 @max-[44rem]:items-end @max-[44rem]:text-right`} data-label="Execuções">{s.runs}</td>
                 </tr>
               ))}
             </tbody>

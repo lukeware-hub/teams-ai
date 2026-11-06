@@ -7,7 +7,7 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -196,6 +196,19 @@ describe('buildLocatedProjectGraphOnce', () => {
     await expect(buildLocatedProjectGraphOnce(failing, located)).rejects.toThrow('graphify caiu');
     const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
     expect(await buildLocatedProjectGraphOnce(working, located)).toBe(true);
+  });
+});
+
+describe('graph failure record', () => {
+  it('keeps the last failed build until a good one clears it', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
+    const located: LocatedProject = { ws, project: project as Project, newestSpec: undefined };
+    await expect(buildLocatedProjectGraphOnce(failing, located)).rejects.toThrow('graphify caiu');
+    expect(graphFailure(project.projectId)?.message).toBe('graphify caiu');
+    const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    await buildLocatedProjectGraphOnce(working, located);
+    expect(graphFailure(project.projectId)).toBeNull();
   });
 });
 

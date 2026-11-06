@@ -10,11 +10,10 @@ import { Pagination, SortHeader, TableFilters, usePagedTable } from '../componen
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
-import { GraphPanel } from './repository/GraphPanel.js';
 import { BacklogExecution } from '../refine/BacklogExecution.js';
 import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
-import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
+import { PROJECTS, afterStartPath, graphPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, stat, statLabel, statValue, stats, when } from './project-shared.js';
 
@@ -28,7 +27,8 @@ const sectionHead = 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2
 const sectionIcon = 'grid size-6 flex-none place-items-center rounded-sm bg-accent-soft text-accent-ink';
 const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 text-[0.875rem] text-ink-soft';
 // Runs in flight stand out from the history instead of blending into the table.
-const live = '[&>td]:bg-good-soft [&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)]';
+// On a phone the whole card carries the live tint; cell by cell it would box every field.
+const live = '@min-[44rem]:[&>td]:bg-good-soft @min-[44rem]:[&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)] @max-[44rem]:bg-good-soft @max-[44rem]:shadow-[inset_3px_0_0_var(--good-live)]';
 // A group title spans the spec list; the first group's title needs no space above it.
 const groupHeading = 'col-span-full px-[0.6rem] pt-3 text-[0.75rem] font-[650] uppercase tracking-[0.07em] text-ink-soft first:pt-0';
 // Specs sit in the first group that names their status, so the human's work comes first; unknown statuses fall in the first group too.
@@ -167,13 +167,17 @@ export function ProjectHubView(p: {
           <p data-testid="project-hub-desc" className={desc}>{pr.description}</p>
           <code data-testid="project-hub-dir" className={dir}>{pr.dir}</code>
         </div>
-        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3">
+        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3 max-sm:w-full max-sm:justify-items-stretch">
           {percent === null ? null : (
-            <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5" role="img" aria-label={`${percent}% concluído`}>
-              <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
+            <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5 max-sm:flex-1" role="img" aria-label={`${percent}% concluído`}>
+              <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted max-sm:flex-1"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
               <span data-testid="project-hub-progress-value" className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
+          <Link className="link-button" data-testid="graph-link" to={graphPath(pr.projectId)}>
+            Ver grafo do código
+            <Icon name="code" size={16} />
+          </Link>
           {pr.repoUrl ? (
             <a className="link-button" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
               Abrir no GitHub
@@ -232,15 +236,15 @@ export function ProjectHubView(p: {
                   <tbody data-testid="project-hub-runs-tbody" className="@max-[44rem]:block">
                     {runsView.rows.length === 0 ? <tr data-testid="project-hub-runs-empty-row"><td data-testid="project-hub-runs-empty-cell" colSpan={7} className="text-ink-soft">Nenhuma execução corresponde ao filtro.</td></tr> : null}
                     {runsView.rows.map((r) => (
-                      <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow}`}>
-                        <td data-testid={`project-hub-run-name-${r.runId}`} className={responsiveCell} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={runPath(r.runId)} title={r.runId}>{runName(r)}</Link></td>
-                        <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell}`} data-label="Spec" title={r.specId}>{r.specId}</td>
-                        <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell}`} data-label="Quando">{when(r.at)}</td>
-                        <td data-testid={`project-hub-run-status-${r.runId}`} className={responsiveCell} data-label="Status">{chip(r.status)}</td>
-                        <td data-testid={`project-hub-run-tokens-${r.runId}`} className={`num ${responsiveCell}`} data-label="Tokens">{grouped(r.tokens)}</td>
-                        <td data-testid={`project-hub-run-cost-${r.runId}`} className={`num ${responsiveCell}`} data-label="Custo">{money(r.cost)}</td>
-                        <td data-testid={`project-hub-run-actions-${r.runId}`} className={responsiveCell}>
-                          <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2">
+                      <tr data-testid={`project-hub-run-${r.runId}`} key={r.runId} className={`${ACTIVE.has(r.status) ? live : r.locked ? '[&>td]:text-ink-soft' : ''} ${responsiveRow} @max-[44rem]:grid-cols-[1.3fr_1fr_1fr] @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`}>
+                        <td data-testid={`project-hub-run-name-${r.runId}`} className={`${responsiveCell} @max-[44rem]:whitespace-nowrap @max-[44rem]:text-[1rem] @max-[44rem]:before:hidden`} data-label="Execução"><Link className="font-medium no-underline hover:underline" to={runPath(r.runId)} title={r.runId}>{runName(r)}</Link></td>
+                        <td data-testid={`project-hub-run-spec-${r.runId}`} className={`truncate ${responsiveCell} @max-[44rem]:col-span-3 @max-[44rem]:text-[0.875rem] @max-[44rem]:text-ink-soft @max-[44rem]:before:hidden`} data-label="Spec" title={r.specId}>{r.specId}</td>
+                        <td data-testid={`project-hub-run-when-${r.runId}`} className={`whitespace-nowrap text-ink-soft tabular-nums ${responsiveCell} @max-[44rem]:whitespace-normal @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Quando">{when(r.at)}</td>
+                        <td data-testid={`project-hub-run-status-${r.runId}`} className={`${responsiveCell} @max-[44rem]:col-span-2 @max-[44rem]:col-start-2 @max-[44rem]:row-start-1 @max-[44rem]:items-end! @max-[44rem]:before:hidden`} data-label="Status">{chip(r.status)}</td>
+                        <td data-testid={`project-hub-run-tokens-${r.runId}`} className={`num ${responsiveCell} @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Tokens">{grouped(r.tokens)}</td>
+                        <td data-testid={`project-hub-run-cost-${r.runId}`} className={`num ${responsiveCell} @max-[44rem]:border-t @max-[44rem]:border-line @max-[44rem]:pt-2`} data-label="Custo">{money(r.cost)}</td>
+                        <td data-testid={`project-hub-run-actions-${r.runId}`} className={`${responsiveCell} @max-[44rem]:col-span-3 ${r.locked || (r.stoppable && ACTIVE.has(r.status)) || (r.kind === 'run' && (r.status === 'paused:auth' || r.status === 'interrupted')) ? '' : '@max-[44rem]:hidden'}`}>
+                          <span data-testid={`project-hub-run-controls-${r.runId}`} className="flex flex-wrap justify-end gap-2 @max-[44rem]:w-full @max-[44rem]:flex-col @max-[44rem]:justify-start">
                             {r.locked ? (
                               <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[0.8125rem] text-ink-soft" data-testid={`locked-${r.runId}`} title="A spec foi concluída: esta execução não pode ser retomada nem reprocessada.">
                                 <Icon name="lock" size={14} />
@@ -294,7 +298,6 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
-      <GraphPanel projectId={pr.projectId} />
       {(p.repositories?.length ?? 0) > 0 ? <RepositoriesPanel projectId={pr.projectId} repositories={p.repositories ?? []} /> : pr.services?.length ? (
         <section className={panel} data-testid="project-services">
           <div data-testid="project-hub-services-section" className={section}>
@@ -339,7 +342,7 @@ export function ProjectHubView(p: {
             </div>
             <ul data-testid="project-hub-docs-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {p.docs.map((d) => (
-                <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2" key={d.file} data-testid={`project-doc-${d.file}`}>
+                <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2 max-sm:flex-col max-sm:items-stretch" key={d.file} data-testid={`project-doc-${d.file}`}>
                   {refineSpec ? (
                     <Link className="link-button min-w-0 flex-1 justify-between" to={`${refinePath(pr.projectId, refineSpec)}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
                       <span data-testid={`project-hub-doc-name-${d.file}`} className="wrap-anywhere">{d.file}</span>
@@ -353,6 +356,7 @@ export function ProjectHubView(p: {
                   ) : (
                     <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
                       <Icon name="download" size={16} />
+                      <span className="sm:hidden" aria-hidden="true">Baixar</span>
                     </a>
                   )}
                 </li>
@@ -374,7 +378,7 @@ export function ProjectHubView(p: {
               <Icon name="plus" size={14} />
             </button>
           </div>
-          {creating ? <NewSpecDialog projectId={projectId} openRequest={openRequest?.specId} onClose={closeNewSpec} /> : null}
+          {creating ? <NewSpecDialog projectId={projectId} queueBehind={openRequest && openRequest.state !== 'ready' ? openRequest.specId : undefined} onClose={closeNewSpec} /> : null}
           {openRequest ? <RequestNotice projectId={projectId} specId={openRequest.specId} ready={openRequest.state === 'ready'} /> : null}
           {allConcluded ?<p className="m-0 rounded-lg border border-good-line bg-good-soft px-3.5 py-2.5 text-[0.875rem] text-ink" data-testid="all-concluded">Todas as specs foram concluídas. Crie uma nova spec para a próxima entrega.</p> : null}
           {pr.specs.length > 0 ? <TableFilters view={specsView} subject="especificações" placeholder="Filtrar por alias da spec" facetName="Status" /> : null}
@@ -428,8 +432,8 @@ export function ProjectHubView(p: {
                       )
                     ) : s.status === 'done' ? (
                       s.lastRunId ? (
-                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
-                          Ver validação
+                        <Link className={`${action.secondary} max-sm:absolute max-sm:inset-0 max-sm:h-auto max-sm:justify-end max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:pr-3 max-sm:focus-visible:outline-offset-[-2px]`} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
+                          <span className="max-sm:sr-only">Ver validação</span>
                           <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : null
@@ -462,7 +466,7 @@ export function ProjectHubView(p: {
                 <li data-testid={`project-hub-draft-${d.specId}`} className={row} key={d.specId}>
                   <span data-testid={`project-hub-draft-id-${d.specId}`} className={rowId}>{d.specId}</span>
                   {chip(d.state)}
-                  <span data-testid={`project-hub-draft-actions-${d.specId}`} className={rowActions}>
+                  <span data-testid={`project-hub-draft-actions-${d.specId}`} className={`${rowActions} max-sm:flex-col-reverse`}>
                     <button type="button" className={action.danger} data-testid={`delete-${d.specId}`} aria-label={`Excluir refinamento de ${d.specId}`} onClick={() => setPendingDelete(d.specId)}>
                       Excluir
                       <Icon name="trash" size={14} />
@@ -561,7 +565,8 @@ export function ProjectHub() {
         const own = (await refineApi.list()).filter((d) => d.projectId === projectId);
         setDrafts(own.filter((d) => d.state !== 'started'));
         setBacklogs((current) => {
-          const next = own.filter((d) => d.state === 'started').map((d) => d.specId);
+          // One backlog panel per project: a second started spec of the same backlog would repeat the same list.
+          const next = own.filter((d) => d.state === 'started').map((d) => d.specId).slice(0, 1);
           return next.join() === current.join() ? current : next;
         });
       }

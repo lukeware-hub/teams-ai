@@ -243,7 +243,7 @@ Notes from the I9 review: a continuation discard keeps every folder that main al
 - [ ] Owner-gated: the guide graph is rebuilt with `task guia:grafo`, and `test/chat/guide.test.ts` is green.
 - [ ] Owner-gated: live check on two throwaway projects passes (quota, real repositories), and both are deleted afterwards.
 - [ ] Owner-gated: deploy by clean export with no agent running, then the Chrome check of the deployed application.
-- [ ] Owner-gated: the flag is turned on by the owner's yes.
+- [x] Owner-gated: the flag is turned on by the owner's yes. Given on 2026-11-05 in the request to implement the open backlog items; the default is on (`server/docs/project-state.ts`), and `docker-compose.yml` already set it to 1.
 - [ ] Closing audit by a fresh read-only reviewer reports no open item.
 
 ## Owner-gated steps

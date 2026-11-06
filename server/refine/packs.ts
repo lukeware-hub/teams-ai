@@ -60,6 +60,9 @@ export const PATCH_WORTH = 'PATCH WORTH: propose a docPatch only when it changes
 /** R11.10: before the detailing, PO and SM leave what a spec decides to the detailing; nothing else waits. */
 const OUTLINE_REVIEW_RULE = 'Outline review (no spec yet): never ask about or patch a detail a spec decides, such as a status code, a message, a field, a validation or the content of an e-mail; the detailing settles it, so a missing detail fails no checklist id now, and this narrows the flow.md review and the Jev preflight notes. It never holds back a contradiction between the docs, a split into services the docs leave open, filling a blank stack.md or flow.md, or turning an older list of decisions into headings.';
 
+/** A quick review: a request is reviewed in one pass, so the answer is short. */
+const QUICK_RULE = 'Quick pass: report only what blocks the development of the new work, the most serious first and at most eight in all (findings, questions and patches together), and skip style, wording and anything an assumption already covers. Keep every text short: one or two sentences. A long answer delays the whole team.';
+
 /** Detailed backlog: the review reads a digest of every spec and pre-plan, the gaps, and full JSON only for what changed. */
 const DETAIL_REVIEW_RULE = 'Detailed backlog: every item has a spec (PO) and a pre-plan (SM), summarized below with the coverage gaps the orchestrator found; full JSON follows only for the items that changed this cycle. Read the checklist ids against them too: po.objectives-verifiable = every acceptance criterion is testable, and checkable with what its own item and the items it depends on, directly or through others, deliver; sm.tasks-feasible = every pre-plan is deliverable and covers its criteria. Specs change only through the docs: to change one, record the decision in docs/briefing.md (or docs/project.md) through a docPatch, or ask the human; never patch a generated file. Put the AC ids a question is about in relatedAcIds. A criterion or task carrying content of another document (a visual rule, a technology, an order of steps) points to misplaced source text: move that text in the documents, never edit a generated spec. Each gap with a problema line is a blocking question for the human, naming the item key. An item marked entregue or em execução is frozen: its spec already started or was delivered, it has no pre-plan here, and it is never reviewed, questioned or patched.';
 
@@ -143,6 +146,8 @@ export function refinePack(input: {
   projectBriefing?: boolean;
   /** The cycle under review: a detailed backlog carries the full JSON of the items derived in it. */
   cycle?: number;
+  /** A quick pass: only what blocks the development, a few items, so the answer is short and fast. */
+  quick?: boolean;
 }): ContextPackInput {
   const detail = input.backlog?.detail === true && !input.derived.spec;
   const rel = (file: keyof typeof DOC_REL) => DOC_REL[file](input.specId, input.projectBriefing);
@@ -165,6 +170,7 @@ export function refinePack(input: {
     rolesRule(input.role),
     FINDINGS_RULE,
     PATCH_WORTH,
+    ...(input.quick ? [QUICK_RULE] : []),
     ...(input.derived.spec ? [] : [BACKLOG_REVIEW_RULE, ...(input.role === 'front' ? [] : [DECISION_RULE])]),
     ...(detail ? [DETAIL_REVIEW_RULE] : []),
     ...(input.derived.spec || detail || input.role === 'front' ? [] : [OUTLINE_REVIEW_RULE]),

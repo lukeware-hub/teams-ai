@@ -115,7 +115,8 @@ Status: built 2026-10-30, pending the owner's check on a real run.
 - The language line left the eight role files, and a role file that names a language is rejected.
 - Every installed skill carries a notice that the global rules outrank it.
 - The Test reviewer gets a "Language check" block: the Portuguese found in the task's added lines and commit messages, as hints it judges.
-- Not done: `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running and a valid Claude login. The coverage gate still accepts 80%; the 90% target is an instruction to the agents until the owner decides.
+- Not done: `docs/guia` is not edited, since a change there needs `task guia:grafo` with the platform running and a valid Claude login.
+- Coverage: the gate accepts 90%, the floor of global rule 6.
 
 ## 16. The chat explains what blocks a spec, from the recorded facts
 

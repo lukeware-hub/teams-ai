@@ -720,7 +720,8 @@ export class TaskRunner {
     const priorFindings = this.deps.journal.events.filter((e) => e.type === OrchEvent.ReviewChanges && e.data.taskId === this.taskId).slice(-2).flatMap((e) => e.data.findings as ReviewOutput['findings']);
     // Rule 1 of the global rules covers the files and the commit messages of the task, so the reviewer gets the hints for both.
     const languageDiff = await git(this.worktree, ['diff', '-U0', 'origin/main...HEAD'], this.deps.exec);
-    const messages = await git(this.worktree, ['log', '--format=%B', 'origin/main..HEAD'], this.deps.exec);
+    // Only the latest message: the merge squashes, and the Dev cannot rewrite an earlier commit.
+    const messages = await git(this.worktree, ['log', '-1', '--format=%B'], this.deps.exec);
     const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages) });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.

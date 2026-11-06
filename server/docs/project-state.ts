@@ -5,10 +5,10 @@ import { updateFileAtomic, writeFileAtomic } from '../core/atomic-write.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 
-/** The environment switch of the documentation repository layout: on only when it is set to 1. */
+/** The environment switch of the documentation repository layout: on unless it is set to 0. */
 export const DOCS_REPO_LAYOUT_ENV = 'TEAMS_AI_DOCS_REPO_LAYOUT';
 
-export const docsRepoLayoutEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env[DOCS_REPO_LAYOUT_ENV] === '1';
+export const docsRepoLayoutEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env[DOCS_REPO_LAYOUT_ENV] !== '0';
 
 /** The clone of the documentation repository, kept apart from the project's own clone. */
 export const docsStoreDir = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'docs-store');

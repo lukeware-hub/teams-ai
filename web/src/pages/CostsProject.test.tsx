@@ -9,6 +9,7 @@ import { CostsProjectPage } from './CostsProject.js';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // Text matching normalizes the no-break space of the currency to a plain one, so the matcher uses a plain one too.
@@ -107,5 +108,15 @@ describe('CostsProjectPage', () => {
     fireEvent.change(within(panel).getByRole('combobox', { name: /^Agente/ }), { target: { value: 'po' } });
     await waitFor(() => expect(steps.mock.calls.at(-1)?.[2]).toEqual({ agente: 'po', spec: '' }));
     expect(steps.mock.calls.at(-1)?.[0]).toBe('kayron-hub');
+  });
+
+  it('on a phone the steps table is not mounted, so it fetches nothing', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767.98px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    vi.spyOn(costsApi, 'project').mockResolvedValue(project);
+    const steps = vi.spyOn(costsApi, 'steps').mockResolvedValue({ total: 1, matched: 1, page: 1, size: 10, pages: 1, facets: ['development'], list: [step] });
+    renderAt();
+    expect(await screen.findByTestId('costs-indicators')).toBeTruthy();
+    expect(screen.queryByTestId('costs-steps')).toBeNull();
+    expect(steps).not.toHaveBeenCalled();
   });
 });

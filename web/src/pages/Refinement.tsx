@@ -1,5 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { criterionSentence } from '../criterion.js';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type DroppedQuestionRow, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
 import { mdDownload } from '../download.js';
 import { StepCard } from '../refine/StepCard.js';
@@ -40,7 +41,7 @@ import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
-import { ImpactCard, ReadyBar, ReplanCard, RequestCard } from '../refine/RequestCards.js';
+import { ImpactCard, ReadyBar, ReplanCard, RequestCard, type RequestStatus } from '../refine/RequestCards.js';
 import { acceptedAdditions, readyChecks, replanRows, requestNodes, requestTrail, understoodCounts } from '../refine/request.js';
 import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
@@ -133,7 +134,7 @@ const checkDetail = (detail: string) => {
   if (open) return open[1] === '1' ? '1 pergunta obrigatória em aberto.' : `${open[1]} perguntas obrigatórias em aberto.`;
   return detail;
 };
-const criterionText = (c: AcceptanceCriterion) => `${c.id}: dado ${c.given}, quando ${c.when}, então ${c.then}`;
+const criterionText = (c: AcceptanceCriterion) => `${c.id}: ${criterionSentence(c)}`;
 const jevInfo = 'O Jev é obrigatório no refinamento. Ele confere se os cinco documentos estão consistentes entre si e classifica e decide pontos da avaliação: critérios de aceite ainda não prontos, perguntas repetidas e contradições com o histórico do projeto. Sem ele, a avaliação não inicia. Ajuste o que fizer sentido e reavalie.';
 const patchInfo = 'Mudança proposta por um agente: linhas com - saem e linhas com + entram. Aceitar aplica a mudança no documento; Rejeitar a descarta, e o motivo opcional fica no histórico.';
 
@@ -259,6 +260,8 @@ export interface ViewProps {
   onAskSpecs?(): void | Promise<unknown>;
   /** The owner's button for everything: the team answers, decides, repairs and prepares until the start is clear. */
   onResolveAll?(): void | Promise<unknown>;
+  /** The owner accepts every suggestion at once; the agents run again on what was decided. */
+  onAcceptAll?(): void | Promise<unknown>;
   /** The owner follows with the specs.md although a reviewer rejected it. */
   onApproveSpecs?(): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
@@ -1278,9 +1281,8 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
-  const backlogScreen = () => (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
-      {backlogStageHeading}
+  const failingChecks = st.checklist.filter((c) => !c.passed).length;
+  const needsCard = () => (
       <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
         {startMissing.length > 0 && <p data-testid="start-missing" role="status" className={notice}><b>Falta para iniciar o desenvolvimento:</b> {startMissing.join(' ')}</p>}
         {pendingSummary}
@@ -1291,6 +1293,9 @@ export function RefinementView(p: ViewProps) {
           </div>
         )}
       </StepCard>
+  );
+  const backlogCards = () => (
+    <>
       <StepCard id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} specs · em preparo` : 'Em preparo' }}>
         {backlogBlock(startLine)}
       </StepCard>
@@ -1300,9 +1305,16 @@ export function RefinementView(p: ViewProps) {
         {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
         {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
       </StepCard>
-      <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : { label: 'Pendente' }}>
+      <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
         {verificationDetails}
       </StepCard>
+    </>
+  );
+  const backlogScreen = () => (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
+      {backlogStageHeading}
+      {needsCard()}
+      {backlogCards()}
     </div>
   );
   // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
@@ -1346,19 +1358,33 @@ export function RefinementView(p: ViewProps) {
   const unfiled = unfiledQuestions(st);
   const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
+  /** The suggestions the owner can take at once. */
+  const acceptable = st.patches.filter((x) => x.status === 'pending').length;
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
+            {acceptable > 0 && p.onAcceptAll && (
+              <div className="grid gap-2" data-testid="accept-all-block">
+                <p data-testid="accept-all-note" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>
+                <ActionButton data-testid="accept-all" className="primary h-10 justify-self-start" busy={serverBusy} disabled={locked || serverBusy} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
+                  Aceitar todas ({acceptable})
+                </ActionButton>
+              </div>
+            )}
             {byDoc.length > 0 && (
               <button type="button" className="secondary h-10 justify-self-start px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
                 {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
               </button>
             )}
-            {pendingOpen && byDoc.map(({ file, count }) => (
-              <button key={file} type="button" className="link-button justify-self-start" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
-                {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
-                <Icon name="arrow-right" size={16} />
-              </button>
-            ))}
+            {pendingOpen && byDoc.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {byDoc.map(({ file, count }) => (
+                  <button key={file} type="button" className="link-button" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                    {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
+                    <Icon name="arrow-right" size={16} />
+                  </button>
+                ))}
+              </div>
+            )}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
@@ -1472,22 +1498,71 @@ export function RefinementView(p: ViewProps) {
   // A follow-on request (design.md §31): its trail, its impact and its replan above the backlog's own cards, and the bar that starts it.
   if (st.extension) {
     const added = replanRows(st).filter((r) => r.state === 'nova').map((r) => r.key);
+    const startOpen = canStart && speckitReady && !specsGate;
+    // "Precisa de você" sits in front only once the team stopped with something left; while it works, or when a request has no
+    // team record (an older one), only what blocks the start sits in front. The rest waits inside the details.
+    const autopilot = st.autopilot;
+    const teamStopped = autopilot?.status === 'stopped';
+    const needsFirst = openOwner > 0 && (autopilot === undefined ? !startOpen : teamStopped);
+    // Where the request stands, said plainly: the team working, something waiting for the owner, or ready to start.
+    // The team stopped with nothing to decide but a reason (the Claude login expired, a quota): the owner sees it and can run the team again.
+    const teamBlocked = teamStopped && openOwner === 0 && !startOpen && autopilot.reasons.length > 0;
+    const requestStatus: RequestStatus = autopilot?.status === 'queued'
+      ? { tone: 'working', title: 'Seu pedido está na fila', text: autopilot.reasons[0] || 'Há agentes trabalhando no pedido anterior. O refinamento começa sozinho quando eles terminarem.' }
+      : evaluating || speckitRunning || autopilot?.status === 'running'
+      ? { tone: 'working', title: 'O time está refinando seu pedido', text: 'Você não precisa fazer nada agora. O botão libera sozinho quando o time terminar.' }
+      : teamBlocked
+        ? { tone: 'needs', title: 'O time parou', text: autopilot.reasons.join(' ') }
+      : openOwner > 0
+        ? { tone: 'needs', title: startOpen ? `${openOwner} ${openOwner === 1 ? 'sugestão do time espera' : 'sugestões do time esperam'} você` : `${openOwner} ${openOwner === 1 ? 'decisão espera' : 'decisões esperam'} você`, text: teamStopped && autopilot.reasons.length > 0 ? `O time não conseguiu decidir sozinho: ${autopilot.reasons.join(' ')}` : startOpen ? 'São opcionais: inicie o desenvolvimento sem decidir agora, ou veja em "Detalhes do time".' : 'Resolva os itens abaixo para liberar o desenvolvimento.' }
+        : startOpen
+          ? { tone: 'ready', title: 'Tudo pronto para desenvolver', text: 'O time terminou o refinamento. Inicie quando quiser.' }
+          : { tone: 'working', title: 'Falta pouco para iniciar', text: startReason ?? 'O time prepara o que falta.' };
+    // An address with `?etapa=<document>` opens that document of the request; Voltar leads back to the request screen.
+    if (isDocStep(step) && new URLSearchParams(window.location.search).has('etapa')) {
+      return (
+        <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-document">
+          <WizardShell
+            stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={() => navigate(window.location.pathname)} />}
+            stepKey={step}
+            meta={usageLine}
+            back={{ onClick: () => navigate(window.location.pathname), disabled: false }}
+            actions={null}
+          >
+            <div className="grid gap-4">{stageScreen(step)}</div>
+          </WizardShell>
+          {askDialog}
+        </div>
+      );
+    }
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
         <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
         <WizardShell
-          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />}
+          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => { document.querySelector('[data-testid="request-details"]')?.setAttribute('open', ''); document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
           stepKey="request"
           meta={usageLine}
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
           actions={null}
         >
           <div className="grid gap-4">
+          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={teamBlocked ? <ActionButton data-testid="team-retry" className="primary" busy={serverBusy} disabled={locked || serverBusy || !p.onResolveAll} onClick={() => void p.onResolveAll?.()} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton> : developButton} />
+          {needsFirst && needsCard()}
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
-          <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
-          <ReplanCard rows={replanRows(st)} />
-          {backlogScreen()}
-          <ReadyBar checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={developButton} />
+          <details data-testid="request-details" className="group min-w-0">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.9375rem] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+              <span aria-hidden="true" className="text-ink-soft transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
+              Detalhes do time
+              <span className="text-[0.8125rem] font-normal text-ink-soft">impacto, replanejamento, backlog, planos e verificação</span>
+            </summary>
+            <div className="mt-3 grid gap-4">
+              <ImpactCard impact={st.impact?.impact ?? null} issues={st.impact?.issues ?? []} addedKeys={added} accepted={acceptedAdditions(st.patches)} />
+              <ReplanCard rows={replanRows(st)} />
+              {backlogStageHeading}
+              {!needsFirst && needsCard()}
+              {backlogCards()}
+            </div>
+          </details>
           </div>
         </WizardShell>
         {reevaluateDialog}
@@ -1718,6 +1793,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onAskSpecs={act(() => refineApi.askSpecs(projectId, specId))}
         onResolveAll={act(() => refineApi.autopilot(projectId, specId))}
+        onAcceptAll={act(() => refineApi.acceptAll(projectId, specId))}
         onApproveSpecs={act(() => refineApi.approveSpecs(projectId, specId))}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}

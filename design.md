@@ -1628,6 +1628,35 @@ Pronto: ✓ specs validadas  ✓ impacto  ✓ planos e tarefas 14/14  ✓ sem pe
 
 Abaixo de 720 px os cartões empilham na mesma ordem, os chips quebram linha e a tabela de replanejamento vira uma linha por spec, como as linhas de `ProgramStatus`. Não há rolagem horizontal da página.
 
+### 31.4 Tela enxuta: o time faz tudo e o dono só inicia
+
+Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em "Iniciar desenvolvimento" quando o refinamento automático termina.
+
+- Sempre visíveis: "Seu pedido", o bloco "Pronto" com o botão e, só quando algo espera o dono, "Precisa de você" acima do "Pronto".
+- Impacto, Replanejamento, Itens do backlog, Planos e Verificação ficam recolhidos num único bloco "Detalhes do time". Nada é apagado.
+- Clicar numa etapa da trilha abre os detalhes antes de rolar até o cartão.
+- O selo da Verificação mostra quantos itens falharam ("2 itens falharam"), não só "Pendente".
+- "Precisa de você" só aparece na frente depois que o time parou com algo que não conseguiu decidir (o servidor registra a parada e os motivos). Enquanto o time trabalha, ou quando nada sobrou, o cartão fica dentro de "Detalhes do time" e o motivo aparece no estado do topo.
+- O refinamento é enxuto só no pedido de continuação que o time faz sozinho: ele avalia uma vez, aplica as correções dos revisores e dá as verificações por resolvidas, sem reavaliar, a menos que sobre uma falha que uma conferência simples, sem agente, ainda aponte. Só os itens ainda não iniciados recebem plano e o impacto roda junto com as specs. A meta é deixar o pedido pronto para desenvolver em até 5 minutos, com teto de 10.
+- O specs.md é conferido por uma checagem simples, sem agente (critério repetido, tarefa que cita critério inexistente, critério sem tarefa). O PO e o SM o revisam em paralelo com o preparo dos planos; se apontarem problemas, o motivo aparece em "Verificação" e o desenvolvimento não fica bloqueado.
+- Um item já iniciado ou entregue nunca recebe o pedido novo como fonte: por isso o pedido novo não gera ajustes falsos nas specs que ele não toca.
+- Quando sugestões esperam o dono, "Precisa de você" oferece duas saídas: decidir uma por uma (o botão "Mostrar pendências" leva a cada documento, onde cada sugestão tem Aceitar e Rejeitar) ou "Aceitar todas (N)" de uma vez. Aceitar todas põe as sugestões nos documentos e chama os agentes de novo, que conferem e preparam só o que mudou, sem reavaliar tudo. O botão fica desativado enquanto o time trabalha.
+- Se o time parou sem nada para o dono decidir (a sessão do Claude expirou, a preparação dos planos falhou, um passo deu erro), o topo diz o motivo e o botão "Tentar de novo" ocupa o lugar de "Iniciar desenvolvimento".
+- O time aceita sozinho acréscimos em qualquer documento e reescritas que não mudam o escopo. Só mudança de escopo e aprovação de ajuste chegam ao dono.
+- O endereço `?etapa=<documento>` abre esse documento dentro da tela do pedido, com o botão Voltar para a tela do pedido.
+
+```
+● Pedido ── ● Impacto ── ● Specs e plano ── ○ Pronto
+┌ Seu pedido · Escrito por você                              [ Interpretado ] ┐
+└───────────────────────────────────────────────────────────────────────────────┘
+┌ Precisa de você (só se houver)                                [ 2 em aberto ] ┐
+│ Decida uma por uma, abaixo, ou aceite todas de uma vez: …                     │
+│ [ Aceitar todas (2) ]   [ Mostrar pendências (2) ]                            │
+└───────────────────────────────────────────────────────────────────────────────┘
+Pronto: ✓ impacto  ⏱ falta: planos e tarefas 0/1                [ Iniciar desenvolvimento ]
+▸ Detalhes do time   impacto, replanejamento, backlog, planos e verificação
+```
+
 ## 32. Nova spec em modal
 
 Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução concluída) abre o mesmo modal grande, na própria tela, sem levar à página do projeto.
@@ -1645,11 +1674,18 @@ Todo botão "Nova spec" (card do projeto, página do projeto, chat e execução 
 - Ao confirmar, a tela abre `/refine/<projeto>/<spec>`, onde os agentes organizam a spec no padrão das outras.
 - Um erro aparece dentro do modal e o texto digitado é mantido.
 - Fechar com texto digitado pede confirmação antes de descartar.
-- Se já existe um pedido aberto e não iniciado, o modal mostra o aviso e o botão `Continuar` no lugar do campo.
+- O formulário sempre aparece, mesmo com um pedido ainda em refinamento. Nesse caso uma nota diz "Os agentes ainda trabalham em <spec>. Você pode criar esta spec agora: ela entra na fila e o refinamento começa sozinho quando eles terminarem."
+- O pedido novo é criado na hora e abre com o estado "Seu pedido está na fila", sem gastar nenhuma chamada. Quando o time do pedido anterior para, o refinamento dele começa sozinho. Limite conhecido: o pedido seguinte parte dos documentos que o anterior já refinou, ainda que o dono não tenha decidido o anterior.
 
 ### 32.3 Responsivo
 
 Abaixo de 640 px o modal ocupa a tela toda e os botões empilham, com `Criar spec` em cima.
+
+### 32.4 Botão "Sugestão"
+
+- Botão secundário com lâmpada, ao lado de `Criar spec`. Fica desativado com o campo vazio, durante o envio e durante a própria sugestão ("Sugerindo…").
+- Ao clicar, o servidor consulta o grafo do projeto (Graphify), que reúne o código, os cinco documentos e as specs, planos e tarefas já existentes. Ele só consulta, não valida: vê o que já existe e devolve o texto reescrito em detalhe. O texto substitui o do campo para o usuário revisar; nada é criado até clicar em `Criar spec`.
+- Um erro aparece dentro do modal e o texto digitado é mantido.
 
 ## 33. Custos — `/costs` e `/costs/:projectId`
 
@@ -1734,7 +1770,7 @@ Dois painéis lado a lado, cada um com o próprio total e a própria lista. Abai
 | Journal que não pôde ser lido | Chip de aviso `N registros não lidos`, com ajuda: o total pode estar abaixo do real. |
 | Jev fora de projetos em período curto | `Indisponível neste período`. |
 | Chat sem registro de custo | Ajuda: respostas que falharam não têm custo registrado. |
-| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude que falharam em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
+| Escalonamentos antigos sem custo | Linha abaixo do rodapé: `N chamadas de escalonamento para o Claude em execuções antigas, sem custo registrado. Elas não entram no total.` Some quando não há mais nenhuma. |
 
 ### 33.6 Ajuda (botões de informação)
 
@@ -1805,3 +1841,23 @@ Refinamento, ciclos seguintes   [ Sonnet 5.5 v ]  [ Baixo  v ]
 ### 34.3 Fora desta tela
 
 A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqui. Ela segue a configuração do arquivo.
+
+## 35. Chat — linha de uso de cada resposta
+
+- A linha abaixo de cada resposta do assistente mostra, nesta ordem: custo estimado, tokens lidos, tokens escritos, número de buscas na web e tempo.
+- As buscas aparecem como `1 busca na web` ou `N buscas na web`, com `0 buscas na web` quando a resposta não pesquisou. Mensagens salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
+
+## 36. Grafo do código — `/graph/:projectId`
+
+O grafo do código tem uma tela própria por projeto. O hub do projeto não tem mais o card do grafo: só o botão `Ver grafo do código` no cabeçalho, ao lado de `Abrir no GitHub`. O cartão do projeto em `/projects` tem o mesmo atalho, `Grafo`.
+
+- Cabeçalho: trilha `Projetos › projeto › Grafo do código`, título, `N nós · M ligações · K comunidades`, `Atualizado em` com data e hora, e o botão `Atualizar grafo`. Se a última atualização falhou, uma linha de erro diz quando e por quê, e que o grafo mostrado é o da versão anterior.
+- Mapa: um canvas com os nós coloridos por comunidade. Arrastar move, a roda ou o gesto de pinça dá zoom, passar o mouse ou tocar num nó destaca as ligações dele. As comunidades são calculadas no servidor a partir das ligações, sem modelo de IA, e cada uma leva o nome do nó mais ligado.
+- Lista de comunidades: ao lado do mapa no desktop, embaixo no celular. Mostra as 20 maiores com cor, nome e tamanho, e uma linha `Outras (N)` para o resto. Cada linha tem uma caixa que liga e desliga a comunidade no mapa, e `Selecionar todas` liga ou desliga todas.
+- Busca: filtra os nós pelo nome. Os achados ganham um anel no mapa e entram numa lista que se usa pelo teclado.
+- Nó escolhido: nome, arquivo e linha, número de ligações, comunidade, os vizinhos e `Abrir no GitHub` quando o arquivo está publicado.
+- Consultas dos agentes: abaixo de `Uso pelos agentes`, a linha `Consultas feitas pelos agentes: N em M passos` conta as vezes que um agente rodou `graphify query`, `explain` ou `path` por conta própria, por tipo de passo. Antes do primeiro passo medido ela diz `ainda não medido`. Com 5 passos ou mais e nenhuma consulta, uma linha avisa que nenhum agente consultou o grafo.
+- Acima do mapa: a linha `Uso pelos agentes` e, quando o grafo passa de 3000 nós, o aviso de que o mapa mostra os mais ligados.
+- Celular: o botão de atualizar e o do GitHub ocupam a linha inteira; o mapa tem 60% da altura da tela.
+- Movimento: o desenho se organiza em poucos instantes ao abrir; com `prefers-reduced-motion` ele já aparece pronto.
+- Estados: carregando, sem grafo (`Construir grafo`), erro de leitura, falha da última atualização.

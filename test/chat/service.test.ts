@@ -90,7 +90,7 @@ describe('ChatService.ask', () => {
     const lines: string[] = [];
     const { service } = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary }), { log: (l) => lines.push(l) });
     const reply = await service.ask('hello-app', 'pergunta');
-    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3, model: 'claude-haiku-5-5' });
+    expect(reply!.usage).toEqual({ inputTokens: 1200, outputTokens: 340, cacheReadTokens: 5000, cacheWriteTokens: 800, costUsd: 0.0421, seconds: 14, turns: 3, searches: 0, model: 'claude-haiku-5-5' });
     expect((await service.messages('hello-app'))[1]!.usage).toEqual(reply!.usage);
     expect(lines).toEqual(['chat hello-app: 7000 tokens read, 340 written, 3 turns, 14s, US$ 0.0421']);
     const prose = make(async (_req: Req) => ({ ok: false, failure: 'schema', errors: ['no JSON'], summary: { ...summary, costUsd: null, resultText: 'Texto livre.' }, sandboxDisabled: false }));

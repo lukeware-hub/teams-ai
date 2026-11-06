@@ -98,19 +98,16 @@ describe('run selectors', () => {
       expect(evidence(evs, ['AC-009'])[0]!.tests).toEqual([{ id: 'x::[AC-009] works', status: 'passed', taskId: 'T2' }]);
     });
   });
-  it('a decision is a step only when a model other than the Claude escalation step was called', () => {
+  it('every billed decision attempt costs, Claude escalations included, and a skipped one costs nothing', () => {
     const decision = (seq: number, attempts: unknown[]) => ({ ...events[0]!, seq, type: 'DECISION_MADE', data: { record: { decisionId: 'pr-risk', attempts, usage: { inputTokens: 0, outputTokens: 0, costUsd: null } } } }) as StoredEvent;
     const usage = { inputTokens: 40, outputTokens: 4, costUsd: 0.002 };
     expect(tokens([decision(1, [])])).toMatchObject({ byRole: {}, total: { steps: 0 } });
     expect(tokens([decision(1, [{ backend: 'jev', usage }])]).byRole.system1).toMatchObject({ inputTokens: 40, costUsd: 0.002, steps: 1 });
-    // The Claude escalation journals its own step, so its decision record adds nothing more.
-    const escalation = [
-      { ...events[0]!, seq: 2, type: 'STEP_STARTED', data: { stepId: 'd1', kind: 'decide', role: 'sm', model: 'claude-haiku-5-5', taskId: null, attempt: 0 } },
-      { ...events[0]!, seq: 3, type: 'STEP_FINISHED', data: { stepId: 'd1', kind: 'decide', taskId: null, attempt: 0, ok: true, usage: { inputTokens: 40, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0.002 } },
-    ] as StoredEvent[];
-    const t = tokens([...escalation, decision(4, [{ backend: 'claude', usage }])]);
+    // A Claude escalation runs without step events, so its decision record is the only place it is counted.
+    const t = tokens([decision(2, [{ backend: 'claude', usage }])]);
     expect(t.total).toMatchObject({ steps: 1, costUsd: 0.002 });
-    expect(t.byRole.system1).toBeUndefined();
+    expect(t.byRole.system1).toMatchObject({ inputTokens: 40, costUsd: 0.002, steps: 1 });
+    expect(tokens([decision(3, [{ backend: 'claude', usage: null }])]).total).toMatchObject({ steps: 0 });
   });
 });
 

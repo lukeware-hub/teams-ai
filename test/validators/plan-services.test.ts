@@ -84,3 +84,13 @@ describe('validateServicesPlan', () => {
     expect(errors.filter((e) => e.includes('duplicate AC-002'))).toEqual(['e2eExemptions: duplicate AC-002']);
   });
 });
+
+describe('front tasks in a services plan', () => {
+  it('a front task must belong to a service that deploys a front, when e2e is required', () => {
+    const plan = withTasks((tasks) => tasks.map((t) => (t.service === 'orders-api' ? { ...t, owner: 'front' as const } : t)));
+    expect(check(plan, { requireE2e: true })).toContainEqual(expect.stringContaining('front task '));
+    const service = plan.services['orders-api']!;
+    const front = { ...plan, services: { ...plan.services, 'orders-api': { ...service, deploy: { ...service.deploy, kind: 'front' as const } } } };
+    expect(check(front, { requireE2e: true }).join('\n')).not.toContain('front task ');
+  });
+});

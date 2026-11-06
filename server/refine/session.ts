@@ -43,8 +43,9 @@ import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
 import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
+import { specsIssues } from './specs-check.js';
 import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
-import { refineLimits } from './limits.js';
+import { leanRefine, refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { idSourceOf, specIdOf } from './specs-index.js';
 import { preparePlans } from './plan-prepare.js';
@@ -66,7 +67,7 @@ const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
-/** The rollout switches new projects onto the repository flow (plan increment K); until then a session is created without the stamp. */
+/** The repository flow: a new session is stamped with it, so new projects use the repository flow (plan increment K). */
 export const REPOSITORY_FLOW = true;
 
 export class ConflictError extends Error {}
@@ -273,6 +274,8 @@ export class RefineSession {
   private queuedReview: Promise<void> | null = null;
   /** The owner handed the team full autonomy for this run: what would be asked is decided instead. */
   private autonomous = false;
+  /** A follow-on request the team runs alone, in the lean way: one pass, no repeated evaluations. A text that fails the plain checks leaves it. */
+  private leanRun = false;
   /** A graph extraction is the only thing running: the owner's answers and rejections do not wait for it, since they edit no document. */
   private indexing = false;
   private readonly changedWhileIndexing = new Set<DocFile>();
@@ -307,6 +310,8 @@ export class RefineSession {
     if (journal.state.status === 'evaluating') await journal.fact(RefineEvent.CycleFailed, { cycle: journal.state.cycle, reason: 'interrupted', kind: 'interrupted' });
     // A restart in a pause between two cycles of one click: its end would be the restart, so its record is void.
     if (journal.state.evaluation?.endedAt === null) await journal.fact(RefineEvent.EvaluationEnded, { interrupted: true });
+    // The team resolving a request on its own is cut by a restart too: it stops, and what is left is the owner's.
+    if (journal.state.autopilot?.status === 'running' || journal.state.autopilot?.status === 'queued') await journal.fact(RefineEvent.TeamAutopilotStopped, { reasons: ['O time foi interrompido quando o servidor reiniciou.'] });
     // A plan preparation cut by a restart is failed too; the owner runs it again.
     if (journal.state.speckit?.status === 'running') await journal.fact(RefineEvent.SpeckitFailed, { reason: 'A preparação foi interrompida quando o servidor reiniciou.', kind: 'interrupted' });
     // An architecture decision cut by a restart is failed, so the owner decides again instead of waiting on it.
@@ -395,6 +400,20 @@ export class RefineSession {
       cycle: this.state.status === 'error' ? runs.cycle : undefined,
       speckit: this.state.speckit?.status === 'failed' ? runs.speckit : undefined,
     };
+  }
+
+  /** The team applied what the reviewers found: the checks they failed stand settled with no new evaluation, except the ones the plain checks still see broken. Nothing is journaled when none is left. */
+  async settleChecklist(): Promise<void> {
+    const broken = new Set<string>(this.state.backlog ? specsIssues(this.state.backlog).map((i) => i.check) : []);
+    const ids = this.state.checklist.filter((i) => !i.passed && !broken.has(i.id)).map((i) => i.id);
+    if (ids.length > 0) await this.journal.fact(RefineEvent.ChecklistSettled, { ids });
+  }
+
+  /** The team resolving a follow-on request on its own started or stopped; a stop lists in plain words what is left for the owner. */
+  async teamAutopilot(status: 'queued' | 'started' | 'stopped', reasons: string[] = []): Promise<void> {
+    if (status === 'queued') await this.journal.fact(RefineEvent.TeamAutopilotQueued, { reason: reasons[0] ?? '' });
+    else if (status === 'started') await this.journal.fact(RefineEvent.TeamAutopilotStarted, {});
+    else await this.journal.fact(RefineEvent.TeamAutopilotStopped, { reasons });
   }
 
   /** The heal driver stops on this draft; a later failure, which the owner's action produces, lifts the pause. */
@@ -1282,13 +1301,16 @@ export class RefineSession {
     if (now && this.specsSettled(now.hash)) return null;
     const ctl = (this.abortCtl = new AbortController());
     this.autonomous = opts.autonomous === true;
+    this.leanRun = this.autonomous && leanRefine() && this.state.extension !== undefined;
     const run = (async () => {
       // The backlog is not ready yet (a check of the documents is open, or they changed): the agents evaluate it first, then specs.md is checked.
-      if (!now) await this.timedChain(ctl);
+      // Lean: an autonomous run does not start another full evaluation here; what blocks the backlog is left to the owner.
+      if (!now && !this.leanRun) await this.timedChain(ctl);
       const specs = this.specsOf();
       if (specs && !this.specsSettled(specs.hash)) await this.specsRounds(ctl, specs);
     })().finally(() => {
       this.autonomous = false;
+      this.leanRun = false;
       this.running = null;
       this.abortCtl = null;
     });
@@ -1305,13 +1327,30 @@ export class RefineSession {
     return 'O specs.md já está aprovado.';
   }
 
-  /** The check of specs.md, and when a reviewer rejects it, up to MAX_SPECS_REPAIRS rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
+  /** Lean: an autonomous run reviews specs.md once. A rejection is not repaired by detailing the items again (a full evaluation each time): the team follows the text on the owner's behalf and the findings stay recorded. */
+  private get specsRepairLimit(): number {
+    return this.leanRun ? 0 : MAX_SPECS_REPAIRS;
+  }
+
+  private get specsDecideLimit(): number {
+    return this.leanRun ? 0 : MAX_SPECS_DECIDES;
+  }
+
+  /** The check of specs.md, and when a reviewer rejects it, up to the repair limit of rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
   private async specsRounds(ctl: AbortController, first: { text: string; hash: string }, checkFirst = false): Promise<void> {
+    // Lean: specs.md is a plain rendering of the backlog the PO and the SM reviewed in the evaluation. When the plain checks find nothing wrong,
+    // it is followed at once and the two reviewers check it beside the plans (reviewSpecsBeside); otherwise the full check below runs.
+    if (this.leanRun && this.state.backlog && specsIssues(this.state.backlog).length === 0) {
+      await this.writeSpecs(first);
+      await this.journal.fact(RefineEvent.SpecsOwnerApproved, { specsHash: first.hash });
+      return;
+    }
+    this.leanRun = false;
     let specs = first;
     let repaired = checkFirst;
     let decides = 0;
     for (;;) {
-      const repairable = () => ((this.state.specsRepairs ?? 0) < MAX_SPECS_REPAIRS ? this.specsFeedbackOf(specs.hash) : null);
+      const repairable = () => ((this.state.specsRepairs ?? 0) < this.specsRepairLimit ? this.specsFeedbackOf(specs.hash) : null);
       // A text a reviewer already rejected goes straight back to the agents; any other is checked first, and so is the one a repair just made.
       let feedback = repaired ? null : repairable();
       if (!feedback) {
@@ -1320,8 +1359,8 @@ export class RefineSession {
       }
       if (!feedback || ctl.signal.aborted) {
         // The repairs are spent and a reviewer still rejects this text: the PO fixes the obvious in the documents and asks the owner the rest.
-        if (!ctl.signal.aborted && (this.state.specsRepairs ?? 0) >= MAX_SPECS_REPAIRS && this.specsFeedbackOf(specs.hash) !== null) {
-          if (this.autonomous && decides < MAX_SPECS_DECIDES) {
+        if (!ctl.signal.aborted && (this.state.specsRepairs ?? 0) >= this.specsRepairLimit && this.specsFeedbackOf(specs.hash) !== null) {
+          if (this.autonomous && decides < this.specsDecideLimit) {
             decides += 1;
             // The PO settles every open point in the documents, the backlog is detailed again on them, and the new text is checked.
             if (await this.askRound(ctl, specs, 'decide')) {
@@ -1401,13 +1440,30 @@ export class RefineSession {
   }
 
   /** Writes specs.md and reads it back, then PO and SM check it; a failure is journaled for each reviewer, never thrown. */
+  /** Writes specs.md, reads it back and journals it. */
+  private async writeSpecs(specs: { text: string; hash: string }): Promise<void> {
+    await writeSpecsMd(this.deps.draft, specs.text);
+    if (sha256((await readSpecsMd(this.deps.draft)) ?? '') !== specs.hash) throw new Error('o arquivo não foi encontrado depois de gravado');
+    await this.journal.fact(RefineEvent.SpecsMdWritten, { hash: specs.hash, bytes: Buffer.byteLength(specs.text) });
+  }
+
+  /** Lean: PO and SM check the specs.md already followed, while the plans are written; their verdicts are journaled and never hold the start. */
+  async reviewSpecsBeside(): Promise<void> {
+    const specs = this.specsOf();
+    if (!specs || this.state.specsMd?.hash !== specs.hash) return;
+    if (this.state.specsOwnerApproved !== specs.hash) return;
+    const pending = SPECS_REVIEWERS.filter((role) => this.state.specsReview?.[role]?.specsHash !== specs.hash);
+    if (pending.length === 0) return;
+    const docs = await this.docsNow();
+    const ctl = new AbortController();
+    await Promise.all(pending.map((role) => this.reviewSpecs(role, specs, docs, ctl).catch(() => undefined)));
+  }
+
   private async timedSpecs(ctl: AbortController, specs: { text: string; hash: string }): Promise<void> {
     // An open evaluation spans the file and both checks, so the page shows the work, its timer and its end like any other.
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
-      await writeSpecsMd(this.deps.draft, specs.text);
-      if (sha256((await readSpecsMd(this.deps.draft)) ?? '') !== specs.hash) throw new Error('o arquivo não foi encontrado depois de gravado');
-      await this.journal.fact(RefineEvent.SpecsMdWritten, { hash: specs.hash, bytes: Buffer.byteLength(specs.text) });
+      await this.writeSpecs(specs);
       const docs = await this.docsNow();
       const pending = SPECS_REVIEWERS.filter((role) => !approvedAt(this.state.specsReview?.[role], specs.hash));
       await Promise.all(pending.map((role) => this.reviewSpecs(role, specs, docs, ctl)));
@@ -1475,8 +1531,8 @@ export class RefineSession {
       // A question or an error needs the owner; the next click resumes from the journal.
       if (status === 'error' || status === 'answering') return;
       if (mode !== 'new-project' && mode !== 'backlog') return;
-      // The documents changed during the cycle, so they are evaluated again.
-      if (stale) continue;
+      // The documents changed during the cycle, so they are evaluated again. Lean: a request's own fixes, accepted in the cycle, do not start another full cycle.
+      if (stale && !(leanRefine() && this.state.extension)) continue;
       if (status === 'ready') {
         if (backlog?.enabled) return;
         // A repository session waits for the architecture of the documents as they are now.

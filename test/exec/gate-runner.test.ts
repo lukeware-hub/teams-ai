@@ -291,7 +291,7 @@ describe('runGate', () => {
 
     it('passes when the command exits 0 and the written summary clears the floor', async () => {
       const f = files({});
-      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 83.4}').exec, ...f.deps });
+      const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 93.4}').exec, ...f.deps });
       expect(r).toMatchObject({ passed: true, failure: null });
     });
 
@@ -311,7 +311,7 @@ describe('runGate', () => {
       const f = files({});
       const r = await runGate(gate({ name: 'coverage', command: 'npx vitest run --coverage' }), covCtx, { exec: writes(f, '{"linesPct": 77.6}').exec, ...f.deps });
       expect(r).toMatchObject({ passed: false, failure: 'code' });
-      expect(r.stderrTail).toContain('linesPct 77.6 is below 80');
+      expect(r.stderrTail).toContain('linesPct 77.6 is below 90');
     });
 
     it('fails closed when the command exits 0 but never wrote the summary (a disarmed or broken command cannot pass this way)', async () => {

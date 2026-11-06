@@ -34,6 +34,21 @@ export function suggestPack(input: { file: SuggestFile; projectId: string; specH
   return { kind: 'suggest', role: SUGGEST_ROLE[input.file], specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };
 }
 
+/** "Sugestão" of a new request: one step that rewrites the user's text as a detailed spec, grounded in what the project's code graph says already exists. */
+export function requestSuggestPack(input: { specHash: string; requestText: string; graphContext: string }): ContextPackInput {
+  const feedback = [
+    'Write the user request below again in `text`, as a detailed, well structured spec the team can refine and develop.',
+    '- Keep every fact and intent of the request; never drop or contradict it.',
+    '- Say what to build, the rules, and verifiable acceptance criteria written as Given/When/Then.',
+    '- The graph context comes from the project code, its five documents and its existing specs, plans and tasks. Use it to name the modules, files and specs the work touches, and say what already exists and must not be rebuilt.',
+    '- Never invent scope the request does not support; mark any assumption as "Suposição:".',
+    '- Write the content in Brazilian Portuguese. Do not edit any file.',
+    `### request\n${input.requestText.trim()}`,
+    `### graph context\n${input.graphContext.trim() || '(no code graph for this project yet)'}`,
+  ].join('\n\n');
+  return { kind: 'suggest', role: 'po', specHash: input.specHash, principles: [], outputContract: outputContract('suggest'), criteria: [], feedback, budgetTokens: 30_000 };
+}
+
 /** Reformatar: one step that rewrites `file` in the shape of its template, from its own text only. */
 export function reshapePack(input: { file: SuggestFile; projectId: string; specHash: string; current: string }): ContextPackInput {
   const feedback = [
@@ -41,7 +56,7 @@ export function reshapePack(input: { file: SuggestFile; projectId: string; specH
     '- Keep every heading of the template, in its order, at the top of the text. Sections the template does not have go after them, at the end, each under its own heading; never fold them into a template section.',
     '- Replace each placeholder of the template, the text between < and >, with the real content of the current file; a line with no real content is removed; a section with no content gets "- (none)"; a section that does not apply gets "- (not applicable)".',
     '- Keep every fact of the current file: reword only to fit the shape; never drop, invent or change a fact.',
-    '- Keep the sections "## Decisões" and "## Ajuste aprovado" word for word.',
+    '- Keep the sections "## Decisões" and "## Approved adjustment" (or "## Ajuste aprovado") word for word.',
     '- Write the content in Brazilian Portuguese. Do not edit any file.',
     `### current ${input.file}\n${input.current.trim() || '(empty)'}`,
     `### template\n${TEMPLATE[input.file](input.projectId)}`,

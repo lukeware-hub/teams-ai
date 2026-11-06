@@ -1,7 +1,7 @@
 import { mkdirSync, promises as fs, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
@@ -31,6 +31,8 @@ let hangAgent: boolean;
 let agentStarted: boolean;
 let spawns: Array<{ args: string[]; logFile: string }>;
 let graphBuilds: string[];
+let graphAsked: string[];
+let graphText: string;
 let registered: string[];
 const base = () => `http://127.0.0.1:${api.port}`;
 const call = (method: string, p: string, body?: unknown) =>
@@ -100,6 +102,8 @@ beforeEach(async () => {
   agentStarted = false;
   spawns = [];
   graphBuilds = [];
+  graphAsked = [];
+  graphText = '';
   registered = [];
   spawnShouldFail = false;
   registerShouldFail = false;
@@ -123,6 +127,7 @@ beforeEach(async () => {
   };
   registry = new SessionRegistry({
     repositoryFlow: false,
+    docsRepoLayout: false,
     cfg: async () => (await readUserConfig(home)).cfg,
     home,
     runAgent: ((req, ctx) => {
@@ -145,6 +150,10 @@ beforeEach(async () => {
     buildGraph: async (projectId) => {
       graphBuilds.push(projectId);
     },
+    projectGraphContext: async (projectId, question) => {
+      graphAsked.push(`${projectId}: ${question}`);
+      return graphText;
+    },
     control,
     runsDir: async () => `${home}/runs`,
     register: async (dir) => {
@@ -156,6 +165,7 @@ beforeEach(async () => {
   api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await api.close();
   await registry.close();
   await remote?.cleanup();
@@ -277,6 +287,25 @@ describe('refine api', () => {
     expect(calls.at(-1)?.prompt).toContain('Cliente se cadastra com nome e e-mail.');
     expect(calls.at(-1)?.prompt).toContain('then docs/flow.md, then the rest');
     expect((await snapshot()).docs['stack.md']).toBe(before);
+  });
+
+  it('suggests a detailed spec for a new request from the project code graph, saving nothing', async () => {
+    graphText = 'Node: GreetingService (src/greeting.ts)';
+    script['suggest/po'] = [{ text: '# Exportar PDF\n\nDetalhado.' }];
+    const res = await call('POST', '/api/projects/hello-app/requests/suggest', { description: '  Exportar PDF  ' });
+    expect(await res.json()).toEqual({ text: '# Exportar PDF\n\nDetalhado.' });
+    expect(graphAsked).toEqual(['hello-app: Exportar PDF']);
+    expect(calls.at(-1)?.prompt).toContain('Exportar PDF');
+    expect(calls.at(-1)?.prompt).toContain('GreetingService (src/greeting.ts)');
+    expect(await fs.readdir(`${home}/ws/_suggest`)).toEqual([]);
+    expect((await (await fetch(`${base()}/api/refine`)).json())).toEqual([]);
+  });
+
+  it('suggests without a code graph and refuses an empty description', async () => {
+    script['suggest/po'] = [{ text: 'Texto' }];
+    expect((await call('POST', '/api/projects/hello-app/requests/suggest', { description: 'Exportar PDF' })).status).toBe(200);
+    expect(calls.at(-1)?.prompt).toContain('(no code graph for this project yet)');
+    expect((await call('POST', '/api/projects/hello-app/requests/suggest', { description: '   ' })).status).toBe(400);
   });
 
   it('adjusts design.md from template images without saving, and deletes the images', async () => {
@@ -1056,7 +1085,34 @@ describe('refine api', () => {
     expect(after.specsApproved).toBe(true);
   });
 
+  it('the owner autopilot of a new project keeps the full check: PO and SM both read specs.md before it is approved', async () => {
+    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
+    const url = '/api/refine/hello-app/hello-app-001';
+    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
+    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
+    script['spec/po'] = [spec];
+    script['preplan/sm'] = [preplan];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
+    const before = calls.filter((c) => c.kind === 'specs-review').length;
+    expect((await call('POST', `${url}/autopilot`)).status).toBe(202);
+    for (let i = 0; i < 200 && !(await snapshot()).specsApproved; i++) await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    expect((await snapshot()).specsApproved).toBe(true);
+    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThan(before);
+  });
+
   it('the autopilot answers the open questions, has the PO decide what the reviewers keep rejecting, and clears the start', async () => {
+    // The full path of the owner's button: the lean refinement follows specs.md at once, so this test turns it off.
+    vi.stubEnv('TEAMS_AI_REFINE_LEAN', '0');
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);

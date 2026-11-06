@@ -2,8 +2,8 @@
  * stack has; the gate only has to leave this one normalized signal behind. */
 export const COVERAGE_GATE = 'coverage';
 
-/** Floor every plan's coverage gate must clear when coverage is required (roadmap R10.2, human decision 2026-10-06). */
-export const MIN_LINE_COVERAGE_PCT = 80;
+/** Floor every plan's coverage gate must clear when coverage is required (global rule 6). */
+export const MIN_LINE_COVERAGE_PCT = 90;
 
 /** `linesPct: null` means the tool measured no code lines: the task has nothing to cover yet. */
 export interface CoverageSummary {

@@ -107,6 +107,16 @@ describe('ProjectHubView', () => {
     rerender(hub(null));
     expect(screen.queryByTestId('github-link')).toBeNull();
   });
+  it('has no graph card, only a link to the graph screen', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('graph-link').getAttribute('href')).toBe('/graph/hello-app');
+    expect(screen.queryByTestId('repo-graph')).toBeNull();
+  });
   it('lists the services with their repositories and the platform, and nothing for a project without services', () => {
     const o = on();
     const hub = (extra: object) => (
@@ -217,7 +227,7 @@ describe('ProjectHubView', () => {
     fireEvent.click(screen.getByTestId('empty-new-spec'));
     expect(screen.getByTestId('new-spec-description')).toBeTruthy();
   });
-  it('an open request holds the form: its notice names it, and Continuar leads to it', () => {
+  it('an earlier request being refined does not hold the form: the form opens and says the new one waits in the queue', () => {
     const o = on();
     const drafts = [{ projectId: 'hello-app', specId: 'hello-app-pedido-1', state: 'answering' as const, registered: true, extension: true }];
     render(
@@ -226,9 +236,8 @@ describe('ProjectHubView', () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId('open-new-spec'));
-    expect(screen.queryByTestId('new-spec-description')).toBeNull();
-    expect(screen.getByTestId('new-spec-open-request').textContent).toContain('hello-app-pedido-1');
-    expect(screen.getByTestId('continue-open-request').getAttribute('href')).toBe('/refine/hello-app/hello-app-pedido-1');
+    expect(screen.getByTestId('new-spec-description')).toBeTruthy();
+    expect(screen.getByTestId('new-spec-queue').textContent).toContain('hello-app-pedido-1');
   });
 
   it('Cancelar closes the form without making a request', () => {

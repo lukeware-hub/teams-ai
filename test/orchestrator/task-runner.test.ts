@@ -583,6 +583,7 @@ describe('TaskRunner: reviewing', () => {
     expect(changeSet).toContain('Language check (hints, not proof)');
     expect(changeSet).toContain('- src/a.ts:1 // criar o total do carrinho');
     expect(changeSet).toContain('- commit message: feat: criar cadastro de usuario');
+    expect(changeSet).toContain('that is history, not a current failure');
   });
 
   it('returns findings to Dev on changes', async () => {

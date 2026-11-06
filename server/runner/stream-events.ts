@@ -91,6 +91,8 @@ export interface StepProfile {
   toolCalls: Record<string, number>;
   /** Skill calls by skill name; absent when the step called no skill. */
   skills?: Record<string, number>;
+  /** Times the agent ran graphify query, explain or path in the step; absent on steps recorded before it was counted. */
+  graphQueries?: number;
   /** Characters of tool results the agent read back, a proxy for the context a tool adds per turn. */
   toolResultChars: number;
   /** A tool result said the CLI's own sandbox could not start (the agent may report it in any language, the tool result does not). */
@@ -251,27 +253,31 @@ const textLength = (content: unknown): number => {
 /** Tool calls and tool-result sizes, from the assistant and user messages of the stream. */
 const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
 
-function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'skills' | 'toolResultChars' | 'sandboxInitFailed'> {
+const GRAPH_QUERY = /^\s*graphify\s+(?:query|explain|path)(?:\s|$)/;
+
+function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'skills' | 'graphQueries' | 'toolResultChars' | 'sandboxInitFailed'> {
   const toolCalls: Record<string, number> = {};
   const skills: Record<string, number> = {};
   let toolResultChars = 0;
+  let graphQueries = 0;
   let sandboxInitFailed = false;
   for (const e of events) {
     if (e.type !== 'assistant' && e.type !== 'user') continue;
     const content = (e as { message?: { content?: unknown } }).message?.content;
     if (!Array.isArray(content)) continue;
-    for (const block of content as Array<{ type?: string; name?: string; input?: { skill?: unknown }; content?: unknown }>) {
+    for (const block of content as Array<{ type?: string; name?: string; input?: { skill?: unknown; command?: unknown }; content?: unknown }>) {
       if (block?.type === 'tool_use' && typeof block.name === 'string') {
         toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
         const skill = block.input?.skill;
         if (block.name === 'Skill' && typeof skill === 'string') skills[skill] = (skills[skill] ?? 0) + 1;
+        if (block.name === 'Bash' && typeof block.input?.command === 'string' && GRAPH_QUERY.test(block.input.command)) graphQueries++;
       } else if (block?.type === 'tool_result') {
         toolResultChars += textLength(block.content);
         if (SANDBOX_INIT_FAILURE.test(JSON.stringify(block.content ?? ''))) sandboxInitFailed = true;
       }
     }
   }
-  return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
+  return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), graphQueries, toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
 }
 
 /** The text of a tool result: a string, or the text parts of a list. */

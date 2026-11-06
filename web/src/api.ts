@@ -322,6 +322,8 @@ export const runApi = {
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
   projectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph`).then((r) => json<GraphView>(r)),
+  projectGraphFile: (projectId: string, repo: string, file: string, line: number | null) =>
+    fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/file?${new URLSearchParams({ repo, path: file, line: String(line ?? '') })}`).then((r) => json<{ url: string | null }>(r)).then((b) => b.url),
   rebuildProjectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
   repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),
@@ -561,6 +563,8 @@ export interface RefineState {
   backlog?: BacklogView | null;
   /** The owner's request this draft follows up, with the outline it followed as main had it. */
   extension?: { requestId: string; title: string; text: string; at: string; before?: Array<{ key: string; rank: number; dependsOn: string[] }> };
+  /** The team resolving a request on its own: running, or stopped with the reasons the owner must decide what is left. */
+  autopilot?: { status: 'queued' | 'running' | 'stopped'; reasons: string[] };
   /** The SM's impact of the request, with the outline it was made from; `issues` names what it broke. */
   impact?: { inputHash: string; impact: RequestImpact | null; issues: string[] };
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
@@ -713,6 +717,7 @@ export const refineApi = {
   suggestName: (input: NameRequest) => send('POST', '/names/suggest', input).then((r) => json<NameSuggestion>(r)),
   newSpec: (projectId: string, specId: string, description = '') => send('POST', `/projects/${encodeURIComponent(projectId)}/specs`, { specId, description }).then((r) => json<{ sessionId: string }>(r)),
   request: (projectId: string, description: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/requests`, { description }).then((r) => json<{ sessionId: string }>(r)),
+  suggestRequest: (projectId: string, description: string) => send('POST', `/projects/${encodeURIComponent(projectId)}/requests/suggest`, { description }).then((r) => json<{ text: string }>(r)),
   continueSpec: (projectId: string, specId: string, report?: string) =>
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   restartSpec: (projectId: string, specId: string) =>
@@ -727,6 +732,8 @@ export const refineApi = {
   undoReshape: (p: string, s: string, reshapeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/reshapes/${encodeURIComponent(reshapeId)}/undo`).then((r) => json<{ ok: true }>(r)),
   closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
+  /** Accepts every suggestion that waits and has the agents run again on what was decided. */
+  acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number }>(r)),
   autopilot: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/autopilot`).then((r) => json<{ ok: true }>(r)),
   askSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/ask`).then((r) => json<{ asked: boolean }>(r)),
   approveSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/approve`).then((r) => json<{ ok: true }>(r)),
@@ -770,6 +777,7 @@ export interface ChatUsage {
   costUsd: number | null;
   seconds: number;
   turns: number;
+  searches?: number;
 }
 export interface ChatMessage {
   role: 'user' | 'assistant';

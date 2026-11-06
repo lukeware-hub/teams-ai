@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execCommand } from '../../server/exec/command.js';
 import { git } from '../../server/git/git.js';
 import { draftPaths } from '../../server/refine/draft.js';
-import { ConflictError } from '../../server/refine/session.js';
 import { makeProject } from '../fixtures/contracts.js';
 import { makeRig, PROJECT, type Rig } from '../fixtures/docs-repo-rig.js';
 import { makeRemote, type Remote } from '../fixtures/git-remote.js';
@@ -57,12 +56,19 @@ describe('a request in a project already in development', () => {
     }
   });
 
-  it('refuses a second request while the first has not started', async () => {
+  it('takes a second request at once and runs its team only after the team of the first has stopped', async () => {
     const first = await rig.registry.addRequest(PROJECT, 'Primeiro pedido.');
+    const second = await rig.registry.addRequest(PROJECT, 'Segundo pedido.');
     try {
-      await expect(rig.registry.addRequest(PROJECT, 'Segundo pedido.')).rejects.toBeInstanceOf(ConflictError);
+      expect(second.state.extension).toMatchObject({ requestId: 'pedido-2', text: 'Segundo pedido.' });
+      for (let i = 0; i < 400 && second.state.autopilot?.status !== 'stopped'; i++) await new Promise((r) => setTimeout(r, 50));
+      expect(second.state.autopilot?.status).toBe('stopped');
+      const stoppedAt = first.events.find((e) => e.type === 'TEAM_AUTOPILOT_STOPPED')!.at;
+      const startedAt = second.events.find((e) => e.type === 'TEAM_AUTOPILOT_STARTED')!.at;
+      expect(Date.parse(startedAt!)).toBeGreaterThanOrEqual(Date.parse(stoppedAt!));
     } finally {
       await first.settled();
+      await second.settled();
     }
   });
 });

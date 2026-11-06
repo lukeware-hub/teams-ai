@@ -3,8 +3,11 @@ import { runPath } from '../routes.js';
 import { Link } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineState } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
+import { Pagination } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
+import { Select } from '../components/Select.js';
+import { PAGE_SIZES } from '@server/api/paging.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
 import { action, panel, plural, sectionHeading, sectionTitle } from '../pages/project-shared.js';
@@ -42,6 +45,9 @@ const PILL = {
 } as const;
 // Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
 const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_9rem_5.5rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+
+// The list reads top-down: what runs, then what waits on a person or a retry, then what failed, then what is done.
+const ORDER: Record<string, number> = { running: 0, completing: 0, interrupted: 1, delivered: 2, waiting: 3, pending: 4, failed: 5, blocked: 5, partial: 6, done: 7 };
 
 /** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
 const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
@@ -173,6 +179,28 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
   const running = program.status !== 'finished';
   const waiting = onlyValidationsLeft(program);
   const awaiting = awaitingOwner(program);
+  const [facet, setFacet] = useState('');
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState<number>(PAGE_SIZES[1]);
+  const ordered = [...program.items].sort((a, b) => (ORDER[shownStatus(a)] ?? 9) - (ORDER[shownStatus(b)] ?? 9) || a.rank - b.rank);
+  const matching = ordered.filter((i) => !facet || shownStatus(i) === facet);
+  const pages = Math.max(1, Math.ceil(matching.length / size));
+  const current = Math.min(page, pages);
+  const visible = matching.slice((current - 1) * size, current * size);
+  const view = {
+    matched: matching.length,
+    page: current,
+    pages,
+    size,
+    from: matching.length === 0 ? 0 : (current - 1) * size + 1,
+    to: Math.min(current * size, matching.length),
+    setPage,
+    setSize: (next: number) => {
+      setSize(next);
+      setPage(1);
+    },
+  };
+  const statuses = [...new Set(ordered.map(shownStatus))];
   return (
     <section className={`${panel} gap-4`} data-testid="program-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="program-panel-header">
@@ -191,8 +219,17 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
       </div>
       <progress data-testid="program-panel-progress-bar" className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />
       {program.status === 'finished' && <p className="hint m-0" data-testid="program-panel-finished">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : program.items.some((i) => i.status === 'partial') ? ': há specs concluídas parcialmente.' : '.'}</p>}
-      <ol className="-mx-3 my-0 list-none p-0" data-testid="program-panel-list">
-        {[...program.items].sort((a, b) => a.rank - b.rank).map((i) => (
+      {ordered.length > 1 && (
+        <label data-testid="program-panel-filter" className="block w-fit min-w-0 max-md:w-full">
+          <span className="sr-only">Filtrar por status</span>
+          <Select wrapperClassName="md:w-56" value={facet} onChange={(e) => { setFacet(e.target.value); setPage(1); }}>
+            <option value="">Status: todos</option>
+            {statuses.map((s) => <option key={s} value={s}>{LABEL[s]}</option>)}
+          </Select>
+        </label>
+      )}
+      <ol className="-mx-3 my-0 list-none p-0 text-left" data-testid="program-panel-list">
+        {visible.map((i) => (
           <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
             <span className="font-mono text-[0.8125rem] text-ink-soft tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
             <div className="grid min-w-0 gap-1" data-testid={`program-panel-body-${i.key}`}>
@@ -224,6 +261,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
           </li>
         ))}
       </ol>
+      <Pagination view={view} />
     </section>
   );
 }

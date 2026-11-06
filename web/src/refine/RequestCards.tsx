@@ -89,21 +89,40 @@ export function TraceStrip({ trail }: { trail: string }) {
   return <p data-testid="request-trail" className="m-0 text-[0.8125rem] text-ink-soft">Trilha: {trail}</p>;
 }
 
-/** The bar that closes the request: the checks it passed, its trail, and the owner's one action. */
-export function ReadyBar({ checks, trail, action }: { checks: ReadyCheck[]; trail: string; action: ReactNode }) {
+/** Where the request stands, in one sentence the owner can act on. */
+export type RequestStatus = { tone: 'working' | 'needs' | 'ready'; title: string; text: string };
+
+const STATUS_ICON = { working: 'refresh', needs: 'alert', ready: 'check' } as const;
+const STATUS_TILE = {
+  working: 'text-[color:var(--tile-accent-ink)] [background:var(--tile-accent)]',
+  needs: 'text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]',
+  ready: 'text-[color:var(--tile-good-ink)] [background:var(--tile-good)]',
+} as const;
+
+/** The head of the request screen: its state in plain words, the checks it passed, its trail, and the owner's one action. */
+export function ReadyBar({ checks, trail, action, status }: { checks: ReadyCheck[]; trail: string; action: ReactNode; status?: RequestStatus }) {
+  const done = checks.filter((c) => c.ok).length;
   return (
-    <section data-testid="request-ready" aria-labelledby="request-ready-title" className="card grid gap-3 p-4">
-      <h3 id="request-ready-title" className="m-0 text-[1rem] font-semibold text-ink">Pronto</h3>
-      <ul data-testid="request-checks" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[0.875rem] text-ink">
+    <section data-testid="request-ready" data-tone={status?.tone} aria-labelledby="request-ready-title" className="card grid gap-4 border-accent-line bg-[linear-gradient(135deg,var(--accent-soft)_0%,var(--surface)_62%)] p-5 shadow-pop max-sm:p-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span aria-hidden="true" data-testid="request-status-tile" className={`grid size-12 flex-[0_0_3rem] place-items-center rounded-tile shadow-tile ${STATUS_TILE[status?.tone ?? 'ready']} ${status?.tone === 'working' ? '[&>svg]:animate-spin [&>svg]:[animation-duration:2.4s] motion-reduce:[&>svg]:animate-none' : ''}`}>
+          <Icon name={STATUS_ICON[status?.tone ?? 'ready']} size={22} />
+        </span>
+        <div className="min-w-0 flex-[1_1_16rem]">
+          <p id="request-ready-title" role="heading" aria-level={2} className="m-0 text-[1.5rem] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] max-sm:text-[1.25rem]">{status?.title ?? 'Pronto'}</p>
+          {status && <p data-testid="request-status-text" className="m-0 mt-1 max-w-[60ch] text-[0.9375rem] leading-normal text-ink-soft">{status.text}</p>}
+        </div>
+        <div className="flex-none max-sm:w-full max-sm:[&>*]:w-full">{action}</div>
+      </div>
+      <ul data-testid="request-checks" aria-label={`${done} de ${checks.length} verificações concluídas`} className="m-0 flex list-none flex-wrap gap-2 p-0">
         {checks.map((c) => (
-          <li key={c.id} data-testid={`request-check-${c.id}`} className="flex items-center gap-1.5">
-            <Icon name={c.ok ? 'check' : 'clock'} size={14} />
+          <li key={c.id} data-testid={`request-check-${c.id}`} className={`status-dot ${c.ok ? 'ok' : ''}`}>
+            <Icon name={c.ok ? 'check' : 'clock'} size={13} />
             {c.ok ? c.label : `falta: ${c.label}`}
           </li>
         ))}
       </ul>
       <TraceStrip trail={trail} />
-      <div className="flex justify-end">{action}</div>
     </section>
   );
 }
