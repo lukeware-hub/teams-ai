@@ -45,12 +45,28 @@ export interface GraphMap {
   truncated: boolean;
 }
 
-/** What the agents asked the graph themselves: the queries they ran, over the finished steps that were counted, by kind of step. */
-export interface GraphQueries {
+/** Queries and the counted steps they came from, for one source of agents. */
+export interface QueryCount {
   total: number;
   /** Finished agent steps that carry the count; steps recorded before it existed are not in it. */
   steps: number;
+}
+
+/**
+ * What the agents asked the graph themselves. The top fields are the delivery runs (their steps by kind); the refinement
+ * drafts and the chat answers are counted apart, because their agents get the graph as text and often ask nothing.
+ */
+export interface GraphQueries extends QueryCount {
   byKind: Record<string, number>;
+  refine: QueryCount;
+  chat: QueryCount;
+}
+
+/** Where the counts besides the delivery runs come from: the event lists of the refinement drafts and the stored chat answers. */
+export interface GraphUsageSources {
+  refine?: ReadonlyArray<readonly StoredEvent[]>;
+  /** One entry per stored chat answer: its graph query count, or undefined when it was not measured. */
+  chat?: ReadonlyArray<number | undefined>;
 }
 
 export interface GraphUse {
@@ -87,19 +103,36 @@ interface RawGraph {
 }
 
 function emptyUsage(): GraphView['usage'] {
-  return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {} } };
+  return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } };
 }
 
 /** How the agents used the code context, read from the runs' journals. */
-export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly StoredEvent[] }>): GraphView['usage'] {
+export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly StoredEvent[] }>, sources: GraphUsageSources = {}): GraphView['usage'] {
   const usage = emptyUsage();
+  // A finished step that carries the count; older steps have no `graphQueries` and would read as zero.
+  const countOf = (e: StoredEvent): number | null => {
+    const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
+    return e.type === 'STEP_FINISHED' && typeof queries === 'number' ? queries : null;
+  };
+  for (const events of sources.refine ?? []) {
+    for (const e of events) {
+      const n = countOf(e);
+      if (n === null) continue;
+      usage.queries.refine.steps += 1;
+      usage.queries.refine.total += n;
+    }
+  }
+  for (const n of sources.chat ?? []) {
+    if (typeof n !== 'number') continue;
+    usage.queries.chat.steps += 1;
+    usage.queries.chat.total += n;
+  }
   const all: GraphUse[] = [];
   for (const run of runs) {
     for (const e of run.events) {
       if (e.type === 'STEP_FINISHED') {
-        // Only steps recorded with the count are measured; older ones have no `graphQueries` and would read as zero.
-        const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
-        if (typeof queries !== 'number') continue;
+        const queries = countOf(e);
+        if (queries === null) continue;
         const kind = String(e.data.kind);
         usage.queries.steps += 1;
         usage.queries.total += queries;
@@ -185,8 +218,8 @@ export async function linkNodes(view: GraphView, resolve: (node: GraphViewNode) 
 }
 
 /** A small view of the project's graph file: counts, the most connected nodes and how the agents used it. */
-export function buildGraphView(raw: string | null, runs: Parameters<typeof graphUsage>[0]): GraphView {
-  const usage = graphUsage(runs);
+export function buildGraphView(raw: string | null, runs: Parameters<typeof graphUsage>[0], sources: GraphUsageSources = {}): GraphView {
+  const usage = graphUsage(runs, sources);
   let graph: RawGraph = {};
   try {
     graph = raw ? (JSON.parse(raw) as RawGraph) : {};

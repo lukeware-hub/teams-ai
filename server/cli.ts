@@ -204,9 +204,10 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   healTimer.unref();
   const healSettle = setTimeout(healTick, HEAL_SETTLE_MS);
   healSettle.unref();
+  const chatStore = new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats'));
   const chat = new ChatService({
     guideDir: path.join(repoRoot, 'docs', 'guia'),
-    store: new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats')),
+    store: chatStore,
     index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }),
     runAgent,
     log: io.stderr,
@@ -228,7 +229,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}) }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,

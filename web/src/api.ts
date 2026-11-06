@@ -778,6 +778,8 @@ export interface ChatUsage {
   seconds: number;
   turns: number;
   searches?: number;
+  /** Times the answer asked the graph itself; absent when it was not measured. */
+  graphQueries?: number;
 }
 export interface ChatMessage {
   role: 'user' | 'assistant';

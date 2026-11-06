@@ -170,7 +170,8 @@ export class ChatService {
       )) as StepOutcome<ChatOutput>;
       const measured = usageOf(out.summary);
       const queries = out.summary.webSearchQueries ?? [];
-      const usage = measured ? { ...measured, model, searches: queries.length } : undefined;
+      const graphQueries = out.summary.profile?.graphQueries;
+      const usage = measured ? { ...measured, model, searches: queries.length, ...(typeof graphQueries === 'number' ? { graphQueries } : {}) } : undefined;
       const sources = out.summary.webSearchSources ?? [];
       const searched = queries.length > 0;
       // The sources are the links the search returned, appended by the server: the model names them, it never writes an address.

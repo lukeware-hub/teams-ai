@@ -21,9 +21,12 @@ const KIND_LABEL: Record<string, string> = { dev: 'desenvolvimento', review: 're
 
 /** What the agents asked the graph themselves; nothing is shown as zero until a step has been measured. */
 function queriesLine(q: GraphView['usage']['queries']): string {
-  if (q.steps === 0) return 'Consultas feitas pelos agentes: ainda não medido, conta a partir dos próximos passos.';
-  const kinds = Object.entries(q.byKind).filter(([, n]) => n > 0).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`);
-  return `Consultas feitas pelos agentes: ${q.total} em ${plural(q.steps, 'passo', 'passos')}${kinds.length ? ` (${kinds.join(', ')})` : ''}.`;
+  const parts = [
+    q.steps === 0 ? null : `entrega ${q.total} em ${plural(q.steps, 'passo', 'passos')}${Object.entries(q.byKind).some(([, n]) => n > 0) ? ` (${Object.entries(q.byKind).filter(([, n]) => n > 0).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`).join(', ')})` : ''}`,
+    q.refine.steps === 0 ? null : `refinamento ${q.refine.total} em ${plural(q.refine.steps, 'passo', 'passos')}`,
+    q.chat.steps === 0 ? null : `chat ${q.chat.total} em ${plural(q.chat.steps, 'resposta', 'respostas')}`,
+  ].filter((p) => p !== null);
+  return parts.length === 0 ? 'Consultas feitas pelos agentes: ainda não medido, conta a partir dos próximos passos.' : `Consultas feitas pelos agentes: ${parts.join(' · ')}.`;
 }
 
 // Hues spread by the golden angle stay apart however many communities there are.

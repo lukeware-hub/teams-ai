@@ -696,7 +696,7 @@ export class TaskRunner {
   }
 
   /** Journals where a step's code context came from, so the graph's use is visible. */
-  private recordCode(step: 'dev' | 'review', code: CodeContext): Promise<unknown> {
+  private recordCode(step: 'dev' | 'review' | 'security', code: CodeContext): Promise<unknown> {
     return this.deps.journal.fact(OrchEvent.CodeContextUsed, { taskId: this.taskId, step, source: code.source, nodes: (code.nodes?.length ?? 0) + (code.affected?.length ?? 0) });
   }
 
@@ -715,6 +715,8 @@ export class TaskRunner {
     const depth = REVIEW_PROFILE_DEPTH[profile];
     const code: CodeContext = depth === 0 ? { source: 'none' } : await this.deps.impact(this.worktree, this.branch, changed, depth);
     await this.recordCode('review', code);
+    // The security step reads the same context as the review, so its use of the graph is journaled apart.
+    await this.recordCode('security', code);
     const diff = await this.boundedDiff();
     // The last two rounds of findings, so the reviewer does not reverse its own requests.
     const priorFindings = this.deps.journal.events.filter((e) => e.type === OrchEvent.ReviewChanges && e.data.taskId === this.taskId).slice(-2).flatMap((e) => e.data.findings as ReviewOutput['findings']);

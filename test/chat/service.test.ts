@@ -97,6 +97,16 @@ describe('ChatService.ask', () => {
     expect((await prose.service.ask('hello-app', 'outra'))!.usage).toMatchObject({ costUsd: null, turns: 3 });
   });
 
+  it('keeps the count of graph queries on the answer only when the step measured it', async () => {
+    const base = { usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0.01, durationMs: 1000, numTurns: 1 };
+    const asked = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: { ...base, profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, graphQueries: 2, toolResultChars: 0 } } }));
+    expect((await asked.service.ask('hello-app', 'pergunta'))!.usage).toMatchObject({ graphQueries: 2 });
+    const none = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: { ...base, profile: { thinkingTokens: 0, durationApiMs: 0, toolCalls: {}, graphQueries: 0, toolResultChars: 0 } } }));
+    expect((await none.service.ask('hello-app', 'pergunta'))!.usage).toMatchObject({ graphQueries: 0 });
+    const unmeasured = make(async (_req: Req) => ({ ok: true, value: { specHash: 'x', answer: 'ok', correction: null }, summary: base }));
+    expect((await unmeasured.service.ask('hello-app', 'pergunta'))!.usage).not.toHaveProperty('graphQueries');
+  });
+
   it('brings the older messages that match the question into the prompt, with no search step, and keeps the prompt prefix the same for every question', async () => {
     const store = new ChatStore(path.join(home, 'chats'));
     const old = Array.from({ length: 10 }, (_, i): ChatMessage => ({ role: i % 2 ? 'assistant' : 'user', text: i === 0 ? 'Como funciona a comunicação assíncrona entre os microsserviços?' : `Mensagem ${i} sobre outro assunto`, at: '2026-10-14T10:00:00.000Z' }));

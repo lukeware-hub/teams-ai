@@ -10,7 +10,7 @@ const view = (over: Partial<GraphView> = {}): GraphView => ({
   links: 2,
   communities: 2,
   top: [],
-  usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 3, steps: 12, byKind: { dev: 2, review: 1 } } },
+  usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 3, steps: 12, byKind: { dev: 2, review: 1 }, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } },
   map: {
     nodes: [
       { id: 'a', label: 'Alpha', repo: 'p', file: 'src/a.go', line: 4, community: 'c1', edges: 2 },
@@ -49,19 +49,26 @@ describe('ProjectGraph', () => {
   it('shows what the agents asked the graph themselves, by kind of step', async () => {
     vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
     show();
-    await waitFor(() => expect(screen.getByTestId('graph-queries').textContent).toContain('3 em 12 passos (desenvolvimento 2, revisão 1)'));
+    await waitFor(() => expect(screen.getByTestId('graph-queries').textContent).toContain('entrega 3 em 12 passos (desenvolvimento 2, revisão 1)'));
+    expect(screen.queryByTestId('graph-queries-none')).toBeNull();
+  });
+
+  it('counts the refinement and the chat apart, and warns only about the delivery steps', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 9 }, chat: { total: 2, steps: 3 } } } }));
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-queries').textContent).toContain('refinamento 0 em 9 passos · chat 2 em 3 respostas'));
     expect(screen.queryByTestId('graph-queries-none')).toBeNull();
   });
 
   it('says it is not measured yet before the first counted step', async () => {
-    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {} } } }));
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } } }));
     show();
     await waitFor(() => expect(screen.getByTestId('graph-queries').textContent).toContain('ainda não medido'));
     expect(screen.queryByTestId('graph-queries-none')).toBeNull();
   });
 
   it('warns when many steps were counted and no agent asked the graph anything', async () => {
-    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 0, steps: 8, byKind: {} } } }));
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ usage: { graph: 4, grep: 1, none: 0, recent: [], queries: { total: 0, steps: 8, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } } }));
     show();
     await waitFor(() => expect(screen.getByTestId('graph-queries-none').textContent).toContain('últimos 8 passos'));
   });

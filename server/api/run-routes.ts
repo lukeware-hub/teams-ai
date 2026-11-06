@@ -66,6 +66,8 @@ export interface RunRoutesDeps {
   graphify?: Graphify;
   /** Erases the project's chat history, which lives outside its workspace. */
   clearChat?: (projectId: string) => Promise<void>;
+  /** The stored chat answers of a project, to count how often the chat asked the graph. */
+  chatMessages?: (projectId: string) => Promise<ReadonlyArray<{ usage?: { graphQueries?: number } }>>;
   /** Name resolution for the clone-host check; defaults to the system resolver. */
   resolveHost?: ResolveHost;
   /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
@@ -551,7 +553,11 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const file = graphFile(path.posix.join(ws.graph, 'project'));
         const raw = await fs.readFile(file, 'utf8').catch(() => null);
         const updatedAt = await fs.stat(file).then((s) => s.mtime.toISOString(), () => null);
-        const linked = await linkNodes(buildGraphView(raw, repoRuns), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, await graphClones(params.projectId!)));
+        // The refinement drafts and the chat answers are read apart from `repoRuns`, which the dashboard shares.
+        const refine: StoredEvent[][] = [];
+        for (const id of await fs.readdir(refineRoot(ws)).catch(() => [] as string[])) refine.push(await loadEvents(draftPaths(ws, id).events).catch(() => []));
+        const chat = ((await deps.chatMessages?.(params.projectId!).catch(() => [])) ?? []).filter((m) => m.usage !== undefined).map((m) => m.usage!.graphQueries);
+        const linked = await linkNodes(buildGraphView(raw, repoRuns, { refine, chat }), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, await graphClones(params.projectId!)));
         json(200, { ...linked, status: { updatedAt, failure: graphFailure(params.projectId!) } });
       },
     },

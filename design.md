@@ -1846,6 +1846,7 @@ A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqu
 
 - A linha abaixo de cada resposta do assistente mostra, nesta ordem: custo estimado, tokens lidos, tokens escritos, número de buscas na web e tempo.
 - As buscas aparecem como `1 busca na web` ou `N buscas na web`, com `0 buscas na web` quando a resposta não pesquisou. Mensagens salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
+- Depois das buscas e antes do tempo vem `N consultas ao grafo` (`1 consulta ao grafo` no singular): as vezes que a resposta consultou o grafo do projeto por conta própria. `0 consultas ao grafo` quando consultou nada. Respostas salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
 
 ## 36. Grafo do código — `/graph/:projectId`
 
@@ -1856,7 +1857,7 @@ O grafo do código tem uma tela própria por projeto. O hub do projeto não tem 
 - Lista de comunidades: ao lado do mapa no desktop, embaixo no celular. Mostra as 20 maiores com cor, nome e tamanho, e uma linha `Outras (N)` para o resto. Cada linha tem uma caixa que liga e desliga a comunidade no mapa, e `Selecionar todas` liga ou desliga todas.
 - Busca: filtra os nós pelo nome. Os achados ganham um anel no mapa e entram numa lista que se usa pelo teclado.
 - Nó escolhido: nome, arquivo e linha, número de ligações, comunidade, os vizinhos e `Abrir no GitHub` quando o arquivo está publicado.
-- Consultas dos agentes: abaixo de `Uso pelos agentes`, a linha `Consultas feitas pelos agentes: N em M passos` conta as vezes que um agente rodou `graphify query`, `explain` ou `path` por conta própria, por tipo de passo. Antes do primeiro passo medido ela diz `ainda não medido`. Com 5 passos ou mais e nenhuma consulta, uma linha avisa que nenhum agente consultou o grafo.
+- Consultas dos agentes: abaixo de `Uso pelos agentes`, a linha `Consultas feitas pelos agentes` conta as vezes que um agente rodou `graphify query`, `explain` ou `path` por conta própria, separadas por origem: `entrega N em M passos` (por tipo de passo), `refinamento N em M passos` e `chat N em M respostas`. Antes do primeiro passo medido ela diz `ainda não medido`. Com 5 passos de entrega ou mais e nenhuma consulta, uma linha avisa que nenhum agente consultou o grafo; o refinamento e o chat não disparam o aviso, porque recebem o grafo como texto e podem legitimamente consultar zero.
 - Acima do mapa: a linha `Uso pelos agentes` e, quando o grafo passa de 3000 nós, o aviso de que o mapa mostra os mais ligados.
 - Celular: o botão de atualizar e o do GitHub ocupam a linha inteira; o mapa tem 60% da altura da tela.
 - Movimento: o desenho se organiza em poucos instantes ao abrir; com `prefers-reduced-motion` ele já aparece pronto.
