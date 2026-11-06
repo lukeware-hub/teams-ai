@@ -271,6 +271,25 @@ describe('ChatService project graph', () => {
     expect(reply!.correction).toBeUndefined();
   });
 
+  it('gives the chat the global brain only for a project that is certainly not confidential', async () => {
+    await fs.mkdir(path.join(home, 'ws', '_brain', 'graphify-out'), { recursive: true });
+    await fs.writeFile(path.join(home, 'ws', '_brain', 'graphify-out', 'graph.json'), '{"nodes":[{"id":"other::a"}]}');
+    // What the first step of an answer finds in its folder; the answer may run its step again for the labels.
+    const firstSeen = async (extra: Parameters<typeof make>[1]): Promise<string | null> => {
+      const values: Array<string | null> = [];
+      const runAgent = vi.fn(async (req: Req) => {
+        values.push(await fs.readFile(path.join(req.cwd, 'brain', 'graph.json'), 'utf8').catch(() => null));
+        return ok({ answer: 'Resposta.', correction: null });
+      });
+      await make(runAgent, extra).service.ask('hello-app', 'pergunta');
+      return values[0] ?? null;
+    };
+    expect(await firstSeen({ confidential: async () => false })).toBe('{"nodes":[{"id":"other::a"}]}');
+    expect(await firstSeen({ confidential: async () => true })).toBeNull();
+    expect(await firstSeen({ confidential: async () => { throw new Error('unreadable'); } })).toBeNull();
+    expect(await firstSeen({})).toBeNull();
+  });
+
   it('does not search the web when the project does not allow it', async () => {
     const runAgent = vi.fn(async (_req: Req) => ok({ answer: 'Resposta.', correction: null }));
     const { service } = make(runAgent, { confidential: async () => true });

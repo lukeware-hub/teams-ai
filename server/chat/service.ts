@@ -15,7 +15,7 @@ import type { ResultSummary } from '../runner/stream-events.js';
 import { buildChatContext, withoutCodes } from './context.js';
 import type { MainDoc } from '../git/main-docs.js';
 import { ensureFreshGraph } from '../knowledge/project-graph.js';
-import { relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
+import { relatedMessages, stageBrainGraph, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from './guide.js';
 import { chatPack, chatSystem } from './pack.js';
 import { needsLabels, withRecordPointer } from './answer.js';
 import { withSources } from './sources.js';
@@ -163,6 +163,8 @@ export class ChatService {
       const projectGraph = path.join(root, projectId, 'graph', 'project', 'graphify-out', 'graph.json');
       await this.ensureProjectGraph(projectId, projectGraph);
       await stageProjectGraph(cwd, projectGraph);
+      // The global brain holds the other projects, so only a project that is certainly not confidential may read it: `webSearch` is true only then.
+      if (webSearch) await stageBrainGraph(cwd, path.join(root, '_brain', 'graphify-out', 'graph.json'));
       const model = await this.deps.chatModel(projectId);
       const out = (await this.deps.runAgent<'chat'>(
         { kind: 'chat', role: 'po', pack: fitPackBudget(chatPack({ opened: input.opened, question: input.question, history: input.history.slice(-HISTORY_MESSAGES), older: relatedMessages(input.history.slice(0, -HISTORY_MESSAGES), input.question), specHash })), systemExtra: chatSystem(input.context), cwd, phase: 'refine', taskId: null, attempt: 1, extraAllow: CHAT_ALLOW, webSearch, denyRead: await this.privateDirs(root, cwd) },
