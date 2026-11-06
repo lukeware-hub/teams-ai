@@ -10,11 +10,10 @@ import { Pagination, SortHeader, TableFilters, usePagedTable } from '../componen
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
-import { GraphPanel } from './repository/GraphPanel.js';
 import { BacklogExecution } from '../refine/BacklogExecution.js';
 import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
-import { PROJECTS, afterStartPath, refinePath, runPath, validationPath } from '../routes.js';
+import { PROJECTS, afterStartPath, graphPath, refinePath, runPath, validationPath } from '../routes.js';
 import { Bone, Skeleton } from '../components/Loading.js';
 import { ACTIVE, CONTINUABLE, HELP, LABEL, action, chip, emptyState, grouped, money, panel, plural, row, rowActions, rowId, rows, responsiveCell, responsiveHead, responsiveRow, responsiveTable, runName, sectionHeading, sectionTitle, stat, statLabel, statValue, stats, when } from './project-shared.js';
 
@@ -174,6 +173,10 @@ export function ProjectHubView(p: {
               <span data-testid="project-hub-progress-value" className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
+          <Link className="link-button" data-testid="graph-link" to={graphPath(pr.projectId)}>
+            Ver grafo do código
+            <Icon name="code" size={16} />
+          </Link>
           {pr.repoUrl ? (
             <a className="link-button" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
               Abrir no GitHub
@@ -294,7 +297,6 @@ export function ProjectHubView(p: {
           </div>
         </section>
       ) : null}
-      <GraphPanel projectId={pr.projectId} />
       {(p.repositories?.length ?? 0) > 0 ? <RepositoriesPanel projectId={pr.projectId} repositories={p.repositories ?? []} /> : pr.services?.length ? (
         <section className={panel} data-testid="project-services">
           <div data-testid="project-hub-services-section" className={section}>
@@ -562,7 +564,8 @@ export function ProjectHub() {
         const own = (await refineApi.list()).filter((d) => d.projectId === projectId);
         setDrafts(own.filter((d) => d.state !== 'started'));
         setBacklogs((current) => {
-          const next = own.filter((d) => d.state === 'started').map((d) => d.specId);
+          // One backlog panel per project: a second started spec of the same backlog would repeat the same list.
+          const next = own.filter((d) => d.state === 'started').map((d) => d.specId).slice(0, 1);
           return next.join() === current.join() ? current : next;
         });
       }

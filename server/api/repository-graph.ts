@@ -1,6 +1,9 @@
 import type { StoredEvent } from '../store/event-store.js';
 
 const TOP_NODES = 60;
+/** The map draws at most this many nodes, the most connected first. */
+const MAP_NODES = 3000;
+const MOVE_PASSES = 20;
 const USAGE_ROWS = 40;
 
 export interface GraphViewNode {
@@ -14,6 +17,32 @@ export interface GraphViewNode {
   edges: number;
   /** The GitHub page of the file, or null when the node has no file to open. */
   url: string | null;
+}
+
+export interface GraphMapNode {
+  id: string;
+  label: string;
+  repo: string;
+  file: string;
+  line: number | null;
+  /** The id of the community the node belongs to. */
+  community: string;
+  edges: number;
+}
+
+export interface GraphCommunity {
+  id: string;
+  /** The label of the most connected node of the community. */
+  name: string;
+  size: number;
+}
+
+export interface GraphMap {
+  nodes: GraphMapNode[];
+  links: Array<{ source: string; target: string }>;
+  communities: GraphCommunity[];
+  /** True when the graph was larger than the map draws. */
+  truncated: boolean;
 }
 
 export interface GraphUse {
@@ -32,8 +61,9 @@ export interface GraphView {
   communities: number;
   /** The most connected nodes, and the links between them only. */
   top: GraphViewNode[];
-  topLinks: Array<{ source: string; target: string }>;
   usage: { graph: number; grep: number; none: number; recent: GraphUse[] };
+  /** Every node and link for the interactive map, with the communities the nodes fall into. */
+  map?: GraphMap;
   /** When the graph file was last written and why the last automatic build failed; the route fills both. */
   status?: { updatedAt: string | null; failure: { at: string; message: string } | null };
 }
@@ -68,6 +98,60 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
   return usage;
 }
 
+/**
+ * Groups the nodes by modularity: each node starts alone and moves to the neighbouring group that tightens the groups the most, until none
+ * moves. Nodes are visited in id order and ties go to the smaller group, so the same graph always gives the same groups. Nodes with no
+ * link share one group. Communities come back biggest first, each named after its most connected node.
+ */
+export function communitiesOf(nodes: ReadonlyArray<{ id: string; label: string }>, links: ReadonlyArray<{ source: string; target: string }>): { of: Map<string, string>; list: GraphCommunity[] } {
+  const order = [...nodes].sort((a, b) => (a.id < b.id ? -1 : 1));
+  const index = new Map(order.map((n, i) => [n.id, i]));
+  const neighbours: number[][] = order.map(() => []);
+  for (const l of links) {
+    const [from, to] = [index.get(l.source), index.get(l.target)];
+    if (from === undefined || to === undefined || from === to) continue;
+    neighbours[from]!.push(to);
+    neighbours[to]!.push(from);
+  }
+  const degree = neighbours.map((n) => n.length);
+  const twiceLinks = degree.reduce((sum, d) => sum + d, 0);
+  const group = order.map((_, i) => i);
+  const total = [...degree];
+  for (let pass = 0; pass < MOVE_PASSES && twiceLinks > 0; pass++) {
+    let moved = false;
+    for (let i = 0; i < order.length; i++) {
+      if (degree[i] === 0) continue;
+      const own = group[i]!;
+      total[own]! -= degree[i]!;
+      const toGroup = new Map<number, number>();
+      for (const other of neighbours[i]!) toGroup.set(group[other]!, (toGroup.get(group[other]!) ?? 0) + 1);
+      const gain = (g: number) => (toGroup.get(g) ?? 0) - (total[g]! * degree[i]!) / twiceLinks;
+      let best = own;
+      for (const g of [...toGroup.keys()].sort((a, b) => a - b)) if (gain(g) > gain(best) + 1e-12) best = g;
+      total[best]! += degree[i]!;
+      if (best !== own) {
+        group[i] = best;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  const groups = new Map<string, number[]>();
+  order.forEach((_, i) => {
+    const key = degree[i] === 0 ? 'alone' : String(group[i]);
+    groups.set(key, [...(groups.get(key) ?? []), i]);
+  });
+  const ranked = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[1][0]! - b[1][0]!);
+  const of = new Map<string, string>();
+  const list = ranked.map(([key, members], i) => {
+    const id = `c${i + 1}`;
+    for (const m of members) of.set(order[m]!.id, id);
+    const top = [...members].sort((a, b) => degree[b]! - degree[a]! || a - b)[0]!;
+    return { id, name: key === 'alone' ? 'Sem ligações' : order[top]!.label, size: members.length };
+  });
+  return { of, list };
+}
+
 const lineOf = (location: string | undefined): number | null => {
   const line = Number(/^L(\d+)/.exec(location ?? '')?.[1]);
   return line > 0 ? line : null;
@@ -95,18 +179,23 @@ export function buildGraphView(raw: string | null, runs: Parameters<typeof graph
   const nodes = all.filter((n) => n.repo !== DESCRIPTION_REPO);
   const kept = new Set(nodes.map((n) => n.id));
   const links = (graph.links ?? []).filter((l) => kept.has(l.source) && kept.has(l.target));
-  if (nodes.length === 0) return { available: false, nodes: 0, links: 0, communities: 0, top: [], topLinks: [], usage };
+  if (nodes.length === 0) return { available: false, nodes: 0, links: 0, communities: 0, top: [], usage };
   const degree = new Map<string, number>();
   for (const l of links) {
     degree.set(l.source, (degree.get(l.source) ?? 0) + 1);
     degree.set(l.target, (degree.get(l.target) ?? 0) + 1);
   }
-  const top = [...nodes]
-    .sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0))
-    .slice(0, TOP_NODES)
-    .map((n) => ({ id: n.id, label: n.label ?? n.id, repo: n.repo ?? '', file: n.source_file ?? '', line: lineOf(n.source_location), community: n.community_name ?? String(n.community ?? ''), edges: degree.get(n.id) ?? 0, url: null }));
-  const shown = new Set(top.map((n) => n.id));
-  const topLinks = links.filter((l) => shown.has(l.source) && shown.has(l.target)).map((l) => ({ source: l.source, target: l.target }));
-  const communities = new Set(nodes.map((n) => n.community_name ?? n.community)).size;
-  return { available: true, nodes: nodes.length, links: links.length, communities, top, topLinks, usage };
+  const groups = communitiesOf(nodes.map((n) => ({ id: n.id, label: n.label ?? n.id })), links);
+  const byDegree = [...nodes].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0));
+  const mapNode = (n: (typeof nodes)[number]): GraphMapNode => ({ id: n.id, label: n.label ?? n.id, repo: n.repo ?? '', file: n.source_file ?? '', line: lineOf(n.source_location), community: groups.of.get(n.id)!, edges: degree.get(n.id) ?? 0 });
+  const top = byDegree.slice(0, TOP_NODES).map((n) => ({ ...mapNode(n), url: null }));
+  const drawn = byDegree.slice(0, MAP_NODES);
+  const shown = new Set(drawn.map((n) => n.id));
+  const map: GraphMap = {
+    nodes: drawn.map(mapNode),
+    links: links.filter((l) => shown.has(l.source) && shown.has(l.target)).map((l) => ({ source: l.source, target: l.target })),
+    communities: groups.list,
+    truncated: nodes.length > MAP_NODES,
+  };
+  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map };
 }

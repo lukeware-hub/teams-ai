@@ -1,0 +1,113 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runApi, type GraphView } from '../api.js';
+import { ProjectGraph } from './ProjectGraph.js';
+
+const view = (over: Partial<GraphView> = {}): GraphView => ({
+  available: true,
+  nodes: 3,
+  links: 2,
+  communities: 2,
+  top: [],
+  usage: { graph: 4, grep: 1, none: 0, recent: [] },
+  map: {
+    nodes: [
+      { id: 'a', label: 'Alpha', repo: 'p', file: 'src/a.go', line: 4, community: 'c1', edges: 2 },
+      { id: 'b', label: 'Beta', repo: 'p', file: 'src/b.go', line: null, community: 'c1', edges: 1 },
+      { id: 'c', label: 'Gamma', repo: 'p', file: '', line: null, community: 'c2', edges: 1 },
+    ],
+    links: [{ source: 'a', target: 'b' }, { source: 'a', target: 'c' }],
+    communities: [{ id: 'c1', name: 'Alpha', size: 2 }, { id: 'c2', name: 'Gamma', size: 1 }],
+    truncated: false,
+  },
+  ...over,
+});
+
+const show = () =>
+  render(
+    <MemoryRouter initialEntries={['/graph/p']}>
+      <Routes>
+        <Route path="/graph/:projectId" element={<ProjectGraph />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('ProjectGraph', () => {
+  it('shows the counts, when it was updated and how the agents used it', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: null } }));
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-counts').textContent).toContain('3 nós · 2 ligações · 2 comunidades'));
+    expect(screen.getByTestId('graph-updated').textContent).toContain('Atualizado em');
+    expect(screen.getByTestId('graph-usage').textContent).toContain('4 pelo grafo');
+    expect(screen.queryByTestId('graph-failure')).toBeNull();
+    expect(screen.getByTestId('graph-canvas').getAttribute('role')).toBe('img');
+  });
+
+  it('warns when the last update failed and says the graph shown is the older one', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: { at: '2026-11-06T16:00:00.000Z', message: 'graphify caiu' } } }));
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-failure').textContent).toContain('graphify caiu'));
+    expect(screen.getByTestId('graph-failure').textContent).toContain('versão anterior');
+  });
+
+  it('offers to build a graph that does not exist yet, then shows it', async () => {
+    const get = vi.spyOn(runApi, 'projectGraph').mockResolvedValueOnce(view({ available: false, map: undefined })).mockResolvedValue(view());
+    const build = vi.spyOn(runApi, 'rebuildProjectGraph').mockResolvedValue(undefined as never);
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-empty')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('graph-build'));
+    await waitFor(() => expect(screen.getByTestId('graph-counts')).toBeTruthy());
+    expect(build).toHaveBeenCalledWith('p');
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('says so when the graph cannot be read', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockRejectedValue(new Error('x'));
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-error')).toBeTruthy());
+  });
+
+  it('turns communities off and on, and all of them with one box', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    show();
+    const all = (await screen.findByTestId('graph-select-all')) as HTMLInputElement;
+    const first = screen.getByTestId('graph-community-c1') as HTMLInputElement;
+    expect(first.checked).toBe(true);
+    fireEvent.click(first);
+    expect(first.checked).toBe(false);
+    expect(all.checked).toBe(false);
+    fireEvent.click(all);
+    expect(first.checked).toBe(true);
+    fireEvent.click(all);
+    expect((screen.getByTestId('graph-community-c2') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('finds a node by name and shows it with its file page and neighbours', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    const file = vi.spyOn(runApi, 'projectGraphFile').mockResolvedValue('https://github.com/acme/p/blob/abc/src/a.go#L4');
+    show();
+    fireEvent.change(await screen.findByTestId('graph-search'), { target: { value: 'alp' } });
+    fireEvent.click(screen.getByText('Alpha', { selector: 'ul button' }));
+    expect(screen.getByTestId('graph-node-detail').textContent).toContain('src/a.go:4');
+    await waitFor(() => expect(screen.getByTestId('graph-node-link').getAttribute('href')).toBe('https://github.com/acme/p/blob/abc/src/a.go#L4'));
+    expect(file).toHaveBeenCalledWith('p', 'p', 'src/a.go', 4);
+    expect(screen.getByTestId('graph-neighbours').textContent).toContain('Beta');
+  });
+
+  it('groups the communities past the twentieth into one line', async () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({ id: `c${i + 1}`, name: `Grupo ${i + 1}`, size: 1 }));
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ map: { ...view().map!, communities: many } }));
+    show();
+    expect((await screen.findByTestId('graph-community-others')).closest('label')!.textContent).toContain('Outras (5)');
+    expect(screen.queryByTestId('graph-community-c21')).toBeNull();
+  });
+
+  it('says when the map shows only the most connected nodes', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ nodes: 5000, map: { ...view().map!, truncated: true } }));
+    show();
+    expect((await screen.findByTestId('graph-truncated')).textContent).toContain('de 5000');
+  });
+});

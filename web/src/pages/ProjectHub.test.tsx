@@ -107,6 +107,16 @@ describe('ProjectHubView', () => {
     rerender(hub(null));
     expect(screen.queryByTestId('github-link')).toBeNull();
   });
+  it('has no graph card, only a link to the graph screen', () => {
+    const o = on();
+    render(
+      <MemoryRouter>
+        <ProjectHubView project={project} notFound={false} runs={runs} drafts={[]} error={null} deleteError={null} onStart={o.start} onResume={o.resume} onStop={o.stop} onContinue={o.cont} onRestart={o.restart} onDeleteDraft={o.deleteDraft} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('graph-link').getAttribute('href')).toBe('/graph/hello-app');
+    expect(screen.queryByTestId('repo-graph')).toBeNull();
+  });
   it('lists the services with their repositories and the platform, and nothing for a project without services', () => {
     const o = on();
     const hub = (extra: object) => (

@@ -1846,3 +1846,17 @@ A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqu
 
 - A linha abaixo de cada resposta do assistente mostra, nesta ordem: custo estimado, tokens lidos, tokens escritos, número de buscas na web e tempo.
 - As buscas aparecem como `1 busca na web` ou `N buscas na web`, com `0 buscas na web` quando a resposta não pesquisou. Mensagens salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
+
+## 36. Grafo do código — `/graph/:projectId`
+
+O grafo do código tem uma tela própria por projeto. O hub do projeto não tem mais o card do grafo: só o botão `Ver grafo do código` no cabeçalho, ao lado de `Abrir no GitHub`. O cartão do projeto em `/projects` tem o mesmo atalho, `Grafo`.
+
+- Cabeçalho: trilha `Projetos › projeto › Grafo do código`, título, `N nós · M ligações · K comunidades`, `Atualizado em` com data e hora, e o botão `Atualizar grafo`. Se a última atualização falhou, uma linha de erro diz quando e por quê, e que o grafo mostrado é o da versão anterior.
+- Mapa: um canvas com os nós coloridos por comunidade. Arrastar move, a roda ou o gesto de pinça dá zoom, passar o mouse ou tocar num nó destaca as ligações dele. As comunidades são calculadas no servidor a partir das ligações, sem modelo de IA, e cada uma leva o nome do nó mais ligado.
+- Lista de comunidades: ao lado do mapa no desktop, embaixo no celular. Mostra as 20 maiores com cor, nome e tamanho, e uma linha `Outras (N)` para o resto. Cada linha tem uma caixa que liga e desliga a comunidade no mapa, e `Selecionar todas` liga ou desliga todas.
+- Busca: filtra os nós pelo nome. Os achados ganham um anel no mapa e entram numa lista que se usa pelo teclado.
+- Nó escolhido: nome, arquivo e linha, número de ligações, comunidade, os vizinhos e `Abrir no GitHub` quando o arquivo está publicado.
+- Acima do mapa: a linha `Uso pelos agentes` e, quando o grafo passa de 3000 nós, o aviso de que o mapa mostra os mais ligados.
+- Celular: o botão de atualizar e o do GitHub ocupam a linha inteira; o mapa tem 60% da altura da tela.
+- Movimento: o desenho se organiza em poucos instantes ao abrir; com `prefers-reduced-motion` ele já aparece pronto.
+- Estados: carregando, sem grafo (`Construir grafo`), erro de leitura, falha da última atualização.

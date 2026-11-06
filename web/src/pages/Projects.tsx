@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { projectPath, refinePath } from '../routes.js';
+import { graphPath, projectPath, refinePath } from '../routes.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
-import { Dialog } from '../components/Dialog.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { Bone, Skeleton } from '../components/Loading.js';
-import { GraphBody } from './repository/GraphPanel.js';
 import { action, chip, emptyState, plural, row, rowActions, rowId, rows, sectionTitle } from './project-shared.js';
 
 const toolbar = 'flex flex-wrap items-center gap-x-4 gap-y-2';
@@ -104,7 +102,6 @@ export function ProjectsView(p: {
   const total = plural(p.projects.length, 'projeto', 'projetos');
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
   // The project whose code graph is open in a dialog.
-  const [graphOf, setGraphOf] = useState<string | null>(null);
   const [newSpecOf, setNewSpecOf] = useState<string | null>(null);
   const [pendingDeleteDraft, setPendingDeleteDraft] = useState<{ projectId: string; specId: string } | null>(null);
   const [pendingDeleteProject, setPendingDeleteProject] = useState<ProjectRow | null>(null);
@@ -324,10 +321,10 @@ export function ProjectsView(p: {
                     Nova spec
                     <Icon name="plus" size={14} />
                   </button>
-                  <button type="button" className={action.secondary} data-testid={`graph-project-${pr.projectId}`} aria-label={`Ver o grafo do código do projeto ${pr.projectId}`} onClick={(e) => { opener.current = e.currentTarget; setGraphOf(pr.projectId); }}>
-                    Graphify
+                  <Link className={action.secondary} data-testid={`graph-project-${pr.projectId}`} aria-label={`Ver o grafo do código do projeto ${pr.projectId}`} to={graphPath(pr.projectId)}>
+                    Grafo
                     <Icon name="code" size={14} />
-                  </button>
+                  </Link>
                   <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>
                     Excluir
                     {busy ? <span className="button-spinner" aria-hidden="true" /> : <Icon name="trash" size={14} />}
@@ -400,13 +397,6 @@ export function ProjectsView(p: {
         </ConfirmDialog>
       ) : null}
       {newSpecOf ? <NewSpecDialog projectId={newSpecOf} queueBehind={p.drafts.find((d) => d.projectId === newSpecOf && d.extension === true && d.state !== 'started' && d.state !== 'ready')?.specId} returnFocus={opener.current} onClose={() => setNewSpecOf(null)} /> : null}
-      {graphOf ? (
-        <Dialog title={`Grafo do código · ${graphOf}`} returnFocus={opener.current} onClose={() => setGraphOf(null)}>
-          <div className="grid gap-3 p-5">
-            <GraphBody projectId={graphOf} />
-          </div>
-        </Dialog>
-      ) : null}
     </main>
   );
 }

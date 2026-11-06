@@ -322,6 +322,8 @@ export const runApi = {
   repositories: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories`).then((r) => json<{ repositories: RepoCardView[] }>(r)).then((b) => b.repositories),
   repositoryDashboard: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard`).then((r) => json<RepoDashboard>(r)),
   projectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph`).then((r) => json<GraphView>(r)),
+  projectGraphFile: (projectId: string, repo: string, file: string, line: number | null) =>
+    fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/file?${new URLSearchParams({ repo, path: file, line: String(line ?? '') })}`).then((r) => json<{ url: string | null }>(r)).then((b) => b.url),
   rebuildProjectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
   repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),

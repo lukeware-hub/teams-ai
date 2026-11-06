@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraphView, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
+import { buildGraphView, communitiesOf, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
 
 const used = (taskId: string, step: string, source: string, nodes: number): StoredEvent =>
@@ -25,9 +25,11 @@ describe('graph view', () => {
 
   it('counts the graph and ranks the most connected node first', () => {
     const view = buildGraphView(graph, []);
-    expect(view).toMatchObject({ available: true, nodes: 3, links: 2, communities: 2 });
+    expect(view).toMatchObject({ available: true, nodes: 3, links: 2, communities: 1 });
     expect(view.top[0]).toMatchObject({ id: 'a', edges: 2 });
-    expect(view.topLinks).toHaveLength(2);
+    expect(view.map?.links).toHaveLength(2);
+    expect(view.map?.nodes.map((n) => n.id)).toEqual(['a', 'b', 'c']);
+    expect(view.map?.truncated).toBe(false);
   });
 
   it('counts how the agents used the code context, newest first', () => {
@@ -75,5 +77,54 @@ describe('graph view nodes', () => {
     });
     expect(view.top.find((n) => n.id === 'a')!.url).toBe('https://github.com/acme/shop/blob/c/docs/a.md');
     expect(view.top.find((n) => n.id === 'b')!.url).toBeNull();
+  });
+});
+
+describe('communities', () => {
+  const node = (id: string) => ({ id, label: id.toUpperCase() });
+  const link = (source: string, target: string) => ({ source, target });
+  const clique = (prefix: string) => {
+    const members = [1, 2, 3, 4, 5].map((i) => `${prefix}${i}`);
+    return members.flatMap((m, i) => members.slice(i + 1).map((other) => link(m, other)));
+  };
+  const twoGroups = [...clique('a'), ...clique('b'), link('a5', 'b1')];
+  const ids = [1, 2, 3, 4, 5].flatMap((i) => [`a${i}`, `b${i}`]);
+
+  it('splits two tight groups joined by one link', () => {
+    const { of, list } = communitiesOf(ids.map(node), twoGroups);
+    expect(list).toHaveLength(2);
+    expect(of.get('a1')).toBe(of.get('a4'));
+    expect(of.get('b2')).toBe(of.get('b4'));
+    expect(of.get('a1')).not.toBe(of.get('b2'));
+  });
+
+  it('gives the same groups however the nodes and links are ordered', () => {
+    const first = communitiesOf(ids.map(node), twoGroups);
+    const second = communitiesOf([...ids].reverse().map(node), [...twoGroups].reverse());
+    expect([...first.of.entries()].sort()).toEqual([...second.of.entries()].sort());
+  });
+
+  it('puts the nodes without links in one group and names each group after its most connected node', () => {
+    const { of, list } = communitiesOf(['x', 'y', 'hub', 'leaf'].map(node), [link('hub', 'leaf')]);
+    expect(of.get('x')).toBe(of.get('y'));
+    expect(list.map((c) => c.name).sort()).toEqual(['HUB', 'Sem ligações']);
+    expect(list.find((c) => c.name === 'Sem ligações')?.size).toBe(2);
+  });
+
+  it('does not let a hub pull every node into one group', () => {
+    const many = Array.from({ length: 60 }, (_, i) => `n${String(i).padStart(2, '0')}`);
+    const spokes = many.map((id) => link('hub', id));
+    const pairs = Array.from({ length: 30 }, (_, i) => link(many[i * 2]!, many[i * 2 + 1]!));
+    const { list } = communitiesOf(['hub', ...many].map(node), [...spokes, ...pairs]);
+    expect(list.length).toBeGreaterThan(5);
+  });
+
+  it('draws at most the most connected nodes and says when it cut the rest', () => {
+    const nodes = Array.from({ length: 3005 }, (_, i) => ({ id: `n${i}`, label: `N${i}` }));
+    const links = nodes.slice(1).map((n) => ({ source: 'n0', target: n.id }));
+    const view = buildGraphView(JSON.stringify({ nodes, links }), []);
+    expect(view.map?.nodes).toHaveLength(3000);
+    expect(view.map?.truncated).toBe(true);
+    expect(view.map?.nodes[0]?.id).toBe('n0');
   });
 });
