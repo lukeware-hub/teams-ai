@@ -269,7 +269,7 @@ button, .primary-button, .primary, .secondary, .link-button { min-width: var(--b
 .link-button:hover { background: var(--accent-soft-hover); }
 /* Phone: every text button fills its row, so stacked buttons share one column; icon-only controls keep their size. */
 @media (max-width: 40rem) {
-  :where(button:not(.info-tip, .dialog-close), .primary-button, .primary, .secondary, .link-button) { width: 100%; }
+  :where(button:not(.info-tip, .dialog-close, [aria-pressed], [role='tab']), .primary-button, .primary, .secondary, .link-button) { width: 100%; }
 }
 input, select, textarea { color: var(--ink); font: inherit; caret-color: var(--accent); accent-color: var(--accent); }
 input:where(:not([type='checkbox'], [type='radio'])), select { flex: 1; min-width: 12rem; height: var(--control-height); padding: 0 0.75rem; border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); font-size: 0.875rem; }
