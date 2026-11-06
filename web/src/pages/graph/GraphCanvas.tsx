@@ -238,7 +238,7 @@ export function GraphCanvas({ nodes, links, colorOf, hidden, selected, matches, 
   };
 
   return (
-    <div ref={box} data-testid="graph-canvas-box" className="relative h-[60vh] min-h-72 w-full overflow-hidden rounded-lg border border-line bg-surface-sunken">
+    <div ref={box} data-testid="graph-canvas-box" className="relative h-[60vh] max-h-[36rem] min-h-72 w-full overflow-hidden rounded-lg border border-line bg-surface-sunken">
       <canvas
         ref={canvas}
         data-testid="graph-canvas"

@@ -14,9 +14,9 @@ export interface Layout {
 }
 
 const STEPS = 300;
-const REPEL_RADIUS = 90;
-const REPEL_FORCE = 700;
-const LINK_LENGTH = 26;
+const REPEL_RADIUS = 110;
+const REPEL_FORCE = 1400;
+const LINK_LENGTH = 34;
 
 // A small seeded generator: the same graph always lands in the same picture.
 function seeded(seed: number): () => number {

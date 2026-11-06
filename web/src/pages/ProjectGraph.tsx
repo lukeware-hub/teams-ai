@@ -178,7 +178,7 @@ export function ProjectGraph() {
                 </ul>
               ) : query.trim() !== '' ? <p className="m-0 text-[0.8125rem] text-ink-soft">Nenhum nó com esse nome.</p> : null}
               <label className="flex items-center gap-2 text-[0.875rem] font-semibold text-ink">
-                <input data-testid="graph-select-all" type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" checked={hidden.size === 0} onChange={toggleAll} />
+                <input data-testid="graph-select-all" type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" ref={(el) => { if (el) el.indeterminate = hidden.size > 0 && hidden.size < communities.length; }} checked={hidden.size === 0} onChange={toggleAll} />
                 Selecionar todas
               </label>
               <ul className="m-0 grid list-none gap-1 p-0">
@@ -195,7 +195,7 @@ export function ProjectGraph() {
                 {others.length > 0 ? (
                   <li>
                     <label className="flex items-center gap-2 text-[0.8125rem] text-ink">
-                      <input data-testid={`graph-community-${OTHERS}`} type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" checked={others.every((c) => !hidden.has(c.id))} onChange={() => toggle(others.map((c) => c.id))} />
+                      <input data-testid={`graph-community-${OTHERS}`} type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" ref={(el) => { if (el) el.indeterminate = others.some((c) => hidden.has(c.id)) && !others.every((c) => hidden.has(c.id)); }} checked={others.some((c) => !hidden.has(c.id))} onChange={() => toggle(others.map((c) => c.id))} />
                       <span aria-hidden="true" className="size-2.5 flex-none rounded-full" style={{ background: GREY }} />
                       <span className="min-w-0 flex-1">{`Outras (${others.length})`}</span>
                       <span className="tabular-nums text-ink-soft">{others.reduce((sum, c) => sum + c.size, 0)}</span>
