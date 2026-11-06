@@ -5,7 +5,7 @@ import type { Project } from '../contracts/project.js';
 import { readProject } from '../api/run-index.js';
 import { fetch as fetchRepo } from '../git/git.js';
 import { readProjectDocs, readSpecFiles, type MainDoc } from '../git/main-docs.js';
-import { graphDir, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import { graphDir, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
 import type { Graphify } from './graphify.js';
 import { projectInfoMarkdown } from './project-info.js';
 
@@ -74,6 +74,9 @@ export async function buildLocatedProjectGraph(graphify: Graphify, located: Loca
 export const GRAPH_TTL_MS = 30 * 60_000;
 /** How long the first question of a project waits for its graph to be built. */
 export const GRAPH_WAIT_MS = 60_000;
+/** After a build that wrote no graph (a project with no code yet), nobody waits for or starts another one for this long. */
+export const GRAPH_EMPTY_MS = 5 * 60_000;
+const emptyUntil = new Map<string, number>();
 
 /**
  * Without a graph the caller waits for the build (up to GRAPH_WAIT_MS); with an old one it goes on from it while the build runs.
@@ -82,14 +85,35 @@ export const GRAPH_WAIT_MS = 60_000;
 export async function ensureFreshGraph(graphFile: string, key: string, build: () => Promise<void>, inFlight: Map<string, Promise<void>>, log?: (line: string) => void): Promise<void> {
   const age = await fs.stat(graphFile).then((s) => Date.now() - s.mtimeMs, () => null);
   if (age !== null && age < GRAPH_TTL_MS) return;
+  // A build that just ended without a graph would end the same way again: no wait on every question.
+  if (age === null && (emptyUntil.get(key) ?? 0) > Date.now()) return;
   let running = inFlight.get(key);
   if (!running) {
     running = build()
+      .then(async () => {
+        const wrote = await fs.access(graphFile).then(() => true, () => false);
+        if (wrote) emptyUntil.delete(key);
+        else emptyUntil.set(key, Date.now() + GRAPH_EMPTY_MS);
+      })
       .catch((err: Error) => log?.(`project graph not built for ${key}: ${err.message}`))
       .finally(() => inFlight.delete(key));
     inFlight.set(key, running);
   }
   if (age === null) await Promise.race([running, new Promise<void>((resolve) => setTimeout(resolve, GRAPH_WAIT_MS).unref())]);
+}
+
+/** How long a run waits for a missing graph before it goes on with the text search; the build keeps going in the background. */
+export const GRAPH_RUN_WAIT_MS = 90_000;
+
+/**
+ * Builds the graph of the project when it has none, so the first task of a run already gets code context. It waits at most
+ * `timeoutMs`; a build that fails is already recorded by `buildLocatedProjectGraphOnce`, and the run goes on without it.
+ */
+export async function ensureProjectGraph(graphify: Graphify, located: LocatedProject, opts: { timeoutMs?: number; log?: (line: string) => void } = {}): Promise<void> {
+  const file = graphFile(path.posix.join(located.ws.graph, 'project'));
+  if (await fs.access(file).then(() => true, () => false)) return;
+  const build = buildLocatedProjectGraphOnce(graphify, located).then(() => undefined, (err: Error) => opts.log?.(`project graph not built before the run: ${err.message}`));
+  await Promise.race([build, new Promise<void>((resolve) => setTimeout(resolve, opts.timeoutMs ?? GRAPH_RUN_WAIT_MS).unref())]);
 }
 
 /** Projects whose graph is being built now, so a button click and a finished run never build the same graph together. */

@@ -7,7 +7,7 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -209,6 +209,51 @@ describe('graph failure record', () => {
     const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
     await buildLocatedProjectGraphOnce(working, located);
     expect(graphFailure(project.projectId)).toBeNull();
+  });
+});
+
+describe('ensureProjectGraph', () => {
+  const located = (ws: ReturnType<typeof workspacePaths>): LocatedProject => ({ ws, project: project as Project, newestSpec: undefined });
+  const graphPath = (ws: ReturnType<typeof workspacePaths>) => path.join(ws.graph, 'project', 'graphify-out', 'graph.json');
+
+  it('builds nothing when the project already has a graph', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    await fs.mkdir(path.dirname(graphPath(ws)), { recursive: true });
+    await fs.writeFile(graphPath(ws), '{}');
+    const fake = new FakeExec();
+    await ensureProjectGraph(new Graphify({ exec: fake.exec, readFile: async () => '{}' }), located(ws));
+    expect(fake.lines('graphify')).toEqual([]);
+  });
+
+  it('builds the graph when there is none and waits for it', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    await ensureProjectGraph(new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) }), located(ws));
+    expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true);
+  });
+
+  it('goes on after the time limit while the build keeps running', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    let done = false;
+    let calls = 0;
+    // Only the first update is slow; the rest of the build is quick, so it ends soon after.
+    const slow = { update: () => (calls++ === 0 ? new Promise<void>((resolve) => setTimeout(() => { done = true; resolve(); }, 400)) : Promise.resolve()), merge: async () => true } as unknown as Graphify;
+    const started = Date.now();
+    await ensureProjectGraph(slow, located(ws), { timeoutMs: 50 });
+    expect(Date.now() - started).toBeLessThan(300);
+    expect(done).toBe(false);
+    // The build goes on by itself; wait for it so the next test finds the project free.
+    await vi.waitFor(() => expect(done).toBe(true), { timeout: 5000 });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  });
+
+  it('goes on, logs and records the failure when the build fails', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => { throw new Error('graphify caiu'); }, merge: async () => undefined } as unknown as Graphify;
+    const logs: string[] = [];
+    await ensureProjectGraph(failing, located(ws), { log: (l) => logs.push(l) });
+    expect(logs[0]).toContain('graphify caiu');
+    expect(graphFailure(project.projectId)?.message).toBe('graphify caiu');
   });
 });
 

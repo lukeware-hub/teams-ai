@@ -26,7 +26,7 @@ import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
-import { refreshProjectGraph } from '../knowledge/project-graph.js';
+import { ensureProjectGraph, refreshProjectGraph } from '../knowledge/project-graph.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { RunEvent, type RunState } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
@@ -837,6 +837,8 @@ export class Run {
     if (resumed !== null) return this.resumePhase6(resumed);
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
+    // A project with no graph yet gets one now, so the first task already has code context; a slow or failed build never stops the run.
+    if (this.deps.graphify) await ensureProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, { log: this.deps.log });
     // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
     if (!this.deps.docsRepo) {
       const phase1 = await runPhase1(this.phaseDeps());
@@ -1015,8 +1017,6 @@ export class Run {
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
     if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';
     if (!p6.ok) return this.finish('phase-failed', p6.reason);
-    // The agents read the graph, so it is rebuilt from main with the documents this run just merged.
-    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, this.deps.log);
     return this.finish(result, reason);
   }
 
@@ -1135,6 +1135,8 @@ export class Run {
     const blocked = tasks.filter((t) => t.state === 'blocked').map((t) => ({ taskId: t.def.id, reason: String([...this.journal.events].reverse().find((e) => e.type === OrchEvent.TaskBlocked && e.data.taskId === t.def.id)?.data.reason ?? reason ?? 'blocked') }));
     await this.journal.fact(OrchEvent.RunFinished, { result: r, reason: reason ?? null, merged: tasks.filter((t) => t.state === 'merged').map((t) => t.def.id), blocked, tokens: this.accounting.total() });
     await this.writeState();
+    // The agents read the graph, so it is rebuilt from main when a run ends, whatever the outcome: a blocked or failed run is history the graph should hold too.
+    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, this.deps.log);
     return r;
   }
 
