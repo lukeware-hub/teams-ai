@@ -1848,9 +1848,9 @@ A escolha de modelo das decisões do Jev (`decisions.modelTiers`) não entra aqu
 - As buscas aparecem como `1 busca na web` ou `N buscas na web`, com `0 buscas na web` quando a resposta não pesquisou. Mensagens salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
 - Depois das buscas e antes do tempo vem `N consultas ao grafo` (`1 consulta ao grafo` no singular): as vezes que a resposta consultou o grafo do projeto por conta própria. `0 consultas ao grafo` quando consultou nada. Respostas salvas antes desta regra não têm a contagem, e a linha as mostra sem ela.
 
-## 36. Grafo do código — `/graph/:projectId`
+## 36. Cérebro do projeto e cérebro do Teams AI — `/graph/:projectId` e `/brain`
 
-O grafo do código tem uma tela própria por projeto. O hub do projeto não tem mais o card do grafo: só o botão `Ver grafo do código` no cabeçalho, ao lado de `Abrir no GitHub`. O cartão do projeto em `/projects` tem o mesmo atalho, `Grafo`.
+O grafo (graphify) é o cérebro do Teams AI. Cada projeto tem o seu, em `/graph/:projectId`, e o Teams AI tem um cérebro único que junta o de todos os projetos que não são confidenciais, em `/brain`. O hub do projeto não tem card do grafo: só o botão `Ver cérebro do projeto` no cabeçalho, ao lado de `Abrir no GitHub`. O cartão do projeto em `/projects` tem o atalho `Cérebro`, e o cabeçalho de `/projects` tem `Cérebro do Teams AI`.
 
 - Cabeçalho: trilha `Projetos › projeto › Grafo do código`, título, `N nós · M ligações · K comunidades`, `Atualizado em` com data e hora, e o botão `Atualizar grafo`. Se a última atualização falhou, uma linha de erro diz quando e por quê, e que o grafo mostrado é o da versão anterior.
 - Mapa: um canvas com os nós coloridos por comunidade. Arrastar move, a roda ou o gesto de pinça dá zoom, passar o mouse ou tocar num nó destaca as ligações dele. As comunidades são calculadas no servidor a partir das ligações, sem modelo de IA, e cada uma leva o nome do nó mais ligado.
@@ -1862,3 +1862,19 @@ O grafo do código tem uma tela própria por projeto. O hub do projeto não tem 
 - Celular: o botão de atualizar e o do GitHub ocupam a linha inteira; o mapa tem 60% da altura da tela.
 - Movimento: o desenho se organiza em poucos instantes ao abrir; com `prefers-reduced-motion` ele já aparece pronto.
 - Estados: carregando, sem grafo (`Construir grafo`), erro de leitura, falha da última atualização.
+
+### 36.1 Conteúdo do cérebro do projeto
+
+- Além do código dos serviços, dos cinco documentos, das specs e dos planos, o cérebro tem notas geradas sem modelo de IA a partir dos diários dos runs e do chat: `brain/tasks/<spec>.md` (cada tarefa com critérios e arquivos), `brain/runs/<spec>.md` (como cada execução terminou, tarefas bloqueadas, fases e publicações que falharam), `brain/costs.md` (custo e passos por spec) e `brain/chat.md` (perguntas e respostas, só de projeto não confidencial). Cada tarefa é ligada aos arquivos de código que nomeia ou alterou.
+- A tela mostra a linha `Conteúdo: N de código · N de documentos · N de tarefas e critérios · N de execuções e falhas · N de chat · N de custos`, sem os tipos que estão zerados.
+
+### 36.2 Cérebro do Teams AI
+
+- A mesma tela, com título `Cérebro do Teams AI`, a nota `Todos os projetos que não são confidenciais. Um projeto confidencial nunca entra aqui.`, cada projeto como um grupo (cor, nome, tamanho e caixa para ligar e desligar) e o botão `Atualizar o cérebro`. Não mostra as linhas de uso pelos agentes.
+- O nó escolhido mostra o arquivo e o projeto, sem o link do GitHub, porque o cérebro mistura projetos.
+- O cérebro é refeito depois que o grafo de um projeto muda, e na hora em que um projeto vira confidencial ou é apagado.
+
+### 36.3 Quem consulta o cérebro
+
+- Todo passo de agente, na entrega e no refinamento, recebe a seção `Graph access`: o caminho do grafo do projeto, do repositório e do cérebro do Teams AI (este último nunca para projeto confidencial) e, em um passo de tarefa, consultas prontas. A seção nunca é cortada por falta de espaço. O chat recebe o cérebro do Teams AI como `brain/graph.json` só quando o projeto certamente não é confidencial.
+- Um run cria o grafo do projeto antes da primeira tarefa quando ele não existe, esperando no máximo 90 segundos.

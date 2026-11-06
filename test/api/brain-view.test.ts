@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBrainView } from '../../server/api/repository-graph.js';
+import { buildBrainView, buildGraphView } from '../../server/api/repository-graph.js';
 
 describe('buildBrainView', () => {
   const raw = JSON.stringify({
@@ -43,5 +43,25 @@ describe('buildBrainView', () => {
     const view = buildBrainView(JSON.stringify({ nodes, links }));
     expect(view.map!.nodes).toHaveLength(3000);
     expect(view.map!.truncated).toBe(true);
+  });
+});
+
+describe('the composition of a project brain', () => {
+  it('counts the code, the documents and each kind of note', () => {
+    const node = (id: string, file: string, type: string) => ({ id, label: id, source_file: file, file_type: type });
+    const raw = JSON.stringify({
+      nodes: [
+        node('a', 'src/a.go', 'code'),
+        node('b', 'src/b.go', 'code'),
+        node('c', 'docs/API.md', 'document'),
+        node('d', 'brain/tasks/spec-a.md', 'document'),
+        node('e', 'brain/tasks/spec-a.md', 'document'),
+        node('f', 'brain/runs/spec-a.md', 'document'),
+        node('g', 'brain/chat.md', 'document'),
+        node('h', 'brain/costs.md', 'document'),
+      ],
+      links: [],
+    });
+    expect(buildGraphView(raw, []).composition).toEqual({ code: 2, documents: 1, tasks: 2, runs: 1, chat: 1, costs: 1 });
   });
 });

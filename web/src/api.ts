@@ -324,6 +324,8 @@ export const runApi = {
   projectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph`).then((r) => json<GraphView>(r)),
   projectGraphFile: (projectId: string, repo: string, file: string, line: number | null) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/file?${new URLSearchParams({ repo, path: file, line: String(line ?? '') })}`).then((r) => json<{ url: string | null }>(r)).then((b) => b.url),
+  brainGraph: () => fetch(`${R}/brain`).then((r) => json<GraphView>(r)),
+  rebuildBrain: () => fetch(`${R}/brain/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<unknown>(r)),
   rebuildProjectGraph: (projectId: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/graph/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' } }).then((r) => json<{ ok: true }>(r)),
   repositorySpecsPage: (projectId: string, repo: string, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),

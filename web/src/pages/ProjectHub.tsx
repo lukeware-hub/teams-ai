@@ -175,7 +175,7 @@ export function ProjectHubView(p: {
             </div>
           )}
           <Link className="link-button" data-testid="graph-link" to={graphPath(pr.projectId)}>
-            Ver grafo do código
+            Ver cérebro do projeto
             <Icon name="code" size={16} />
           </Link>
           {pr.repoUrl ? (

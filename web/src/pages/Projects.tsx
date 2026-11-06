@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { graphPath, projectPath, refinePath } from '../routes.js';
+import { BRAIN, graphPath, projectPath, refinePath } from '../routes.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
@@ -188,6 +188,10 @@ export function ProjectsView(p: {
           <p className="mt-1 mb-0 text-[0.9375rem] text-ink-soft" data-testid="projects-subtitle">Crie ou importe projetos, refine especificações e acompanhe as execuções.</p>
         </div>
         <div className="flex flex-wrap gap-2 max-md:flex-[1_1_100%]" data-testid="projects-actions">
+          <Link className="link-button" data-testid="projects-brain-link" to={BRAIN}>
+            Cérebro do Teams AI
+            <Icon name="code" size={16} />
+          </Link>
           <button type="button" className={`secondary ${toggleOpen}`} data-testid="projects-import-git-button" aria-expanded={panel === 'git'} aria-controls="import-project-panel" onClick={() => toggle('git')}>
             Importar do Git
             <Icon name="download" size={16} />
@@ -322,7 +326,7 @@ export function ProjectsView(p: {
                     <Icon name="plus" size={14} />
                   </button>
                   <Link className={action.secondary} data-testid={`graph-project-${pr.projectId}`} aria-label={`Ver o grafo do código do projeto ${pr.projectId}`} to={graphPath(pr.projectId)}>
-                    Grafo
+                    Cérebro
                     <Icon name="code" size={14} />
                   </Link>
                   <button type="button" className={`${action.danger} aria-disabled:pointer-events-none aria-disabled:opacity-60`} data-testid={`delete-project-${pr.projectId}`} aria-label={`Excluir projeto ${pr.projectId}`} aria-disabled={busy || undefined} onClick={(e) => { if (busy) return; opener.current = e.currentTarget; void openDeleteProject(pr); }}>

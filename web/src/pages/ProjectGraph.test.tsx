@@ -33,6 +33,15 @@ const show = () =>
     </MemoryRouter>,
   );
 
+const showBrain = () =>
+  render(
+    <MemoryRouter initialEntries={['/brain']}>
+      <Routes>
+        <Route path="/brain" element={<ProjectGraph scope="global" />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('ProjectGraph', () => {
@@ -136,5 +145,62 @@ describe('ProjectGraph', () => {
     vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ nodes: 5000, map: { ...view().map!, truncated: true } }));
     show();
     expect((await screen.findByTestId('graph-truncated')).textContent).toContain('de 5000');
+  });
+
+  it('says what the brain of the project holds, by kind, leaving out the kinds with none', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ composition: { code: 540, documents: 30, tasks: 12, runs: 8, chat: 0, costs: 1 } }));
+    show();
+    await waitFor(() => expect(screen.getByTestId('graph-composition').textContent).toBe('Conteúdo: 540 de código · 30 de documentos · 12 de tarefas e critérios · 8 de execuções e falhas · 1 de custos.'));
+  });
+
+  it('shows no composition line when the view has none', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    show();
+    await screen.findByTestId('graph-counts');
+    expect(screen.queryByTestId('graph-composition')).toBeNull();
+  });
+});
+
+describe('ProjectGraph as the global brain', () => {
+  it('reads the brain, calls each project a group, says confidential projects stay out and has no usage lines', async () => {
+    const brain = vi.spyOn(runApi, 'brainGraph').mockResolvedValue(view({ communities: 2 }));
+    const project = vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    showBrain();
+    await waitFor(() => expect(screen.getByTestId('project-graph-title').textContent).toBe('Cérebro do Teams AI'));
+    expect(screen.getByTestId('graph-counts').textContent).toContain('2 projetos');
+    expect(screen.getByTestId('brain-note').textContent).toContain('confidencial nunca entra');
+    expect(screen.queryByTestId('graph-usage')).toBeNull();
+    expect(screen.queryByTestId('graph-queries')).toBeNull();
+    expect(brain).toHaveBeenCalled();
+    expect(project).not.toHaveBeenCalled();
+  });
+
+  it('builds the brain when there is none yet, then shows it', async () => {
+    const get = vi.spyOn(runApi, 'brainGraph').mockResolvedValueOnce(view({ available: false, map: undefined })).mockResolvedValue(view());
+    const build = vi.spyOn(runApi, 'rebuildBrain').mockResolvedValue({});
+    showBrain();
+    await waitFor(() => expect(screen.getByTestId('graph-empty').textContent).toContain('cérebro do Teams AI ainda não foi construído'));
+    fireEvent.click(screen.getByTestId('graph-build'));
+    await waitFor(() => expect(screen.getByTestId('graph-counts')).toBeTruthy());
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a node with its file name and no GitHub page, since the brain mixes projects', async () => {
+    vi.spyOn(runApi, 'brainGraph').mockResolvedValue(view());
+    const file = vi.spyOn(runApi, 'projectGraphFile').mockResolvedValue('https://example.com');
+    showBrain();
+    fireEvent.change(await screen.findByTestId('graph-search'), { target: { value: 'alp' } });
+    fireEvent.click(screen.getByText('Alpha', { selector: 'ul button' }));
+    expect(screen.getByTestId('graph-node-detail').textContent).toContain('src/a.go:4');
+    expect(screen.getByTestId('graph-node-detail').textContent).toContain('projeto Alpha');
+    expect(file).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('graph-node-link')).toBeNull();
+  });
+
+  it('says so when the brain cannot be read', async () => {
+    vi.spyOn(runApi, 'brainGraph').mockRejectedValue(new Error('x'));
+    showBrain();
+    await waitFor(() => expect(screen.getByTestId('graph-error').textContent).toContain('ler o cérebro'));
   });
 });

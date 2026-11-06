@@ -45,6 +45,16 @@ export interface GraphMap {
   truncated: boolean;
 }
 
+/** The kinds of node the brain of a project holds. */
+export interface GraphComposition {
+  code: number;
+  documents: number;
+  tasks: number;
+  runs: number;
+  chat: number;
+  costs: number;
+}
+
 /** Queries and the counted steps they came from, for one source of agents. */
 export interface QueryCount {
   total: number;
@@ -86,6 +96,8 @@ export interface GraphView {
   /** The most connected nodes, and the links between them only. */
   top: GraphViewNode[];
   usage: { graph: number; grep: number; none: number; recent: GraphUse[]; queries: GraphQueries };
+  /** How many nodes of each kind the brain of the project holds: its code, its documents and the notes written from its runs and chat. */
+  composition?: GraphComposition;
   /** Every node and link for the interactive map, with the communities the nodes fall into. */
   map?: GraphMap;
   /** When the graph file was last written and why the last automatic build failed; the route fills both. */
@@ -98,7 +110,7 @@ const DESCRIPTION_REPO = 'project-info';
 const LINK_BATCH = 10;
 
 interface RawGraph {
-  nodes?: Array<{ id: string; label?: string; repo?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
+  nodes?: Array<{ id: string; label?: string; repo?: string; file_type?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
   links?: Array<{ source: string; target: string }>;
 }
 
@@ -257,6 +269,21 @@ export async function linkNodes(view: GraphView, resolve: (node: GraphViewNode) 
   return { ...view, top };
 }
 
+/** What a node is, from the note it comes from or its file type; the notes of the brain live under `brain/`. */
+function compositionOf(nodes: ReadonlyArray<{ file_type?: string; source_file?: string }>): GraphComposition {
+  const count: GraphComposition = { code: 0, documents: 0, tasks: 0, runs: 0, chat: 0, costs: 0 };
+  for (const n of nodes) {
+    const file = n.source_file ?? '';
+    if (file.startsWith('brain/tasks/')) count.tasks += 1;
+    else if (file.startsWith('brain/runs/')) count.runs += 1;
+    else if (file === 'brain/chat.md') count.chat += 1;
+    else if (file === 'brain/costs.md') count.costs += 1;
+    else if (n.file_type === 'document') count.documents += 1;
+    else count.code += 1;
+  }
+  return count;
+}
+
 /** A small view of the project's graph file: counts, the most connected nodes and how the agents used it. */
 export function buildGraphView(raw: string | null, runs: Parameters<typeof graphUsage>[0], sources: GraphUsageSources = {}): GraphView {
   const usage = graphUsage(runs, sources);
@@ -288,5 +315,5 @@ export function buildGraphView(raw: string | null, runs: Parameters<typeof graph
     communities: groups.list,
     truncated: nodes.length > MAP_NODES,
   };
-  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map };
+  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map, composition: compositionOf(nodes) };
 }
