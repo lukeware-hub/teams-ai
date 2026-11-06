@@ -429,8 +429,8 @@ export function ProjectHubView(p: {
                       )
                     ) : s.status === 'done' ? (
                       s.lastRunId ? (
-                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
-                          Ver validação
+                        <Link className={`${action.secondary} max-sm:absolute max-sm:inset-0 max-sm:h-auto max-sm:justify-end max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:pr-3 max-sm:focus-visible:outline-offset-[-2px]`} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
+                          <span className="max-sm:sr-only">Ver validação</span>
                           <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : null
