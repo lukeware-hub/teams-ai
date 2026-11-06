@@ -25,7 +25,7 @@ export function WizardShell({ stepper, stepKey, meta, back, actions, children }:
             <Icon name="arrow-left" size={16} />
             Voltar
           </button>
-          <div data-testid="wizard-actions" className="grid grid-cols-1 gap-3 *:w-full @3xl:flex @3xl:flex-wrap @3xl:items-center @3xl:*:w-auto">{actions}</div>
+          <div data-testid="wizard-actions" className="grid grid-cols-1 gap-3 *:w-full @3xl:flex @3xl:flex-wrap @3xl:items-center @3xl:justify-end @3xl:*:w-auto">{actions}</div>
         </nav>
       </footer>
     </section>
