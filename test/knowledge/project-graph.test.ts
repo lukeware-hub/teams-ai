@@ -7,9 +7,10 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, setBrainSource, setGraphMergedHook, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
+import type { StoredEvent } from '../../server/store/event-store.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { makeRemote } from '../fixtures/git-remote.js';
 
@@ -209,6 +210,63 @@ describe('graph failure record', () => {
     const working = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
     await buildLocatedProjectGraphOnce(working, located);
     expect(graphFailure(project.projectId)).toBeNull();
+  });
+});
+
+describe('the brain notes in the project graph', () => {
+  afterEach(() => {
+    setBrainSource(null);
+    setGraphMergedHook(null);
+  });
+  const stamp = (type: string, data: Record<string, unknown>) => ({ seq: 1, at: '2026-11-06T10:00:00.000Z', runId: 'r1', specHash: 'h', type, kind: 'fact', data }) as StoredEvent;
+  const journal = { runId: 'r1', events: [stamp('RUN_STARTED', { specId: 'spec-a' }), stamp('TASK_PLANNED', { task: { id: 'T1', title: 'Registrar', description: 'd', criteriaRefs: ['AC-1'], affectedPaths: ['src/a.ts'] } })] };
+
+  /** A graphify that writes the merged graph the way merge-graphs would, with a note heading and a file node. */
+  const mergingGraphify = (written: { out?: string }) =>
+    ({
+      update: async () => ({ ratio: 1 }),
+      merge: async (_graphs: unknown, out: string) => {
+        written.out = out;
+        await fs.mkdir(path.join(out, 'graphify-out'), { recursive: true });
+        await fs.writeFile(path.join(out, 'graphify-out', 'graph.json'), JSON.stringify({ nodes: [{ id: 'info::t1', label: 'T1 — Registrar', source_file: 'brain/tasks/spec-a.md' }, { id: 'api::a', label: 'src/a.ts', source_file: 'src/a.ts' }], links: [] }));
+        return true;
+      },
+    }) as unknown as Graphify;
+
+  it('writes the notes into the description folder and links each task to its files in the merged graph', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    setBrainSource(async () => ({ runs: [journal], chat: null }));
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(await fs.readFile(path.join(ws.graph, 'project-info', 'brain', 'tasks', 'spec-a.md'), 'utf8')).toContain('## T1 — Registrar');
+    const graph = JSON.parse(await fs.readFile(path.join(written.out!, 'graphify-out', 'graph.json'), 'utf8'));
+    expect(graph.links).toEqual([expect.objectContaining({ source: 'info::t1', target: 'api::a', relation: 'references' })]);
+  });
+
+  it('builds the graph without notes when the source fails', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    setBrainSource(async () => {
+      throw new Error('journals unreadable');
+    });
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(written.out).toBeDefined();
+    await expect(fs.access(path.join(ws.graph, 'project-info', 'brain'))).rejects.toThrow();
+  });
+
+  it('builds as before when no source was set', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const written: { out?: string } = {};
+    await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
+    expect(JSON.parse(await fs.readFile(path.join(written.out!, 'graphify-out', 'graph.json'), 'utf8')).links).toEqual([]);
+  });
+
+  it('tells the hook which project was merged', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const merged: string[] = [];
+    setGraphMergedHook((id) => merged.push(id));
+    await buildLocatedProjectGraph(mergingGraphify({}), { ws, project: project as Project, newestSpec: undefined });
+    expect(merged).toEqual(['kayron-hub']);
   });
 });
 

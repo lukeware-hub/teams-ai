@@ -6,6 +6,9 @@ import { readProject } from '../api/run-index.js';
 import { fetch as fetchRepo } from '../git/git.js';
 import { readProjectDocs, readSpecFiles, type MainDoc } from '../git/main-docs.js';
 import { graphDir, graphFile, serviceWorkspace, workspacePaths, type Workspace } from '../orchestrator/workspace.js';
+import type { ChatMessage } from '../chat/store.js';
+import { linkBrainFile } from './brain-links.js';
+import { brainNotes, type BrainLink, type RunJournal } from './brain-notes.js';
 import type { Graphify } from './graphify.js';
 import { projectInfoMarkdown } from './project-info.js';
 
@@ -31,9 +34,35 @@ export async function projectMainDocs(located: LocatedProject | null): Promise<M
   return readProjectDocs(located.ws, located.newestSpec).catch(() => []);
 }
 
-/** What the project graph reads besides the code: the five documents and every spec, plan and task of main. The chat keeps the five documents only. */
-async function projectGraphDocs(located: LocatedProject): Promise<MainDoc[]> {
-  return [...(await projectMainDocs(located)), ...(await readSpecFiles(located.ws).catch(() => []))];
+/** What the brain notes of a project are written from: its run journals and, unless it is confidential, its chat. */
+export type BrainSource = (projectId: string) => Promise<{ runs: RunJournal[]; chat: ChatMessage[] | null }>;
+
+let brainSource: BrainSource | null = null;
+let onGraphMerged: ((projectId: string) => void) | null = null;
+
+/** Where the notes of the brain come from; set once when the server starts. Without it the graph has no notes. */
+export function setBrainSource(source: BrainSource | null): void {
+  brainSource = source;
+}
+
+/** Called after the graph of a project was merged, so the global brain can follow; set once when the server starts. */
+export function setGraphMergedHook(hook: ((projectId: string) => void) | null): void {
+  onGraphMerged = hook;
+}
+
+/**
+ * What the project graph reads besides the code: the five documents, every spec, plan and task of main, and the brain notes
+ * (tasks, run history and failures, costs, chat). The notes are an extra: a source that fails leaves the graph without them.
+ */
+async function projectGraphDocs(located: LocatedProject): Promise<{ docs: MainDoc[]; links: BrainLink[] }> {
+  const docs = [...(await projectMainDocs(located)), ...(await readSpecFiles(located.ws).catch(() => []))];
+  if (!brainSource) return { docs, links: [] };
+  try {
+    const notes = brainNotes(await brainSource(located.project.projectId));
+    return { docs: [...docs, ...notes.docs], links: notes.links };
+  } catch {
+    return { docs, links: [] };
+  }
 }
 
 /** Rebuilds the merged graph from main as it is now: the repository is fetched, then merged with the documents. */
@@ -41,11 +70,12 @@ export async function rebuildProjectGraph(graphify: Graphify, located: LocatedPr
   if (!located) throw new Error('project not found');
   // A failed fetch keeps the last copy of main, so the graph still builds.
   await fetchRepo(located.ws.repo).catch(() => undefined);
-  await mergeProjectGraph(graphify, located.ws, located.project, located.project.services ?? [], await projectGraphDocs(located));
+  const { docs, links } = await projectGraphDocs(located);
+  await mergeProjectGraph(graphify, located.ws, located.project, located.project.services ?? [], docs, links);
 }
 
 /** The project's description, its main documents and the graphs its repositories already have, merged into the one graph the chat queries; nothing is written inside a repository. */
-export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, project: Project, services: string[], docs: readonly MainDoc[] = []): Promise<void> {
+export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, project: Project, services: string[], docs: readonly MainDoc[] = [], links: readonly BrainLink[] = []): Promise<void> {
   const info = path.posix.join(ws.graph, 'project-info');
   await fs.rm(info, { recursive: true, force: true });
   await fs.mkdir(info, { recursive: true });
@@ -58,7 +88,11 @@ export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, proje
   const infoGraph = path.posix.join(ws.graph, 'project-info-graph');
   await graphify.update(info, infoGraph);
   const repos = [{ dir: graphDir(ws, null), name: project.projectId }, ...services.map((service) => ({ dir: graphDir(serviceWorkspace(ws, service), null), name: service }))];
-  await graphify.merge([...repos, { dir: infoGraph, name: 'project-info' }], path.posix.join(ws.graph, 'project'));
+  const merged = path.posix.join(ws.graph, 'project');
+  await graphify.merge([...repos, { dir: infoGraph, name: 'project-info' }], merged);
+  // graphify links notes to code only when both are extracted together, so the task links are added to the merged graph here.
+  await linkBrainFile(graphFile(merged), links).catch(() => 0);
+  onGraphMerged?.(project.projectId);
 }
 
 /** The project's graph built from main as it is now: the repository is fetched, then every service whose clone is present is built and merged. */
@@ -67,7 +101,8 @@ export async function buildLocatedProjectGraph(graphify: Graphify, located: Loca
   // A failed fetch keeps the last copy of main, so the graph still builds.
   await fetchRepo(located.ws.repo).catch(() => undefined);
   const present = await Promise.all((located.project.services ?? []).map(async (service) => ((await fs.access(serviceWorkspace(located.ws, service).repo).then(() => true, () => false)) ? service : null)));
-  await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), await projectGraphDocs(located));
+  const { docs, links } = await projectGraphDocs(located);
+  await buildProjectGraph(graphify, located.ws, located.project, present.filter((s): s is string => s !== null), docs, links);
 }
 
 /** A project graph older than this is rebuilt in the background; a question never waits for it. */
@@ -156,7 +191,7 @@ export function refreshProjectGraph(graphify: Graphify, located: LocatedProject,
 }
 
 /** One code graph of the project: each cloned repository's graph built again, then merged with the project's own description. */
-export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[], docs: readonly MainDoc[] = []): Promise<void> {
+export async function buildProjectGraph(graphify: Graphify, ws: Workspace, project: Project, cloned: string[], docs: readonly MainDoc[] = [], links: readonly BrainLink[] = []): Promise<void> {
   for (const repo of [ws, ...cloned.map((service) => serviceWorkspace(ws, service))]) await graphify.update(repo.repo, graphDir(repo, null));
-  await mergeProjectGraph(graphify, ws, project, cloned, docs);
+  await mergeProjectGraph(graphify, ws, project, cloned, docs, links);
 }

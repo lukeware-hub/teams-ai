@@ -13,7 +13,8 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph } from './knowledge/project-graph.js';
+import { buildGlobalBrainNow, scheduleGlobalBrain, type BrainDeps, type BrainProject } from './knowledge/brain.js';
+import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph, setBrainSource, setGraphMergedHook } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -38,7 +39,8 @@ import { chatRoutes } from './api/chat-routes.js';
 import { ChatService } from './chat/service.js';
 import { isConfidential } from './chat/confidential.js';
 import { ChatStore } from './chat/store.js';
-import { readProject, runsDir, writePid, type IndexDeps } from './api/run-index.js';
+import { listRuns, readProject, runsDir, writePid, type IndexDeps } from './api/run-index.js';
+import { loadRepoRuns } from './api/repository-dashboard.js';
 import { supervise, superviseTick, type Backoff } from './supervisor/supervise.js';
 import { makeRunAgent } from './refine/agent.js';
 import { SessionRegistry } from './refine/registry.js';
@@ -210,6 +212,33 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const healSettle = setTimeout(healTick, HEAL_SETTLE_MS);
   healSettle.unref();
   const chatStore = new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats'));
+  // The brain: notes written from the runs and the chat go into every project graph, and every project graph merges into the global brain.
+  const brainIdx = async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => isAlive(defaultRunControl(repoRoot), pid) });
+  const brainDeps: BrainDeps = {
+    graphify,
+    dir: path.join(expandHome(cfg.paths.workspaces), '_brain'),
+    log: io.stderr,
+    projects: async () => {
+      const { cfg: live } = await brainIdx();
+      const found: BrainProject[] = [];
+      for (const { dir } of live.projects) {
+        const read = await readProject(dir).catch(() => null);
+        if (!read) continue;
+        const id = read.project.projectId;
+        // `isConfidential` answers true when the project cannot be read, so a failed check never opens a project to the others.
+        found.push({ projectId: id, graphDir: path.posix.join(workspacePaths(live, id).graph, 'project'), confidential: await isConfidential({ cfg: live, dir, projectId: id }) });
+      }
+      return found;
+    },
+  };
+  setGraphMergedHook(() => scheduleGlobalBrain(brainDeps));
+  setBrainSource(async (projectId) => {
+    const idx = await brainIdx();
+    const dir = await projectDirOf(projectId);
+    const journals = await loadRepoRuns(runsDir(idx), await listRuns(idx, projectId));
+    const confidential = dir === null ? true : await isConfidential({ cfg: idx.cfg, dir, projectId });
+    return { runs: journals.map((j) => ({ runId: j.runId, events: j.events })), chat: confidential ? null : await chatStore.read(projectId) };
+  });
   const chat = new ChatService({
     guideDir: path.join(repoRoot, 'docs', 'guia'),
     store: chatStore,
@@ -234,11 +263,13 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}) }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, brain: brainDeps, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({
           registry,
           log: io.stderr,
+          // A project that turns confidential leaves the global brain now, not at the next scheduled build.
+          confidentialityChanged: () => void buildGlobalBrainNow(brainDeps).catch(() => undefined),
         }),
         ...chatRoutes({ chat }),
         ...settingsRoutes({}),

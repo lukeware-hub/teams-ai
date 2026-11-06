@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraphView, communitiesOf, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
+import { buildBrainView, buildGraphView, communitiesOf, graphUsage, linkNodes } from '../../server/api/repository-graph.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
 
 const used = (taskId: string, step: string, source: string, nodes: number): StoredEvent =>
