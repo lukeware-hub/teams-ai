@@ -15,6 +15,17 @@ const GREY = '#8a93a6';
 /** The community the server gives to nodes that link to nothing. */
 const UNLINKED = 'Sem ligações';
 
+/** From this many measured steps with no query at all, the screen says so. */
+const ALERT_STEPS = 5;
+const KIND_LABEL: Record<string, string> = { dev: 'desenvolvimento', review: 'revisão', test: 'testes', sec: 'segurança' };
+
+/** What the agents asked the graph themselves; nothing is shown as zero until a step has been measured. */
+function queriesLine(q: GraphView['usage']['queries']): string {
+  if (q.steps === 0) return 'Consultas feitas pelos agentes: ainda não medido, conta a partir dos próximos passos.';
+  const kinds = Object.entries(q.byKind).filter(([, n]) => n > 0).map(([k, n]) => `${KIND_LABEL[k] ?? k} ${n}`);
+  return `Consultas feitas pelos agentes: ${q.total} em ${plural(q.steps, 'passo', 'passos')}${kinds.length ? ` (${kinds.join(', ')})` : ''}.`;
+}
+
 // Hues spread by the golden angle stay apart however many communities there are.
 const colorFor = (rank: number) => `hsl(${Math.round((rank * 137.508) % 360)} 68% 58%)`;
 
@@ -139,6 +150,12 @@ export function ProjectGraph() {
           <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
             {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
           </p>
+          <p data-testid="graph-queries" className="m-0 text-[0.875rem] text-ink-soft">{queriesLine(view.usage.queries)}</p>
+          {view.usage.queries.steps >= ALERT_STEPS && view.usage.queries.total === 0 ? (
+            <p data-testid="graph-queries-none" className="m-0 text-[0.875rem] text-ink" role="status">
+              {`Nenhum agente consultou o grafo nos últimos ${view.usage.queries.steps} passos. O contexto entregue pelo sistema continua chegando.`}
+            </p>
+          ) : null}
           {map.truncated ? <p data-testid="graph-truncated" className="m-0 text-[0.8125rem] text-ink-soft">{`O mapa mostra os ${map.nodes.length} nós mais ligados de ${view.nodes}.`}</p> : null}
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="grid min-w-0 gap-3">

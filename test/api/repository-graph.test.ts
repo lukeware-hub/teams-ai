@@ -38,6 +38,17 @@ describe('graph view', () => {
     expect(usage.recent[0]).toMatchObject({ taskId: 't2', source: 'none' });
   });
 
+  it('adds up the graph queries of the finished steps by kind, and skips steps recorded before they were counted', () => {
+    const finished = (kind: string, profile?: Record<string, unknown>) =>
+      ({ seq: 1, at: '2026-11-06T00:00:00Z', runId: 'r1', specHash: 'h', type: 'STEP_FINISHED', kind: 'fact', data: { kind, ...(profile ? { profile } : {}) } }) as StoredEvent;
+    const usage = graphUsage([{ runId: 'r1', events: [finished('dev', { toolCalls: {}, graphQueries: 2 }), finished('dev', { toolCalls: {}, graphQueries: 0 }), finished('review', { toolCalls: {}, graphQueries: 1 }), finished('dev', { toolCalls: {} }), finished('dev')] }]);
+    expect(usage.queries).toEqual({ total: 3, steps: 3, byKind: { dev: 2, review: 1 } });
+  });
+
+  it('starts with no queries measured', () => {
+    expect(graphUsage([]).queries).toEqual({ total: 0, steps: 0, byKind: {} });
+  });
+
   it('keeps the usage even when the graph is not available', () => {
     const view = buildGraphView(null, [{ runId: 'r1', events: [used('t1', 'dev', 'grep', 0)] }]);
     expect(view.usage.grep).toBe(1);

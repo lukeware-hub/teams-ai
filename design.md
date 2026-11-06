@@ -1856,6 +1856,7 @@ O grafo do código tem uma tela própria por projeto. O hub do projeto não tem 
 - Lista de comunidades: ao lado do mapa no desktop, embaixo no celular. Mostra as 20 maiores com cor, nome e tamanho, e uma linha `Outras (N)` para o resto. Cada linha tem uma caixa que liga e desliga a comunidade no mapa, e `Selecionar todas` liga ou desliga todas.
 - Busca: filtra os nós pelo nome. Os achados ganham um anel no mapa e entram numa lista que se usa pelo teclado.
 - Nó escolhido: nome, arquivo e linha, número de ligações, comunidade, os vizinhos e `Abrir no GitHub` quando o arquivo está publicado.
+- Consultas dos agentes: abaixo de `Uso pelos agentes`, a linha `Consultas feitas pelos agentes: N em M passos` conta as vezes que um agente rodou `graphify query`, `explain` ou `path` por conta própria, por tipo de passo. Antes do primeiro passo medido ela diz `ainda não medido`. Com 5 passos ou mais e nenhuma consulta, uma linha avisa que nenhum agente consultou o grafo.
 - Acima do mapa: a linha `Uso pelos agentes` e, quando o grafo passa de 3000 nós, o aviso de que o mapa mostra os mais ligados.
 - Celular: o botão de atualizar e o do GitHub ocupam a linha inteira; o mapa tem 60% da altura da tela.
 - Movimento: o desenho se organiza em poucos instantes ao abrir; com `prefers-reduced-motion` ele já aparece pronto.
