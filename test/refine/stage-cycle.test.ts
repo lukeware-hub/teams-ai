@@ -557,6 +557,18 @@ describe('runStageCycle', () => {
     expect(review).toContain('(context only, a digest');
   });
 
+  it('an earlier document reaches the review as a short excerpt of each section, so a long section is cut', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(200)}FIM-DO-FLUXO\n`);
+    await writeDoc(draft, 'project.md', '# Projeto\n\nFIM-DO-PROJETO');
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### project.md (this stage)'))!;
+    expect(review).not.toContain('FIM-DO-FLUXO');
+    expect(review).toContain('[…]');
+  });
+
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

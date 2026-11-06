@@ -29,7 +29,7 @@ const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'bri
 const VALIDATION_KEY: Record<DocFile, keyof ValidationDocs> = { 'project.md': 'project', 'briefing.md': 'briefing', 'stack.md': 'stack', 'flow.md': 'flow', 'design.md': 'design' };
 
 /** How much of each earlier document the review reads: every heading, with the start of its section. */
-const STAGE_DIGEST_CHARS = 2000;
+const STAGE_DIGEST_CHARS = 600;
 
 /** What the owner's review returns for one part of a document. */
 type RefineReview = z.infer<typeof RefineOutput>;
