@@ -40,6 +40,7 @@ describe('changesNothing: a change that only restates, reformats or drops a frag
     expect(changesNothing('Node 18.\n', 'Node 18\n')).toBe(true);
     expect(changesNothing('## Stack\n', '## stack\n')).toBe(true);
     expect(changesNothing('- Swagger para documentar a API REST.\n', '- Swagger para documentar a API REST (sm-s4-0).\n')).toBe(true);
+    expect(changesNothing('-- fiscal_access_key? (chave de acesso)\n', '-- fiscal access key (chave de acesso)\n')).toBe(true);
   });
 
   it('refuses a second copy of a line the document already holds', () => {

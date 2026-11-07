@@ -72,7 +72,7 @@ const inScope = (name: string, specId: string, scope: readonly DocFile[]): boole
 /** What the review looks for in each place the Jev doubts, one sentence per check. */
 const LOOK_FOR: Record<ScoreCheck, string> = {
   complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
-  concrete: 'replace vague words, placeholders and open questions with exact values, names, limits or observable behavior',
+  concrete: 'replace a vague word or placeholder with the exact value, name, limit or behavior the documents already give; when they do not give it, record it as an assumption and change no text; never reword a question mark, a label or a comment',
   consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
   scoped: 'find content the charter gives to another document; if an earlier document already holds it, remove it here; if not, leave it here: this stage changes only its own document',
 };
@@ -112,7 +112,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
   const feedback = [
     part
       ? `You review only ${input.file}, the document of this stage, part ${part.index} of ${part.total}. Read the part below against the document charter in your instructions. Quote only text that is in this part; the outline lists the headings of the whole document.`
-      : `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
+      : `You review only ${input.file}, the document of this stage. Read it whole against the document charter in your instructions: look for what is missing, wrong or contradicted, not for wording.`,
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
     '- Return an empty checklist: this stage does not evaluate the checklist.',
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides. A document after this stage is reference only: raise nothing against it.',
