@@ -1190,7 +1190,7 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 | Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergences. It is the last stage review's result for this document against the documents before it; before any stage review, it is the last full round's contradictions check. |
 | Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
 
-`Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The Jev and the Graphify read only the stage's document, and the stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
+`Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The Jev reads only the stage's document, and the Graphify takes it only when Continuar ends the stage, and the stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
 
 ### 26.6 Checklist de validação do documento
 

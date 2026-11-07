@@ -169,6 +169,10 @@ describe('architecture decision of a repository session', () => {
     script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.settled();
+    // The review puts nothing in the graph: Continuar on the document puts it back.
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
+    await s.continueStage('flow.md');
+    await s.settled();
     expect(s.state.graphed).toContain('flow.md');
     // The later stages are outdated by the edit, so the backlog waits for their reviews.
     await expect(s.enableBacklog()).rejects.toThrow(/etapas desatualizadas/);

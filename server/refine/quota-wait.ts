@@ -41,7 +41,8 @@ export function withQuotaWait(inner: RunAgent, breaker: QuotaBreaker, io: QuotaW
       if (wait > 0 && ctx.noQuotaWait && breaker.state().status === 'paused' && (breaker.state() as { reason: string }).reason !== 'window') return { ok: false, failure: 'quota', errors: ['the Claude quota is paused'], summary: EMPTY_SUMMARY, sandboxDisabled: false };
       if (wait > 0 && wait <= QUOTA_WAIT_MAX_MS && !ctx.noQuotaWait) {
         io.log(`refinement waits ${Math.round(wait / 1000)}s for the Claude quota`);
-        await ctx.journal.fact(RefineEvent.QuotaWaiting, { waitMs: wait, until: new Date(io.now().getTime() + wait).toISOString() });
+        // Recorded in the background: waiting for the journal before the sleep would delay the wait itself.
+        void ctx.journal.fact(RefineEvent.QuotaWaiting, { waitMs: wait, until: new Date(io.now().getTime() + wait).toISOString() }).catch(() => undefined);
         await io.sleep(wait, ctx.signal);
       }
       const out = await inner(req, ctx);

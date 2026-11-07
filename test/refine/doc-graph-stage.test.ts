@@ -60,7 +60,7 @@ describe('document graph in the stages', () => {
     let calls = 0;
     const slow = async (dir: string, outDir: string) => {
       calls += 1;
-      if (calls > 1) await gate;
+      if (calls >= 1) await gate;
       await extractDocs(dir, outDir);
     };
     const s = await RefineSession.create({ ...deps(), extractDocs: slow }, 'new-project', { repositories: true });
@@ -83,7 +83,8 @@ describe('document graph in the stages', () => {
     const s = await RefineSession.create({ ...deps(), extractDocs: never }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO))];
-    void s.evaluateStage('flow.md');
+    await s.evaluateStage('flow.md');
+    void s.continueStage();
     for (let i = 0; i < 100 && s.state.graphing !== 'flow.md'; i++) await new Promise((r) => setTimeout(r, 20));
     expect(s.state.graphing).toBe('flow.md');
     // The crash: the process is gone, so its lock goes with it.
@@ -205,7 +206,8 @@ Editado.
     calls.length = 0;
     script['refine/po'] = [refineOut(green(PO))];
     await s.addToGraph('flow.md');
-    await s.settled();
+    // The graph takes the document once its review has ended, so the test waits for that.
+    for (let i = 0; i < 100 && !(s.state.graphed ?? []).includes('flow.md'); i++) await new Promise((r) => setTimeout(r, 10));
     expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
     expect(s.state.graphed).toContain('flow.md');
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
@@ -228,11 +230,30 @@ Editado.
     await s.accept(patch.patchId);
     expect(s.busy).toBe(false);
     expect(runs).toBe(before);
-    expect(s.state.graphed).not.toContain('flow.md');
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
     await s.continueStage();
     await s.settled();
     expect(runs).toBe(before + 1);
     expect(s.state.graphed).toContain('flow.md');
+    await s.close();
+  });
+
+  it('a stage review puts nothing in the graph; only Continuar does', async () => {
+    let runs = 0;
+    const counting = async (dir: string, outDir: string) => {
+      runs += 1;
+      await extractDocs(dir, outDir);
+    };
+    const s = await RefineSession.create({ ...deps(), extractDocs: counting }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    expect(runs).toBe(0);
+    expect(s.events.some((e) => e.type === RefineEvent.DocGraphStarted)).toBe(false);
+    await s.continueStage();
+    await s.settled();
+    expect(runs).toBe(1);
     await s.close();
   });
 
@@ -386,7 +407,7 @@ describe('the owner keeps working while the graph extraction runs', () => {
     let calls = 0;
     const slow = async (dir: string, outDir: string) => {
       calls += 1;
-      if (calls > 1) await gate;
+      if (calls >= 1) await gate;
       await extractDocs(dir, outDir);
     };
     const s = await RefineSession.create({ ...deps(), extractDocs: slow }, 'new-project', { repositories: true });

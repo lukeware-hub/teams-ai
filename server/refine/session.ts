@@ -702,11 +702,6 @@ export class RefineSession {
         if (ms > AUTO_REVIEW_MAX_MS) await this.journal.fact(RefineEvent.AutoReviewSkipped, { file, ms });
         else await this.reviewAndScore(deps, file);
       }
-      // A repository session adds the reviewed document to the graph when its review ends; a failed review adds nothing.
-      if (this.state.status !== 'error' && this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
-        await this.journal.fact(RefineEvent.DocGraphStarted, { file });
-        await this.indexStage(file, false);
-      }
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
@@ -771,9 +766,11 @@ export class RefineSession {
     const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
     if (problem) throw new ConflictError(problem);
     if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
-    // A document edited since its review is reviewed again first, by its own role; the review then puts it in the graph.
+    // A document edited since its review is reviewed again first, by its own role; the graph takes it once that review has ended.
     if (!(this.state.reviewedStages ?? []).includes(file)) {
-      void this.startStage(file, false);
+      void this.startStage(file, false).then(async () => {
+        if (this.state.status !== 'error') await this.startIndexing(file, false);
+      });
       return;
     }
     // The stage does not move: it is already done.

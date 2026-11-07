@@ -38,7 +38,7 @@ Antes da primeira etapa, a tela pergunta se o projeto é confidencial. Enquanto 
 
 Dentro de uma etapa:
 
-- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste. O Jev lê só o documento da etapa para dar a nota dele, e o Graphify extrai só esse documento.
+- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste. O Jev lê só o documento da etapa para dar a nota dele. O Graphify recebe o documento só quando você clica em Continuar, que encerra a etapa.
 - **Continuar**: passa para a próxima etapa. Não exige nota nem revisão. Na última etapa, o botão vira **Quebrar o backlog**.
 - **Voltar**: volta para a etapa anterior, para revisar o que já foi concluído.
 

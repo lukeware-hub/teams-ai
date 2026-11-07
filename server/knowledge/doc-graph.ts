@@ -76,7 +76,8 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
     } finally {
       release();
     }
-    if (result.exitCode !== 0 || result.timedOut) throw new DocGraphError(`A extração dos documentos falhou: ${ends(result.stderr)}`);
+    if (result.timedOut) throw new DocGraphError('A extração dos documentos passou do tempo limite de 5 min. Tente de novo; se repetir, confira o esforço do Graphify em Configurações.');
+    if (result.exitCode !== 0) throw new DocGraphError(`A extração dos documentos falhou: ${ends(result.stderr) || `o processo saiu com código ${result.exitCode} e sem detalhe`}`);
   } finally {
     await syncBackCredentials(home, deps.hostEnv);
     await removeStepHome(home);
