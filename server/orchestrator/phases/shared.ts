@@ -17,7 +17,6 @@ import type { Exec } from '../../exec/command.js';
 import { commitAll, createWorktree, fetch as gitFetch, git, removeWorktree, withRepoLock } from '../../git/git.js';
 import type { MergeQueue } from '../../git/merge-queue.js';
 import type { StepOutcome } from '../../runner/step.js';
-import type { DocsInput } from '../../validators/docs.js';
 import { readState } from '../../docs/project-state.js';
 import { Intent, OrchEvent, type Journal } from '../events.js';
 import { docsMergeSteps, type MergeStepsDeps } from '../merge-steps.js';
@@ -165,14 +164,8 @@ export async function freshDocsWorktree(deps: PhaseDeps, branch: string, phase: 
   return docsWorktree(deps, branch);
 }
 
-/** The shared docs a docs worktree holds, which earlier specs wrote; a missing file reads as empty. */
-export async function currentDocs(worktree: string): Promise<DocsInput> {
-  const read = (file: string) => fs.readFile(path.join(worktree, 'docs', file), 'utf8').catch(() => '');
-  return { readme: await read('README.md'), runbook: await read('RUNBOOK.md'), apiDocs: await read('API.md') };
-}
-
 /** The phase a docs commit belongs to; */
-export type DocsPhase = 0 | 1 | 2 | 6 | 7;
+export type DocsPhase = 0 | 1 | 2 | 6 | 7 | 8;
 
 export const docsCommitKey = (deps: PhaseDeps, phase: DocsPhase) => `${deps.spec.specId}-${phase}${deps.service ? `-${deps.service}` : ''}`;
 

@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, DOCS_STRUCTURE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, fixTasksPack, outputContract, planPack, planRules, readmePack, REPLAN_CAUSE_RULE, replanPack, reportPack, SCAFFOLD_REPLAN_RULE, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, docsPack, fixTasksPack, outputContract, planPack, planRules, REPLAN_CAUSE_RULE, replanPack, reportPack, SCAFFOLD_REPLAN_RULE, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -242,11 +242,6 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).changeSet).not.toContain('Language check');
   });
 
-  it('asks the readme for Brazilian Portuguese headings, since the project documents are Brazilian Portuguese', () => {
-    expect(DOCS_STRUCTURE).toContain('in Brazilian Portuguese (for example Executar');
-    expect(DOCS_STRUCTURE).not.toContain('(English names)');
-  });
-
   it("the review lists the reviewer's earlier findings on the task, and adds nothing without them", () => {
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
     const prior = reviewPack(base, task, { ...review, priorFindings: [{ file: 'src/a.ts', line: 4, problem: 'no test for the empty case' }, { file: 'README.md', line: null, problem: 'no Run section' }] }).feedback;
@@ -296,8 +291,8 @@ describe('packs', () => {
   });
 
   it('asks for every endpoint as METHOD /path, the form the API check reads', () => {
-    const f = reportPack(base, { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' }).feedback;
-    expect(f).toContain('each endpoint as `METHOD /path` (for example `### GET /orders/{id}`)');
+    const f = docsPack(base, { tasks: [], kinds: ['api'], features: ['GET /orders'] }).feedback;
+    expect(f).toContain('written as `METHOD /path` (for example `### GET /orders/{id}`)');
   });
 
   it('report pack asks for the human-facing report fields in Brazilian Portuguese, with steps as action plus expected result', () => {
@@ -307,49 +302,13 @@ describe('packs', () => {
     expect(f).toContain('what to do and what should happen');
   });
 
-  it('report and readme packs name the README sections the plan requires, so the first answer already carries them', () => {
-    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
-    const line = 'docs/README.md also needs a heading naming each section the plan lists: Run, Monitoring.';
-    expect(reportPack(base, { ...opts, readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
-    expect(readmePack(base, { tasks: [], readmeSections: ['Run', 'Monitoring'] }).feedback).toContain(line);
-    expect(reportPack(base, opts).feedback).not.toContain('also needs a heading');
-  });
-
-  it('report and readme packs carry the current docs with the rule to keep what earlier specs wrote', () => {
-    const current = { readme: '# Loja\n\n- AC-001: o estoque cadastra um sku.', runbook: '', apiDocs: '### POST /stock' };
-    const opts = { delivered: ['T1'], blocked: [], evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
-    for (const p of [reportPack(base, { ...opts, current }), readmePack(base, { tasks: [], current })]) {
-      expect(p.feedback).toContain('Keep every section, acceptance criterion and endpoint they hold that is still true');
-      expect(p.currentDocs).toContain('Current docs/README.md:\n# Loja\n\n- AC-001: o estoque cadastra um sku.');
-      expect(p.currentDocs).toContain('There is no docs/RUNBOOK.md yet.');
-      expect(p.currentDocs).toContain('Current docs/API.md:\n### POST /stock');
-    }
-    // The README keeps what the current docs hold, which the step may read beyond the pack.
-    expect(reportPack(base, { ...opts, current }).feedback).toContain('an overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack and the current docs.');
-  });
-
-  it('cuts a long current doc and sends the step to the whole file', () => {
-    const p = readmePack(base, { tasks: [], current: { readme: `# Big\n${'x'.repeat(20_000)}`, runbook: '', apiDocs: '' } });
-    expect(p.currentDocs).toContain('Current docs/README.md (cut at 8000 characters; read the whole file before you rewrite it):\n# Big');
-  });
-
-  it('keeps the step instructions when the current docs are large, since the docs leave the pack first', () => {
-    const big = (title: string) => `# ${title}\n${'x'.repeat(20_000)}`;
-    // Eight blocked tasks whose reasons carry a gate output tail, as a hard run leaves them.
-    const blocked = Array.from({ length: 8 }, (_, i) => ({ taskId: `T${i + 1}`, reason: 'gate unit-test failed: '.padEnd(2_500, 'y') }));
-    const opts = { delivered: ['T9'], blocked, evidence: '[]', assumptions: [], deploy: '{}', hostUrl: null, tokens: '{}', security: '' };
-    const pack = buildContextPack(reportPack({ ...base, budgetTokens: 4_000 }, { ...opts, current: { readme: big('Readme'), runbook: big('Runbook'), apiDocs: big('Api') } }));
-    expect(pack.dropped).toContain('current-docs');
-    expect(pack.dropped).not.toContain('feedback');
-    expect(pack.text).toContain('Write the final report for the human validator.');
-  });
-
-  it("readme pack of a project of services points at the docs, since the code lives in each service's repository", () => {
-    const shop: PackBase = { ...base, project: { ...base.project, projectId: 'shop', services: ['orders-api', 'inventory-api'] } };
-    const text = readmePack(shop, { tasks: [] }).feedback!;
-    expect(text).toContain("keeps each service's code in its own repository (orders-api, inventory-api)");
-    expect(text).not.toContain('package.json, go.mod');
-    expect(readmePack(base, { tasks: [] }).feedback).toContain('package.json, go.mod');
+  it('docs pack lists the whole tree, marks the kinds the repository lacks, and names each delivered task', () => {
+    const feedback = docsPack(base, { tasks: ['- T1: cadastro'], kinds: ['api'], features: ['GET /orders'] }).feedback;
+    expect(feedback).toContain('- docs/03-api/endpoints/');
+    expect(feedback).toContain('- docs/05-mobile/dispositivos.md');
+    expect(feedback).toContain('Every file of web, mobile says only "Não se aplica: <reason>".');
+    expect(feedback).toContain('- T1: cadastro');
+    expect(feedback).toContain('GET /orders');
   });
 
   it('report pack hands the agent the browser url and keeps the internal deploy url out of the text', () => {

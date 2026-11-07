@@ -88,6 +88,7 @@ const ROLE_ALLOW: Record<Role, readonly string[]> = {
   sec: ['Skill', ...GRAPH_BASH, ...WEB_ALLOW],
   devops: ['Skill', ...EDIT_TOOLS, ...GRAPH_BASH, ...WEB_ALLOW],
   env: [...GRAPH_BASH, ...WEB_ALLOW],
+  docs: ['Skill', ...EDIT_TOOLS, ...GRAPH_BASH, ...WEB_ALLOW],
 };
 
 export interface RoleSettingsInput {

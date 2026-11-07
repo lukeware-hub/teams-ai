@@ -22,7 +22,7 @@ export const STEP_DOING: Record<string, string> = {
   deployment: 'preparando o deploy',
   environment: 'criando o ambiente do teste local',
   report: 'escrevendo o relatório',
-  readme: 'escrevendo o README',
+  docs: 'escrevendo a documentação do código',
   decide: 'tomando uma decisão automática',
   'spec-gap': 'respondendo uma dúvida sobre a spec',
   replan: 'replanejando uma tarefa',

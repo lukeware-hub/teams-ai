@@ -26,6 +26,7 @@ export const ROLE_TOOL_POLICY: Record<Role, { allowed: readonly string[] }> = {
   sec: { allowed: [...READ_ONLY, 'Bash', 'Skill', ...WEB] },
   devops: { allowed: [...EDITING, 'Bash', 'Skill', ...WEB] },
   env: { allowed: [...READ_ONLY, 'Bash', ...WEB] },
+  docs: { allowed: [...EDITING, 'Bash', 'Skill', ...WEB] },
 };
 
 /** Never granted to any agent; the orchestrator owns these (spec §3.2, §14). */

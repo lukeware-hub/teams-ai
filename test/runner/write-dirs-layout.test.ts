@@ -58,7 +58,7 @@ async function fileRules(): Promise<string[]> {
 
 describe('writeDirsFor', () => {
   it('keeps the legacy map unchanged', () => {
-    expect(writeDirsFor(false)).toEqual({ speckit: ['docs/specs'] });
+    expect(writeDirsFor(false)).toEqual({ speckit: ['docs/specs'], docs: ['docs'] });
   });
 
   it('never allows a store-owned document in the documentation-repository map, and keeps the spec folder', () => {

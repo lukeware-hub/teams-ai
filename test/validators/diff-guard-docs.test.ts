@@ -11,8 +11,9 @@ describe('frozen documents of a monolith build task (plan 119, I8 item 3)', () =
     expect(frozenDocs(['docs/sub/README.md']).frozenTouched).toEqual(['docs/sub/README.md']);
   });
 
-  it('passes a change to README, RUNBOOK and API', () => {
-    expect(frozenDocs(['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md', 'src/a.ts']).ok).toBe(true);
+  it('refuses a change to README, RUNBOOK and API, since the docs step writes them', () => {
+    expect(frozenDocs(['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md']).ok).toBe(false);
+    expect(frozenDocs(['src/a.ts']).ok).toBe(true);
   });
 
   it('leaves the documents alone when the rule is off', () => {

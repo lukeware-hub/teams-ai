@@ -10,7 +10,7 @@ import { Spec } from '../contracts/spec.js';
 import { Architecture } from '../contracts/architecture.js';
 import { Impact } from '../contracts/impact.js';
 
-export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'readme', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture', 'specs-review', 'impact'] as const;
+export const STEP_KINDS = ['refine', 'derive', 'tech-spec', 'coverage', 'plan', 'services-plan', 'dev', 'review', 'security', 'ui-check', 'deployment', 'environment', 'report', 'gaps', 'docs', 'decide', 'spec-gap', 'replan', 'fix-tasks', 'backlog', 'spec', 'preplan', 'conflicts', 'name', 'suggest', 'answer', 'chat', 'skill-select', 'speckit', 'converge', 'block-options', 'architecture', 'specs-review', 'impact'] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 const specHash = z.string().regex(HASH_PATTERN);
@@ -252,22 +252,9 @@ export type EnvironmentVariable = z.infer<typeof EnvironmentVariable>;
 export const EnvironmentOutput = z.object({ specHash, variables: z.array(EnvironmentVariable), notes: z.string() });
 export type EnvironmentAnswer = z.infer<typeof EnvironmentOutput>;
 
-/** A change to one of the shared docs on main: `find` is a verbatim excerpt that occurs exactly once (empty appends); cheaper than returning the whole file. */
-export const DocsPatch = z.object({ file: z.enum(['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md']), find: z.string(), replace: z.string() });
-
-/** The three docs the orchestrator commits: each as a whole file, or as `docPatches` over the current file on main. */
-const docsFields = {
-  /** Markdown for docs/README.md: a project overview the orchestrator commits with the report; omitted when `docPatches` change the current one. */
-  readme: z.string().optional().catch(undefined),
-  /** Markdown for docs/RUNBOOK.md (start, stop, logs, rollback); validated by the docs gate. */
-  runbook: z.string().optional().catch(undefined),
-  /** Markdown for docs/API.md listing every endpoint the spec features name. */
-  apiDocs: z.string().optional().catch(undefined),
-  docPatches: z.array(DocsPatch).optional(),
-};
-
-/** `spec readme`: the SM alone writes docs/README.md for a spec that already has code on main. */
-export const ReadmeOutput = z.object({ specHash, ...docsFields });
+/** `docs` step: the docs tree the agent wrote, each file with the delivered tasks it documents. */
+export const DocsTreeOutput = z.object({ specHash, files: z.array(z.object({ path: z.string().min(1), covers: z.array(z.string().min(1)) })) });
+export type DocsTreeOutput = z.infer<typeof DocsTreeOutput>;
 
 export const ReportOutput = z.object({
   specHash,
@@ -276,7 +263,6 @@ export const ReportOutput = z.object({
   assumptions: z.array(z.string()),
   exploratoryScript: z.array(z.object({ acId, steps: z.array(z.string().min(1)).min(1) })),
   summary: z.string().min(1),
-  ...docsFields,
 });
 
 /** One cited doc section, judged against the code on main: `acIds` are the criteria that cover it. */
@@ -402,7 +388,7 @@ export const OUTPUT_SCHEMAS: Record<StepKind, z.ZodType<{ specHash: string }>> =
   environment: EnvironmentOutput,
   report: ReportOutput,
   gaps: GapsOutput,
-  readme: ReadmeOutput,
+  docs: DocsTreeOutput,
   decide: DecideOutput,
   'spec-gap': SpecGapOutput,
   'block-options': BlockOptionsOutput,

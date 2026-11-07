@@ -1,5 +1,4 @@
-/** R8.6: documentation is a gate. Pure validators for docs/README.md, docs/RUNBOOK.md and docs/API.md. */
-import { applyPatch } from '../refine/patches.js';
+/** The documentation gate's pure helpers: section headings, the endpoints a document names, and the planned sections. */
 
 export const MIN_SECTION_CHARS = 40;
 
@@ -32,7 +31,7 @@ function sections(md: string): Section[] {
   return out;
 }
 
-function checkSections(md: string, file: string, required: Record<string, RegExp>): string[] {
+export function checkSections(md: string, file: string, required: Record<string, RegExp>): string[] {
   if (md.trim() === '') return [`${file} is empty`];
   const found = sections(md);
   const errors: string[] = [];
@@ -44,8 +43,6 @@ function checkSections(md: string, file: string, required: Record<string, RegExp
   return errors;
 }
 
-export const validateReadme = (md: string): string[] => checkSections(md, 'docs/README.md', README_SECTIONS);
-export const validateRunbook = (md: string): string[] => checkSections(md, 'docs/RUNBOOK.md', RUNBOOK_SECTIONS);
 
 /** Endpoint paths named in spec features, e.g. "GET /health" or "exposes /api/items". */
 export function featureEndpoints(features: readonly string[]): string[] {
@@ -70,17 +67,6 @@ export function documentedEndpoints(md: string): string[] {
   return [...out];
 }
 
-/** `current`: the docs/API.md the answer replaces; earlier specs wrote it, so its endpoints stay. */
-export function validateApiDocs(md: string | null, features: readonly string[], current = ''): string[] {
-  const endpoints = featureEndpoints(features);
-  // An empty answer leaves the current file in place, so only a rewrite has to keep what it documents.
-  if (!md?.trim()) return endpoints.length === 0 ? [] : ['docs/API.md is empty; the spec features name endpoints'];
-  return [
-    ...endpoints.filter((e) => !md.includes(e)).map((e) => `docs/API.md does not document endpoint ${e}`),
-    ...documentedEndpoints(current).filter((e) => !endpoints.includes(e) && !md.includes(e)).map((e) => `docs/API.md dropped endpoint ${e}, which it documented before; keep it, or mark it as removed if this spec removed it`),
-  ];
-}
-
 /** The standard README section a planned name stands for, when it is one of the five. */
 const standardSection = (name: string): RegExp | undefined => Object.values(README_SECTIONS).find((re) => re.test(name));
 
@@ -94,36 +80,4 @@ export function missingReadmeSections(md: string, planned: readonly string[]): s
     const re = standardSection(name);
     return !titles.some((t) => (re ? re.test(t) : t.toLowerCase().includes(name.toLowerCase())));
   });
-}
-
-export interface DocsInput { readme: string; runbook: string | null | undefined; apiDocs: string | null | undefined }
-
-export interface DocsAnswer { readme?: string; runbook?: string; apiDocs?: string; docPatches?: ReadonlyArray<{ file: string; find: string; replace: string }> }
-const DOC_KEYS: Record<string, keyof DocsInput> = { 'docs/README.md': 'readme', 'docs/RUNBOOK.md': 'runbook', 'docs/API.md': 'apiDocs' };
-
-/** The docs the answer means: a whole file when given, else the current file with the answer's patches applied in order. */
-export function resolveDocs(answer: DocsAnswer, current: DocsInput | undefined): { docs: DocsInput; errors: string[] } {
-  const docs: DocsInput = { readme: answer.readme ?? current?.readme ?? '', runbook: answer.runbook ?? current?.runbook ?? '', apiDocs: answer.apiDocs ?? current?.apiDocs ?? '' };
-  const errors: string[] = [];
-  for (const p of answer.docPatches ?? []) {
-    const key = DOC_KEYS[p.file];
-    if (!key) { errors.push(`${p.file}: not one of docs/README.md, docs/RUNBOOK.md or docs/API.md`); continue; }
-    if (answer[key] !== undefined) { errors.push(`${p.file}: a patch and a whole file were both given; send one of them`); continue; }
-    const next = applyPatch(docs[key] ?? '', p);
-    if (next === null) errors.push(`${p.file}: the patch's find must occur exactly once in the current file: ${JSON.stringify(p.find.slice(0, 80))}`);
-    else docs[key] = next;
-  }
-  if (!docs.readme.trim()) errors.push('docs/README.md is empty: return `readme` with the whole file, or `docPatches` on the current one');
-  return { docs, errors };
-}
-
-/** `readmeSections`: the plan's delivery sections; the standard five are already required with their content. `current`: the docs on main the answer replaces. */
-export function validateDocs(d: DocsInput, features: readonly string[], readmeSections: readonly string[] = [], current?: DocsInput): string[] {
-  const planned = missingReadmeSections(d.readme, readmeSections.filter((s) => !standardSection(s)));
-  return [
-    ...validateReadme(d.readme),
-    ...planned.map((s) => `docs/README.md is missing a "${s}" section the plan requires (add a heading naming it)`),
-    ...validateRunbook(d.runbook ?? ''),
-    ...validateApiDocs(d.apiDocs ?? null, features, current?.apiDocs ?? ''),
-  ];
 }

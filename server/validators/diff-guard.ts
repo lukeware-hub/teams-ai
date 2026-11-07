@@ -9,7 +9,7 @@ export interface ScopeInput {
   scopeJustification?: string;
   /** Only for T0-scaffold on the first spec, which creates the frozen files. */
   allowFrozen?: boolean;
-  /** A monolith's build task: the documents of the documentation repository are frozen, except README, RUNBOOK and API. */
+  /** A monolith's build task: every file under docs/ is frozen, since the docs step writes them. */
   frozenDocs?: boolean;
 }
 

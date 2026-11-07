@@ -110,7 +110,7 @@ const KIND_TOOLS: Partial<Record<StepKind, readonly string[]>> = { chat: CHAT_TO
 /** The turn cap a kind has below its role's. */
 const KIND_TURNS: Partial<Record<StepKind, number>> = { chat: CHAT_MAX_TURNS };
 /** The folders of its working directory a kind's file tools may write, in the legacy layout: a plan step writes its plan file, never the inputs or a CLAUDE.md. */
-const LEGACY_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['docs/specs'] };
+const LEGACY_WRITE_DIRS: Partial<Record<StepKind, readonly string[]>> = { speckit: ['docs/specs'], docs: ['docs'] };
 /** The five documents a documentation repository's store projection owns: no step agent writes them. */
 const STORE_OWNED_DOCS: readonly string[] = ['docs/project.md', 'docs/flow.md', 'docs/briefing.md', 'docs/design.md', 'docs/stack.md'];
 /** The write folders of each kind in a layout; the documentation repository drops the store-owned documents. */

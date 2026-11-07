@@ -155,17 +155,4 @@ describe('readers of a docs-repo project', () => {
     await run.close();
   });
 
-  it('lists the tasks of the mirror plan in the readme pack', async () => {
-    await bind();
-    await writeState(ws, `specs/${spec.specId}/plan.json`, JSON.stringify(plan));
-    const prompts: string[] = [];
-    const script: Script = async (req) => {
-      prompts.push(req.prompt);
-      return { ok: false, failure: 'code', errors: ['not scripted'], summary, sandboxDisabled: false } as StepOutcome<any>;
-    };
-    const run = await Run.create(await withAgents(docsRepoDeps(script)), 'spec-001-readme-m1');
-    expect(await run.writeReadme()).toBe('phase-failed');
-    expect(prompts[0]).toContain('- T1: Task T1');
-    await run.close();
-  });
 });

@@ -21,11 +21,8 @@ export interface RepoTarget {
   name: string;
 }
 
-/** The documents of a monolith's docs folder that its build tasks may change; every other file under docs/ is frozen. */
-const BUILD_DOCS: readonly string[] = ['docs/README.md', 'docs/RUNBOOK.md', 'docs/API.md'];
-
-/** Whether a build task of a monolith may not change this file, because it is a document the documentation repository owns. */
-export const isFrozenDoc = (rel: string): boolean => rel.startsWith('docs/') && !BUILD_DOCS.includes(rel);
+/** Whether a build task of a monolith may not change this file: every file under docs/ is written by the docs step only. */
+export const isFrozenDoc = (rel: string): boolean => rel.startsWith('docs/');
 
 /** The name of the central documentation repository of a multi-repo project. */
 export const CENTRAL_REPO = 'artefacty';

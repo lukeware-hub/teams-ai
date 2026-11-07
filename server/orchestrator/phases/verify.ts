@@ -8,7 +8,6 @@ import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
 import type { StepOutcome } from '../../runner/step.js';
 import { validatePlan, validateServicesPlan } from '../../validators/plan.js';
-import { missingReadmeSections } from '../../validators/docs.js';
 import { unpinnedBaseImages } from '../../validators/pinned-image.js';
 import type { StoredEvent } from '../../store/event-store.js';
 import { OrchEvent } from '../events.js';
@@ -41,12 +40,6 @@ async function missingItems(repo: string, plan: Plan): Promise<MissingItem[]> {
     const present = await fs.stat(path.join(repo, rel)).then(() => true, () => false);
     if (!present) missing.push({ field, target: rel });
   }
-  // README sections are checked only when docs/README.md already exists on main: Phase 6 writes the docs
-  // after Phase 4/5, so before that a missing file is the normal state and not a delivery failure. Once the
-  // file exists (a rerun, `spec readme`, an earlier docs PR) its headings must carry the planned sections.
-  const sections = plan.delivery?.readmeSections ?? [];
-  const readme = sections.length ? await fs.readFile(path.join(repo, 'docs', 'README.md'), 'utf8').catch(() => null) : null;
-  if (readme !== null) for (const section of missingReadmeSections(readme, sections)) missing.push({ field: 'readmeSections', target: section });
   // The lockfile's name is never assumed (roadmap R10.2): the SM names its own stack's file, this only checks
   // that the path it named is actually on main.
   if (plan.lockfilePath) {
@@ -79,14 +72,14 @@ function deliveryFixTasks(items: readonly MissingItem[], existing: number, depen
     { owner: 'dev', items: items.filter((m) => !DEVOPS_FIELDS.has(m.field)) },
   ];
   return groups.filter((g) => g.items.length > 0).map((g, i) => {
-    const paths = g.items.filter((m) => m.field !== 'readmeSections').map((m) => m.target);
+    const paths = g.items.map((m) => m.target);
     return {
       id: `T900-fix-${existing + i + 1}`,
       title: `Deliver missing ${g.owner === 'devops' ? 'infrastructure' : 'e2e suite and docs'} files`,
       description: `The delivery contract is not met on main. Provide: ${g.items.map((m) => `${m.field} ${m.target}${m.detail ? ` (${m.detail})` : ''}`).join('; ')}. Use the plan's delivery paths exactly.`,
       criteriaRefs: [],
       dependsOn,
-      affectedPaths: paths.length ? paths : ['docs/README.md'],
+      affectedPaths: paths,
       owner: g.owner,
       origin: 'fix' as const,
     };
