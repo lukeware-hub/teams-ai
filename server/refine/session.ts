@@ -35,7 +35,7 @@ import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, read
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
-import { patchChangesScope } from './scope-guard.js';
+import { additiveOnly, patchChangesScope } from './scope-guard.js';
 import { autoAcceptable, inTeamAlone } from './team-rule.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
@@ -676,7 +676,7 @@ export class RefineSession {
   private async reviewAndScore(deps: Parameters<typeof runStageCycle>[0], file: DocFile): Promise<void> {
     await runStageCycle(deps, this.state.cycle + 1, file);
     if (this.state.status === 'error') return;
-    await this.acceptSafePatches(file);
+    await this.acceptSafePatches(file, true);
     // The Jev score of the reviewed document follows on its own: the owner no longer asks for it with a button.
     if (this.deps.scoreDocs && scoresDocs(this.state.mode)) {
       const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs: this.deps.scoreDocs };
@@ -1636,7 +1636,7 @@ export class RefineSession {
     else if ((this.state.graphed ?? []).includes(file)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
   }
 
-  /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends; the team alone takes only what autoAcceptable allows. */
+  /** The safe suggestions of a document (no scope change, no owner decision) are accepted on their own, as autoAcceptable allows; a stage review takes only additions. */
   /** Proposes the owner's patches the documents allow: a patch outside `allowed` is proposed and dropped at once, with its reason, so it never vanishes silently. */
   private async proposeWithin(patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>, docs: Record<DocFile, string>, cycle: number, base: number, allowed: ReadonlySet<DocFile> | null): Promise<{ files: Set<DocFile>; ids: string[]; proposed: number }> {
     const files = new Set<DocFile>();
@@ -1657,9 +1657,9 @@ export class RefineSession {
     return { files, ids, proposed };
   }
 
-  private async acceptSafePatches(file: DocFile): Promise<void> {
+  private async acceptSafePatches(file: DocFile, additionsOnly = false): Promise<void> {
     const teamAlone = inTeamAlone();
-    for (const p of safePatches(this.state.patches.filter((x) => x.file === file)).filter((x) => autoAcceptable(x, teamAlone))) {
+    for (const p of safePatches(this.state.patches.filter((x) => x.file === file)).filter((x) => autoAcceptable(x, teamAlone) && (!additionsOnly || teamAlone || additiveOnly(x.find, x.replace)))) {
       await this.applyPatchRow(p.patchId, true).catch((err) => {
         if (!(err instanceof ConflictError)) throw err;
       });

@@ -146,10 +146,19 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('accepts on its own a suggestion that changes no scope, when the review ends', async () => {
+  it('leaves to the owner a rewording of a stage, even one that changes no scope, when the review ends', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
+    await s.evaluateStage('flow.md');
+    expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => p.status)).toEqual(['pending']);
+    await s.close();
+  });
+
+  it('accepts on its own an addition to a stage, when the review ends', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\nB --> D[Log]', reason: 'passo novo' }])];
     await s.evaluateStage('flow.md');
     expect(s.state.patches.filter((p) => p.file === 'flow.md').map((p) => [p.status, p.auto])).toEqual([['accepted', true]]);
     await expect(s.continueStage()).resolves.toBeUndefined();
