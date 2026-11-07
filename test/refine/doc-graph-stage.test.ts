@@ -394,6 +394,8 @@ describe('the Jev pass line', () => {
     await s.continueStage('flow.md', true);
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
+    // The advance keeps the score the owner confirmed, so the audit shows what was accepted below the pass line.
+    expect(s.events.some((e) => e.type === RefineEvent.LowScoreConfirmed && e.data.doc === 'flow.md' && e.data.score === 40)).toBe(true);
     await s.close();
   });
 });

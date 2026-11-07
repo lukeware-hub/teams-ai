@@ -1796,11 +1796,11 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         })()}
         onSuggestDoc={(f) => {
           setError(null);
-          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), null));
+          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
         }}
         onDesignFromImages={(images) => {
           setError(null);
-          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), null));
+          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onCheckSpecs={async () => {

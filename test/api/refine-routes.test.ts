@@ -80,6 +80,14 @@ describe('refine routes', () => {
     await expect(refused.find((r) => r.path.endsWith('/plans'))!.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never)).rejects.toMatchObject({ status: 409 });
   });
 
+  it('answers 422 with the reason when a document is too big for one review', async () => {
+    const { PackTooLargeError } = await import('../../server/refine/fit-pack.js');
+    const suggest = vi.fn(() => { throw new PackTooLargeError('Os documentos são grandes demais para uma avaliação.'); });
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ suggest })) } as never });
+    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/docs/:file/suggest'))!;
+    await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002', file: 'stack.md' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 422, message: 'Os documentos são grandes demais para uma avaliação.' });
+  });
+
   it('a stage review that fails after its answer is logged, and the answer stays 202', async () => {
     const log = vi.fn();
     const session = { evaluateStage: vi.fn(() => Promise.reject(new Error('journal down'))) };

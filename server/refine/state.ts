@@ -275,6 +275,8 @@ export interface RefineState {
   doneStages?: DocFile[];
   /** The documents whose passed text is kept, so a stage can be reprocessed from it. */
   passedStages?: DocFile[];
+  /** The suggestions each passed text held accepted: a reprocess drops the accepted ones that came after it. */
+  passedPatchIds?: Partial<Record<DocFile, string[]>>;
   /** The stages reprocessed from their passed text and not moved on from yet: their mandatory questions do not hold them. */
   reprocessedStages?: DocFile[];
   /** The owner moved on from the final review to the backlog, so the review shows as done. */
@@ -696,12 +698,20 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       s.stageStartCycle = Number(d.cycle);
       if (s.reprocessedStages) s.reprocessedStages = s.reprocessedStages.filter((file) => file !== docName(d.doc));
       break;
-    case RefineEvent.StagePassed:
-      s.passedStages = [...new Set([...(s.passedStages ?? []), docName(d.file)])];
+    case RefineEvent.StagePassed: {
+      const file = docName(d.file);
+      s.passedStages = [...new Set([...(s.passedStages ?? []), file])];
+      s.passedPatchIds = { ...(s.passedPatchIds ?? {}), [file]: s.patches.filter((p) => p.file === file && p.status === 'accepted').map((p) => p.patchId) };
       break;
-    case RefineEvent.StageReprocessed:
-      s.reprocessedStages = [...new Set([...(s.reprocessedStages ?? []), docName(d.file)])];
+    }
+    case RefineEvent.StageReprocessed: {
+      const file = docName(d.file);
+      s.reprocessedStages = [...new Set([...(s.reprocessedStages ?? []), file])];
+      // The restore goes back to the passed text: the suggestions accepted after it are no longer in the document, so they are dropped.
+      const kept = new Set(s.passedPatchIds?.[file] ?? []);
+      for (const p of s.patches) if (p.file === file && p.status === 'accepted' && !kept.has(p.patchId)) { p.status = 'dropped'; p.decision = 'Voltou ao texto entregue com o Reprocessar.'; }
       break;
+    }
     case RefineEvent.ReviewClosed:
       s.reviewClosed = true;
       break;

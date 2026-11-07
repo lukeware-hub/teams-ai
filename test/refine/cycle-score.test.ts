@@ -58,6 +58,7 @@ describe('recordScore', () => {
     const journal = foldingJournal();
     const scoreDocs = vi.fn(async (_docs: Record<string, string>) => scored(0.9));
     await recordScore({ draft, journal, scoreDocs }, 1, false);
+    await writeFile(draft.flowMd, '# Fluxo\n\nDepois da edição.\n');
     await journal.fact(RefineEvent.DocEdited, { file: 'flow.md', hash: 'x', source: 'human' });
     await recordScore({ draft, journal, scoreDocs }, 1, false);
     expect(scoreDocs).toHaveBeenCalledTimes(2);
@@ -112,9 +113,21 @@ describe('recordScore', () => {
     await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
     await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
     expect(scoreDocs).toHaveBeenCalledTimes(1);
+    await writeFile(draft.stackMd, '# Stack\n\nDepois da edição.\n');
     await journal.fact(RefineEvent.DocEdited, { file: 'stack.md', hash: 'x', source: 'human' });
     await recordScore({ draft, journal, scoreDocs }, 1, false, ['stack.md']);
     expect(scoreDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the score of a document whose text is the one already scored, even when it is marked outdated', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const scoreDocs = vi.fn(async (_docs: Record<string, string>) => scored(0.9));
+    await recordScore({ draft, journal, scoreDocs }, 1, false);
+    journal.state.outdatedDocs = FIVE as never;
+    await recordScore({ draft, journal, scoreDocs }, 1, false);
+    expect(scoreDocs).toHaveBeenCalledTimes(1);
+    expect(journal.state.outdatedDocs ?? []).toEqual([]);
   });
 
   it('journals a failed score as unavailable, without throwing', async () => {

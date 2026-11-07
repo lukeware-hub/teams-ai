@@ -131,8 +131,16 @@ export async function recordScore(deps: ScoreDeps, cycle: number, confidential: 
     return;
   }
   const docs = Object.fromEntries(await Promise.all(files.map(async (file) => [file, await readDoc(deps.draft, file)]))) as Record<DocFile, string>;
+  const hashes = Object.fromEntries(files.map((file) => [file, sha256(docs[file])])) as Record<DocFile, string>;
+  // A document whose text is the one already scored keeps that score: a reprocess that restores the same text is not sent to the Jev again.
+  if (current && files.every((file) => current.docs?.[file]?.textHash === hashes[file])) {
+    await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, available: true, model: current.model, average: current.average, docs: Object.fromEntries(files.map((file) => [file, current.docs![file]])), usage: null, reused: true });
+    return;
+  }
   const scored = await deps.scoreDocs(docs, files).catch(() => UNSCORED);
-  await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, ...scored });
+  // Each score is kept with the hash of the text it judged.
+  const withText = scored.available && scored.docs ? { ...scored, docs: Object.fromEntries(Object.entries(scored.docs).map(([file, doc]) => [file, doc && { ...doc, textHash: hashes[file as DocFile] }])) } : scored;
+  await deps.journal.fact(RefineEvent.DocsScored, { cycle, files, ...withText });
 }
 
 const REORGANIZED_FILES: readonly DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];

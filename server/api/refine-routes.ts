@@ -4,6 +4,7 @@ import type { DocFile } from '../refine/draft.js';
 import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
 import { ConflictError, NotFoundError } from '../refine/session.js';
+import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
 import { acceptAllPending, resolveEverything, runExtension } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
@@ -35,7 +36,7 @@ const flag = (v: unknown, field: string): boolean => {
   return x;
 };
 
-/** Session errors map to HTTP: conflict 409, not found 404, bad input 400. */
+/** Session errors map to HTTP: conflict 409, not found 404, bad input 400, a document too big for one review 422. */
 const wrap = (h: (ctx: RouteContext) => Promise<void>) => async (ctx: RouteContext) => {
   try {
     await h(ctx);
@@ -43,6 +44,7 @@ const wrap = (h: (ctx: RouteContext) => Promise<void>) => async (ctx: RouteConte
     if (err instanceof ConflictError) throw new HttpError(409, err.message);
     if (err instanceof NotFoundError) throw new HttpError(404, err.message);
     if (err instanceof RangeError) throw new HttpError(400, err.message);
+    if (err instanceof PackTooLargeError) throw new HttpError(422, err.message);
     throw err;
   }
 };

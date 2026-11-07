@@ -698,7 +698,7 @@ export class RefineSession {
       const started = Date.now();
       await this.reviewAndScore(deps, file);
       // A document scored below the pass line is reviewed once more, now with its new score in front of the agents.
-      // A review that took longer than a minute is not repeated: the owner decides, and the journal says why.
+      // A review that took longer than two minutes is not repeated: the owner decides, and the journal says why.
       if (this.state.status !== 'error' && this.lowScore(file) !== null && !this.improved.has(file)) {
         this.improved.add(file);
         const ms = Date.now() - started;
@@ -730,10 +730,13 @@ export class RefineSession {
       if (problem) throw new ConflictError(problem);
       if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
       await this.skipOpenQuestions(target);
+      // The owner's confirmation of a low score is kept with the advance, so the audit shows what was accepted and when.
+      if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
       // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
       await this.startIndexing(target);
       return;
     }
+    if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 

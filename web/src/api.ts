@@ -38,7 +38,10 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+const SIGN_IN_AGAIN = 'Você precisa entrar de novo: recarregue a página, entre e tente de novo.';
 async function json<T>(res: Response): Promise<T> {
+  // When the public address sends the owner to its sign-in page, fetch follows that redirect and gets the page: that is not an answer.
+  if (res.redirected) throw new ApiError(SIGN_IN_AGAIN, res.status);
   const body = (await res.json().catch(() => ({}))) as T & { error?: string }; // a non-JSON body still reports the status
   if (!res.ok) throw new ApiError(body.error ?? `HTTP ${res.status}`, res.status);
   return body;
