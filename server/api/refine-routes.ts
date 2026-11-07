@@ -242,12 +242,21 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const b = await body();
         const s = await get(params);
         const questionId = str(b, 'questionId');
-        const asked = s.state.questions.find((q) => q.questionId === questionId);
         // The answer is only kept: the stage's review runs when the owner clicks Reprocessar, with every answer kept so far.
         await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
-        // The last answer about specs.md sends the backlog to the agents again, with the owner's decisions.
-        if (asked?.origin === 'specs') s.continueSpecsAfterAnswers()?.catch(logRunFailure(params));
         json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/specs/reprocess`,
+      // The specs are reviewed again with the owner's answers, and only when the owner clicks Reprocessar on them.
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        const run = s.continueSpecsAfterAnswers();
+        if (!run) throw new ConflictError('Ainda há perguntas de especificação sem resposta, ou o refinamento está ocupado.');
+        run.catch(logRunFailure(params));
+        json(202, { ok: true });
       }),
     },
     {

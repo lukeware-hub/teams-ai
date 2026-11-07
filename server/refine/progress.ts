@@ -102,3 +102,18 @@ export function stageCostOf(events: ReadonlyArray<StoredEvent>): Partial<Record<
   }
   return costs;
 }
+
+/** What the stage review of the current round has done so far: its review, its Jev score, and whether the Jev did not answer. */
+export function stageSignalsOf(events: ReadonlyArray<StoredEvent>): { reviewed: boolean; scored: boolean; jevDown: boolean } {
+  let start = 0;
+  events.forEach((e, i) => {
+    if (e.type === RefineEvent.CycleStarted) start = i;
+  });
+  const round = events.slice(start);
+  const scores = round.filter((e) => e.type === RefineEvent.DocsScored);
+  return {
+    reviewed: round.some((e) => e.type === RefineEvent.StageReviewed),
+    scored: scores.length > 0,
+    jevDown: scores.some((e) => e.data.available === false),
+  };
+}

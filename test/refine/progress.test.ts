@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../../server/store/event-store.js';
-import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, waitingOf } from '../../server/refine/progress.js';
+import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf } from '../../server/refine/progress.js';
 
 const ev = (seq: number, type: string, data: Record<string, unknown> = {}): StoredEvent => ({ seq, at: `2026-11-06T22:0${seq}:00.000Z`, runId: 'r', specHash: 'h', type, kind: 'fact', data } as StoredEvent);
 
@@ -34,6 +34,12 @@ describe('progress of a refinement, read from its journal', () => {
     const answered = [ev(2, 'QUESTION_ANSWERED', { questionId: 'q1' }), ev(3, 'QUESTION_ANSWERED', { questionId: 'q2' })];
     expect(answersAwaitingOf([asked, ...answered])).toEqual({ 'flow.md': 2 });
     expect(answersAwaitingOf([asked, ...answered, ev(4, 'REFINE_STAGE_REVIEWED', { file: 'flow.md', questions: [] })])).toEqual({});
+  });
+
+  it('tells what the current round has done: reviewed, scored, and whether the Jev did not answer', () => {
+    const round = [ev(1, 'REFINE_CYCLE_STARTED', { cycle: 2, file: 'project.md' }), ev(2, 'REFINE_STAGE_REVIEWED', { file: 'project.md' }), ev(3, 'REFINE_DOCS_SCORED', { cycle: 2, available: false })];
+    expect(stageSignalsOf([ev(0, 'REFINE_CYCLE_STARTED', { cycle: 1, file: 'flow.md' }), ev(1, 'REFINE_DOCS_SCORED', { cycle: 1, available: true })])).toEqual({ reviewed: false, scored: true, jevDown: false });
+    expect(stageSignalsOf(round)).toEqual({ reviewed: true, scored: true, jevDown: true });
   });
 
   it('shows a quota wait until the next step starts', () => {

@@ -231,6 +231,19 @@ describe('RefinementPage live', () => {
     expect(await screen.findByText('Qual seção justifica o item base?')).toBeTruthy();
     window.history.replaceState(null, '', '/');
   });
+  it('offers Reprocessar on the specs once the owner has answered their question, and sends it', async () => {
+    journal.events = [];
+    const s = snapshot(5);
+    const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
+    const answered = { questionId: 'specs-1-0', role: 'po', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], cycle: 1, origin: 'specs', status: 'answered', answer: 'Objetivos' };
+    window.history.replaceState(null, '', '/?etapa=backlog');
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, specsApproved: false, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 }, questions: [answered] } as never });
+    const reprocess = vi.spyOn(refineApi, 'reprocessSpecs').mockResolvedValue({ ok: true });
+    renderLive();
+    fireEvent.click(await screen.findByTestId('specs-reprocess-button'));
+    await waitFor(() => expect(reprocess).toHaveBeenCalledWith('hello-app', 'hello-001'));
+    window.history.replaceState(null, '', '/');
+  });
 });
 
 describe('RefinementPage while the server holds a process', () => {

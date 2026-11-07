@@ -27,7 +27,7 @@ import { formatStageDocument, reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
-import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, waitingOf, type RunningStep, type StageCost } from './progress.js';
+import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf, type RunningStep, type StageCost } from './progress.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
@@ -226,6 +226,8 @@ export interface Snapshot {
   stageCost: Partial<Record<DocFile, StageCost>>;
   /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
   answersAwaiting: Partial<Record<DocFile, number>>;
+  /** What the stage review of the current round has done so far. */
+  stageSignals: { reviewed: boolean; scored: boolean; jevDown: boolean };
 }
 
 /**
@@ -261,7 +263,7 @@ export function namesItem(text: string, key: string): boolean {
 
 /** The automatic repairs of a rejected specs.md before the owner is asked. */
 /** A stage review that took longer than this is not repeated automatically, even when its score is below the pass line. */
-const AUTO_REVIEW_MAX_MS = 60_000;
+const AUTO_REVIEW_MAX_MS = 120_000;
 /** The documents the findings name; null when none names one, so the patches are not restricted. */
 const namedDocs = (findings: ReadonlyArray<{ text: string }>): ReadonlySet<DocFile> | null => {
   const named = new Set(findings.map((f) => docNamedBy(f.text)).filter((d): d is DocFile => d !== undefined));
@@ -488,7 +490,7 @@ export class RefineSession {
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
     const events = this.journal.events;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */

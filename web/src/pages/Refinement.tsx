@@ -220,14 +220,8 @@ export function JevActions() {
 
 /** The stage the evaluation is in now, and whether Jev is down, from the journal of the current round. */
 /** The line of a stage review: what runs now, from the server's steps and the round's events, and whether the Jev did not answer. */
-function stageLineOf(events: StoredEvent[], cycle: number, file: string, running: RunningStep[], jevReads: boolean): { line: string; jevDown: boolean } {
-  const inRound = (e: StoredEvent) => Number(e.data.cycle) === cycle;
-  const reviewed = events.some((e) => e.type === 'REFINE_STAGE_REVIEWED' && inRound(e) && e.data.file === file);
-  const scored = events.some((e) => e.type === 'REFINE_DOCS_SCORED' && inRound(e));
-  const jevDown = events.some((e) => e.type === 'REFINE_DOCS_SCORED' && inRound(e) && e.data.available === false);
-  const lastGraph = [...events].reverse().find((e) => e.type.startsWith('REFINE_DOC_GRAPH') && e.data.file === file);
-  const graphing = lastGraph?.type === 'REFINE_DOC_GRAPH_STARTED';
-  return { line: stageText({ file, running, reviewed, scored, graphing, jevReads, jevDown, firstStage: file === 'flow.md' }), jevDown };
+function stageLineOf(signals: { reviewed: boolean; scored: boolean; jevDown: boolean }, graphing: boolean, file: string, running: RunningStep[], jevReads: boolean): { line: string; jevDown: boolean } {
+  return { line: stageText({ file, running, reviewed: signals.reviewed, scored: signals.scored, graphing, jevReads, jevDown: signals.jevDown, firstStage: file === 'flow.md' }), jevDown: signals.jevDown };
 }
 
 export function stageNow(events: StoredEvent[], cycle: number): { stage: string; jevDown: boolean; running: RunningStep[] } {
@@ -292,6 +286,8 @@ export interface ViewProps {
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
+  /** Reprocessar on the specs: the team reviews specs.md again with the answers the owner gave. */
+  onReprocessSpecs?(): void | Promise<unknown>;
   /** The owner asks for the review of a stage again, from the text that was passed to it. */
   onReprocessStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks the Jev for the score of one document. */
@@ -470,6 +466,7 @@ export function RefinementView(p: ViewProps) {
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
   const specsAsked = specsQuestions(st);
+  const specsAnswered = (st.questions ?? []).filter((q) => q.origin === 'specs' && q.status === 'answered').length;
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -1003,6 +1000,12 @@ export function RefinementView(p: ViewProps) {
         <div data-testid="specs-questions" className="grid gap-3">
           <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>
           {specsAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, specsAsked.length - i)}</Fragment>)}
+        </div>
+      )}
+      {step === 'backlog' && backlogOn && specsAsked.length === 0 && specsAnswered > 0 && !snap.specsApproved && (
+        <div data-testid="specs-reprocess" className="flex flex-wrap items-center gap-3">
+          <p className="m-0 text-[0.875rem] text-ink-soft">Respostas guardadas para o specs.md. Clique em Reprocessar para o time revisar com elas.</p>
+          <ActionButton data-testid="specs-reprocess-button" className="secondary" busy={busy} onClick={() => p.onReprocessSpecs?.()}>Reprocessar com as respostas</ActionButton>
         </div>
       )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
@@ -1714,7 +1717,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
   // A stage review names its document and reads its steps from the server, so a reloaded page shows them too.
   const reviewing = snap?.reviewing ?? null;
-  const stageLine = reviewing ? stageLineOf(events, snap?.state.cycle ?? 0, reviewing, snap?.running ?? [], snap?.state.confidential === false) : null;
+  const stageLine = reviewing ? stageLineOf(snap?.stageSignals ?? { reviewed: false, scored: false, jevDown: false }, snap?.state.graphing === reviewing, reviewing, snap?.running ?? [], snap?.state.confidential === false) : null;
   if (!snap) return (
     <main data-testid="refinement-loading">
       {error ? <p data-testid="refinement-loading-error" className="error">{error}</p> : <Loading />}
@@ -1828,6 +1831,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}
         onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
+        onReprocessSpecs={act(() => refineApi.reprocessSpecs(projectId, specId))}
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}

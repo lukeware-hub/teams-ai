@@ -1054,6 +1054,9 @@ describe('refine api', () => {
     script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
     expect((await call('POST', `${url}/answers`, { questionId: asked.questionId, text: 'Objetivos' })).status).toBe(200);
     await settle();
+    // The answer only waits: the owner's Reprocessar on the specs sends the backlog to the agents again.
+    expect((await call('POST', `${url}/specs/reprocess`)).status).toBe(202);
+    await settle();
     const after = await snapshot();
     expect(after.state.questions.find((q: { questionId: string }) => q.questionId === asked.questionId).status).toBe('answered');
     expect(after.state.specsRepairs).toBe(0);

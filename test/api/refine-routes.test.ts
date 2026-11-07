@@ -105,3 +105,27 @@ describe('refine routes', () => {
     expect(json).toHaveBeenLastCalledWith(200, expect.objectContaining({ mode: 'single', sessionId: 'shop/shop-001' }));
   });
 });
+
+describe('specs answers wait for Reprocessar on the specs', () => {
+  it('an answer to a specs question starts no continuation, and Reprocessar on the specs starts it once', async () => {
+    const continueSpecsAfterAnswers = vi.fn(() => Promise.resolve());
+    const answer = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ answer, continueSpecsAfterAnswers })) } as never, log: vi.fn() });
+    const answers = routes.find((r) => r.method === 'POST' && r.path.endsWith('/answers'))!;
+    const json = vi.fn();
+    await answers.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ questionId: 'specs-1', text: 'Sim' }), json } as never);
+    expect(answer).toHaveBeenCalledWith('specs-1', 'Sim', false);
+    expect(continueSpecsAfterAnswers).not.toHaveBeenCalled();
+    const reprocess = routes.find((r) => r.method === 'POST' && r.path.endsWith('/specs/reprocess'))!;
+    await reprocess.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);
+    expect(continueSpecsAfterAnswers).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenLastCalledWith(202, { ok: true });
+  });
+
+  it('Reprocessar on the specs is refused while a specs question has no answer', async () => {
+    const continueSpecsAfterAnswers = vi.fn(() => null);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueSpecsAfterAnswers })) } as never, log: vi.fn() });
+    const reprocess = routes.find((r) => r.method === 'POST' && r.path.endsWith('/specs/reprocess'))!;
+    await expect(reprocess.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 409 });
+  });
+});

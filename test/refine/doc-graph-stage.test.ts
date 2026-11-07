@@ -349,10 +349,10 @@ describe('the Jev pass line', () => {
     await s.close();
   });
 
-  it('a review that ran past a minute is not repeated, and the journal says why', async () => {
-    // Every clock read is two minutes after the one before, so the first review seems to have run for two minutes.
+  it('a review that ran past two minutes is not repeated, and the journal says why', async () => {
+    // Every clock read is three minutes after the one before, so the first review seems to have run for three minutes.
     let clock = 0;
-    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 120_000));
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 180_000));
     try {
       const s = await session(async () => low);
       script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];

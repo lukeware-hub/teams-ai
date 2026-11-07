@@ -672,6 +672,8 @@ export interface Snapshot {
   reviewing?: 'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md' | null;
   /** What each stage has cost so far. */
   stageCost?: Partial<Record<'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md', { rounds: number; steps: number; durationMs: number; costUsd: number }>>;
+  /** What the stage review of the current round has done so far. */
+  stageSignals?: { reviewed: boolean; scored: boolean; jevDown: boolean };
   /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
   answersAwaiting?: Partial<Record<'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md', number>>;
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
@@ -767,6 +769,7 @@ export const refineApi = {
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),
   resolve: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/resolve`).then((r) => json<{ ok: true }>(r)),
+  reprocessSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/reprocess`).then((r) => json<{ ok: true }>(r)),
   stop: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stop`).then((r) => json<{ ok: true }>(r)),
   evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
   confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),
