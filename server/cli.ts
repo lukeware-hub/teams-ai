@@ -74,7 +74,7 @@ export interface CliIo {
 const USAGE = `Usage:
   teams-ai run    --project <dir> [--spec <id>] [--run-id <id>] [--max-parallel N] [--dry-run] [--draft]
   teams-ai resume --project <dir> --run <runId>
-  teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the SM writes docs/README.md (docs PR)
+  teams-ai spec readme --project <dir> --spec <id> [--run-id <id>]   the docs step writes the docs tree (docs PR)
   teams-ai spec deploy --project <dir> --spec <id> [--target docker-local] [--run-id <id>]   deploy main again, no agent
   teams-ai status --project <dir> --run <runId> [--json]
   teams-ai supervise --project <dir> [--interval s]   resume interrupted runs until they finish

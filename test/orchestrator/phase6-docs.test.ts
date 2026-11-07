@@ -55,45 +55,26 @@ function deps(agent: Agent): PhaseDeps {
   };
 }
 
-const section = (t: string) => `## ${t}\n\nReal explanatory content that is long enough to count.\n`;
-const GOOD = { readme: `# App\n\n${['Run', 'Test', 'Environment variables', 'Architecture', 'Pipeline'].map(section).join('\n')}`, runbook: `# Runbook\n\n${['Start', 'Stop', 'Logs', 'Rollback'].map(section).join('\n')}` };
-const report = (docs: { readme: string; runbook?: string; apiDocs?: string }) => ok({ specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 'done', ...docs });
+const report = () => ok({ specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 'done' });
 const p6 = (agent: Agent) => runPhase6({ ...deps(agent), runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
 
-/** Earlier specs' docs reach main from elsewhere, so the run's own checkout stays behind main, as between runs. */
-async function mainWrites(files: Record<string, string>): Promise<void> {
-  for (const [rel, text] of Object.entries(files)) await fs.writeFile(path.join(remote.repo, rel), text);
-  await git(remote.repo, ['add', '-A'], execCommand);
-  await git(remote.repo, ['commit', '-q', '-m', 'earlier spec docs'], execCommand);
-  await git(remote.repo, ['push', '-q', 'origin', 'HEAD:main'], execCommand);
-  await git(remote.repo, ['reset', '-q', '--hard', 'HEAD~1'], execCommand);
-}
 
-describe('Phase 6 documentation gate', () => {
-  it('merges valid docs on the first try', async () => {
-    const r = await p6(async () => report(GOOD));
-    expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(1);
-    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
-  });
-
+describe('Phase 6 report', () => {
   it('writes the report and the awaiting-validation status to the mirror, and the docs to main', async () => {
     const mirror = { root: remote.root };
     await writeState(mirror, `specs/${spec.specId}/spec.json`, JSON.stringify(spec));
-    const d = deps(async () => report(GOOD));
+    const d = deps(async () => report());
     const r = await runPhase6({ ...d, docsRepo: true, runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
     expect(r.ok).toBe(true);
     expect(await readState(mirror, `specs/${spec.specId}/report.json`)).toMatchObject({ specId: spec.specId });
     expect(await readState(mirror, `specs/${spec.specId}/spec.json`)).toMatchObject({ status: 'awaiting-validation' });
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
     expect(await git(remote.repo, ['ls-tree', '-r', '--name-only', 'origin/main', 'docs/specs'], execCommand)).not.toContain('report.json');
   });
 
   it('puts the deploy port, health path, kind and docs path into report.service', async () => {
     await journal.fact(OrchEvent.DeployVerified, { attempt: 1, url: 'http://dind:3000', smoke: [], healthcheck: 'HTTP 200', tag: 't', port: 3000, healthcheckPath: '/health', kind: 'api', docsPath: '/docs' });
-    const r = await p6(async () => report(GOOD));
+    const r = await p6(async () => report());
     expect(r.report.service).toMatchObject({ url: 'http://dind:3000', port: 3000, healthcheckPath: '/health', kind: 'api', docsPath: '/docs' });
   });
 
@@ -101,7 +82,7 @@ describe('Phase 6 documentation gate', () => {
     // The platform in a container reaches each service at http://dind:<port>, an address the human never opens.
     const card = (service: string, port: number) => ({ service, url: `http://dind:${port}`, port, healthcheck: 'HTTP 200', healthcheckPath: '/health' });
     await journal.fact(OrchEvent.DeployVerified, { attempt: 1, ...card('orders', 20001), smoke: [], services: [card('orders', 20001), { ...card('inventory', 20002), kind: 'api', docsPath: '/docs' }] });
-    const r = await p6(async () => report(GOOD));
+    const r = await p6(async () => report());
     expect(r.report.services!.map((s) => [s.service, s.port])).toEqual([['orders', 20001], ['inventory', 20002]]);
     const pack = JSON.stringify(calls[0]!.pack);
     expect(pack).toContain('http://localhost:20001 (orders), http://localhost:20002 (inventory)');
@@ -111,7 +92,7 @@ describe('Phase 6 documentation gate', () => {
   it('counts the report step itself in report.tokens', async () => {
     const accounting = new Accounting();
     const usage = { inputTokens: 6, outputTokens: 8613, cacheReadTokens: 0, cacheWriteTokens: 0 };
-    const agent: Agent = async () => { accounting.record({ role: 'sm', phase: 'phase6', taskId: null, attempt: 1, stepKind: 'report', provider: 'claude', model: 'm', usage, costUsd: 0.28, durationMs: 1, numTurns: 1, at: '2026-10-09T00:00:00.000Z' }); return report(GOOD); };
+    const agent: Agent = async () => { accounting.record({ role: 'sm', phase: 'phase6', taskId: null, attempt: 1, stepKind: 'report', provider: 'claude', model: 'm', usage, costUsd: 0.28, durationMs: 1, numTurns: 1, at: '2026-10-09T00:00:00.000Z' }); return report(); };
     const r = await runPhase6({ ...deps(agent), runId: 'r1', accounting, result: 'awaiting-validation' });
     expect(r.report.tokens.total).toEqual({ inputTokens: 6, outputTokens: 8613, costUsd: 0.28 });
     expect(r.report.tokens.byRole.sm.costUsd).toBe(0.28);
@@ -120,84 +101,20 @@ describe('Phase 6 documentation gate', () => {
   it('puts the run metrics from the journal in the report, so each rerun can be compared with the last', async () => {
     await journal.fact(OrchEvent.StepFinished, { stepId: 's1', kind: 'dev', taskId: 'T1', attempt: 1, ok: true, costUsd: 2 });
     await journal.fact(OrchEvent.StepFinished, { stepId: 's2', kind: 'dev', taskId: 'T900-fix-1', attempt: 1, ok: true, costUsd: 1 });
-    const r = await runPhase6({ ...deps(async () => report(GOOD)), runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
+    const r = await runPhase6({ ...deps(async () => report()), runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
     expect(r.report.metrics).toMatchObject({ costUsd: 3, fixCostUsd: 1, tasks: 2 });
     expect(r.report.metrics!.fixCostShare).toBeCloseTo(1 / 3);
   });
 
-  it('feeds validator errors back and accepts the corrected docs', async () => {
-    let n = 0;
-    const r = await p6(async () => report(++n === 1 ? { readme: '# App', runbook: GOOD.runbook } : GOOD));
-    expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(JSON.stringify(calls[1]!.pack)).toContain('docs/README.md is missing a \\"run\\" section');
-  });
-
-  it('blocks the phase when the docs are invalid twice', async () => {
-    const r = await p6(async () => report({ readme: '# App', runbook: GOOD.runbook }));
-    expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/Phase 6 blocked: documentation rejected/);
-    expect(calls).toHaveLength(2);
-    expect(journal.events.find((e) => e.type === OrchEvent.PhaseFailed)!.data).toMatchObject({ phase: 6 });
-    expect(journal.events.some((e) => e.type === OrchEvent.ReportReady)).toBe(false);
-  });
-
-  it('feeds a schema failure back to the next attempt, so the retry knows what to fix', async () => {
-    let n = 0;
-    const r = await p6(async () => (++n === 1 ? { ok: false, failure: 'schema', errors: ['runbook: Invalid input: expected string'], summary, sandboxDisabled: false } : report(GOOD)));
-    expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(JSON.stringify(calls[1]!.pack)).toContain('runbook: Invalid input: expected string');
-  });
-
-  it('a runbook the report leaves out (a null field, once parsed) keeps the RUNBOOK on main, so no doc is blanked', async () => {
-    await mainWrites({ 'docs/README.md': GOOD.readme, 'docs/RUNBOOK.md': GOOD.runbook, 'docs/API.md': '# API\n\n### POST /stock\n' });
-    const r = await p6(async () => report({ readme: GOOD.readme }));
-    expect(r.ok).toBe(true);
-    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/RUNBOOK.md'], execCommand)).toContain('Rollback');
-  });
   it('blocks when the report step itself fails', async () => {
     const r = await p6(async () => ({ ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false }));
     expect(r.ok).toBe(false);
     expect(r.reason).toContain('bad shape');
   });
 
-  it('gives the report step the docs earlier specs wrote, in its working directory too, and keeps the endpoints they document', async () => {
-    await mainWrites({ 'docs/README.md': '# Loja\n\n- AC-001: o estoque cadastra um sku.\n', 'docs/API.md': '# API\n\n### POST /stock\n' });
-    const seen: string[] = [];
-    let n = 0;
-    const r = await p6(async (req) => {
-      seen.push(await fs.readFile(path.join(req.cwd, 'docs', 'API.md'), 'utf8').catch(() => 'missing'));
-      return report({ ...GOOD, apiDocs: ++n === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n' });
-    });
-    expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(JSON.stringify(calls[0]!.pack)).toContain('AC-001: o estoque cadastra um sku.');
-    expect(seen[0]).toContain('### POST /stock');
-    expect(JSON.stringify(calls[1]!.pack)).toContain('docs/API.md dropped endpoint /stock');
-    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
-  });
-
-  it('accepts docPatches over the docs on main instead of whole files, and feeds a bad find back', async () => {
-    await mainWrites({ 'docs/README.md': `${GOOD.readme}\n- AC-001: o estoque cadastra um sku.\n`, 'docs/RUNBOOK.md': GOOD.runbook, 'docs/API.md': '# API\n\n### POST /stock\n' });
-    let n = 0;
-    const r = await p6(async () => ok({ specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 'done', docPatches: [
-      { file: 'docs/README.md', find: ++n === 1 ? 'not there' : '- AC-001: o estoque cadastra um sku.', replace: '- AC-001: o estoque cadastra um sku.\n- AC-002: o pedido reserva o estoque.' },
-      { file: 'docs/API.md', find: '', replace: '### GET /orders\n' },
-    ] }));
-    expect(r.ok).toBe(true);
-    expect(calls).toHaveLength(2);
-    expect(JSON.stringify(calls[1]!.pack)).toContain('find must occur exactly once');
-    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/README.md'], execCommand)).toContain('AC-002: o pedido reserva o estoque.');
-    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock\n\n### GET /orders');
-  });
-
   it('lists the pull requests of the run in report.json', async () => {
     await journal.fact(OrchEvent.PrCreated, { branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', created: true });
-    const r = await p6(async () => report(GOOD));
+    const r = await p6(async () => report());
     expect(r.report.prs).toEqual([{ task: 'T1', branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', repository: 'o/shop', merged: false }]);
     await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
     expect(JSON.parse(await git(remote.repo, ['show', 'origin/main:docs/specs/spec-001/report.json'], execCommand)).prs).toHaveLength(1);
@@ -211,27 +128,16 @@ describe('Phase 6 documentation gate', () => {
     await earlier.fact(OrchEvent.DocsMerged, { phase: 1, pr: 1, branch: 'docs/spec-001' });
     await earlier.close();
     await journal.fact(OrchEvent.PrCreated, { branch: 'task/spec-001-T1', number: 4, url: 'https://github.com/o/shop/pull/4', created: true });
-    const r = await p6(async () => report(GOOD));
+    const r = await p6(async () => report());
     expect(r.report.prs.map((p) => [p.number, p.merged])).toEqual([[1, true], [4, false]]);
   });
 
-  it('starts the docs worktree again from main after a failed report, so the next run sees what other specs merged since', async () => {
-    expect((await p6(async () => report({ readme: '# App', runbook: GOOD.runbook }))).ok).toBe(false);
-    await mainWrites({ 'docs/API.md': '# API\n\n### POST /orders\n' });
-    // The next run of this spec has its own journal and the same project checkout.
-    await journal.close();
-    journal = await Journal.open({ file: path.join(remote.root, 'events-2.ndjson'), runId: 'r2', specHash: HASH });
-    calls = [];
-    const r = await p6(async () => report({ ...GOOD, apiDocs: '# API\n\n### POST /orders\n' }));
-    expect(JSON.stringify(calls[0]!.pack)).toContain('### POST /orders');
-    expect(r.ok).toBe(true);
-  });
 });
 
 describe('Phase 6 gap check', () => {
   const cited = makeFrozenSpec({ derivedFrom: { backlogKey: 'todos', inputHash: HASH, docsHash: HASH, sources: [{ doc: 'briefing.md', heading: 'Create a todo', hash: HASH, bodyHash: HASH }] } });
   const gapAnswer = (missing: string) => ok({ specHash: HASH, items: [{ doc: 'briefing.md', heading: 'Create a todo', status: 'missing', evidence: [], missing, acIds: [] }] });
-  const withGaps = (gaps: Agent, docs = GOOD): Agent => async (req) => (req.kind === 'gaps' ? gaps(req) : report(docs));
+  const withGaps = (gaps: Agent): Agent => async (req) => (req.kind === 'gaps' ? gaps(req) : report());
   const run = (agent: Agent) => runPhase6({ ...deps(agent), spec: cited, runId: 'r1', accounting: new Accounting(), result: 'awaiting-validation' });
 
   it('judges the cited sections once, read-only, and keeps the answer in the report and the journal', async () => {
@@ -244,7 +150,8 @@ describe('Phase 6 gap check', () => {
   });
 
   it('reuses the journaled check when the report is written again after a failure', async () => {
-    const blocked = await run(withGaps(async () => gapAnswer('Falta a tela de lista.'), { readme: '# App', runbook: GOOD.runbook }));
+    const failing: Agent = async (req) => (req.kind === 'gaps' ? gapAnswer('Falta a tela de lista.') : { ok: false, failure: 'schema', errors: ['bad shape'], summary, sandboxDisabled: false });
+    const blocked = await run(failing);
     expect(blocked.ok).toBe(false);
     calls = [];
     const r = await run(withGaps(async () => { throw new Error('the gap check must not run again'); }));

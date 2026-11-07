@@ -136,10 +136,9 @@ describe('TaskRunner: frozen documents (plan 119, I8 item 3)', () => {
     expect(feedback).toContain('frozen files modified: docs/stack.md');
   });
 
-  it('lets a monolith build task change docs/README.md', async () => {
+  it('refuses a monolith build task change to docs/README.md, which the docs step writes', async () => {
     const feedback = await run({ docs }, dev(readAll, 'the docs', ['docs/README.md']));
-    expect(feedback).toBeNull();
-    expect(state().state).toBe('validating');
+    expect(feedback).not.toBeNull();
   });
 
   it('leaves a microservice task alone', async () => {

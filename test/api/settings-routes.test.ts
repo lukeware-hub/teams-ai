@@ -20,9 +20,9 @@ afterEach(async () => {
 });
 
 describe('settings routes', () => {
-  it('lists the eight agents and the chat and graphify settings on manual Haiku at low by default, except the reviewers and graphify on Sonnet, then shows a manual pick', async () => {
+  it('lists the nine agents and the chat and graphify settings on manual Haiku at low by default, except the reviewers and graphify on Sonnet, then shows a manual pick', async () => {
     const first = (await (await fetch(`${base()}/demo`)).json()) as { agents: Array<{ role: string; setting: unknown }> };
-    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'chat', 'graphify']);
+    expect(first.agents.map((a) => a.role)).toEqual(['sm', 'po', 'front', 'dev', 'test', 'sec', 'devops', 'env', 'docs', 'chat', 'graphify']);
     for (const a of first.agents) {
       const model = a.role === 'po' || a.role === 'sm' || a.role === 'graphify' ? 'claude-sonnet-5-5' : 'claude-haiku-5-5';
       expect(a.setting).toEqual({ model, effort: 'low' });

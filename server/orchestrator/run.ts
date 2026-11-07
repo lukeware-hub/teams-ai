@@ -41,11 +41,11 @@ export { CrashInjected };
 import { taskMergeSteps, type MergeStepsDeps } from './merge-steps.js';
 import { PAUSED_AUTH, ensureServiceRepos, runPhase0, runWorkflowBootstrap, runPhase1, runPhase2, runPhase4, runPhase5, runServicesPhase5, runPhase6, deployStartAttempt, MAX_DEPLOY_ATTEMPTS, MAX_ENV_RERUNS, type PhaseDeps, type PhaseResult } from './phases/index.js';
 import { withMainSnapshot } from './phases/shared.js';
+import { runDocsPhase } from './phases/docs.js';
 import { planGapTasks, runPlanReview } from './phases/converge.js';
 import { reconcile } from './reconcile.js';
-import { resolveDocs, validateDocs, type DocsAnswer } from '../validators/docs.js';
 import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
-import { readmePack, runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
+import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, graphFile, mergedByPriorRuns, nextRunId, runDir, sameVersionRunEvents, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
@@ -939,40 +939,15 @@ export class Run {
     return this.finish('done');
   }
 
-  /** `spec readme`: the SM writes docs/README.md from what main carries; the file lands through a docs PR. */
+  /** `spec readme`: the docs step writes the docs tree from what main carries; the files land through a docs PR. */
   async writeReadme(): Promise<ExecuteResult> {
-    const shared = await import('./phases/shared.js');
-    const specId = this.deps.spec.specId;
-    const branch = `docs/${specId}-readme`;
-    const wt = await shared.freshDocsWorktree(this.phaseDeps(), branch, 6);
-    const rel = (...p: string[]) => path.join(wt, ...p);
-    this.techSpecText = await fs.readFile(rel('docs', 'specs', specId, 'tech-spec.md'), 'utf8').catch(() => '');
-    const plan = this.deps.docsRepo ? ((await readState(this.deps.ws, `specs/${specId}/plan.json`)) as Plan | undefined) ?? null : await fs.readFile(rel('docs', 'specs', specId, 'plan.json'), 'utf8').then((t) => JSON.parse(t) as Plan).catch(() => null);
-    const current = await shared.currentDocs(wt);
-    let readme = '';
-    let runbook = '';
-    let apiDocs = '';
-    let docsErrors: string[] = [];
-    let error = 'readme step failed';
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const out = (await this.runAgent<'readme'>({ kind: 'readme', role: 'sm', pack: readmePack(this.packBase(), { readmeSections: plan?.delivery?.readmeSections, tasks: (plan?.tasks ?? []).map((t) => `- ${t.id}: ${t.title}`), current, docsErrors }), cwd: wt, phase: 'readme', taskId: null, attempt })) as { ok: boolean; value?: DocsAnswer; failure?: string; errors?: string[] };
-      if (out.ok && out.value) {
-        const resolved = resolveDocs(out.value, current);
-        readme = resolved.docs.readme; runbook = resolved.docs.runbook ?? ''; apiDocs = resolved.docs.apiDocs ?? '';
-        docsErrors = [...resolved.errors, ...validateDocs(resolved.docs, this.deps.spec.features, plan?.delivery?.readmeSections, current)];
-        if (docsErrors.length === 0) break;
-        error = `documentation rejected: ${docsErrors.join('; ')}`; readme = ''; continue;
-      }
-      if (out.failure === 'quota' || out.failure === 'auth') { if (await shared.pauseForFailure(this.phaseDeps(), out.failure)) return 'paused:auth'; continue; }
-      error = out.errors?.join('; ') ?? error;
-      docsErrors = out.errors ?? [];
-    }
-    if (!readme) return this.finish('phase-failed', error);
-    await fs.writeFile(rel('docs', 'README.md'), `${readme.trimEnd()}\n`);
-    await fs.writeFile(rel('docs', 'RUNBOOK.md'), `${runbook.trimEnd()}\n`);
-    if (apiDocs.trim()) await fs.writeFile(rel('docs', 'API.md'), `${apiDocs.trimEnd()}\n`);
-    const merged = await shared.commitAndMergeDocs(this.phaseDeps(), 6, branch, wt, `docs(${specId}): README`);
-    return merged.ok ? this.finish('done') : this.finish('phase-failed', merged.reason);
+    const plan = await this.loadPlan();
+    if (plan === null) return this.finish('phase-failed', 'the plan is not on main, so there is nothing to document');
+    this.plan = plan;
+    await this.loadServiceContext(plan);
+    const docs = await this.docsPhases();
+    if (!docs.ok && docs.reason === PAUSED_AUTH) return 'paused:auth';
+    return docs.ok ? this.finish('done') : this.finish('phase-failed', docs.reason);
   }
 
   /** `spec deploy`: one Phase 5 attempt of the plan on main to this run's target; no agent runs, a failure is only reported. */
@@ -1002,6 +977,15 @@ export class Run {
     return result;
   }
 
+  /** Phase 8: each repository this spec changed gets its docs pull request, written from the code on its main. */
+  private async docsPhases(): Promise<PhaseResult> {
+    for (const view of servicePlans(this.plan!)) {
+      const r = await runDocsPhase({ ...this.phaseDeps(), plan: view.plan, ws: this.wsOf(view), service: view.service ?? undefined, mergeDeps: this.mergeDeps(view) }, view);
+      if (!r.ok) return r;
+    }
+    return { ok: true };
+  }
+
   private async postPhases(): Promise<ExecuteResult> {
     let result: 'awaiting-validation' | 'verification-failed' | 'deploy-failed' = 'awaiting-validation';
     let reason: string | undefined;
@@ -1025,6 +1009,12 @@ export class Run {
         if (back === 'blocked') return this.finish('blocked');
         if (back !== 'merged') return back;
       }
+    }
+    // Phase 8 documents the code on main, so it runs whenever verification passed, whether the deploy did or not.
+    if (p4.ok) {
+      const docs = await this.docsPhases();
+      if (!docs.ok && docs.reason === PAUSED_AUTH) return 'paused:auth';
+      if (!docs.ok) return this.finish('phase-failed', docs.reason);
     }
     const p6 = await runPhase6({ ...this.phaseDeps(), runId: this.runId, accounting: this.accounting, result });
     if (!p6.ok && p6.reason === PAUSED_AUTH) return 'paused:auth';

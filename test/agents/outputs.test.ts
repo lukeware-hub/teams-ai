@@ -310,16 +310,6 @@ describe('ServicesPlanOutput', () => {
   });
 });
 
-describe('report docs fields', () => {
-  it('a null doc field counts as absent, so the report step is not failed for writing null', () => {
-    const base = { specHash: HASH, delivered: [], blocked: [], assumptions: [], exploratoryScript: [], summary: 's' };
-    const parsed = ReportOutput.parse({ ...base, readme: '# App', runbook: null, apiDocs: null });
-    expect(parsed).toMatchObject({ readme: '# App' });
-    expect(parsed.runbook ?? undefined).toBeUndefined();
-    expect(parsed.apiDocs ?? undefined).toBeUndefined();
-  });
-});
-
 describe('EnvironmentVariable', () => {
   const fake = { name: 'LLM_API_KEY', scope: 'both', reason: 'r', strategy: 'fake' } as const;
   it('takes a fake key prefix of plain characters only, never a line break or a quote', () => {

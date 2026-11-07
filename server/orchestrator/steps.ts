@@ -20,13 +20,13 @@ import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
 import { limitMsOf, type runStep as runStepFn, type StepDeps, type StepOutcome, type StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
-import type { DocsInput } from '../validators/docs.js';
 import type { RefContext } from '../validators/references.js';
 import { REQUIRED_BLOCKING_GATES } from '../validators/plan.js';
 import { securityToolingRules } from '../validators/security-tooling.js';
 import { skillsForRole } from '../skills/catalog.js';
 import { absoluteRule } from '../runner/role-settings.js';
 import { FIVE_DOCS } from '../docs/layout.js';
+import { APP_KINDS, DOCS_TREE, type AppKind } from '../docs/tree.js';
 import { OrchEvent, type Journal } from './events.js';
 
 export interface PackBase {
@@ -526,54 +526,25 @@ export function fixTasksPack(base: PackBase, opts: { failedTests: readonly strin
   return { ...common(base, 'fix-tasks', 'sm'), criteria: base.spec.acceptanceCriteria, feedback };
 }
 
-export const DOCS_STRUCTURE = [
-  'Documentation is a gate; the orchestrator rejects the step unless all three documents pass:',
-  '- `readme` (docs/README.md): headings for run, test, env (environment variables), architecture and pipeline (CI/CD), in Brazilian Portuguese (for example Executar, Testes, Variáveis de ambiente, Arquitetura and Pipeline), each with real content.',
-  '- `runbook` (docs/RUNBOOK.md): headings for start, stop, logs and rollback, each with real content.',
-  '- `apiDocs` (docs/API.md): every endpoint named in the spec features or documented in the current docs/API.md, written with its exact path, each endpoint as `METHOD /path` (for example `### GET /orders/{id}`) (only needed when the features name endpoints; an empty `apiDocs` leaves the current file as it is).',
-  'Omit a document you do not change; never send null.',
-].join('\n');
-
-/** The plan's delivery sections the README must carry; the validator checks them the same way. */
-const plannedSections = (sections: readonly string[] | undefined): string[] =>
-  sections?.length ? [`docs/README.md also needs a heading naming each section the plan lists: ${sections.join(', ')}.`] : [];
-
-/** Long enough for real docs; the pack drops them all before the step's own instructions when over budget. */
-const CURRENT_DOC_CHARS = 8_000;
-
-/** The rule of a docs rewrite: earlier specs wrote the current docs, so what is still true of them stays. */
-const KEEP_CURRENT_DOCS = 'Earlier specs of this project wrote the current docs: they are in the section "Current docs on main", or in docs/README.md, docs/RUNBOOK.md and docs/API.md of your working directory when the pack had no room for them. Keep every section, acceptance criterion and endpoint they hold that is still true, and add what this spec delivered. An endpoint docs/API.md documents stays in it; one this spec removed is marked as removed, never deleted. When a current file exists, change it with `docPatches` instead of returning it whole: each patch names the file, a `find` that is a verbatim excerpt occurring exactly once in the current file (empty `find` appends at the end) and its `replace`; return `readme`, `runbook` or `apiDocs` whole only for a file that does not exist yet or that must change in most of its lines. Never send both a whole file and patches for the same file.';
-
-/** The shared docs on main, for the pack section of their own. */
-function currentDocsText(current: DocsInput | undefined): string {
-  const shown = (file: string, text: string | null | undefined) => (!text?.trim()
-    ? `There is no ${file} yet.`
-    : `Current ${file}${text.length > CURRENT_DOC_CHARS ? ` (cut at ${CURRENT_DOC_CHARS} characters; read the whole file before you rewrite it)` : ''}:\n${text.slice(0, CURRENT_DOC_CHARS)}`);
-  return [shown('docs/README.md', current?.readme), shown('docs/RUNBOOK.md', current?.runbook), shown('docs/API.md', current?.apiDocs)].join('\n\n');
-}
-
-export function readmePack(base: PackBase, opts: { tasks: readonly string[]; current?: DocsInput; docsErrors?: readonly string[]; readmeSections?: readonly string[] }): ContextPackInput {
-  const services = base.project.services ?? [];
-  return { ...common(base, 'readme', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
-    services.length > 0
-      ? `Write docs/README.md for this project: the Markdown overview a newcomer reads first. The project keeps each service's code in its own repository (${services.map((s) => repoName(base.project.projectId, s)).join(', ')}), so this one holds only the docs: describe each service from docs/ (project.md, stack.md, flow.md) and the services.<service> settings of docs/specs/*/plan.json with Read, Grep and Glob; state only what those files confirm.`
-      : 'Write docs/README.md for this project: the Markdown overview a newcomer reads first. Read the repository (package.json, go.mod, pyproject.toml or Cargo.toml, entry points, tests, Dockerfile) with Read, Grep and Glob; state only what the files confirm.',
-    DOCS_STRUCTURE,
-    ...plannedSections(opts.readmeSections),
+/** The pack of the docs step: the numbered tree of the project's repository, written from the code it delivered. */
+export function docsPack(base: PackBase, opts: { tasks: readonly string[]; kinds: readonly AppKind[]; features: readonly string[]; readmeSections?: readonly string[]; docsErrors?: readonly string[] }): ContextPackInput {
+  const absent = APP_KINDS.filter((kind) => !opts.kinds.includes(kind));
+  return { ...common(base, 'docs', 'docs'), criteria: base.spec.acceptanceCriteria, feedback: [
+    'Document the code this spec delivered, in docs/ of your working directory: the project\'s own repository, checked out on main with the delivered code. Read the code with Read, Grep and Glob, and write only the files of the tree below.',
+    `The tree, every path relative to your working directory:\n${DOCS_TREE.map((p) => `- ${p}`).join('\n')}`,
+    `This repository holds these kinds of application: ${opts.kinds.join(', ') || 'none'}. Every file of ${absent.join(', ') || 'no other kind'} says only "Não se aplica: <reason>".`,
+    opts.features.length > 0 ? `The spec features; each endpoint they name appears in docs/03-api/ with its exact path, written as \`METHOD /path\` (for example \`### GET /orders/{id}\`):\n${opts.features.map((f) => `- ${f}`).join('\n')}` : 'The spec features name no endpoint.',
+    `Delivered tasks; each one is named in the covers of at least one file that documents it:\n${opts.tasks.join('\n') || '- none'}`,
+    opts.readmeSections?.length ? `The plan requires a heading for each of these sections, in some file: ${opts.readmeSections.join(', ')}.` : '',
     ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
-    `Delivered tasks:\n${opts.tasks.join('\n') || '- none'}`,
-    KEEP_CURRENT_DOCS,
-  ].join('\n\n'), currentDocs: currentDocsText(opts.current) };
+    'Earlier specs wrote the docs already in docs/ of your working directory: read them first, keep what is still true, and change only what this spec changed.',
+  ].filter(Boolean).join('\n\n') };
 }
 
-export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; docsErrors?: readonly string[]; readmeSections?: readonly string[]; current?: DocsInput }): ContextPackInput {
+export function reportPack(base: PackBase, opts: { delivered: readonly string[]; blocked: ReadonlyArray<{ taskId: string; reason: string }>; evidence: string; assumptions: readonly string[]; deploy: string; hostUrl: string | null; tokens: string; security: string; }): ContextPackInput {
   return { ...common(base, 'report', 'sm'), criteria: base.spec.acceptanceCriteria, feedback: [
     'Write the final report for the human validator. Give concrete exploratory steps for every acceptance criterion.',
     'Write `summary`, `assumptions`, `blocked[].reason` and `exploratoryScript` entirely in Brazilian Portuguese (pt-BR), in plain words a non-developer can follow; no English sentences. Each exploratory step says what to do and what should happen, in one short sentence (for example: "Abra /health no endereço do serviço. Deve aparecer {"ok":true}."). Keep commands, URLs, status codes and JSON between backticks, untranslated.',
-    'Also return `readme`: the Markdown for docs/README.md, an overview of the project (what it is, how to run and test it, the endpoints or commands it exposes, the acceptance criteria it satisfies). Use only facts from the context pack and the current docs.',
-    DOCS_STRUCTURE,
-    ...plannedSections(opts.readmeSections),
-    ...(opts.docsErrors?.length ? [`Your previous documents were rejected, fix every point:\n${opts.docsErrors.map((e) => `- ${e}`).join('\n')}`] : []),
     `Delivered tasks: ${opts.delivered.join(', ') || 'none'}`,
     `Blocked tasks:\n${opts.blocked.map((b) => `- ${b.taskId}: ${b.reason}`).join('\n') || '- none'}`,
     `Evidence matrix:\n${opts.evidence}`,
@@ -581,10 +552,9 @@ export function reportPack(base: PackBase, opts: { delivered: readonly string[];
     `Security findings left by the sec review (mention residual risks in the summary):
 ${opts.security || '- none'}`,
     `Deploy outcome: ${opts.deploy}`,
-    opts.hostUrl ? `The human opens the service at ${opts.hostUrl}; the deploy url is internal to the platform and never appears in what you write: use ${opts.hostUrl} in the summary, README, runbook and exploratory steps.` : 'The human cannot open the service from a browser; the deploy url is internal to the platform and never appears in what you write.',
+    opts.hostUrl ? `The human opens the service at ${opts.hostUrl}; the deploy url is internal to the platform and never appears in what you write: use ${opts.hostUrl} in the summary and the exploratory steps.` : 'The human cannot open the service from a browser; the deploy url is internal to the platform and never appears in what you write.',
     `Token usage: ${opts.tokens}`,
-    KEEP_CURRENT_DOCS,
-  ].join('\n\n'), currentDocs: currentDocsText(opts.current) };
+  ].join('\n\n'), };
 }
 
 /** The doc sections a spec cites, each judged against the code on main. */

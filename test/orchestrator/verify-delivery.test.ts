@@ -63,15 +63,7 @@ describe('Phase 4 delivery contract', () => {
     expect(gateCalls).toBeGreaterThan(0);
   });
 
-  it('requires the planned README sections once docs/README.md exists on main', async () => {
-    const deps = await setup({ ...ALL, 'docs/README.md': '# Project\n\n## Install\n' });
-    const res = await runPhase4(deps, 1);
-    expect(res.ok).toBe(false);
-    if (!res.ok) { expect(res.reason).toContain('readmeSections: Run'); expect(res.fixTasks?.[0]).toMatchObject({ owner: 'dev', affectedPaths: ['docs/README.md'] }); }
-    expect(gateCalls).toBe(0);
-  });
-
-  it('accepts an existing README that carries the planned sections', async () => {
+  it('does not block on an existing README: the docs step owns the docs tree', async () => {
     const deps = await setup({ ...ALL, 'docs/README.md': '# Project\n\n## How to Run\n' });
     await runPhase4(deps, 1).catch(() => undefined);
     expect(gateCalls).toBeGreaterThan(0);

@@ -29,6 +29,7 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
   sec: { model: MODELS.sonnet },
   devops: { model: MODELS.sonnet },
   env: { model: MODELS.sonnet },
+  docs: { model: MODELS.sonnet },
 };
 
 /** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */

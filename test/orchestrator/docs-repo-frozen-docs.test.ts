@@ -109,9 +109,9 @@ describe('TaskRunner: frozen documents of a docs-repo monolith (plan 119, I8 ite
     expect(feedback).toContain('frozen files modified: docs/project.md');
   });
 
-  it('lets a monolith build change docs/README.md', async () => {
+  it('refuses a monolith build change to docs/README.md, which the docs step writes', async () => {
     const feedback = await advance({ docs }, ['docs/README.md']);
-    expect(feedback).toBeNull();
+    expect(feedback).not.toBeNull();
   });
 
   it('keeps a legacy project unchanged: docs/project.md is not frozen', async () => {

@@ -604,34 +604,6 @@ describe('Run', () => {
   /** A readme answer the docs gate accepts, with this API.md. */
   const readmeAnswer = (apiDocs: string): StepOutcome<any> => ({ ok: true, value: { specHash: HASH, readme: ['Run', 'Test', 'Environment variables', 'Architecture', 'Pipeline'].map(section).join('\n'), runbook: ['Start', 'Stop', 'Logs', 'Rollback'].map(section).join('\n'), apiDocs }, summary: summary() });
 
-  it('spec readme hands the SM the current docs and keeps every endpoint the current API.md documents', async () => {
-    await mainApi('# API\n\n### POST /stock\n');
-    const prompts: string[] = [];
-    const script: Script = async (req) => {
-      prompts.push(req.prompt);
-      return readmeAnswer(prompts.length === 1 ? '# API\n\n### GET /orders\n' : '# API\n\n### POST /stock\n\n### GET /orders\n');
-    };
-    const run = await Run.create(await withAgents(deps(script)));
-    expect(await run.writeReadme()).toBe('done');
-    expect(prompts[0]).toContain('Current docs/API.md:\n# API\n\n### POST /stock');
-    expect(prompts[1]).toContain('docs/API.md dropped endpoint /stock');
-    await git(remote.repo, ['fetch', '-q', 'origin'], execCommand);
-    expect(await git(remote.repo, ['show', 'origin/main:docs/API.md'], execCommand)).toContain('### POST /stock');
-    await run.close();
-  });
-
-  it('spec readme starts its docs worktree again from main after a failed readme run', async () => {
-    const first = await Run.create(await withAgents(deps(async () => ({ ...readmeAnswer(''), value: { specHash: HASH, readme: '# App', runbook: '', apiDocs: '' } }))));
-    expect(await first.writeReadme()).toBe('phase-failed');
-    await first.close();
-    await mainApi('# API\n\n### POST /orders\n');
-    const prompts: string[] = [];
-    const second = await Run.create(await withAgents(deps(async (req) => { prompts.push(req.prompt); return readmeAnswer('# API\n\n### POST /orders\n'); })));
-    expect(await second.writeReadme()).toBe('done');
-    expect(prompts[0]).toContain('### POST /orders');
-    await second.close();
-  });
-
   describe('deployOnly (spec deploy)', () => {
     const noAgent: Script = async (req) => { throw new Error(`deploy-only ran an agent step: ${req.kind}`); };
     const target = (over: Record<string, unknown> = {}) => ({
