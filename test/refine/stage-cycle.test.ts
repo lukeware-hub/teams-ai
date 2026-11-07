@@ -6,6 +6,8 @@ import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js
 import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
+import type { DocFile } from '../../server/refine/draft.js';
+import { fileGraphDir } from '../../server/refine/stage-consult.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import { reshapeBackup } from '../../server/refine/reshape.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
@@ -544,29 +546,43 @@ describe('runStageCycle', () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
-  it('an earlier document reaches the review as a digest, and the stage document in full', async () => {
+  it('the other documents reach the review only as the excerpts that match the part, never whole', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    await writeDoc(draft, 'project.md', `# Shop\n\n${'palavra '.repeat(1000)}\nFIM-DO-PROJETO`);
+    await writeDoc(draft, 'project.md', `# Shop\n\n## Entrega\n\nO briefing aprova cada entrega.\n\n## Outro\n\n${'palavra '.repeat(1000)}FIM-DO-PROJETO\n`);
     await writeDoc(draft, 'briefing.md', '# Briefing\n\nFIM-DO-BRIEFING');
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### briefing.md (this stage)'))!;
+    expect(review).toContain('O briefing aprova cada entrega.');
     expect(review).not.toContain('FIM-DO-PROJETO');
     expect(review).toContain('FIM-DO-BRIEFING');
-    expect(review).toContain('(context only, a digest');
+    expect(review).not.toContain('a digest');
   });
 
-  it('an earlier document reaches the review as a short excerpt of each section, so a long section is cut', async () => {
+  it('a long excerpt of another document that matches the part is cut at its limit', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(200)}FIM-DO-FLUXO\n`);
-    await writeDoc(draft, 'project.md', '# Projeto\n\nFIM-DO-PROJETO');
+    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(400)}FIM-DO-FLUXO\n`);
+    await writeDoc(draft, 'project.md', '# Projeto\n\nA etapa do projeto.');
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### project.md (this stage)'))!;
+    expect(review).toContain('flow.md › Etapa');
     expect(review).not.toContain('FIM-DO-FLUXO');
     expect(review).toContain('[…]');
+  });
+
+  it('the other documents are asked of the graph of each one, in its own folder, and never of the stage document', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const graphNotes = vi.fn(async (dir: string) => `NOTA DE ${dir}`);
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], graphNotes }, 1, 'briefing.md');
+    const asked = graphNotes.mock.calls.map(([dir]) => dir).sort();
+    expect(asked).toEqual(['flow.md', 'project.md', 'stack.md', 'design.md'].map((f) => fileGraphDir(draft.root, f as DocFile)).sort());
+    const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
+    expect(review).toContain(`NOTA DE ${fileGraphDir(draft.root, 'flow.md')}`);
   });
 
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {

@@ -5,8 +5,8 @@ const base: StageTextInput = { file: 'project.md', running: [], reviewed: false,
 const step = (kind: string, role: string) => ({ stepId: 's', kind, role, model: 'claude-sonnet-5-5', effort: 'low', part: null, limitMs: null, startedAt: '2026-11-06T22:00:00Z' });
 
 describe('stageText: what a stage review is doing, in plain words', () => {
-  it('names the document and says the earlier ones are context only, after the first stage', () => {
-    expect(stageText({ ...base, running: [step('refine', 'po')] })).toBe('PO está revisando só project.md; os documentos anteriores entram como resumo, para consulta.');
+  it('names the document and says the other ones are only consulted, after the first stage', () => {
+    expect(stageText({ ...base, running: [step('refine', 'po')] })).toBe('PO está revisando só project.md; os outros documentos são consultados por trechos e pelo grafo.');
   });
 
   it('names only the document on the first stage, which has none before it', () => {

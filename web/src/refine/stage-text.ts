@@ -31,7 +31,7 @@ export function stageText(input: StageTextInput): string {
   const review = input.running.find((step) => step.kind === 'refine');
   if (review) {
     const who = ROLE_NAME[review.role] ?? review.role;
-    return input.firstStage ? `${who} está revisando ${file}.` : `${who} está revisando só ${file}; os documentos anteriores entram como resumo, para consulta.`;
+    return input.firstStage ? `${who} está revisando ${file}.` : `${who} está revisando só ${file}; os outros documentos são consultados por trechos e pelo grafo.`;
   }
   if (input.graphing) return `Graphify está extraindo só ${file}.`;
   if (input.reviewed && !input.scored) return input.jevReads ? `Jev está dando a nota de ${file}.` : `Concluindo a revisão de ${file}.`;

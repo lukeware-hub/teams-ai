@@ -61,11 +61,11 @@ export function ProcessBox({ title, since = null, tone = 'accent', testId, child
   );
 }
 
-/** The stage a review is named after: what it reads, and that the earlier documents are context only. */
+/** The stage a review is named after: what it reads, and that the other documents are only consulted. */
 export function stageInfo(file: string, jevReads: boolean, firstStage: boolean): string {
   const jev = jevReads ? 'o Jev dá a nota só dele' : 'o Jev não lê o documento (projeto confidencial ou sem resposta)';
-  const earlier = firstStage ? '' : ' Os documentos anteriores entram como resumo, só para consulta.';
-  return `Esta rodada trabalha só com ${file}: o agente dono do documento o revisa, ${jev} e o Graphify lê só este arquivo.${earlier}`;
+  const others = firstStage ? '' : ' Os outros documentos são consultados por trechos e pelo grafo.';
+  return `Esta rodada trabalha só com ${file}: o agente dono do documento o revisa, ${jev} e o Graphify extrai só este arquivo.${others}`;
 }
 
 /** The waiting for the Claude quota, the moment it ends as a clock time. */

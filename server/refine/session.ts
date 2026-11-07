@@ -26,6 +26,7 @@ import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { formatStageDocument, reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
+import { builtGraphNotes, fileGraphDir } from './stage-consult.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
 import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf, type RunningStep, type StageCost } from './progress.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
@@ -581,7 +582,7 @@ export class RefineSession {
   private async indexStage(file: DocFile, advance = true): Promise<void> {
     try {
       const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
-      const fileDir = path.posix.join(staging, 'files', file);
+      const fileDir = fileGraphDir(this.deps.draft.root, file);
       const folder = path.posix.join(fileDir, 'docs');
       await fs.rm(folder, { recursive: true, force: true });
       await fs.mkdir(folder, { recursive: true });
@@ -693,7 +694,7 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await this.keepPassedText(file, restore);
-      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f) };
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f), graphNotes: this.deps.docGraphContext ? builtGraphNotes(this.deps.docGraphContext) : undefined };
       const started = Date.now();
       await this.reviewAndScore(deps, file);
       // A document scored below the pass line is reviewed once more, now with its new score in front of the agents.

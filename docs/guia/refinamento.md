@@ -38,7 +38,7 @@ Antes da primeira etapa, a tela pergunta se o projeto é confidencial. Enquanto 
 
 Dentro de uma etapa:
 
-- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os documentos anteriores servem de contexto, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste. O Jev lê só o documento da etapa para dar a nota dele. O Graphify recebe o documento só quando você clica em Continuar, que encerra a etapa.
+- **Avaliar esta etapa**: os agentes revisam só o documento da etapa atual. Os outros quatro documentos são as fontes da verdade: a revisão os consulta por trechos e pelo grafo, sem lê-los inteiros, e nenhum outro documento muda. A revisão pode criar perguntas para você e sugestões de ajuste. O Jev lê só o documento da etapa para dar a nota dele. O Graphify recebe o documento só quando você clica em Continuar, que encerra a etapa.
 - **Continuar**: passa para a próxima etapa. Não exige nota nem revisão. Na última etapa, o botão vira **Quebrar o backlog**.
 - **Voltar**: volta para a etapa anterior, para revisar o que já foi concluído.
 
@@ -77,7 +77,7 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 
 Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
 
-Cada etapa também trabalha com um arquivo só: o agente do documento, o Jev e o Graphify recebem somente o documento da etapa. O agente vê um resumo dos documentos anteriores, só para consulta, e não abre os outros arquivos do projeto.
+Cada etapa também trabalha com um arquivo só: o agente do documento, o Jev e o Graphify recebem somente o documento da etapa. Os outros quatro documentos são as fontes da verdade: o agente os consulta por trechos e pelo grafo de cada um, sem lê-los inteiros, e não abre os outros arquivos do projeto.
 
 Responder uma pergunta ou aceitar uma sugestão não reprocessa a etapa. A resposta fica guardada, e a etapa é reprocessada quando você clica em Reprocessar, com todas as respostas guardadas até ali.
 

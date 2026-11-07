@@ -1190,7 +1190,7 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 | Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergences. It is the last stage review's result for this document against the documents before it; before any stage review, it is the last full round's contradictions check. |
 | Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
 
-`Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The Jev reads only the stage's document, and the Graphify takes it only when Continuar ends the stage, and the stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
+`Avaliar esta etapa` reviews only the current stage's document. The other documents are the sources of truth: the review consults them by search and by their graph, never whole, and no other document changes. The Jev reads only the stage's document, and the Graphify takes it only when Continuar ends the stage, and the stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
 
 ### 26.6 Checklist de validação do documento
 
@@ -1409,7 +1409,7 @@ A revisão de uma etapa lê o documento inteiro em partes de até 25 mil tokens 
 | Chamadas | Uma chamada de revisão por parte. Se uma parte falha, a etapa falha com o motivo dela. |
 | Sugestões | Todas as partes contribuem para as mesmas sugestões. Cada `find` é checado contra o documento inteiro e tem de aparecer uma vez só nele. |
 | Registro | Uma revisão por etapa, com as perguntas, os achados e as divergências das partes reunidos. |
-| Documentos anteriores | Seguem como resumo no prompt, como antes. Ler os anteriores pelo grafo fica para o incremento seguinte. |
+| Outros documentos (fontes da verdade) | Consultados no prompt: os trechos que casam com a parte (busca) e as notas do grafo de cada um. Nenhum é lido inteiro, e o pacote de cada parte fica abaixo do limite. |
 
 ### 26.13 Formatar pelo template (algoritmo)
 
