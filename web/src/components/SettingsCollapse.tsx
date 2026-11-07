@@ -1,6 +1,9 @@
-import { useState, type ReactNode, type SyntheticEvent } from 'react';
+import { createContext, useState, type ReactNode, type SyntheticEvent } from 'react';
 import type { Item } from '../api.js';
 import { Icon } from './Icons.js';
+
+/** True inside a settings collapse, whose own summary already shows the title and the status: a card inside drops its header. */
+export const InsideCollapse = createContext(false);
 
 export function SettingsCollapse({ title, item, meta, children }: { title: string; item?: Item | null; meta?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -23,7 +26,7 @@ export function SettingsCollapse({ title, item, meta, children }: { title: strin
           <span data-testid="settings-collapse-meta" className="settings-collapse-meta">{meta}</span>
         ) : null}
       </summary>
-      {open ? <div data-testid="settings-collapse-body" className="settings-collapse-body">{children}</div> : null}
+      {open ? <div data-testid="settings-collapse-body" className="settings-collapse-body"><InsideCollapse.Provider value={true}>{children}</InsideCollapse.Provider></div> : null}
     </details>
   );
 }

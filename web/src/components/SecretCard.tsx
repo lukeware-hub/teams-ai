@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, type Item } from '../api.js';
+import { JEV_INFO, JEV_SUBTITLE } from '../jevCopy.js';
 import { GH_TOKEN, OPENROUTER } from '../onboarding/stepCopy.js';
 import { ActionButton } from './ActionButton.js';
 import { Icon } from './Icons.js';
@@ -16,8 +17,8 @@ const COPY = {
     ...GH_TOKEN,
   },
   OPENROUTER_API_KEY: {
-    subtitle: 'Obrigatória: o Jev revisa a consistência dos documentos e decide pontos do refinamento.',
-    info: 'O Jev é um assistente de IA acessado pelo OpenRouter. No refinamento ele confere se os documentos são consistentes e classifica e decide pontos da avaliação, como critérios ainda não prontos e perguntas repetidas. Sem a chave, o refinamento não inicia.',
+    subtitle: JEV_SUBTITLE,
+    info: JEV_INFO,
     field: 'Cole a chave de API',
     replace: 'Substituir chave salva',
     ...OPENROUTER,

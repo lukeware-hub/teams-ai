@@ -30,7 +30,7 @@ import { DocsSyncNotice } from '../refine/DocsSyncNotice.js';
 import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
-import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner } from '../refine/ProcessingBanner.js';
+import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner, stageInfo } from '../refine/ProcessingBanner.js';
 import { currentReview, reviewChip, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { SpecsAttempts } from '../refine/SpecsAttempts.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
@@ -39,6 +39,7 @@ import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageView
 import { ReadinessBanner } from '../refine/ReadinessBanner.js';
 import { DOC_LABEL as docLabel } from '../refine/doc-labels.js';
 import { stageAction, stageTitle } from '../refine/stages.js';
+import { stageText } from '../refine/stage-text.js';
 import { firstFailing, graphLabel, stageChecklist, type StageCheck } from '../refine/stage-checklist.js';
 import { SpecTree } from '../refine/SpecTree.js';
 import { ImpactCard, ReadyBar, ReplanCard, RequestCard, type RequestStatus } from '../refine/RequestCards.js';
@@ -218,6 +219,11 @@ export function JevActions() {
 }
 
 /** The stage the evaluation is in now, and whether Jev is down, from the journal of the current round. */
+/** The line of a stage review: what runs now, from the server's steps and the round's events, and whether the Jev did not answer. */
+function stageLineOf(signals: { reviewed: boolean; scored: boolean; jevDown: boolean }, graphing: boolean, file: string, running: RunningStep[], jevReads: boolean): { line: string; jevDown: boolean } {
+  return { line: stageText({ file, running, reviewed: signals.reviewed, scored: signals.scored, graphing, jevReads, jevDown: signals.jevDown, firstStage: file === 'flow.md' }), jevDown: signals.jevDown };
+}
+
 export function stageNow(events: StoredEvent[], cycle: number): { stage: string; jevDown: boolean; running: RunningStep[] } {
   const derived = events.some((e) => e.type === 'DERIVED' && Number(e.data.cycle) === cycle);
   const jevEvent = events.find((e) => e.type === 'REFINE_DOCS_VALIDATED' && Number(e.data.cycle) === cycle);
@@ -280,6 +286,8 @@ export interface ViewProps {
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
+  /** Reprocessar on the specs: the team reviews specs.md again with the answers the owner gave. */
+  onReprocessSpecs?(): void | Promise<unknown>;
   /** The owner asks for the review of a stage again, from the text that was passed to it. */
   onReprocessStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks the Jev for the score of one document. */
@@ -458,6 +466,7 @@ export function RefinementView(p: ViewProps) {
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
   const specsAsked = specsQuestions(st);
+  const specsAnswered = (st.questions ?? []).filter((q) => q.origin === 'specs' && q.status === 'answered').length;
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -993,6 +1002,12 @@ export function RefinementView(p: ViewProps) {
           {specsAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, specsAsked.length - i)}</Fragment>)}
         </div>
       )}
+      {step === 'backlog' && backlogOn && specsAsked.length === 0 && specsAnswered > 0 && !snap.specsApproved && (
+        <div data-testid="specs-reprocess" className="flex flex-wrap items-center gap-3">
+          <p className="m-0 text-[0.875rem] text-ink-soft">Respostas guardadas para o specs.md. Clique em Reprocessar para o time revisar com elas.</p>
+          <ActionButton data-testid="specs-reprocess-button" className="secondary" busy={busy} onClick={() => p.onReprocessSpecs?.()}>Reprocessar com as respostas</ActionButton>
+        </div>
+      )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
           <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span>{specsChip('po')}</summary>
@@ -1281,6 +1296,8 @@ export function RefinementView(p: ViewProps) {
   };
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
+  // The answers given since the stage's last review wait for Reprocessar.
+  const awaiting = isDocStep(step) ? (p.snap.answersAwaiting?.[step] ?? 0) : 0;
   const failingChecks = st.checklist.filter((c) => !c.passed).length;
   const needsCard = () => (
       <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
@@ -1470,8 +1487,9 @@ export function RefinementView(p: ViewProps) {
           // Going back to the passed text drops the edits and the suggestions accepted since.
           setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições e as sugestões aceitas depois.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
-        {reprocess ? 'Reprocessar' : 'Processar com agentes'}
+        {reprocess ? (awaiting > 0 ? `Reprocessar · ${awaiting} ${awaiting === 1 ? 'resposta' : 'respostas'}` : 'Reprocessar') : 'Processar com agentes'}
       </ActionButton>
+      {awaiting > 0 && <p data-testid="wizard-answers-awaiting" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{awaiting === 1 ? 'Uma resposta guardada' : `${awaiting} respostas guardadas`}: clique em Reprocessar para aplicar.</p>}
       {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{continueBlock.hint}</p>}
       {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn @3xl:order-first">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
       <ActionButton
@@ -1697,6 +1715,9 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     if (next.docsDirty) load();
   }, [events, snap]);
   const now = useMemo(() => stageNow(events, snap?.state.cycle ?? 0), [events, snap?.state.cycle]);
+  // A stage review names its document and reads its steps from the server, so a reloaded page shows them too.
+  const reviewing = snap?.reviewing ?? null;
+  const stageLine = reviewing ? stageLineOf(snap?.stageSignals ?? { reviewed: false, scored: false, jevDown: false }, snap?.state.graphing === reviewing, reviewing, snap?.running ?? [], snap?.state.confidential === false) : null;
   if (!snap) return (
     <main data-testid="refinement-loading">
       {error ? <p data-testid="refinement-loading-error" className="error">{error}</p> : <Loading />}
@@ -1742,7 +1763,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {scoresDocs(snap.state.mode ?? null) && snap.state.mode !== 'new-project' && !snap.state.extension && !['evaluating', 'started'].includes(snap.state.status) && (
         <ReadinessBanner readiness={snap.state.readiness} canStart={canStartRun(snap.state, false)} startState={startLabel} onScore={act(() => refineApi.score(projectId, specId))} onStart={repositorySession ? openSummary : startRun} />
       )}
-      {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={now.stage} jevDown={now.jevDown} running={now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state) : undefined} />}
+      {(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && <ProcessingBanner backlog={snap.state.backlog} cycle={snap.state.cycle} stage={stageLine?.line ?? (snap.state.stages === true ? 'Preparando a revisão da etapa.' : now.stage)} jevDown={stageLine?.jevDown ?? now.jevDown} running={snap.running ?? now.running} since={snap.state.evaluation?.startedAt} title={snap.state.mode === 'new-project' ? stageTitle(snap.state, reviewing) : undefined} file={reviewing} info={reviewing ? stageInfo(reviewing, snap.state.confidential === false, reviewing === 'flow.md') : undefined} waiting={snap.waiting ?? null} cost={reviewing ? snap.stageCost?.[reviewing] ?? null : null} onStop={act(() => refineApi.stop(projectId, specId))} />}
       {snap.busy === true && !(snap.state.status === 'evaluating' || evaluationOpen(snap.state)) && !snap.state.graphing && (
         <ProcessBox title="O time está trabalhando" tone="good" testId="busy-process">
           <span className="text-[0.75rem] leading-[1.35]">Tem um processo em aberto. Os botões de aceitar e rejeitar ficam bloqueados até ele terminar, e liberam sozinhos.</span>
@@ -1775,11 +1796,11 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         })()}
         onSuggestDoc={(f) => {
           setError(null);
-          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), null));
+          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
         }}
         onDesignFromImages={(images) => {
           setError(null);
-          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), null));
+          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onCheckSpecs={async () => {
@@ -1810,6 +1831,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}
         onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
+        onReprocessSpecs={act(() => refineApi.reprocessSpecs(projectId, specId))}
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}

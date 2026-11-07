@@ -6,13 +6,11 @@ import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
 import { isConfidential, type CycleJournal, type RunAgent } from './cycle.js';
-import { DIGEST_NOTE, docDigest } from './docs-view.js';
-import { docSections, normHeading } from './sections.js';
+import { docSections } from './sections.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
 import { draftHash, readDoc, type Draft, type DocFile } from './draft.js';
 import { RefineEvent, type Question } from './events.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
-import { jevHint, unavailable, type JevValidationResult, type ValidationDocs } from './jev-validation.js';
 import { historyBlocks, PATCH_WORTH } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
@@ -20,16 +18,11 @@ import { reshapeStage } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { MAX_STAGE_PARTS, PART_TOKENS, stageParts } from './stage-parts.js';
+import { consultDocs, fileGraphDir, type GraphNotes } from './stage-consult.js';
 import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
 
 /** The role that reviews a stage's document: the one that owns it. */
 const OWNER: Record<DocFile, 'po' | 'sm' | 'front'> = { 'project.md': 'po', 'briefing.md': 'po', 'stack.md': 'sm', 'flow.md': 'po', 'design.md': 'front' };
-
-/** The key of each document in the Jev's validation input. */
-const VALIDATION_KEY: Record<DocFile, keyof ValidationDocs> = { 'project.md': 'project', 'briefing.md': 'briefing', 'stack.md': 'stack', 'flow.md': 'flow', 'design.md': 'design' };
-
-/** How much of each earlier document the review reads: every heading, with the start of its section. */
-const STAGE_DIGEST_CHARS = 600;
 
 /** What the owner's review returns for one part of a document. */
 type RefineReview = z.infer<typeof RefineOutput>;
@@ -50,11 +43,12 @@ export interface StageCycleDeps {
   journal: CycleJournal;
   runAgent: RunAgent;
   frontAgent?: RunAgent;
-  validateDocs?: (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult>;
   principles: () => readonly string[];
   signal?: AbortSignal;
   /** The key of the document's last finished review: an identical review is not asked of the agent again. */
   lastReviewKey?: (file: DocFile) => string | undefined;
+  /** Graph notes of a document's graph folder; without it the review consults by search alone. */
+  graphNotes?: GraphNotes;
 }
 
 /** The key of the last finished review of a document in the journal's events. */
@@ -78,9 +72,9 @@ const inScope = (name: string, specId: string, scope: readonly DocFile[]): boole
 /** What the review looks for in each place the Jev doubts, one sentence per check. */
 const LOOK_FOR: Record<ScoreCheck, string> = {
   complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
-  concrete: 'replace vague words, placeholders and open questions with exact values, names, limits or observable behavior',
+  concrete: 'replace a vague word or placeholder with the exact value, name, limit or behavior the documents already give; when they do not give it, record it as an assumption and change no text; never reword a question mark, a label or a comment',
   consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
-  scoped: 'find content the charter gives to another document; if an earlier document lacks it, add it there with a patch to that document, and never delete content that no other document holds',
+  scoped: 'find content the charter gives to another document; if an earlier document already holds it, remove it here; if not, leave it here: this stage changes only its own document',
 };
 
 /** The place a doubt names in its document: the whole document, or the part with the headings that bound it. */
@@ -108,32 +102,24 @@ export interface ReviewPart {
   text: string;
 }
 
-/** The review of one stage's document: the owner reads it against the charter, the documents before it as digests, and the Jev's hints as context. */
-export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; jev?: string; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[]; part?: ReviewPart }): ContextPackInput {
+/** The review of one stage's document: the owner reads this part against the charter, the Jev's hints as context, and the other documents only as the consult shows them. */
+export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: string; principles: readonly string[]; file: DocFile; docs: Record<DocFile, string>; score?: DocScore; specId: string; history: readonly QuestionRow[]; rejected: readonly PatchRow[]; part?: ReviewPart; consult?: string }): ContextPackInput {
   const part = input.part;
-  const earlier = earlierDocs(input.file);
-  // A section of an earlier document that this document names is read whole: the review quotes it, and a cut section hides what it says.
-  const own = ` ${normHeading(input.docs[input.file])} `;
-  const cited = (heading: string) => {
-    const name = normHeading(heading);
-    return name.length >= 4 && own.includes(` ${name} `);
-  };
-  const context = earlier.length > 0
-    ? [DIGEST_NOTE, ...earlier.map((f) => `### ${f} (context only, a digest; the sections this document names are whole)\n${docDigest(input.docs[f], STAGE_DIGEST_CHARS, cited)}`)].join('\n\n')
-    : '(no document before this stage)';
+  // The other documents are sources of truth too: the review reads them only as the consult shows them, never whole.
+  const context = `### Consulted: the other documents, which are sources of truth too (search and graph; none is read in full)\n${input.consult ?? 'Nothing was consulted for this part.'}`;
   // With parts, the outline lists every heading of the whole document, so a part can say where the rest of it is.
   const outline = part ? docSections(input.docs[input.file]).map((s) => `- ${s.heading} (line ${s.line + 1})`) : [];
   const feedback = [
     part
       ? `You review only ${input.file}, the document of this stage, part ${part.index} of ${part.total}. Read the part below against the document charter in your instructions. Quote only text that is in this part; the outline lists the headings of the whole document.`
-      : `You review only ${input.file}, the document of this stage. Read it line by line against the document charter in your instructions.`,
+      : `You review only ${input.file}, the document of this stage. Read it whole against the document charter in your instructions: look for what is missing, wrong or contradicted, not for wording.`,
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
     '- Return an empty checklist: this stage does not evaluate the checklist.',
-    '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides.',
+    '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides. A document after this stage is reference only: raise nothing against it.',
     '- Ask a question only under question rule 5 (a scope change nothing that exists settles); decide everything else yourself and record it as an assumption. Mark a question blocking only when the stage cannot continue without the answer.',
+    '- You have no tools: this part, its outline and the consult of the other documents are in this message. Do not look for other files; what the consult does not show, you do not know.',
     '- Write everything in Brazilian Portuguese. Do not edit any file.',
     PATCH_WORTH,
-    ...(input.jev ? [input.jev] : []),
     ...(input.score ? jevIndex(input.file, input.score) : []),
     context,
     `### ${input.file} (this stage${part ? `, part ${part.index} of ${part.total}` : ''})\n${part ? part.text : input.docs[input.file]}`,
@@ -161,26 +147,23 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     const role = OWNER[file];
     const run = role === 'front' && deps.frontAgent ? deps.frontAgent : deps.runAgent;
-    const call = async (pack: ContextPackInput) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
+    const call = async (pack: ContextPackInput, part?: { index: number; total: number }) => (await run({ kind: 'refine', role, pack, cwd: draft.root, phase: 'refine', taskId: null, attempt: cycle, review: true, part }, { journal, stepDir: draft.steps, specHash, signal: deps.signal })) as StepOutcome<z.infer<typeof RefineOutput>>;
     // The stage document takes its template's layout first, so the Jev, the review and its patches all read that text.
     const discardedPatches: Array<{ role: string; file: string; reason: string }> = [];
     await reshapeStage({ draft, journal, runAgent: deps.runAgent, signal: deps.signal }, cycle, file, docs, discardedPatches);
-    // The Jev reads the stage with the documents before it; the first stage has none to compare with, so it is not asked.
-    let jev: JevValidationResult | undefined;
     const confidential = await isConfidential(draft, journal.state);
-    if (deps.validateDocs && earlierDocs(file).length > 0 && !confidential) {
-      const partial = Object.fromEntries(DOC_STAGES.map((f) => [VALIDATION_KEY[f], scope.includes(f) ? docs[f] : ''])) as unknown as ValidationDocs;
-      jev = await deps.validateDocs(partial, file).catch(() => unavailable());
-      await journal.fact(RefineEvent.DocsValidated, { cycle, backend: 'jev', stage: file, ...jev });
-    }
     // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
-    const askOnce = (pack: ContextPackInput) => retryOnSchema((note) => call(withNote(pack, note)), RefineOutput);
+    const askOnce = (pack: ContextPackInput, part?: { index: number; total: number }) => retryOnSchema((note) => call(withNote(pack, note), part), RefineOutput);
     let n = 0;
     // Every patch is checked against the documents as the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
       for (const p of patches) {
         const check = checkPatch(p, draft.specId, docs);
-        if (!check.ok || check.file !== file) continue;
+        if (!check.ok) continue;
+        if (check.file !== file) {
+          discardedPatches.push({ role, file: check.file, reason: `Esta etapa só altera ${file}: o ajuste a ${check.file} foi descartado.` });
+          continue;
+        }
         await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(file, docs[file], applyPatch(docs[file], p)!), cycle });
       }
     };
@@ -194,7 +177,9 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const outcomes: RefineReview[] = [];
     for (const [i, text] of parts.entries()) {
       const part = parts.length > 1 ? { index: i + 1, total: parts.length, text } : undefined;
-      const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, jev: jev ? jevHint(jev) : undefined, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected'), part })));
+      // The other documents are consulted for this part, by search and by graph; none is read whole.
+      const consult = await consultDocs({ docs, consulted: DOC_STAGES.filter((f) => f !== file), part: text, graphDirOf: (doc) => fileGraphDir(draft.root, doc), graphNotes: deps.graphNotes });
+      const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected'), part, consult })), part ? { index: part.index, total: part.total } : undefined);
       if (!review.ok) {
         const label = part ? `A revisão da parte ${part.index} de ${part.total} de ${file}` : `A revisão de ${file}`;
         await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(label, review.failure, review.errors) });

@@ -43,6 +43,14 @@ describe('createJevScorer', () => {
     expect(flow.questions.complete!.criteria.true).toContain('flow.md');
   });
 
+  it('sends the charter with the scope question only, so the Jev sees what does not belong in each document', async () => {
+    const sent = stubJev(() => 0.9);
+    await scorer()(TEXTS, ['briefing.md']);
+    const asked = sent[0]!.questions;
+    expect(asked.scoped!.instructions).toContain('Does not hold the vision and goals (docs/project.md)');
+    expect(asked.complete!.instructions).not.toContain('Does not hold');
+  });
+
   it('scores only the documents asked for, and averages over them', async () => {
     const sent = stubJev(() => 0.9);
     const result = await scorer()(TEXTS, ['stack.md', 'flow.md']);

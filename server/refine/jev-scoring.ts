@@ -1,4 +1,4 @@
-import { DOCUMENT_PURPOSE } from '../agents/document-charter.js';
+import { DOCUMENT_CHARTER, DOCUMENT_PURPOSE } from '../agents/document-charter.js';
 import type { Config } from '../config/config.js';
 import { redactSecrets } from '../core/redact.js';
 import { splitSections } from '../decide/windows.js';
@@ -29,7 +29,7 @@ function questions(file: DocFile): Record<ScoreCheck, Question> {
       criteria: { true: 'No two statements contradict each other.', false: 'Two statements contradict each other.' },
     },
     scoped: {
-      instructions: `${about} Does ${file} hold only what it must hold? Content that belongs in another document makes this false.`,
+      instructions: `${about} Does ${file} hold only what it must hold? Content that belongs in another document makes this false. The charter says what each document holds and what does not belong in it:\n${DOCUMENT_CHARTER}`,
       criteria: { true: `${file} holds only what belongs in it.`, false: `${file} holds content that belongs in another document.` },
     },
   };

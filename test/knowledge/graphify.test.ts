@@ -172,11 +172,21 @@ describe('merge', () => {
   it('merges the graphs that exist into one graph under the output folder', async () => {
     const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-merge-'))).replace(/\\/g, '/');
     const fake = new FakeExec();
-    const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('a-repo') ? '{}' : null) });
+    const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('-repo') ? '{}' : null) });
     expect(await g.merge([{ dir: path.join(out, 'a-repo'), name: 'audit-service' }, { dir: path.join(out, 'b-repo'), name: 'rules-service' }], path.join(out, 'project'))).toBe(true);
     // The input sits under the repository's name, so graphify tags its nodes with that name.
-    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['merge-graphs', `${out}/project/inputs/audit-service/graphify-out/graph.json`, '--out', `${out}/project/graphify-out/graph.json`] });
+    expect(fake.calls[0]).toMatchObject({ bin: 'graphify', args: ['merge-graphs', `${out}/project/inputs/audit-service/graphify-out/graph.json`, `${out}/project/inputs/rules-service/graphify-out/graph.json`, '--out', `${out}/project/graphify-out/graph.json`]});
     expect(await fs.readFile(`${out}/project/inputs/audit-service/graphify-out/graph.json`, 'utf8')).toBe('{}');
+    await fs.rm(out, { recursive: true, force: true });
+  });
+
+  it('copies one graph as the merged one, since merge-graphs needs two', async () => {
+    const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-copy-'))).replace(/\\/g, '/');
+    const fake = new FakeExec();
+    const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('a-repo') ? '{"nodes":[]}' : null) });
+    expect(await g.merge([{ dir: path.join(out, 'a-repo'), name: 'project.md' }], path.join(out, 'project'))).toBe(true);
+    expect(fake.calls).toHaveLength(0);
+    expect(await fs.readFile(`${out}/project/graphify-out/graph.json`, 'utf8')).toBe('{"nodes":[]}');
     await fs.rm(out, { recursive: true, force: true });
   });
 

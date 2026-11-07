@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import type { BacklogView } from '../api.js';
+import { ActionButton } from '../components/ActionButton.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { processingText } from './BacklogPanel.js';
 import { formatDuration } from '../run/selectors.js';
@@ -60,21 +61,58 @@ export function ProcessBox({ title, since = null, tone = 'accent', testId, child
   );
 }
 
+/** The stage a review is named after: what it reads, and that the other documents are only consulted. */
+export function stageInfo(file: string, jevReads: boolean, firstStage: boolean): string {
+  const jev = jevReads ? 'o Jev dá a nota só dele' : 'o Jev não lê o documento (projeto confidencial ou sem resposta)';
+  const others = firstStage ? '' : ' Os outros documentos são consultados por trechos e pelo grafo.';
+  return `Esta rodada trabalha só com ${file}: o agente dono do documento o revisa, ${jev} e o Graphify extrai só este arquivo.${others}`;
+}
+
+/** The waiting for the Claude quota, the moment it ends as a clock time. */
+const untilText = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/** The stage cost line: rounds, time, charge and calls, from the journal. */
+export function stageCostText(file: string, cost: { rounds: number; steps: number; durationMs: number; costUsd: number }): string {
+  const rounds = cost.rounds === 1 ? '1 rodada' : `${cost.rounds} rodadas`;
+  const calls = cost.steps === 1 ? '1 chamada' : `${cost.steps} chamadas`;
+  return `Etapa ${file} · ${rounds} · ${formatDuration(cost.durationMs)} · US$ ${cost.costUsd.toFixed(2).replace('.', ',')} · ${calls}`;
+}
+
+const SLOW_AFTER_MS = 60_000;
+
+/** Says a step has run past a minute, the time a stage review should take; empty while every step is within it. */
+function SlowStepNote({ running }: { running: RunningStep[] }) {
+  const oldest = running.map((step) => step.startedAt ?? '').filter(Boolean).sort()[0];
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!oldest) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [oldest]);
+  if (!oldest || now - Date.parse(oldest) <= SLOW_AFTER_MS) return null;
+  return <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-slow">Este passo está demorando mais que o normal.</span>;
+}
+
 /** The evaluation in progress, shown at the top of the refinement page on every tab. */
-export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento', since = null }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string; since?: string | null }) {
+export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [], title = 'Avaliação em andamento', since = null, info = evaluationInfo, file = null, waiting = null, cost = null, onStop, stopping = false }: { backlog: BacklogView | null | undefined; cycle: number; stage: string; jevDown: boolean; running?: RunningStep[]; title?: string; since?: string | null; info?: string; file?: string | null; waiting?: { until: string } | null; cost?: { rounds: number; steps: number; durationMs: number; costUsd: number } | null; onStop?: () => void; stopping?: boolean }) {
   const items = backlog?.items ?? [];
   const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
   const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
   return (
-    <ProcessBox title={<>{title} <InfoTip text={evaluationInfo} /></>} since={since} tone={jevDown ? 'bad' : 'good'} testId="processing-banner">
+    <ProcessBox title={<>{title} <InfoTip text={info} /></>} since={since} tone={jevDown ? 'bad' : 'good'} testId="processing-banner">
       <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-round">Rodada {cycle} · {stage}</span>
+      {waiting && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-waiting">Aguardando a cota do Claude até {untilText(waiting.until)}.</span>}
       {running.length > 0 && <span className="text-[0.75rem] leading-[1.35]" data-testid="running-models">Em uso agora: {running.map(runningStepLabel).join('; ')}</span>}
+      <SlowStepNote running={running} />
+      {cost && file && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-cost">{stageCostText(file, cost)}</span>}
       {backlog?.enabled && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-backlog">{processingText(backlog)}</span>}
       {backlog?.detail && (
         <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
           <span className="button-spinner" aria-hidden="true" data-testid="processing-banner-detail-spinner" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
         </span>
       )}
+      {onStop && <ActionButton className="secondary justify-self-start" data-testid="processing-banner-stop" busy={stopping} onClick={onStop}>Parar avaliação</ActionButton>}
     </ProcessBox>
   );
 }

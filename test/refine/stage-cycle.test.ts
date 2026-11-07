@@ -6,6 +6,8 @@ import { applyRefineEvent, emptyRefineState } from '../../server/refine/state.js
 import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { runStageCycle, stageReviewPack } from '../../server/refine/stage-cycle.js';
+import type { DocFile } from '../../server/refine/draft.js';
+import { fileGraphDir } from '../../server/refine/stage-consult.js';
 import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import { reshapeBackup } from '../../server/refine/reshape.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
@@ -510,38 +512,23 @@ describe('runStageCycle', () => {
     expect(journal.state.findings.map((f) => f.text).sort()).toEqual(['do fluxo', 'do projeto']);
   });
 
-  it('the Jev reads the stage with the documents before it, and the first stage is not sent to it', async () => {
+  it('a patch to a document outside the stage is discarded, with its reason, and never proposed', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    const validate = vi.fn(async (_docs: unknown) => ({ available: true, decision: 'review', consistent: true, confidence: 0.9, model: 'jev', checks: {}, stateTruncated: false }));
+    await writeDoc(draft, 'flow.md', '# Fluxo\n\nO cliente paga.\n');
+    const patch = { file: 'flow.md', find: 'O cliente paga.', replace: 'O cliente paga agora.', reason: 'prazo' };
+    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([patch])) as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.PatchProposed)).toBe(false);
+    expect(journal.events.find((e) => e.type === RefineEvent.StageReviewed)?.data.discardedPatches).toEqual([{ role: 'po', file: 'flow.md', reason: 'Esta etapa só altera briefing.md: o ajuste a flow.md foi descartado.' }]);
+  });
+
+  it('a stage review is asked with no tools and no earlier-stage Jev check', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
-    await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(validate).toHaveBeenCalledTimes(1);
-    const sent = validate.mock.calls[0]![0] as unknown as Record<string, string>;
-    expect(validate).toHaveBeenCalledWith(expect.anything(), 'briefing.md');
-    expect(sent.project).toContain('# Shop');
-    expect(sent).toMatchObject({ stack: '', design: '' });
-    expect(journal.events.find((e) => e.type === RefineEvent.DocsValidated)?.data).toMatchObject({ stage: 'briefing.md' });
-    await runStageCycle({ draft, journal, runAgent: runAgent as never, validateDocs: validate as never, principles: () => [] }, 2, 'flow.md');
-    expect(validate).toHaveBeenCalledTimes(1);
-  });
-
-  it('a confidential project sends no document to the Jev', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    journal.state.confidential = true;
-    const validate = vi.fn(async (_docs: unknown) => ({ available: true, decision: 'review', consistent: true, confidence: 0.9, model: 'jev', checks: {}, stateTruncated: false }));
-    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([])) as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(validate).not.toHaveBeenCalled();
-  });
-
-  it('a Jev that fails is recorded as unavailable, and the review goes on', async () => {
-    const draft = await newDraft();
-    const journal = foldingJournal();
-    const validate = vi.fn(async (_docs: unknown) => { throw new Error('openrouter down'); });
-    await runStageCycle({ draft, journal, runAgent: vi.fn(async () => answer([])) as never, validateDocs: validate as never, principles: () => [] }, 1, 'briefing.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.DocsValidated)?.data).toMatchObject({ available: false });
-    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(runAgent.mock.calls[0]![0]).toMatchObject({ kind: 'refine', review: true });
+    expect(journal.events.some((e) => e.type === RefineEvent.DocsValidated)).toBe(false);
   });
 
   it('a stage review is keyed by the documents of its stage, so a later document leaves its key as it was', async () => {
@@ -559,29 +546,43 @@ describe('runStageCycle', () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
-  it('an earlier document reaches the review as a digest, and the stage document in full', async () => {
+  it('the other documents reach the review only as the excerpts that match the part, never whole', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    await writeDoc(draft, 'project.md', `# Shop\n\n${'palavra '.repeat(1000)}\nFIM-DO-PROJETO`);
+    await writeDoc(draft, 'project.md', `# Shop\n\n## Entrega\n\nO briefing aprova cada entrega.\n\n## Outro\n\n${'palavra '.repeat(1000)}FIM-DO-PROJETO\n`);
     await writeDoc(draft, 'briefing.md', '# Briefing\n\nFIM-DO-BRIEFING');
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### briefing.md (this stage)'))!;
+    expect(review).toContain('O briefing aprova cada entrega.');
     expect(review).not.toContain('FIM-DO-PROJETO');
     expect(review).toContain('FIM-DO-BRIEFING');
-    expect(review).toContain('(context only, a digest');
+    expect(review).not.toContain('a digest');
   });
 
-  it('an earlier document reaches the review as a short excerpt of each section, so a long section is cut', async () => {
+  it('a long excerpt of another document that matches the part is cut at its limit', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(200)}FIM-DO-FLUXO\n`);
-    await writeDoc(draft, 'project.md', '# Projeto\n\nFIM-DO-PROJETO');
+    await writeDoc(draft, 'flow.md', `# Fluxo\n\n## Etapa\n\n${'palavra '.repeat(400)}FIM-DO-FLUXO\n`);
+    await writeDoc(draft, 'project.md', '# Projeto\n\nA etapa do projeto.');
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
     const review = runAgent.mock.calls.map(([req]) => (req as { pack: { feedback: string } }).pack.feedback).find((f) => f.includes('### project.md (this stage)'))!;
+    expect(review).toContain('flow.md › Etapa');
     expect(review).not.toContain('FIM-DO-FLUXO');
     expect(review).toContain('[…]');
+  });
+
+  it('the other documents are asked of the graph of each one, in its own folder, and never of the stage document', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const graphNotes = vi.fn(async (dir: string) => `NOTA DE ${dir}`);
+    const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], graphNotes }, 1, 'briefing.md');
+    const asked = graphNotes.mock.calls.map(([dir]) => dir).sort();
+    expect(asked).toEqual(['flow.md', 'project.md', 'stack.md', 'design.md'].map((f) => fileGraphDir(draft.root, f as DocFile)).sort());
+    const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
+    expect(review).toContain(`NOTA DE ${fileGraphDir(draft.root, 'flow.md')}`);
   });
 
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {

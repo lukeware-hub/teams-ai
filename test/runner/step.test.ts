@@ -10,6 +10,14 @@ import type { RawStepResult } from '../../server/runner/process-runner.js';
 import { hasSession } from '../../server/runner/session-store.js';
 import { absoluteRule } from '../../server/runner/role-settings.js';
 import { classifyFailure, runStep, stepCaps, type StepDeps, type StepRequest } from '../../server/runner/step.js';
+
+describe('stepCaps of a stage review', () => {
+  it('gives a review at most three turns and its own time limit; any other step keeps its caps', () => {
+    const caps = { timeoutMs: 60 * 60_000, reviewTimeoutMs: 120_000, maxTurns: 60 };
+    expect(stepCaps('refine', caps, true)).toMatchObject({ maxTurns: 3, timeoutMs: 120_000 });
+    expect(stepCaps('refine', caps)).toEqual(caps);
+  });
+});
 import { parseStreamJson, summarizeStream } from '../../server/runner/stream-events.js';
 
 const FAKE = path.resolve('test/fixtures/fake-claude/fake-claude.mjs');

@@ -135,4 +135,11 @@ describe('document graph extraction', () => {
     failWith = result({ exitCode: 1, stderr: `falha no modelo: cota de uso${'.'.repeat(1000)} recusado ao final` });
     await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/falha no modelo: cota de uso.* recusado ao final/);
   });
+
+  it('a timed-out extraction says it ran out of time, and a failure with no stderr says it had no detail', async () => {
+    failWith = result({ exitCode: 124, timedOut: true, stderr: '' });
+    await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/passou do tempo limite de 5 min/);
+    failWith = result({ exitCode: 1, stderr: '' });
+    await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/código 1 e sem detalhe/);
+  });
 });

@@ -26,14 +26,16 @@ import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { formatStageDocument, reshapeBackup } from './reshape.js';
 import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
+import { builtGraphNotes, fileGraphDir } from './stage-consult.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
+import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf, type RunningStep, type StageCost } from './progress.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
 import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
-import { patchChangesScope } from './scope-guard.js';
+import { additiveOnly, patchChangesScope } from './scope-guard.js';
 import { autoAcceptable, inTeamAlone } from './team-rule.js';
 import { restoreMove } from './moves.js';
 import { buildSpecsIndex, idSchemeOf, type SpecsIndex } from './specs-index.js';
@@ -44,7 +46,7 @@ import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type Sugges
 import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { specsIssues } from './specs-check.js';
-import { aboutADocument, decideQuestionPack, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
+import { aboutADocument, decideQuestionPack, docNamedBy, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { leanRefine, refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { idSourceOf, specIdOf } from './specs-index.js';
@@ -146,6 +148,8 @@ export interface SessionDeps {
   speckitAgents?: () => Promise<number>;
   /** Extracts the documents of `dir` into the graph folder `outDir`; required by a repository session, which adds each stage to the graph. */
   extractDocs?: (dir: string, outDir: string, projectId: string) => Promise<void>;
+  /** Joins the graphs of the documents into one staging graph; false when none has a graph. */
+  mergeDocGraphs?: (graphs: ReadonlyArray<{ dir: string; name: string }>, outDir: string) => Promise<boolean>;
   /** The part of the document graph in `outDir` that answers a question, for the packs; empty when the graph has nothing. */
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   /** Binds the documentation repository at the Backlog step: the git and gh exec with the token, and the configured owner. */
@@ -213,6 +217,18 @@ export interface Snapshot {
   specsApproved: boolean;
   /** The trail of a follow-on request: its specs and what each has; absent for other sessions. */
   trace?: RequestTrace | null;
+  /** The steps running now, from the journal, so a reloaded page shows them too. */
+  running: RunningStep[];
+  /** The Claude quota wait in progress, until when; null when there is none. */
+  waiting: { until: string } | null;
+  /** The stage document under review now; null when no stage review runs. */
+  reviewing: DocFile | null;
+  /** What each stage has cost so far. */
+  stageCost: Partial<Record<DocFile, StageCost>>;
+  /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
+  answersAwaiting: Partial<Record<DocFile, number>>;
+  /** What the stage review of the current round has done so far. */
+  stageSignals: { reviewed: boolean; scored: boolean; jevDown: boolean };
 }
 
 /**
@@ -247,6 +263,13 @@ export function namesItem(text: string, key: string): boolean {
 }
 
 /** The automatic repairs of a rejected specs.md before the owner is asked. */
+/** A stage review that took longer than this is not repeated automatically, even when its score is below the pass line. */
+const AUTO_REVIEW_MAX_MS = 120_000;
+/** The documents the findings name; null when none names one, so the patches are not restricted. */
+const namedDocs = (findings: ReadonlyArray<{ text: string }>): ReadonlySet<DocFile> | null => {
+  const named = new Set(findings.map((f) => docNamedBy(f.text)).filter((d): d is DocFile => d !== undefined));
+  return named.size > 0 ? named : null;
+};
 const MAX_SPECS_REPAIRS = 4;
 /** The rounds in which the PO decides alone, with the owner's autonomy, before the text is followed anyway. */
 const MAX_SPECS_DECIDES = 3;
@@ -271,7 +294,6 @@ const approvedAt = (v: SpecsVerdict | undefined, hash: string): boolean => v?.sp
 export class RefineSession {
   private running: Promise<void> | null = null;
   private abortCtl: AbortController | null = null;
-  private queuedReview: Promise<void> | null = null;
   /** The owner handed the team full autonomy for this run: what would be asked is decided instead. */
   private autonomous = false;
   /** A follow-on request the team runs alone, in the lean way: one pass, no repeated evaluations. A text that fails the plain checks leaves it. */
@@ -468,7 +490,8 @@ export class RefineSession {
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    const events = this.journal.events;
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
@@ -555,19 +578,21 @@ export class RefineSession {
     return started.then(() => undefined);
   }
 
-  /** One extraction: the finished documents and this one, as they are now, go to the graph; a failure is journaled for the owner. */
+  /** One extraction of this document alone; its graph then joins the graphs of the documents already in the graph. A failure is journaled for the owner. */
   private async indexStage(file: DocFile, advance = true): Promise<void> {
     try {
       const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
-      const folder = path.posix.join(staging, 'docs');
+      const fileDir = fileGraphDir(this.deps.draft.root, file);
+      const folder = path.posix.join(fileDir, 'docs');
       await fs.rm(folder, { recursive: true, force: true });
       await fs.mkdir(folder, { recursive: true });
-      for (const doc of [...(this.state.doneStages ?? []), file]) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
+      await fs.writeFile(path.posix.join(folder, file), await readDoc(this.deps.draft, file));
       // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
-      const previous = await documentCounts(staging, file).catch(() => null);
-      await this.deps.extractDocs!(folder, staging, this.deps.draft.projectId);
-      const counts = await documentCounts(staging, file);
+      const previous = await documentCounts(fileDir, file).catch(() => null);
+      await this.deps.extractDocs!(folder, fileDir, this.deps.draft.projectId);
+      const counts = await documentCounts(fileDir, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
+      await this.joinGraphs(staging, file);
       await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
       if (advance) await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
@@ -575,25 +600,21 @@ export class RefineSession {
     }
   }
 
-  /** A follow-on request ends with its five documents in the graph, as they are now, in one extraction; a failure is journaled in plain words. */
+  /** The staging graph: the graphs of the documents already in the graph and of this one, joined into one. */
+  private async joinGraphs(staging: string, file: DocFile): Promise<void> {
+    if (!this.deps.mergeDocGraphs) return;
+    const graphed = this.state.graphed ?? [];
+    const graphs = DOC_STAGES.filter((f) => f === file || graphed.includes(f)).map((f) => ({ dir: path.posix.join(staging, 'files', f), name: f }));
+    if (!(await this.deps.mergeDocGraphs(graphs, staging))) throw new Error('O Graphify não conseguiu juntar os grafos dos documentos.');
+  }
+
+  /** A follow-on request ends with its five documents in the graph: each one not in it yet is extracted alone, and the first failure stops the rest. */
   async graphDocs(): Promise<void> {
     this.guard();
-    const files = DOC_STAGES.filter((f) => !(this.state.graphed ?? []).includes(f));
-    if (!this.deps.extractDocs || files.length === 0) return;
-    try {
-      const staging = path.posix.join(this.deps.draft.root, 'doc-graph');
-      const folder = path.posix.join(staging, 'docs');
-      await fs.rm(folder, { recursive: true, force: true });
-      await fs.mkdir(folder, { recursive: true });
-      for (const doc of DOC_STAGES) await fs.writeFile(path.posix.join(folder, doc), await readDoc(this.deps.draft, doc));
-      await this.deps.extractDocs(folder, staging, this.deps.draft.projectId);
-      for (const file of files) {
-        const counts = await documentCounts(staging, file);
-        if (counts.nodes === 0) throw new Error(`O Graphify não encontrou conteúdo em ${file}.`);
-        await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
-      }
-    } catch (err) {
-      await this.journal.fact(RefineEvent.DocGraphFailed, { file: files[0], reason: err instanceof Error ? err.message : String(err) });
+    if (!this.deps.extractDocs) return;
+    for (const file of DOC_STAGES.filter((f) => !(this.state.graphed ?? []).includes(f))) {
+      await this.indexStage(file, false);
+      if (!(this.state.graphed ?? []).includes(file)) return;
     }
   }
 
@@ -655,7 +676,7 @@ export class RefineSession {
   private async reviewAndScore(deps: Parameters<typeof runStageCycle>[0], file: DocFile): Promise<void> {
     await runStageCycle(deps, this.state.cycle + 1, file);
     if (this.state.status === 'error') return;
-    await this.acceptSafePatches(file);
+    await this.acceptSafePatches(file, true);
     // The Jev score of the reviewed document follows on its own: the owner no longer asks for it with a button.
     if (this.deps.scoreDocs && scoresDocs(this.state.mode)) {
       const scored = { draft: this.deps.draft, journal: this.journal, scoreDocs: this.deps.scoreDocs };
@@ -673,17 +694,16 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await this.keepPassedText(file, restore);
-      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, validateDocs: this.deps.validateDocs, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f) };
+      const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f), graphNotes: this.deps.docGraphContext ? builtGraphNotes(this.deps.docGraphContext) : undefined };
+      const started = Date.now();
       await this.reviewAndScore(deps, file);
       // A document scored below the pass line is reviewed once more, now with its new score in front of the agents.
+      // A review that took longer than two minutes is not repeated: the owner decides, and the journal says why.
       if (this.state.status !== 'error' && this.lowScore(file) !== null && !this.improved.has(file)) {
         this.improved.add(file);
-        await this.reviewAndScore(deps, file);
-      }
-      // A repository session adds the reviewed document to the graph when its review ends; a failed review adds nothing.
-      if (this.state.status !== 'error' && this.state.repositories === true && (DOC_STAGES as readonly DocFile[]).includes(file) && this.deps.extractDocs) {
-        await this.journal.fact(RefineEvent.DocGraphStarted, { file });
-        await this.indexStage(file, false);
+        const ms = Date.now() - started;
+        if (ms > AUTO_REVIEW_MAX_MS) await this.journal.fact(RefineEvent.AutoReviewSkipped, { file, ms });
+        else await this.reviewAndScore(deps, file);
       }
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
@@ -710,10 +730,13 @@ export class RefineSession {
       if (problem) throw new ConflictError(problem);
       if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
       await this.skipOpenQuestions(target);
+      // The owner's confirmation of a low score is kept with the advance, so the audit shows what was accepted and when.
+      if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
       // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
       await this.startIndexing(target);
       return;
     }
+    if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
   }
 
@@ -749,9 +772,11 @@ export class RefineSession {
     const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
     if (problem) throw new ConflictError(problem);
     if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
-    // A document edited since its review is reviewed again first, by its own role; the review then puts it in the graph.
+    // A document edited since its review is reviewed again first, by its own role; the graph takes it once that review has ended.
     if (!(this.state.reviewedStages ?? []).includes(file)) {
-      void this.startStage(file, false);
+      void this.startStage(file, false).then(async () => {
+        if (this.state.status !== 'error') await this.startIndexing(file, false);
+      });
       return;
     }
     // The stage does not move: it is already done.
@@ -1221,14 +1246,7 @@ export class RefineSession {
       if (!out.ok) return false;
       // What the documents settle is fixed in them: the patches that change no scope are accepted at once, the others wait for the owner.
       const docs = await this.docsNow();
-      let n = 0;
-      const files = new Set<DocFile>();
-      for (const p of out.value.docPatch) {
-        const check = checkPatch(p, this.deps.draft.specId, docs);
-        if (!check.ok) continue;
-        files.add(check.file);
-        await this.journal.fact(RefineEvent.PatchProposed, { patchId: patchIdOf('po', cycle, 100 + n++), role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
-      }
+      const { files } = await this.proposeWithin(out.value.docPatch, docs, cycle, 100, namedDocs(findings));
       for (const file of files) await this.acceptSafePatches(file);
       // With the owner's autonomy the team accepts every change it proposed and asks nothing.
       if (mode === 'decide') {
@@ -1271,14 +1289,8 @@ export class RefineSession {
       )) as StepOutcome<z.infer<typeof RefineOutput>>;
       if (!out.ok) throw new ConflictError('O PO não conseguiu decidir esta pergunta agora.');
       const docs = await this.docsNow();
-      let n = 0;
-      for (const p of out.value.docPatch) {
-        const check = checkPatch(p, this.deps.draft.specId, docs);
-        if (!check.ok) continue;
-        const id = patchIdOf('po', cycle, 200 + n++);
-        await this.journal.fact(RefineEvent.PatchProposed, { patchId: id, role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
-        await this.applyPatchRow(id, true).catch((err) => { if (!(err instanceof ConflictError)) throw err; });
-      }
+      const { ids } = await this.proposeWithin(out.value.docPatch, docs, cycle, 200, q.file ? new Set([q.file]) : null);
+      for (const id of ids) await this.applyPatchRow(id, true).catch((err) => { if (!(err instanceof ConflictError)) throw err; });
     })().finally(() => {
       this.running = null;
       this.abortCtl = null;
@@ -1407,17 +1419,10 @@ export class RefineSession {
       )) as StepOutcome<z.infer<typeof RefineOutput>>;
       if (!out.ok) return;
       const docs = await this.docsNow();
-      let n = 0;
-      const files = new Set<DocFile>();
-      for (const p of out.value.docPatch) {
-        const check = checkPatch(p, this.deps.draft.specId, docs);
-        if (!check.ok) continue;
-        files.add(check.file);
-        await this.journal.fact(RefineEvent.PatchProposed, { patchId: patchIdOf('po', cycle, 300 + n++), role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
-      }
+      const { files, proposed } = await this.proposeWithin(out.value.docPatch, docs, cycle, 300, namedDocs(findings));
       const before = this.state.patches.filter((x) => x.auto === true).length;
       for (const file of files) await this.acceptSafePatches(file);
-      await this.journal.fact(RefineEvent.SpecsDocsRepaired, { count: this.state.patches.filter((x) => x.auto === true).length - before, proposed: n });
+      await this.journal.fact(RefineEvent.SpecsDocsRepaired, { count: this.state.patches.filter((x) => x.auto === true).length - before, proposed });
     } catch {
       // The repair of the documents is one try among several: a failure leaves the others to go on.
     } finally {
@@ -1597,15 +1602,6 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
   }
 
-  /** One review of the stage after the answers: answers given while a review runs wait for it and share one more review. */
-  reviewAfterAnswers(file: DocFile): Promise<void> {
-    this.queuedReview ??= this.settled().then(() => {
-      this.queuedReview = null;
-      return this.evaluateStage(file);
-    });
-    return this.queuedReview;
-  }
-
   async skip(questionId: string): Promise<void> {
     this.guardLight();
     if (this.question(questionId).blocking) throw new ConflictError(`question ${questionId} is blocking and cannot be skipped`);
@@ -1643,10 +1639,30 @@ export class RefineSession {
     else if ((this.state.graphed ?? []).includes(file)) await this.journal.fact(RefineEvent.DocGraphStale, { file });
   }
 
-  /** The safe suggestions of a stage (no scope change, no owner decision) are accepted when its review ends; the team alone takes only what autoAcceptable allows. */
-  private async acceptSafePatches(file: DocFile): Promise<void> {
+  /** The safe suggestions of a document (no scope change, no owner decision) are accepted on their own, as autoAcceptable allows; a stage review takes only additions. */
+  /** Proposes the owner's patches the documents allow: a patch outside `allowed` is proposed and dropped at once, with its reason, so it never vanishes silently. */
+  private async proposeWithin(patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>, docs: Record<DocFile, string>, cycle: number, base: number, allowed: ReadonlySet<DocFile> | null): Promise<{ files: Set<DocFile>; ids: string[]; proposed: number }> {
+    const files = new Set<DocFile>();
+    const ids: string[] = [];
+    let proposed = 0;
+    for (const p of patches) {
+      const check = checkPatch(p, this.deps.draft.specId, docs);
+      if (!check.ok) continue;
+      const patchId = patchIdOf('po', cycle, base + proposed++);
+      await this.journal.fact(RefineEvent.PatchProposed, { patchId, role: 'po', file: check.file, find: p.find, replace: p.replace, scopeChange: patchChangesScope(p.find, p.replace), reason: p.reason, diff: unifiedDiff(check.file, docs[check.file], applyPatch(docs[check.file], p)!), cycle });
+      if (allowed && !allowed.has(check.file)) {
+        await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: `Esta correção só pode mudar ${[...allowed].join(', ')}: o ajuste a ${check.file} foi descartado.` });
+        continue;
+      }
+      files.add(check.file);
+      ids.push(patchId);
+    }
+    return { files, ids, proposed };
+  }
+
+  private async acceptSafePatches(file: DocFile, additionsOnly = false): Promise<void> {
     const teamAlone = inTeamAlone();
-    for (const p of safePatches(this.state.patches.filter((x) => x.file === file)).filter((x) => autoAcceptable(x, teamAlone))) {
+    for (const p of safePatches(this.state.patches.filter((x) => x.file === file)).filter((x) => autoAcceptable(x, teamAlone) && (!additionsOnly || teamAlone || additiveOnly(x.find, x.replace)))) {
       await this.applyPatchRow(p.patchId, true).catch((err) => {
         if (!(err instanceof ConflictError)) throw err;
       });

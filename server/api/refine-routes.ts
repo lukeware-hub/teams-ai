@@ -4,6 +4,7 @@ import type { DocFile } from '../refine/draft.js';
 import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
 import { ConflictError, NotFoundError } from '../refine/session.js';
+import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
 import { acceptAllPending, resolveEverything, runExtension } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
@@ -35,7 +36,7 @@ const flag = (v: unknown, field: string): boolean => {
   return x;
 };
 
-/** Session errors map to HTTP: conflict 409, not found 404, bad input 400. */
+/** Session errors map to HTTP: conflict 409, not found 404, bad input 400, a document too big for one review 422. */
 const wrap = (h: (ctx: RouteContext) => Promise<void>) => async (ctx: RouteContext) => {
   try {
     await h(ctx);
@@ -43,6 +44,7 @@ const wrap = (h: (ctx: RouteContext) => Promise<void>) => async (ctx: RouteConte
     if (err instanceof ConflictError) throw new HttpError(409, err.message);
     if (err instanceof NotFoundError) throw new HttpError(404, err.message);
     if (err instanceof RangeError) throw new HttpError(400, err.message);
+    if (err instanceof PackTooLargeError) throw new HttpError(422, err.message);
     throw err;
   }
 };
@@ -167,6 +169,16 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/stop`,
+      // The owner stops the running evaluation: its agent processes are killed, the review is journaled as stopped.
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        await s.abort();
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/autopilot`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
@@ -232,14 +244,21 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const b = await body();
         const s = await get(params);
         const questionId = str(b, 'questionId');
-        const asked = s.state.questions.find((q) => q.questionId === questionId);
-        const file = s.state.stages === true ? asked?.file : undefined;
+        // The answer is only kept: the stage's review runs when the owner clicks Reprocessar, with every answer kept so far.
         await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
-        // The answer goes to the agents at once: the stage's review runs in the background, as the Processar button starts it.
-        if (file && (DOC_STAGES as readonly string[]).includes(file)) s.reviewAfterAnswers(file as DocFile).catch(logRunFailure(params));
-        // The last answer about specs.md sends the backlog to the agents again, with the owner's decisions.
-        if (asked?.origin === 'specs') s.continueSpecsAfterAnswers()?.catch(logRunFailure(params));
         json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/specs/reprocess`,
+      // The specs are reviewed again with the owner's answers, and only when the owner clicks Reprocessar on them.
+      handler: wrap(async ({ params, json }) => {
+        const s = await get(params);
+        const run = s.continueSpecsAfterAnswers();
+        if (!run) throw new ConflictError('Ainda há perguntas de especificação sem resposta, ou o refinamento está ocupado.');
+        run.catch(logRunFailure(params));
+        json(202, { ok: true });
       }),
     },
     {

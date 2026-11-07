@@ -37,7 +37,7 @@ export function additiveOnly(find: string, replace: string): boolean {
   return [...before.keys()].every((key) => (after.get(key) ?? 0) >= (before.get(key) ?? 0));
 }
 
-/** A line as a change is compared: its words, without list and heading marks, stars, a final punctuation mark or an orchestrator id. */
+/** A line as a change is compared: its words, without list and heading marks, stars, punctuation or an orchestrator id. */
 const CITATION = /(,?\s*conforme\b[^,]*?)?\s*\(?\b(?:po|sm|front)-[cs]\d+-\d+\)?$/;
 const contentLine = (line: string): string =>
   normal(line)
@@ -45,6 +45,8 @@ const contentLine = (line: string): string =>
     .replace(/\*/g, '')
     .replace(/[.;:,]+$/, '')
     .replace(CITATION, '')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 const contentLines = (text: string): string[] => text.split('\n').map(contentLine).filter((line) => line !== '');
 

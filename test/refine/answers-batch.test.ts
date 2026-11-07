@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { createNewProject, draftPaths, writeDoc } from '../../server/refine/draft.js';
+import { createNewProject, draftPaths, readDoc, writeDoc } from '../../server/refine/draft.js';
+import { RefineEvent } from '../../server/refine/events.js';
 import { RefineSession } from '../../server/refine/session.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
@@ -27,36 +28,32 @@ beforeEach(async () => {
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
-describe('answers while a stage review runs', () => {
-  it('records every answer and runs one more review for the whole batch', async () => {
+describe('answers wait for Reprocessar', () => {
+  it('an answer runs no agent, and Reprocessar runs one review with every answer kept so far', async () => {
     const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-project');
     script['refine/po'] = [out([ask('Quem usa?'), ask('Qual o prazo?')]), out(), out()];
     await s.evaluateStage('flow.md');
     calls.length = 0;
     const [q1, q2] = s.state.questions.filter((q) => q.status === 'pending');
-    const running = s.reprocessStage('flow.md').catch(() => s.evaluateStage('flow.md'));
     await s.answer(q1!.questionId, 'Clientes');
     await s.answer(q2!.questionId, '30 dias');
-    const first = s.reviewAfterAnswers('flow.md');
-    expect(s.reviewAfterAnswers('flow.md')).toBe(first);
-    await running;
-    await first;
+    expect(calls).toHaveLength(0);
     expect(s.state.questions.filter((q) => q.status === 'answered')).toHaveLength(2);
+    await s.reprocessStage('flow.md');
     expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
+    expect(s.state.questions.filter((q) => q.status === 'answered')).toHaveLength(2);
     await s.close();
   });
 
-  it('a review the round limit refuses rejects the promise, never throws at the caller', async () => {
-    const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-spec');
-    let thrown = false;
-    let p: Promise<void> | undefined;
-    try {
-      p = s.reviewAfterAnswers('flow.md');
-    } catch {
-      thrown = true;
-    }
-    expect(thrown).toBe(false);
-    await expect(p).rejects.toThrow();
+  it('a decision on a question about flow.md changes no other document: its patch is dropped, with the reason', async () => {
+    await writeDoc(draft(), 'project.md', '# Projeto\n\nTexto original.\n');
+    const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-project');
+    script['refine/po'] = [out([ask('Quem usa?')]), { checklist: green, questions: [], docPatch: [{ file: 'project.md', find: 'Texto original.', replace: 'Texto novo.', reason: 'decisão' }] }, out()];
+    await s.evaluateStage('flow.md');
+    const question = s.state.questions.find((q) => q.status === 'pending');
+    await s.decideAnswer(question!.questionId);
+    expect(await readDoc(draft(), 'project.md')).toContain('Texto original.');
+    expect(s.events.some((e) => e.type === RefineEvent.PatchDropped)).toBe(true);
     await s.close();
   });
 });

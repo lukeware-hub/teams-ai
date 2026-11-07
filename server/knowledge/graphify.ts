@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Exec } from '../exec/command.js';
 
@@ -145,6 +145,11 @@ export class Graphify {
     }
     if (inputs.length === 0) return false;
     await mkdir(path.join(outDir, 'graphify-out'), { recursive: true });
+    // merge-graphs needs two graphs: a single one is already the merged graph.
+    if (inputs.length === 1) {
+      await copyFile(inputs[0]!, this.graphPath(outDir));
+      return true;
+    }
     const r = await this.deps.exec({ bin: 'graphify', args: ['merge-graphs', ...inputs, '--out', this.graphPath(outDir)], timeoutMs: TIMEOUT });
     return r.exitCode === 0;
   }

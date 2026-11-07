@@ -1190,7 +1190,7 @@ A new project shows its five documents as stages, in this order: `flow.md`, `pro
 | Alignment | A line under the editor: `Alinhado com os outros documentos.`, or `Não alinhado com os outros documentos:` followed by the divergences. It is the last stage review's result for this document against the documents before it; before any stage review, it is the last full round's contradictions check. |
 | Stage actions | One row below the editor: `Voltar` (secondary, disabled on the first stage or while a run is on), `Avaliar esta etapa` (secondary, disabled while a run is on or the stage has used its rounds), `Continuar` (primary). After the last stage, `Continuar` becomes `Quebrar o backlog`. |
 
-`Avaliar esta etapa` reviews only the current stage's document. The earlier documents are context only, and no other document changes. The stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
+`Avaliar esta etapa` reviews only the current stage's document. The other documents are the sources of truth: the review consults them by search and by their graph, never whole, and no other document changes. The Jev reads only the stage's document, and the Graphify takes it only when Continuar ends the stage, and the stage's rounds count against `TEAMS_AI_REFINE_MAX_ROUNDS` from the stage's first round.
 
 ### 26.6 Checklist de validação do documento
 
@@ -1409,7 +1409,7 @@ A revisão de uma etapa lê o documento inteiro em partes de até 25 mil tokens 
 | Chamadas | Uma chamada de revisão por parte. Se uma parte falha, a etapa falha com o motivo dela. |
 | Sugestões | Todas as partes contribuem para as mesmas sugestões. Cada `find` é checado contra o documento inteiro e tem de aparecer uma vez só nele. |
 | Registro | Uma revisão por etapa, com as perguntas, os achados e as divergências das partes reunidos. |
-| Documentos anteriores | Seguem como resumo no prompt, como antes. Ler os anteriores pelo grafo fica para o incremento seguinte. |
+| Outros documentos (fontes da verdade) | Consultados no prompt: os trechos que casam com a parte (busca) e as notas do grafo de cada um. Nenhum é lido inteiro, e o pacote de cada parte fica abaixo do limite. |
 
 ### 26.13 Formatar pelo template (algoritmo)
 
@@ -1589,7 +1589,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 
 Jev findings are advisory. Its document consistency checks must be recorded in the refinement journal and passed to Claude, PO, and SM as review context. A low-confidence or negative Jev finding may create guidance, but it must not create `CycleFailed`, fail a checklist item, prevent derivation, disable `Reavaliar`, or require a document edit before the next cycle; it is only noted in the item's detail.
 
-A stage review (§26.5) scores only its own document, and it scores nothing until the owner has answered the confidentiality question. A stage review that fails records its reason and changes nothing.
+A stage review (§26.5) scores only its own document, and it scores nothing until the owner has answered the confidentiality question. A stage review that fails records its reason and changes nothing. While a stage review runs, the banner is titled with its document (`Avaliando project.md`), names the step in use with its model, effort and part, and shows the quota wait and the stage cost; a step past one minute says so. Answers given during a stage wait for Reprocessar and do not start a review; the same holds for the questions about specs.md, which wait for their own Reprocessar on the specs. A second automatic review runs only when the first took up to two minutes.
 
 **Decision on availability.** A full round needs the Jev when the project is not confidential. When the Jev does not answer, the round fails with `Jev indisponível: confira a chave do OpenRouter.` before any agent runs (`server/refine/cycle.ts:306-309`, tested in `test/refine/cycle.test.ts`), and the page says the evaluation does not continue without it. A stage review (§26.5) does not need the Jev: when the Jev does not answer, the review goes on, and the score line says the Jev did not answer.
 

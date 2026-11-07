@@ -7,6 +7,7 @@ export const RefineEvent = {
   ConfidentialityAnswered: 'REFINE_CONFIDENTIALITY_ANSWERED',
   /** The owner moved on from a document's stage: `{doc, cycle}`; the rounds of the next stage count from `cycle`. */
   StageAdvanced: 'REFINE_STAGE_ADVANCED',
+  LowScoreConfirmed: 'REFINE_LOW_SCORE_CONFIRMED',
   /** The text the owner passed to a stage was kept the first time the stage was processed: `{file, hash}`; Reprocessar goes back to it. */
   StagePassed: 'REFINE_STAGE_PASSED',
   /** The owner reprocessed a stage from its passed text: `{file}`; its mandatory questions no longer hold it. */
@@ -107,6 +108,10 @@ export const RefineEvent = {
   /** The document could not be added to the graph: `{file, reason}`, in plain words for the owner. */
   DocGraphFailed: 'REFINE_DOC_GRAPH_FAILED',
   DocGraphStale: 'REFINE_DOC_GRAPH_STALE',
+  /** The refinement waits for the Claude quota until `until` (ISO time): `{waitMs, until}`. */
+  QuotaWaiting: 'REFINE_QUOTA_WAITING',
+  /** A stage review that ran past its limit is not repeated automatically: `{file, ms}`. */
+  AutoReviewSkipped: 'REFINE_AUTO_REVIEW_SKIPPED',
   SpecsFeedback: 'REFINE_SPECS_FEEDBACK',
   SpecsQuestionsAsked: 'REFINE_SPECS_QUESTIONS_ASKED',
   SpecsOwnerApproved: 'REFINE_SPECS_OWNER_APPROVED',

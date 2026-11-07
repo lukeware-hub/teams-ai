@@ -16,6 +16,8 @@ export interface DocScore {
   score: number;
   checks: Record<ScoreCheck, number>;
   doubts?: ScoreDoubt[];
+  /** The hash of the text this score judged: a document with the same text keeps the score. */
+  textHash?: string;
 }
 
 /** A check below this value is doubted. */

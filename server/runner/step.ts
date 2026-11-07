@@ -58,6 +58,8 @@ export interface StepRequest {
   effort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
+  /** A stage review: the document and its context are in the prompt, so the step gets no tools, plugins or catalogs. */
+  review?: true;
 }
 
 export type StepOutcome<T> =
@@ -114,9 +116,14 @@ const STORE_OWNED_DOCS: readonly string[] = ['docs/project.md', 'docs/flow.md', 
 /** The write folders of each kind in a layout; the documentation repository drops the store-owned documents. */
 export const writeDirsFor = (docsRepo: boolean): Partial<Record<StepKind, readonly string[]>> =>
   docsRepo ? Object.fromEntries(Object.entries(LEGACY_WRITE_DIRS).map(([kind, dirs]) => [kind, dirs?.filter((dir) => !STORE_OWNED_DOCS.includes(dir))])) : LEGACY_WRITE_DIRS;
-export const stepCaps = (kind: StepKind, caps: ProcessCaps): ProcessCaps => {
+/** The turns a stage review may use: it answers in one structured reply, so more turns is a loop. */
+export const REVIEW_MAX_TURNS = 3;
+/** The time limit of a step: a stage review has its own, shorter one. */
+export const limitMsOf = (caps: ProcessCaps, review: boolean): number => (review ? (caps.reviewTimeoutMs ?? caps.timeoutMs) : caps.timeoutMs);
+export const stepCaps = (kind: StepKind, caps: ProcessCaps, review = false): ProcessCaps => {
   const turns = KIND_TURNS[kind];
-  return turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };
+  const limited = turns === undefined ? caps : { ...caps, maxTurns: Math.min(caps.maxTurns, turns) };
+  return review ? { ...limited, maxTurns: Math.min(limited.maxTurns, REVIEW_MAX_TURNS), timeoutMs: limitMsOf(caps, true) } : limited;
 };
 
 /** Longest rejected answer quoted in an error: the journal keeps it, the screen never shows it. */
@@ -338,19 +345,19 @@ async function stepPluginDirs(deps: StepDeps, role: Role, home: string): Promise
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
-  const refs = deps.skillsRoot ? referenceDirs(deps.skillsRoot, req.role) : [];
+  const refs = deps.skillsRoot && req.review !== true ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const writeDirs = writeDirsFor(req.docsRepo === true)[req.kind]?.map((dir) => path.join(req.cwd, dir));
   // dontAsk denies a Read no rule allows, so a skill reads its own plugin files only through these rules.
-  const pluginDirs = await stepPluginDirs(deps, req.role, home);
+  const pluginDirs = req.review === true ? [] : await stepPluginDirs(deps, req.role, home);
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...(req.webSearch === true && req.kind === 'chat' ? ['WebSearch'] : []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const kindTools = KIND_TOOLS[req.kind];
-  const scoped = READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
+  const scoped = req.review === true ? { ...req.agent, tools: [] } : READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
   const searching = req.webSearch === true && req.kind === 'chat' ? { ...scoped, tools: [...scoped.tools, 'WebSearch'] } : scoped;
-  const agent = req.fullAccess ? { ...searching, tools: [...new Set([...searching.tools, ...FULL_ACCESS_TOOLS])] } : searching;
+  const agent = req.fullAccess && req.review !== true ? { ...searching, tools: [...new Set([...searching.tools, ...FULL_ACCESS_TOOLS])] } : searching;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;
@@ -376,6 +383,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
       apiKey: deps.apiKey,
       effort: req.effort,
       extraEnv: req.extraEnv,
+      maxOutputTokens: req.review === true ? deps.caps.maxOutputTokens : undefined,
     },
     hostEnv,
   );
@@ -383,7 +391,7 @@ async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, h
   await fs.writeFile(invocation.agentsFile.path, invocation.agentsFile.content);
   let raw: RawStepResult;
   try {
-    raw = await runProcess(deps.binary, invocation, stepCaps(req.kind, deps.caps), deps.onEvent, deps.signal);
+    raw = await runProcess(deps.binary, invocation, stepCaps(req.kind, deps.caps, req.review === true), deps.onEvent, deps.signal);
   } catch (err) {
     return environmentFailure(`spawn failed: ${(err as Error).message}`);
   }

@@ -64,6 +64,12 @@ describe('buildInvocation', () => {
     expect(inv.args.slice(i + 1, i + 5)).toEqual(base.disallowedTools);
   });
 
+  it('a review with no tools passes an empty tool list, and the output cap only when one is given', () => {
+    expect(buildInvocation({ ...base, tools: [] }, hostEnv).args[buildInvocation({ ...base, tools: [] }, hostEnv).args.indexOf('--tools') + 1]).toBe('');
+    expect(buildInvocation({ ...base, maxOutputTokens: 40_000 }, hostEnv).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('40000');
+    expect(buildInvocation(base, hostEnv).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBeUndefined();
+  });
+
   it('loads each plugin folder with --plugin-dir and nothing else from the host', () => {
     const inv = buildInvocation({ ...base, pluginDirs: ['/opt/teams-ai/agent-plugins/dev'] }, hostEnv);
     const at = inv.args.indexOf('--plugin-dir');

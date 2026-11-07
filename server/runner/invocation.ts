@@ -90,6 +90,8 @@ export interface InvocationInput {
   apiKey?: string;
   /** Prompt cache TTL for this step (env `CLAUDE_CODE_PROMPT_CACHE_TTL`, which wins over settings); absent keeps the CLI default. */
   cacheTtl?: '5m' | '1h';
+  /** Output tokens one request may write (env `CLAUDE_CODE_MAX_OUTPUT_TOKENS`); absent keeps the CLI default. */
+  maxOutputTokens?: number;
 }
 
 export interface Invocation {
@@ -151,6 +153,7 @@ export function buildInvocation(input: InvocationInput, hostEnv: NodeJS.ProcessE
   // Never read from the host env: only the key the config chose (`claude.auth: "api-key"`) reaches a step.
   if (input.apiKey) env.ANTHROPIC_API_KEY = input.apiKey;
   if (input.cacheTtl) env.CLAUDE_CODE_PROMPT_CACHE_TTL = input.cacheTtl;
+  if (input.maxOutputTokens) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = String(input.maxOutputTokens);
   return { args, env, cwd: input.cwd, stdin: `${QUESTION_RULES}\n\n${input.prompt}`, agentsFile };
 }
 

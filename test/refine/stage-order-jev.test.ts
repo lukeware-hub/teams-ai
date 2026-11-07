@@ -20,8 +20,8 @@ beforeEach(async () => {
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
-describe('the Jev reads the stage document as the reshape left it', () => {
-  it('reshapes first, so the Jev never validates text that is about to change', async () => {
+describe('a stage review does not ask the Jev', () => {
+  it('the stage review never calls the Jev, whatever the reshape did', async () => {
     const order: string[] = [];
     const base = makeFakeRunAgent(script);
     const runAgent = ((req: { kind: string }, ctx: unknown) => {
@@ -39,11 +39,8 @@ describe('the Jev reads the stage document as the reshape left it', () => {
     script['suggest/po'] = [{ text: '# Project\n\nTexto.\n' }];
     script['refine/po'] = [{ checklist: [], questions: [], docPatch: [] }];
     await s.evaluateStage('project.md');
-    const reshape = order.indexOf('suggest');
-    const jev = order.indexOf('jev');
-    expect(jev).toBeGreaterThan(-1);
-    expect(reshape).toBeGreaterThan(-1);
-    expect(reshape).toBeLessThan(jev);
+    expect(order).toContain('suggest');
+    expect(order).not.toContain('jev');
     await s.close();
   });
 });

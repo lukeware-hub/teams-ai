@@ -162,6 +162,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     runAgent,
     // The graph extraction shares the refinement governor, and runs in step homes of its own.
     extractDocs: async (dir, outDir, projectId) => extractDocs({ exec: execCommand, hostEnv: io.env, governor: runAgent.governor, ...(await slotSettingIn(projectId, 'graphify')) }, dir, outDir, path.join(os.tmpdir(), 'th-graph')),
+    mergeDocGraphs: (graphs, outDir) => graphify.merge(graphs, outDir),
     docGraphContext: (outDir, question, budgetTokens) => docGraphContext(graphify, outDir, question, budgetTokens),
     // The merged graph of the project's code, as the chat reads it; a project with no graph yet gives no context.
     projectGraphContext: async (projectId, question, budgetTokens) => {

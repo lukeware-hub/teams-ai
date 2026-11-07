@@ -16,8 +16,12 @@ export interface RunnerBinary {
 
 export interface ProcessCaps {
   timeoutMs: number;
+  /** The time limit of a stage review, used instead of `timeoutMs` for it. */
+  reviewTimeoutMs?: number;
   /** Assistant turns (distinct message ids) allowed before the process is killed; CLI 2.1.281 has no --max-turns. */
   maxTurns: number;
+  /** Output tokens one stage review may write. */
+  maxOutputTokens?: number;
   killGraceMs?: number;
 }
 

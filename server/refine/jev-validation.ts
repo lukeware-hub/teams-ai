@@ -54,16 +54,6 @@ const CHECKS = {
   },
 } as const;
 
-/** The checks of a stage's preflight: the documents agree, and the stage document covers what the documents before it require of it. */
-export const stageChecks = (stage: string): Record<string, { instructions: string; yes: string; no: string }> => ({
-  documents_consistent: CHECKS.documents_consistent,
-  covers_earlier: {
-    instructions: `Does ${stage} cover everything the documents before it require of it?`,
-    yes: `${stage} holds every part the documents before it require of it.`,
-    no: `${stage} misses a part the documents before it require of it.`,
-  },
-});
-
 export function summarizeJevChecks(checks: Record<string, number>, model: string | null, stateTruncated = false): JevValidationResult {
   const values = Object.values(checks).filter((value) => Number.isFinite(value));
   const confidence = values.length === 0 ? null : Math.min(...values.map((value) => Math.max(value, 1 - value)));
@@ -112,8 +102,8 @@ export function absentDocsNote(docs: ValidationDocs): string {
 }
 
 /** Runs independent Jev consistency checks before Claude derives the specification. */
-export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs, stage?: string) => Promise<JevValidationResult> {
-  return async (docs, stage) => {
+export function createJevValidator(cfg: Config, secrets: () => Promise<Record<string, string>>): (docs: ValidationDocs) => Promise<JevValidationResult> {
+  return async (docs) => {
     const values = await secrets();
     const key = values.OPENROUTER_API_KEY;
     if (!key) return unavailable();
@@ -123,7 +113,7 @@ export function createJevValidator(cfg: Config, secrets: () => Promise<Record<st
     const windows = splitWindows(clean, MAX_STATE_CHARS);
     // Each window sees only part of the documents, so a check must not fail for what lies outside it.
     const scope = (part: number) => `${windowNote(part, windows.length)}${absentDocsNote(clean)}`;
-    const definitions: Record<string, { instructions: string; yes: string; no: string }> = stage ? stageChecks(stage) : CHECKS;
+    const definitions: Record<string, { instructions: string; yes: string; no: string }> = CHECKS;
     const results = await Promise.all(windows.map((state, i) => jev.evaluate({
       state,
       questions: Object.fromEntries(Object.entries(definitions).map(([id, check]) => [id, {

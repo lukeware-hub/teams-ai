@@ -13,6 +13,15 @@ describe('runApi.docs', () => {
   });
 });
 
+describe('the answer of a sign-in page', () => {
+  it('is an error the owner can act on, not an empty answer', async () => {
+    const signIn = new Response('<html>entrar</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    Object.defineProperty(signIn, 'redirected', { value: true });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(signIn);
+    await expect(refineApi.suggestDoc('shop', 'shop-002', 'stack.md')).rejects.toThrow('Você precisa entrar de novo');
+  });
+});
+
 describe('refineApi.scoreDoc', () => {
   it('posts the score of one named document of a refinement', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));

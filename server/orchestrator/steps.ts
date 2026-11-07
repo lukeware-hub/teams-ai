@@ -18,7 +18,7 @@ import { buildContextPack, estimateTokens, type CodeContext, type GraphAccess, t
 import type { Hit } from '../knowledge/retrieval.js';
 import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
-import type { runStep as runStepFn, StepDeps, StepOutcome, StepRequest } from '../runner/step.js';
+import { limitMsOf, type runStep as runStepFn, type StepDeps, type StepOutcome, type StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
 import type { DocsInput } from '../validators/docs.js';
 import type { RefContext } from '../validators/references.js';
@@ -625,6 +625,10 @@ export interface AgentStepRequest<K extends StepKind> {
   routedEffort?: Effort;
   /** Env entries the orchestrator provisioned for this one step (e.g. an ephemeral test database's DATABASE_URL). */
   extraEnv?: Readonly<Record<string, string>>;
+  /** A stage review: no tools, no graph, and its own time limit (see StepRequest.review). */
+  review?: true;
+  /** The part of a document this review reads, when the document is too big for one review. */
+  part?: { index: number; total: number };
   /**
    * R11.13 slice 7: keeps the step's CLI session under `id`. When the task's store already holds it (an earlier attempt, same
    * cwd), the step resumes it and sends only `resumePrompt` instead of the pack: the context comes from the prompt cache.
@@ -669,7 +673,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const id = stepId(seq);
   const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
   const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
-  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
+  // A stage review reads only the document and its context in the prompt: the graph is not offered to it.
+  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess && req.review !== true ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);
@@ -690,6 +695,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
     attempt: req.attempt,
     tokens: pack.tokens,
     dropped: pack.dropped,
+    part: req.part ?? null,
+    limitMs: limitMsOf(deps.stepDeps.caps, req.review === true),
   });
   await fs.writeFile(path.join(dir, 'prompt.md'), pack.text);
   const clean = (s: string) => redactSecrets(s, deps.secretValues());
@@ -723,6 +730,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
         systemExtra: req.systemExtra,
         extraEnv: req.extraEnv,
         fullAccess,
+        review: req.review,
         ...(sessionStore ? { sessionId: req.session!.id, resume, sessionStore } : {}),
       },
       deps.stepDeps,
