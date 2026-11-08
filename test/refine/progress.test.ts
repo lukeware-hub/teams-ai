@@ -34,6 +34,20 @@ describe('progress of a refinement, read from its journal', () => {
     expect(costs['project.md']).toEqual({ rounds: 1, steps: 1, durationMs: 4_000, costUsd: 0.5 });
   });
 
+  it('adds the Jev score to the document it scored, and a Jev decision to the stage under review', () => {
+    const scored = (seq: number, file: string) => ev(seq, 'REFINE_DOCS_SCORED', { files: [file], usage: { costUsd: 0.125 } });
+    const decided = ev(4, 'DECISION_MADE', { record: { attempts: [{ backend: 'jev', usage: { costUsd: 0.5 } }, { backend: 'claude', usage: { costUsd: 9 } }] } });
+    const costs = stageCostOf([
+      scored(1, 'flow.md'),
+      ev(2, 'REFINE_CYCLE_STARTED', { cycle: 1, file: 'flow.md' }),
+      ev(3, 'STEP_FINISHED', { stepId: 's1', costUsd: 0.25, durationMs: 9_000 }),
+      decided,
+      scored(5, 'project.md'),
+    ]);
+    expect(costs['flow.md']).toEqual({ rounds: 1, steps: 1, durationMs: 9_000, costUsd: 0.875 });
+    expect(costs['project.md']).toEqual({ rounds: 0, steps: 0, durationMs: 0, costUsd: 0.125 });
+  });
+
   it('counts the answers no review has used yet, per stage, and a review clears them', () => {
     const asked = ev(1, 'REFINE_STAGE_REVIEWED', { file: 'flow.md', questions: [{ questionId: 'q1' }, { questionId: 'q2' }] });
     const answered = [ev(2, 'QUESTION_ANSWERED', { questionId: 'q1' }), ev(3, 'QUESTION_ANSWERED', { questionId: 'q2' })];

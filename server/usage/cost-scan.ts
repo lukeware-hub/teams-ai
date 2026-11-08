@@ -83,6 +83,13 @@ export function createCostScanner(deps: { config: () => Promise<Config>; chatsDi
           shown.add(projectId);
           take(await readJournal(path.join(refine, draftId, 'events.ndjson'), () => ({ stage: 'refinement', projectId, specId: draftId, runId: null })));
         }
+        // The journals of discarded drafts: what they cost still counts.
+        const history = path.join(workspaces, projectId, 'refine-history');
+        for (const specId of await subdirs(history)) {
+          for (const stamp of await subdirs(path.join(history, specId))) {
+            take(await readJournal(path.join(history, specId, stamp, 'events.ndjson'), () => ({ stage: 'refinement', projectId, specId, runId: null })));
+          }
+        }
       }
 
       for (const runId of await subdirs(runs)) {

@@ -1,4 +1,5 @@
 import type { StoredEvent } from '../store/event-store.js';
+import { jevCharge } from '../usage/jev-cost.js';
 import type { DocFile } from './draft.js';
 import { RefineEvent } from './events.js';
 
@@ -88,22 +89,25 @@ export function answersAwaitingOf(events: ReadonlyArray<StoredEvent>): Partial<R
   return counts;
 }
 
-/** Each stage's cost: its rounds, and the steps finished while it was the stage under review. */
+/** Each stage's cost: its rounds, the steps finished while it was the stage under review, and what the Jev charged for it. */
 export function stageCostOf(events: ReadonlyArray<StoredEvent>): Partial<Record<DocFile, StageCost>> {
   const costs: Partial<Record<DocFile, StageCost>> = {};
+  const costOf = (doc: DocFile): StageCost => (costs[doc] ??= { rounds: 0, steps: 0, durationMs: 0, costUsd: 0 });
   let file: DocFile | null = null;
   for (const e of events) {
     if (e.type === RefineEvent.CycleStarted) {
       file = typeof e.data.file === 'string' ? (e.data.file as DocFile) : null;
-      if (file) {
-        const cost = (costs[file] ??= { rounds: 0, steps: 0, durationMs: 0, costUsd: 0 });
-        cost.rounds += 1;
-      }
+      if (file) costOf(file).rounds += 1;
     } else if (e.type === 'STEP_FINISHED' && file) {
-      const cost = costs[file]!;
+      const cost = costOf(file);
       cost.steps += 1;
       cost.durationMs += Number(e.data.durationMs ?? 0);
       cost.costUsd += Number(e.data.costUsd ?? 0);
+    } else {
+      // A score names the document it scored, and may come before that stage's round starts.
+      const scored = e.type === RefineEvent.DocsScored && Array.isArray(e.data.files) && e.data.files.length === 1 ? (e.data.files[0] as DocFile) : file;
+      const charge = jevCharge(e);
+      if (scored && charge > 0) costOf(scored).costUsd += charge;
     }
   }
   return costs;

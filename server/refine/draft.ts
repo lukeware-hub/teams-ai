@@ -51,6 +51,9 @@ export const DOC_REL: Record<DocFile, (specId: string, projectBriefing?: boolean
 /** The project's refinement directory: one draft per spec, each with its own journal. */
 export const refineRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'refine');
 
+/** Where the journals of discarded drafts are kept, so what they cost still counts. */
+export const refineHistoryRoot = (ws: Pick<Workspace, 'root'>): string => path.posix.join(ws.root, 'refine-history');
+
 /** Spec (refinement) §2: the draft lives beside the workspace, never inside the clone. */
 export function draftPaths(ws: Workspace, specId: string): Draft {
   const root = path.posix.join(refineRoot(ws), specId);

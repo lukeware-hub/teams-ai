@@ -81,6 +81,21 @@ describe('createCostScanner', () => {
     expect(byStage('refinement').map((f) => f.repository)).toEqual(['shop-api', 'shop-api']);
   });
 
+  it('still counts the journal of a discarded draft, under its project and spec', async () => {
+    const dir = await registerProject();
+    await writeRun(path.join(workspaces, 'shop', 'refine-history', 'checkout'), '1762600000000', [
+      { type: 'STEP_FINISHED', data: { stepId: 's1', kind: 'spec', taskId: null, attempt: 0, usage: usage(1, 1, 0.4), costUsd: 0.4 } },
+      { type: 'REFINE_DOCS_SCORED', data: { model: 'jev-model', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0.1 } } },
+    ]);
+
+    const facts = (await scanner(dir).scan()).facts;
+
+    expect(facts.map((f) => [f.stage, f.projectId, f.specId, f.costUsd])).toEqual([
+      ['refinement', 'shop', 'checkout', 0.4],
+      ['refinement', 'shop', 'checkout', 0.1],
+    ]);
+  });
+
   it('counts a journal it cannot read and still reads the others', async () => {
     const dir = await registerProject();
     await writeRun(runs, 'shop--checkout--run-1', step('s1', 'dev', null, 'phase3', 0.2));

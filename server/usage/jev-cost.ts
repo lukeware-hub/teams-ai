@@ -28,7 +28,7 @@ export function jevUsages(event: StoredEvent): JevUsage[] {
 }
 
 /** What one journaled event charged the Jev, in US$. */
-function jevCharge(event: StoredEvent): number {
+export function jevCharge(event: StoredEvent): number {
   if (event.type === DOCS_SCORED) return usd((event.data.usage as { costUsd?: unknown } | undefined)?.costUsd);
   return jevUsages(event).reduce((sum, u) => sum + usd(u.costUsd), 0);
 }

@@ -23,7 +23,7 @@ import { answerFloor } from './auto-floor.js';
 import type { HealTarget } from './heal-driver.js';
 import type { RunAgent } from './cycle.js';
 import type { CycleDeps } from './cycle.js';
-import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineRoot, repoMain, stripControls, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
+import { cleanDescription, createFromRepo, createNewProject, draftExists, draftPaths, refineHistoryRoot, refineRoot, repoMain, stripControls, syncWithMain, type Draft, type MainCopy, type RouteReport } from './draft.js';
 import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { suggestRequest } from './request-suggest.js';
@@ -82,6 +82,15 @@ const slug = (v: string, what: string) => {
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
+
+/** Moves a draft's journal to the refinement history before the draft is removed, so what it cost still counts. */
+async function keepJournal(ws: Workspace, draft: Draft): Promise<void> {
+  const journal = path.join(draft.root, 'events.ndjson');
+  if (!(await exists(journal))) return;
+  const kept = path.join(refineHistoryRoot(ws), draft.specId, String(Date.now()));
+  await fs.mkdir(kept, { recursive: true });
+  await fs.rename(journal, path.join(kept, 'events.ndjson'));
+}
 /** The draft id of a project's request: `<project>-pedido-<n>`, the project part cut so the id has at most 40 characters. */
 export const requestDraftId = (projectId: string, number: number): string => {
   const suffix = `-pedido-${number}`;
@@ -559,6 +568,7 @@ export class SessionRegistry {
     const draft = draftPaths(ws, specId);
     await session.close();
     this.sessions.delete(`${projectId}/${specId}`);
+    await keepJournal(ws, draft);
     await fs.rm(draft.root, { recursive: true, force: true });
     if (retire && notStarted && (await this.list()).every((row) => row.projectId !== projectId) && (await isDocsRepo(ws))) await releaseDocs(ws);
   }
