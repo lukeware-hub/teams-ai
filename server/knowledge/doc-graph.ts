@@ -6,8 +6,8 @@ import { createStepHome, removeStepHome, syncBackCredentials } from '../runner/s
 import { withRefreshGate } from '../runner/step.js';
 import type { Graphify } from './graphify.js';
 
-/** The longest one extraction may run, the same bound as the other graph commands. */
-const TIMEOUT_MS = 300_000;
+/** Graphify gives each model call ten minutes by default; a day lifts that, so a long extraction is not cut short. */
+const CALL_TIMEOUT_S = '86400';
 /** Margin for the refresh gate, as a step uses it. */
 const REFRESH_WINDOW_MS = 5 * 60_000;
 
@@ -64,20 +64,18 @@ export async function extractDocs(deps: DocGraphDeps, dir: string, outDir: strin
     const release = await deps.governor.acquire();
     let result: CommandResult;
     try {
-      result = await withRefreshGate(deps.hostEnv, deps.clock ?? (() => new Date()), TIMEOUT_MS + REFRESH_WINDOW_MS, () =>
+      result = await withRefreshGate(deps.hostEnv, deps.clock ?? (() => new Date()), REFRESH_WINDOW_MS, () =>
         deps.exec({
           bin: 'graphify',
           args: ['extract', dir, '--backend', 'claude-cli', '--no-cluster', '--allow-partial', '--out', outDir],
           cwd: dir,
-          timeoutMs: TIMEOUT_MS,
-          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: deps.model, CLAUDE_CODE_EFFORT_LEVEL: deps.effort },
+          env: { ...BLANKED, HOME: home, USERPROFILE: home, GRAPHIFY_CLAUDE_CLI_MODEL: deps.model, CLAUDE_CODE_EFFORT_LEVEL: deps.effort, GRAPHIFY_API_TIMEOUT: CALL_TIMEOUT_S },
         }),
       );
     } finally {
       release();
     }
-    if (result.timedOut) throw new DocGraphError('A extração dos documentos passou do tempo limite de 5 min. Tente de novo; se repetir, confira o esforço do Graphify em Configurações.');
-    if (result.exitCode !== 0) throw new DocGraphError(`A extração dos documentos falhou: ${ends(result.stderr) || `o processo saiu com código ${result.exitCode} e sem detalhe`}`);
+    if (result.exitCode !== 0) throw new DocGraphError(`A extração dos documentos falhou: ${ends(result.stderr.trim()) || `o processo saiu com código ${result.exitCode} e sem detalhe`}`);
   } finally {
     await syncBackCredentials(home, deps.hostEnv);
     await removeStepHome(home);

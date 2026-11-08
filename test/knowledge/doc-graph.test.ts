@@ -136,10 +136,19 @@ describe('document graph extraction', () => {
     await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/falha no modelo: cota de uso.* recusado ao final/);
   });
 
-  it('a timed-out extraction says it ran out of time, and a failure with no stderr says it had no detail', async () => {
-    failWith = result({ exitCode: 124, timedOut: true, stderr: '' });
-    await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/passou do tempo limite de 5 min/);
+  it('a failure with no stderr says it had no detail', async () => {
     failWith = result({ exitCode: 1, stderr: '' });
     await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/código 1 e sem detalhe/);
+  });
+
+  it('a failure whose stderr holds only blank lines still says it had no detail', async () => {
+    failWith = result({ exitCode: 1, stderr: ' \n\n' });
+    await expect(extractDocs(deps(), dir, out, parent)).rejects.toThrow(/código 1 e sem detalhe/);
+  });
+
+  it('runs an extraction with no time limit: the command has no timeout, and graphify keeps no per-call limit of ten minutes', async () => {
+    await extractDocs(deps(), dir, out, parent);
+    expect(calls.at(-1)?.timeoutMs).toBeUndefined();
+    expect(calls.at(-1)?.env?.GRAPHIFY_API_TIMEOUT).toBe('86400');
   });
 });

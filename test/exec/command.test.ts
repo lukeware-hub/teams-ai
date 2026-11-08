@@ -28,6 +28,11 @@ describe('execCommand', () => {
     expect(Date.now() - started).toBeLessThan(3_000);
   });
 
+  it('runs a command without a timeout until it exits, when it gives none', async () => {
+    const r = await node('setTimeout(()=>process.stdout.write("done"),400)', { timeoutMs: undefined });
+    expect(r).toMatchObject({ exitCode: 0, stdout: 'done', timedOut: false });
+  });
+
   it('keeps the tail of the output when truncating, so the decisive last lines survive', async () => {
     const r = await node('process.stdout.write("x".repeat(5000) + "no space left on device")', { outputLimit: 1000 });
     expect(r.stdout.length).toBe(1000);

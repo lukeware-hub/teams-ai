@@ -6,7 +6,8 @@ export interface CommandSpec {
   args: readonly string[];
   cwd?: string;
   env?: Record<string, string>;
-  timeoutMs: number;
+  /** Without it the command runs until it exits. */
+  timeoutMs?: number;
   stdin?: string;
   outputLimit?: number;
 }
@@ -110,7 +111,7 @@ export const execCommand: Exec = (spec) =>
         /* ESRCH: already gone */
       }
     };
-    const timer = setTimeout(() => {
+    const timer = spec.timeoutMs === undefined ? undefined : setTimeout(() => {
       timedOut = true;
       signal('SIGTERM');
       setTimeout(() => signal('SIGKILL'), 1_000).unref();
