@@ -34,7 +34,7 @@ function EpicGroup({ testId, title, total, children }: { testId: string; title: 
 }
 
 /** The detailed backlog as a coverage tree (`locked`, when given, makes the items chip open the backlog list): épico -> doc section or spec -> acceptance criterion -> pre-plan tasks, gaps in red. */
-export function SpecTree({ backlog, evaluating = false, note, locked }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode; locked?: boolean }) {
+export function SpecTree({ backlog, evaluating = false, note, locked, steps }: { backlog: BacklogView; evaluating?: boolean; note?: ReactNode; locked?: boolean; /** The finished plan and task steps, for the marks of each row. */ steps?: ReadonlyArray<{ command: string; itemKey?: string }> }) {
   const [shown, setShown] = useState<Kind | null>(null);
   const matrix = useMemo(() => coverageMatrix(backlog as never), [backlog]);
   const gaps = useMemo(() => coverageGaps(backlog as never), [backlog]);
@@ -101,7 +101,7 @@ export function SpecTree({ backlog, evaluating = false, note, locked }: { backlo
         ))}
         <li className={`${stat} ${gaps.length === 0 ? 'border-good-line bg-good-soft text-good' : 'border-warn-line bg-warn-soft text-warn'}`} data-testid="spec-tree-gap-count">{count(gaps.length, 'lacuna', 'lacunas')}</li>
       </ul>
-      {shown === 'items' && locked !== undefined ? <div data-testid="coverage-list-items" className="[&>div]:my-0 [&>div]:gap-[0.6rem]"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle /></div> : shown && (
+      {shown === 'items' && locked !== undefined ? <div data-testid="coverage-list-items" className="[&>div]:my-0 [&>div]:gap-[0.6rem]"><BacklogPanel backlog={backlog} evaluating={evaluating} locked={locked} hideTitle steps={steps} /></div> : shown && (
         <ul data-testid={`coverage-list-${shown}`} className="m-0 grid list-none rounded-md border border-line bg-surface px-[0.8rem] py-[0.2rem] text-[0.8125rem] leading-snug text-ink-soft">
           {rows.length > 0 ? rows : <li className="py-[0.45rem]" data-testid="spec-tree-empty">Nenhum item ainda.</li>}
         </ul>

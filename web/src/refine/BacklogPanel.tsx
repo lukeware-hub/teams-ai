@@ -3,6 +3,7 @@ import type { BacklogView } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
+import { kindLabel } from './ArchitectureCard.js';
 
 const SIZE = { S: 'pequena', M: 'média', L: 'grande' } as const;
 const HELP = 'Os agentes quebram os documentos em specs por épico, de P0 (base) a P3 (depois). Cada avaliação refaz só o que mudou. Para mudar prioridades, edite o briefing.md e avalie de novo.';
@@ -38,8 +39,24 @@ export const bkTone = {
 export const bkMeta = 'flex-none text-[0.75rem] text-ink-faint';
 const STATUS_TONE = { entregue: bkTone.planned, 'em execução': bkTone.planned, planejada: bkTone.planned, 'em refinamento': bkTone.refining, erro: bkTone.error } as const;
 
-/** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs. */
-export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory = false, hideTitle = false }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown; mandatory?: boolean; hideTitle?: boolean }) {
+/** The kind chip of a repository group; a name without a service suffix is the one repository of a monolith. */
+const repoKind = (name: string) => {
+  const kind = kindLabel(name, 'microservices');
+  return kind === 'sem tipo' ? 'Monólito' : kind;
+};
+
+/** One mark of a row: the word, with a check when that part of the item exists. */
+function Mark({ done, label, testId }: { done: boolean; label: string; testId: string }) {
+  return (
+    <span className={`${bkChip} inline-flex items-center gap-1 ${done ? bkTone.planned : bkTone.refining}`} data-testid={testId} data-done={done}>
+      {done && <Icon name="check" size={12} />}{label}
+    </span>
+  );
+}
+
+/** The documents broken into prioritized specs, the way the agents organized them; the human reads and steers through the docs.
+ * `steps` are the finished plan and task steps, which mark each row of a repository session. */
+export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory = false, hideTitle = false, steps = [] }: { backlog: BacklogView | null | undefined; evaluating: boolean; locked: boolean; onEnable?: () => unknown; mandatory?: boolean; hideTitle?: boolean; steps?: ReadonlyArray<{ command: string; itemKey?: string }> }) {
   if (!backlog?.enabled) {
     if (mandatory) return <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid="backlog-mandatory">O backlog aparece aqui quando os documentos estiverem prontos: a mesma avaliação o monta e detalha.</p>;
     if (!onEnable) return null;
@@ -59,6 +76,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
   const groups = byRepository
     ? [...new Set(backlog.items.map((i) => i.repository ?? ''))].map((repo) => ({ key: repo || 'sem-repositorio', title: repo || 'Sem repositório', items: backlog.items.filter((i) => (i.repository ?? '') === repo).sort((a, b) => a.rank - b.rank) }))
     : epics;
+  const finished = (command: string, key: string) => steps.some((s) => s.command === command && s.itemKey === key);
   return (
     <div className="my-4 grid gap-1" data-testid="backlog-on">
       {!hideTitle && <h3 className="section-title m-0 mb-2 flex items-center gap-2" data-testid="backlog-on-title"><Icon name="list" size={20} />Backlog{backlog.items.length > 0 ? ` · ${backlog.items.length} ${backlog.items.length === 1 ? 'spec' : 'specs'} em ${byRepository ? groups.length + (groups.length === 1 ? ' repositório' : ' repositórios') : epics.length + (epics.length === 1 ? ' épico' : ' épicos')}` : ''}<InfoTip text={HELP} /></h3>}
@@ -68,6 +86,7 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] text-ink-soft [&::-webkit-details-marker]:hidden" data-testid={`backlog-group-summary-${epic.key}`}>
             <span className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90" data-testid={`backlog-group-chevron-${epic.key}`}><Icon name="chevron-right" size={16} /></span>
             <span className="min-w-0 flex-1 font-semibold wrap-anywhere" data-testid={`backlog-group-title-${epic.key}`}>{epic.title}</span>
+            {byRepository && epic.key !== 'sem-repositorio' && <span className="count-pill" data-testid={`backlog-group-kind-${epic.key}`}>{repoKind(epic.key)}</span>}
             <span className="count-pill" data-testid={`backlog-group-count-${epic.key}`}>{epic.items.length}</span>
           </summary>
           <ol className="m-0 grid list-none gap-[0.4rem] p-0" data-testid={`backlog-group-list-${epic.key}`}>
@@ -78,7 +97,15 @@ export function BacklogPanel({ backlog, evaluating, locked, onEnable, mandatory 
                     <span className={`${bkChip} ${bkTone[i.priority]}`} data-testid={`backlog-item-priority-${i.key}`}>{i.priority}</span>
                     <b className="min-w-[10rem] flex-[1_1_10rem] font-semibold wrap-anywhere" data-testid={`backlog-item-title-${i.key}`}>{i.title}</b>
                     {backlog.detail && <span className={`${bkChip} ${STATUS_TONE[itemStatus(backlog, i.key)]}`} data-testid={`backlog-item-status-${i.key}`}>{itemStatus(backlog, i.key)}</span>}
+                    {byRepository && backlog.detail && (
+                      <span className="inline-flex flex-none gap-1" data-testid={`backlog-item-marks-${i.key}`}>
+                        <Mark done={!!backlog.specs?.[i.key]?.spec} label="spec" testId={`backlog-item-mark-spec-${i.key}`} />
+                        <Mark done={finished('plan', i.key)} label="plano" testId={`backlog-item-mark-plan-${i.key}`} />
+                        <Mark done={finished('tasks', i.key)} label="tarefas" testId={`backlog-item-mark-tasks-${i.key}`} />
+                      </span>
+                    )}
                     {byRepository && <span className={bkMeta} data-testid={`backlog-item-epic-${i.key}`}>{epicTitle.get(i.epic) ?? i.epic}</span>}
+                    {byRepository && i.dependsOn.length > 0 && <span className={bkMeta} data-testid={`backlog-item-depends-short-${i.key}`}>depende de {i.dependsOn.map((d) => titles.get(d) ?? d).join(', ')}</span>}
                     <span className={bkMeta} data-testid={`backlog-item-meta-${i.key}`}>#{i.rank} · {SIZE[i.size]}</span>
                   </summary>
                   <div className="grid gap-[0.35rem] px-[0.65rem] pb-[0.65rem] text-[0.8125rem] text-ink-soft [&_p]:m-0" data-testid={`backlog-item-body-${i.key}`}>

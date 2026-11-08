@@ -559,7 +559,7 @@ export function RefinementView(p: ViewProps) {
   const backlogBlock = (note: ReactNode) => {
     const panel = <MemoBacklogPanel backlog={st.backlog} evaluating={evaluating} locked={locked} onEnable={newProject ? undefined : p.onEnableBacklog} mandatory={newProject} hideTitle />;
     // A detailed backlog opens its list of specs from the coverage chip; before that the list stands alone.
-    return st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} locked={locked} /> : <>{panel}{note}</>;
+    return st.backlog?.detail ? <MemoSpecTree backlog={st.backlog} evaluating={evaluating} note={note} locked={locked} steps={st.speckit?.steps} /> : <>{panel}{note}</>;
   };
   // What the plan preparation covers: each backlog item, or the single spec as one item.
   const speckitList = useMemo(() => planItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);

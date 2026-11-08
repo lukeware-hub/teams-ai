@@ -79,6 +79,27 @@ describe('ArchitectureCard', () => {
     expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('heads the repositories and the integrations with their counts, each repository a closed row with its integration count', () => {
+    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} onDecide={() => {}} />);
+    expect(screen.getByTestId('architecture-card-repos-heading').textContent).toBe('Repositórios (2)');
+    expect(screen.getByTestId('architecture-card-integrations-heading').textContent).toBe('Integrações (1)');
+    const row = screen.getByTestId('architecture-card-repo-details-shop-api') as HTMLDetailsElement;
+    expect(row.tagName).toBe('DETAILS');
+    expect(row.open).toBe(false);
+    expect(screen.getByTestId('architecture-card-repo-links-shop-api').textContent).toBe('1 integração');
+    expect(within(row).getByText('Evidência (project.md): "vende"')).toBeTruthy();
+  });
+
+  it('searches and pages the repositories only above twelve', async () => {
+    const many: ArchitectureView = { ...decision, repositories: Array.from({ length: 13 }, (_, n) => ({ name: `shop${n}-api`, responsibility: `Parte ${n}`, evidence: { doc: 'project.md', quote: 'q' } })) };
+    const { rerender } = render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} onDecide={() => {}} />);
+    expect(screen.queryByTestId('table-filters')).toBeNull();
+    rerender(<ArchitectureCard architecture={{ docsHash: 'h', decision: many }} error={null} busy={false} onDecide={() => {}} />);
+    expect(await screen.findByTestId('table-filters')).toBeTruthy();
+    expect(await screen.findByTestId('architecture-repo-shop0-api')).toBeTruthy();
+    expect(screen.queryByTestId('architecture-repo-shop12-api')).toBeNull();
+  });
+
   it('names the kind of a monolith repository and of a service without suffix', () => {
     expect(kindLabel('acme', 'monolith')).toBe('Monólito');
     expect(kindLabel('acme', 'microservices')).toBe('sem tipo');

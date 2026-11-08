@@ -1250,7 +1250,7 @@ No celular, o painel ocupa a largura toda e os chips quebram em linhas. Usa só 
 - uma frase sobre o que o desenvolvimento autônomo faz: até duas specs ao mesmo tempo, reparos e novas tentativas, custo só como alerta;
 - `Cancelar` (secundária) e `Autorizo iniciar o desenvolvimento` (primária).
 
-Uma verificação que falha só alerta: a primária continua habilitada. O diálogo lista cada verificação com o seu detalhe, e a etapa Backlog não mostra alerta: os agentes resolvem os itens reprovados sozinhos (§26.8). O servidor recusa só um resumo diferente do que a página mostra (409), nunca por causa de uma verificação reprovada. Abaixo de 720 px, o diálogo vira uma folha em largura total. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
+Uma verificação que falha só alerta: a primária continua habilitada. O diálogo lista cada verificação com o seu detalhe, e a etapa Backlog não mostra alerta: os agentes resolvem os itens reprovados sozinhos (§26.8). O servidor recusa só um resumo diferente do que a página mostra (409), nunca por causa de uma verificação reprovada. Abaixo de 640 px, o diálogo vira uma folha em largura total (o diálogo grande do app), e `Cancelar` e a primária ficam num rodapé que não rola. O botão primário só fica habilitado com o resumo que a página mostra; o servidor recusa um resumo diferente com 409.
 
 ### 27.2 Projeto: repositórios
 

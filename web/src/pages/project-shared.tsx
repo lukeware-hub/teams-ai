@@ -57,6 +57,13 @@ export const responsiveHead = '@max-[44rem]:hidden';
 export const responsiveRow = '@max-[44rem]:mb-3 @max-[44rem]:grid @max-[44rem]:gap-1 @max-[44rem]:rounded-lg @max-[44rem]:border @max-[44rem]:border-line @max-[44rem]:p-3';
 export const responsiveCell = '@max-[44rem]:flex @max-[44rem]:h-auto @max-[44rem]:flex-col @max-[44rem]:items-start @max-[44rem]:gap-0.5 @max-[44rem]:border-0 @max-[44rem]:p-0 @max-[44rem]:py-[0.2rem] @max-[44rem]:whitespace-normal @max-[44rem]:wrap-anywhere @max-[44rem]:text-left @max-[44rem]:before:shrink-0 @max-[44rem]:before:text-left @max-[44rem]:before:text-[0.75rem] @max-[44rem]:before:font-semibold @max-[44rem]:before:text-ink-soft @max-[44rem]:before:content-[attr(data-label)]';
 
+/** A determinate bar for a share from 0 to 100; `testId` names the bar and its fill. */
+export const Meter = ({ value, label, testId }: { value: number; label: string; testId: string }) => (
+  <div data-testid={`${testId}-meter`} className="h-1.5 overflow-hidden rounded-full bg-accent-line" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>
+    <div data-testid={`${testId}-fill`} className="h-full rounded-full bg-accent" style={{ width: `${value}%` }} />
+  </div>
+);
+
 export const chip = (status: string) => (
   <Tipped text={STATUS_HELP[status] ?? STATUS_HELP.unknown!}>
     <span data-testid={`project-shared-chip-${status}`} className={TONE[status] ? `status-pill tone-${TONE[status]}` : 'status-pill'}>{LABEL[status] ?? status}</span>

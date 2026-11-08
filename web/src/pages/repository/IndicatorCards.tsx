@@ -1,5 +1,5 @@
 import type { RepoDashboard } from '../../api.js';
-import { money, plural } from '../project-shared.js';
+import { Meter, money, plural } from '../project-shared.js';
 
 /** The seven indicator cards of a repository, each a number the journals give; a card reads its own detail line.
  * Two columns on a phone (cost takes the whole row), four from 768 px, seven from 1280 px. */
@@ -17,14 +17,10 @@ export function IndicatorCards({ dashboard }: { dashboard: RepoDashboard }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7" data-testid="repo-cards">
       {cards.map((card) => (
-        <div key={card.id} className={`card grid content-start gap-1 p-3${card.id === 'cost' ? ' col-span-2 md:col-span-1' : ''}`} data-testid={`card-${card.id}`}>
+        <div key={card.id} className={`card grid content-start gap-1 p-3 text-left hyphens-manual${card.id === 'cost' ? ' col-span-2 md:col-span-1' : ''}`} data-testid={`card-${card.id}`}>
           <span data-testid={`indicator-label-${card.id}`} className="hint">{card.label}</span>
           <strong data-testid={`indicator-value-${card.id}`} className="text-[1.125rem] tabular-nums">{card.value}</strong>
-          {card.id === 'progress' && c.progress !== null && (
-            <div data-testid="indicator-progress-meter" className="h-1.5 overflow-hidden rounded-full bg-accent-line" role="progressbar" aria-label="Progresso geral" aria-valuemin={0} aria-valuemax={100} aria-valuenow={c.progress}>
-              <div data-testid="indicator-progress-fill" className="h-full rounded-full bg-accent" style={{ width: `${c.progress}%` }} />
-            </div>
-          )}
+          {card.id === 'progress' && c.progress !== null && <Meter value={c.progress} label="Progresso geral" testId="indicator-progress" />}
           <span data-testid={`indicator-detail-${card.id}`} className="hint text-[0.75rem]">{card.detail}</span>
         </div>
       ))}

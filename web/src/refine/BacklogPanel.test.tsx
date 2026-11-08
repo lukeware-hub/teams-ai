@@ -8,6 +8,33 @@ const item = (key: string, over: Partial<BacklogView['items'][number]> = {}) => 
 });
 const view = (items: BacklogView['items'], epics = [{ key: 'core', title: 'Núcleo' }, { key: 'fin', title: 'Financeiro' }]): BacklogView => ({ enabled: true, project: null, epics, items, cycle: 1 });
 
+describe('BacklogPanel by repository', () => {
+  const spec = { inputHash: 'h', specId: 's', rev: 'r', spec: { specId: 's', type: 'feature', objectives: [], features: [], acceptanceCriteria: [], outOfScope: [] , externalDependencies: [] }, issues: [], cycle: 1 };
+  const detailed = (items: BacklogView['items']): BacklogView => ({ ...view(items), detail: true, specs: { cart: spec } });
+
+  it('gives each repository group its kind chip, and Monólito to a name without a service suffix', () => {
+    render(<BacklogPanel backlog={view([item('cart', { repository: 'shop-jobs' }), item('base', { repository: 'shop' })])} evaluating={false} locked={false} />);
+    expect(screen.getByTestId('backlog-group-kind-shop-jobs').textContent).toBe('Workers');
+    expect(screen.getByTestId('backlog-group-kind-shop').textContent).toBe('Monólito');
+  });
+
+  it('marks each row with its spec, plan and tasks, and names its dependency without opening it', () => {
+    const items = [item('cart', { repository: 'shop-api', dependsOn: ['base'] }), item('base', { repository: 'shop-api' })];
+    render(<BacklogPanel backlog={detailed(items)} evaluating={false} locked={false} steps={[{ command: 'plan', itemKey: 'cart' }]} />);
+    expect(screen.getByTestId('backlog-item-mark-spec-cart').dataset.done).toBe('true');
+    expect(screen.getByTestId('backlog-item-mark-plan-cart').dataset.done).toBe('true');
+    expect(screen.getByTestId('backlog-item-mark-tasks-cart').dataset.done).toBe('false');
+    expect(screen.getByTestId('backlog-item-mark-spec-base').dataset.done).toBe('false');
+    expect(within(screen.getByTestId('backlog-item-summary-cart')).getByText('depende de Spec base')).toBeTruthy();
+  });
+
+  it('keeps an epic backlog without marks or kind chips', () => {
+    render(<BacklogPanel backlog={{ ...view([item('base')]), detail: true }} evaluating={false} locked={false} />);
+    expect(screen.queryByTestId('backlog-item-marks-base')).toBeNull();
+    expect(screen.queryByTestId(/^backlog-group-kind-/)).toBeNull();
+  });
+});
+
 describe('BacklogPanel', () => {
   it('leaves its own title out when the card around it already has one', () => {
     render(<BacklogPanel backlog={view([item('a')])} evaluating={false} locked={false} hideTitle />);

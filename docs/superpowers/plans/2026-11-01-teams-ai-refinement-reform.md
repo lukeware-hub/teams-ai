@@ -2,7 +2,7 @@
 
 Plan: `~/.claude/plans/pasted-content-id-a9d6-revis-o-crystalline-swan.md` (not in the repository). Branch `feat/refinement-reform`, PR #35 (draft).
 
-Status on 2026-11-01: about 70% of the plan; increment F updated on 2026-11-08. The plan is not complete.
+Status on 2026-11-01: about 70% of the plan; increments F and I updated on 2026-11-08. The plan is not complete.
 
 | Increment | Status | Evidence |
 |---|---|---|
@@ -15,7 +15,7 @@ Status on 2026-11-01: about 70% of the plan; increment F updated on 2026-11-08. 
 | F Skills | Done, scope narrowed by the owner on 2026-11-08 | Skills run in the plan and `task.md` steps (`skillClause` in `server/refine/superpowers-pack.ts`) and in Front work (`.claude/agents/front.md`); stage reviews and specs stay without tools, as #61 decided; `scripts/evals/skill-usage.ts` exists; the 90% rule is measured in the live check of K |
 | G Closing | Done, with gaps | `server/refine/state.ts`; contradiction check not explicit |
 | H Read models and routes | Done, with gaps | `server/api/repositories.ts`; fix and deploy-fix tasks not counted apart |
-| I user interface | Partial | Components and web tests exist; Chrome captures incomplete; closing dialog not captured; final review pending |
+| I user interface | Done, with one gap (2026-11-08) | The six screens were captured at 1440 and 390 px, light and dark (`.impeccable/review/`, demo data injected in the browser for the screens no live draft reaches), the detector ran with no finding, and the finish review fixes were applied; the gap is the architecture style citing its document and section, which the architecture contract does not carry |
 | J Follow-on drafts | Done | `test/refine/follow-on-stamp.test.ts`, `test/api/refine-api.test.ts` (`94769e27`, `562dcbfd`) |
 | K Docs and rollout | Partial | Guide and graph (`cf19028c`, `b484c010`); README paragraph added; closing audit found open items |
 
