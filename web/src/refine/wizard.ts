@@ -25,10 +25,10 @@ export function parseStep(value: string | null): WizardStep | null {
   return (DOC_STAGES as readonly string[]).includes(value ?? '') ? (value as DocFile) : null;
 }
 
-/** The step named in the address, else the first document not done, else the furthest step reached after the review. A project that records no stages starts at the first document. */
+/** The step named in the address when it is open, else the first document not done, else the furthest step reached after the review. A project that records no stages starts at the first document. */
 export function initialStep(st: Pick<State, 'stages' | 'doneStages' | 'reviewClosed' | 'repositories' | 'architecture' | 'specsMd' | 'speckit'>, param: string | null): WizardStep {
   const named = parseStep(param);
-  if (named) return named;
+  if (named && (!isDocStep(named) || st.stages !== true || stepOpen(st, named))) return named;
   if (st.stages !== true) return DOC_STAGES[0];
   const done = new Set(st.doneStages ?? []);
   const pending = DOC_STAGES.find((file) => !done.has(file));
@@ -41,15 +41,26 @@ export function initialStep(st: Pick<State, 'stages' | 'doneStages' | 'reviewClo
 export const prevStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) - 1] ?? null;
 export const nextStep = (step: WizardStep, steps: readonly WizardStep[] = WIZARD_STEPS): WizardStep | null => steps[steps.indexOf(step) + 1] ?? null;
 
+/** Whether a step is finished: a document the owner moved on from, the review once closed, the architecture once decided. */
+export const stepDone = (st: Pick<State, 'doneStages' | 'reviewClosed' | 'architecture'>, step: WizardStep): boolean =>
+  (isDocStep(step) && (st.doneStages ?? []).includes(step)) || (step === 'review' && st.reviewClosed === true) || (step === 'architecture' && st.architecture != null);
+
+/** Whether the owner may open a step now: the first step not done, the steps before it, and the finished ones. */
+export const stepOpen = (st: Pick<State, 'doneStages' | 'reviewClosed' | 'architecture' | 'repositories'>, step: WizardStep): boolean => {
+  const steps = stepsOf(st);
+  const at = steps.indexOf(step);
+  const firstOpen = steps.findIndex((s) => !stepDone(st, s));
+  return at !== -1 && (firstOpen === -1 || at <= firstOpen || stepDone(st, step));
+};
+
 /** The stepper's nodes: state only, never a score. A stage session reads done from the journal; a project with no stages reads it from the position. */
 export function wizardNodes(st: Pick<State, 'stages' | 'doneStages' | 'graphed' | 'staleBy' | 'reviewClosed' | 'repositories' | 'architecture' | 'questions' | 'patches' | 'evaluation'>, current: WizardStep): StepperStep[] {
-  const done = new Set(st.doneStages ?? []);
   const steps = stepsOf(st);
   const at = steps.indexOf(current);
   return steps.map((step, index) => {
     const doc = isDocStep(step) ? step : null;
     const outdated = doc !== null && stageOutdated(st, doc);
-    const isDone = (doc !== null && (st.stages === true ? done.has(doc) : index < at)) || (step === 'review' && st.reviewClosed === true) || (step === 'architecture' && st.architecture != null);
+    const isDone = doc !== null && st.stages !== true ? index < at : stepDone(st, step);
     return {
       key: step,
       label: doc ? DOC_LABEL[doc] : step === 'review' ? 'Resumo' : step === 'architecture' ? 'Arquitetura' : 'Backlog',

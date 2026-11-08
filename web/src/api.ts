@@ -69,8 +69,8 @@ export interface AgentRow { role: string; setting: AgentSetting | null; inUse: A
 export type AgentChoice = { mode: 'auto' } | ({ mode: 'manual' } & AgentSetting);
 /** The model and effort of one row of the automatic choice. */
 export interface AutomaticRow { model: AgentModel; effort: AgentEffort }
-/** The rows of the automatic choice on every project: the task sizes, the architecture steps and the later refinement cycles. */
-export interface AutomaticSettings { tiers: { small: AutomaticRow; medium: AutomaticRow; large: AutomaticRow }; architecture: AutomaticRow; laterCycle: AutomaticRow }
+/** The rows of the automatic choice on every project: the task sizes, the architecture steps, the later refinement cycles and the naming model, with the default effort and the effort cap of each model. */
+export interface AutomaticSettings { tiers: { small: AutomaticRow; medium: AutomaticRow; large: AutomaticRow }; architecture: AutomaticRow; laterCycle: AutomaticRow; naming: AutomaticRow; defaultEffort: AgentEffort; effortCaps: { haiku: AgentEffort; sonnet: AgentEffort; opus: AgentEffort } }
 
 const S = '/api/settings';
 export const settingsApi = {
@@ -726,7 +726,9 @@ export interface NameSuggestion {
   firstSpecId?: string;
 }
 
-const send = (method: string, p: string, body?: unknown) => fetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+const send = (method: string, p: string, body?: unknown, keepalive?: boolean) => fetch(`${R}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), keepalive });
+// The browser refuses a keepalive request above 64 KiB, so the body keeps room for the URL and the headers.
+const KEEPALIVE_BODY_BYTES = 60 * 1024;
 export const refineApi = {
   list: () => fetch(`${R}/refine`).then((r) => json<DraftRow[]>(r)),
   newProject: (projectId: string, name: string, description = '', firstSpecId = '') => send('POST', '/projects/new', { projectId, name, description, firstSpecId }).then((r) => json<{ sessionId: string }>(r)),
@@ -741,7 +743,12 @@ export const refineApi = {
     send('POST', `/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/restart`).then((r) => json<{ sessionId: string }>(r)),
   snapshot: (p: string, s: string) => fetch(`${R}/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<Snapshot>(r)),
   delete: (p: string, s: string) => send('DELETE', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}`).then((r) => json<{ ok: true }>(r)),
-  saveDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', text: string, baseHash?: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, { text, baseHash }).then((r) => json<{ ok: true; hash: string }>(r)),
+  // A save asks to outlive the page only when its body fits the keepalive limit; a larger one is sent without it.
+  saveDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', text: string, baseHash?: string, keepalive?: boolean) => {
+    const body = { text, baseHash };
+    const alive = keepalive === true && new Blob([JSON.stringify(body)]).size <= KEEPALIVE_BODY_BYTES;
+    return send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}`, body, alive).then((r) => json<{ ok: true; hash: string }>(r));
+  },
   suggestDoc: (p: string, s: string, file: 'project.md' | 'briefing.md' | 'stack.md' | 'design.md') => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${file}/suggest`).then((r) => json<{ text: string }>(r)),
   suggestDesignFromImages: (p: string, s: string, images: { data: string }[]) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/design.md/images`, { images }).then((r) => json<{ text: string }>(r)),
   enableBacklog: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/backlog`).then((r) => json<{ ok: true }>(r)),

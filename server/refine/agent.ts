@@ -4,7 +4,7 @@ import { loadAgents } from '../agents/registry.js';
 import { Accounting } from '../budget/accounting.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { automaticStepOf, manualAgentSettings, type AgentSetting, type Config, type Role } from '../config/config.js';
+import { automaticStepOf, manualAgentSettings, type AgentSetting, type Config, type EffortCaps, type Role, type SettingKey } from '../config/config.js';
 import { loadSecrets } from '../core/secrets.js';
 import type { GraphAccess } from '../knowledge/context-pack.js';
 import { runAgentStep } from '../orchestrator/steps.js';
@@ -30,6 +30,8 @@ export interface AgentWiring {
   stepBudget?: (projectId: string) => Promise<Config['budgets']['step']>;
   /** The agents that prepare the plan items at once; the governor admits that many steps, read per step. */
   speckitAgents?: () => Promise<number>;
+  /** The most effort each model family takes on the automatic path, read per step so a change in Settings applies to the next step; absent takes the config's caps. */
+  effortCaps?: () => Promise<EffortCaps>;
 }
 
 /** Where a step's settings go: a plan step works in the folder that is published, so its settings sit beside it. */
@@ -47,7 +49,8 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
     const { ANTHROPIC_API_KEY: apiKey, ...secrets } = await loadSecrets(w.secretsDir);
     if (w.cfg.claude.auth === 'api-key' && !apiKey) throw new Error('claude.auth is "api-key" but the secret ANTHROPIC_API_KEY is not set');
     const settings = ctx.projectId && w.agentSettings ? await w.agentSettings(ctx.projectId) : {};
-    const manual = manualAgentSettings(settings);
+    // A step with no project (a name suggestion) takes no role's default as its manual setting, so the naming setting decides.
+    const manual: Partial<Record<SettingKey, AgentSetting>> = ctx.projectId ? manualAgentSettings(settings) : {};
     const caps = ctx.projectId && w.stepBudget ? await w.stepBudget(ctx.projectId) : w.cfg.budgets.step;
     return runAgentStep(req, {
       agentSetting: (role) => manual[role],
@@ -76,6 +79,8 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
       stepDir: ctx.stepDir,
       secretValues: () => [...Object.values(secrets), ...(apiKey ? [apiKey] : [])],
       stepSetting: (kind, cycle) => automaticStepOf(w.cfg.routing, kind, cycle),
+      effortCaps: w.effortCaps ? await w.effortCaps() : w.cfg.routing.automaticEffortCap,
+      defaultEffort: w.cfg.routing.efforts.automatic,
       specHash: ctx.specHash,
     });
   };

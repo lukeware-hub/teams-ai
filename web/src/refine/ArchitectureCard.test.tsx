@@ -55,6 +55,18 @@ describe('ArchitectureCard', () => {
     expect(box.querySelector('.button-spinner')).toBeTruthy();
   });
 
+  it('says the decision is out of date when the documents changed since it, and that the backlog decides again', () => {
+    render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} stale onDecide={() => undefined} />);
+    expect(screen.getByTestId('architecture-card-stale').textContent).toContain('A decisão está desatualizada');
+    expect(screen.getByTestId('architecture-card-stale').textContent).toContain('o backlog decide a arquitetura de novo');
+  });
+
+  it('keeps the decision closed while a reason stands, and says the reason', () => {
+    render(<ArchitectureCard architecture={null} error={null} busy={false} blocked="Espere a extração do Graphify terminar: os botões liberam sozinhos." onDecide={() => undefined} />);
+    expect((screen.getByTestId('architecture-decide') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('architecture-card-blocked').textContent).toContain('Espere a extração do Graphify');
+  });
+
   it('shows the decision without a lock, even when the documents changed since it', () => {
     render(<ArchitectureCard architecture={{ docsHash: 'h', decision }} error={null} busy={false} onDecide={() => {}} />);
     expect(screen.getByTestId('architecture-style').textContent).toBe('Microsserviços');

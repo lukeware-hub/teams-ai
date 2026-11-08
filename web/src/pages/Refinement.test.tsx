@@ -363,7 +363,7 @@ describe('RefinementView', () => {
     expect(screen.getByText('Reavaliar')).toBeTruthy();
   });
 
-  it('lets the owner mark that the documents already answered a question', () => {
+  it('lets the owner mark that the documents already answered a question', async () => {
     const h = on();
     render(
       <MemoryRouter>
@@ -374,7 +374,8 @@ describe('RefinementView', () => {
     fireEvent.click(screen.getByTestId('docs-answered'));
     fireEvent.click(screen.getByTestId('answer-po-c1-0'));
     expect(h.onAnswer).toHaveBeenCalledWith('po-c1-0', 'Está em project.md › Execução: 8080', true);
-    expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false);
+    // The answer and its mark leave the field once the server has taken them.
+    await waitFor(() => expect((screen.getByTestId('docs-answered') as HTMLInputElement).checked).toBe(false));
     expect(screen.getByLabelText(/medem quando o Jev pode responder sozinho/)).toBeTruthy();
     // The tip sits beside the mark: a button inside a label is invalid, since a button is itself labelable.
     expect(screen.getByLabelText(/medem quando o Jev pode responder sozinho/).closest('label')).toBeNull();
@@ -431,7 +432,7 @@ describe('RefinementView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'briefing.md' }));
     fireEvent.change(screen.getByTestId('doc-briefing.md'), { target: { value: '## Objectives\n- ship' } });
     fireEvent.blur(screen.getByTestId('doc-briefing.md'));
-    expect(h.onSaveDoc).toHaveBeenCalledWith('briefing.md', '## Objectives\n- ship');
+    expect(h.onSaveDoc).toHaveBeenCalledWith('briefing.md', '## Objectives\n- ship', undefined);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.change(screen.getByTestId('secret-DB_URL'), { target: { value: 'x' } });
     fireEvent.click(screen.getByTestId('save-secret-DB_URL'));
@@ -612,7 +613,7 @@ describe('RefinementView: Sugerir', () => {
     expect(screen.queryByTestId('suggest')).toBeNull();
   });
 
-  it('keeps unsaved text when a reload changes only other documents, and takes the server text when that file changed', () => {
+  it('keeps unsaved text when a reload changes other documents, or the same file on the server too', () => {
     const snap = base({ mode: 'new-project' });
     const view = (s: Snapshot) => <MemoryRouter><RefinementView snap={s} busy={false} {...on()} /></MemoryRouter>;
     const { rerender } = render(view(snap));
@@ -620,7 +621,7 @@ describe('RefinementView: Sugerir', () => {
     rerender(view({ ...snap, docs: { ...snap.docs, 'design.md': '# Design aceito' } }));
     expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Fluxo local');
     rerender(view({ ...snap, docs: { ...snap.docs, 'flow.md': '# Fluxo do servidor' } }));
-    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Fluxo do servidor');
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Fluxo local');
   });
 });
 

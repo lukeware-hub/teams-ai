@@ -18,6 +18,11 @@ describe('automaticStepOf', () => {
   it('falls back to stepModels for a kind laterCycleModels does not name', () => {
     expect(automaticStepOf(routing, 'derive', 4)).toEqual({ model: 'opus', effort: 'low' });
   });
+
+  it('runs a step that is not architecture at the automatic effort the config sets', () => {
+    const tuned = { ...DEFAULT_CONFIG.routing, stepModels: { refine: 'opus' }, efforts: { ...DEFAULT_CONFIG.routing.efforts, automatic: 'high' as const } };
+    expect(automaticStepOf(tuned, 'refine', 1)).toEqual({ model: 'opus', effort: 'high' });
+  });
 });
 
 describe('refineSettingsDir', () => {

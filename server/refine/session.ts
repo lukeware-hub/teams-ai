@@ -22,6 +22,7 @@ import type { Hit } from '../knowledge/retrieval.js';
 import type { Workspace } from '../orchestrator/workspace.js';
 import { EventStore, type StoredEvent } from '../store/event-store.js';
 import { documentCounts } from '../knowledge/doc-graph.js';
+import { jevUsages } from '../usage/jev-cost.js';
 import { isConfidential, recordScore, runCycle, type CycleDeps, type RunAgent } from './cycle.js';
 import { DOC_STAGES, stageBlocked, stageReviewBlock } from './doc-stages.js';
 import { formatStageDocument, reshapeBackup } from './reshape.js';
@@ -77,6 +78,14 @@ export class ConflictError extends Error {}
 /** The draft is held by a run, a start or a discard: the caller tries again later. */
 export class BusyError extends ConflictError {}
 export class NotFoundError extends Error {}
+/** The refusal of a session whose run already started: the owner follows that run on the spec's screen. */
+export const ALREADY_STARTED = 'Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.';
+/** The refusal while an evaluation runs: the owner waits for it and tries again. */
+export const EVALUATION_BUSY = 'Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.';
+const SUGGESTION_BUSY = 'Já tem uma sugestão sendo escrita. Aguarde ela terminar e tente de novo.';
+/** The refusal of a start the session cannot take now: a running evaluation is the busy case. */
+const cannotStart = (status: RefineState['status']): ConflictError =>
+  status === 'evaluating' ? new BusyError(EVALUATION_BUSY) : new ConflictError('Este refinamento não pode iniciar agora. Confira o que falta e tente de novo.');
 
 /** Single-writer journal of one refinement session, reduced into RefineState as it is appended. */
 export class RefineJournal {
@@ -301,7 +310,13 @@ export class RefineSession {
   private leanRun = false;
   /** A graph extraction is the only thing running: the owner's answers and rejections do not wait for it, since they edit no document. */
   private indexing = false;
+  /** A suggestion is being written: the owner's saves go through, while an evaluation waits for it. */
+  private suggesting = false;
+  /** A suggestion is laying out its document: the owner's saves are refused until the layout is written. */
+  private reshaping = false;
   private readonly changedWhileIndexing = new Set<DocFile>();
+  /** The last save queued for each document: a save of a document starts only after the one before it has settled. */
+  private readonly docSaves = new Map<DocFile, Promise<unknown>>();
   /** The documents whose low score already got its one extra review. */
   private readonly improved = new Set<DocFile>();
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
@@ -393,19 +408,27 @@ export class RefineSession {
   }
 
   private guardStarting(): void {
-    if (this.starting || this.syncing) throw new BusyError('a start is already in progress');
+    if (this.starting || this.syncing) throw new BusyError('Já tem um início ou uma sincronização em andamento. Aguarde o fim e tente de novo.');
   }
 
   private guard(): void {
-    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
     this.guardStarting();
-    if (this.discarding) throw new BusyError('o rascunho está sendo descartado');
-    if (this.busy) throw new BusyError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
+    if (this.discarding) throw new BusyError('Já tem um descarte em andamento. Aguarde o fim e tente de novo.');
+    if (this.suggesting) throw new BusyError(SUGGESTION_BUSY);
+    if (this.busy) throw new BusyError(EVALUATION_BUSY);
   }
 
   /** Like `guard`, but a graph extraction does not stop the action: it changes no document. */
   private guardLight(): void {
     if (this.busy && this.indexing) return;
+    this.guard();
+  }
+
+  /** Like `guard`, but a graph extraction or a suggestion does not stop a save, and a layout write refuses it. */
+  private guardSave(): void {
+    if (this.reshaping) throw new BusyError('Já tem o documento sendo organizado. Tente salvar de novo em instantes.');
+    if (this.busy && (this.indexing || this.suggesting)) return;
     this.guard();
   }
 
@@ -489,6 +512,25 @@ export class RefineSession {
       if (e.type !== RefineEvent.DocGraphed) continue;
       tokens.inputTokens += Number(e.data.inputTokens ?? 0);
       tokens.outputTokens += Number(e.data.outputTokens ?? 0);
+    }
+    for (const e of this.journal.events) {
+      if (e.type !== RefineEvent.DocsScored) continue;
+      // A score without usage was reused or not answered, so it adds nothing.
+      const u = e.data.usage as { inputTokens?: number; outputTokens?: number; costUsd?: number | null } | null | undefined;
+      if (!u) continue;
+      tokens.steps += 1;
+      tokens.inputTokens += u.inputTokens ?? 0;
+      tokens.outputTokens += u.outputTokens ?? 0;
+      tokens.costUsd += u.costUsd ?? 0;
+    }
+    // A Jev attempt of a decision with usage counts like a score.
+    for (const e of this.journal.events) {
+      for (const u of jevUsages(e)) {
+        tokens.steps += 1;
+        tokens.inputTokens += u.inputTokens ?? 0;
+        tokens.outputTokens += u.outputTokens ?? 0;
+        tokens.costUsd += u.costUsd ?? 0;
+      }
     }
     const hashes = Object.fromEntries(Object.entries(docs).map(([file, text]) => [file, sha256(text)])) as Record<DocFile, string>;
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
@@ -707,10 +749,12 @@ export class RefineSession {
     }
   }
 
-  /** The Jev score of a document in percent when it is below the pass line, else null. */
+  /** The Jev score of a document in whole percent when it is below the pass line and not outdated, else null. */
   private lowScore(file: DocFile): number | null {
     const score = this.state.readiness?.docs?.[file]?.score;
-    return score !== undefined && score < PASS_LINE ? percentOf(score) : null;
+    if (score === undefined || this.state.outdatedDocs?.includes(file)) return null;
+    const percent = percentOf(score);
+    return percent < percentOf(PASS_LINE) ? percent : null;
   }
 
   private async timedStage(ctl: AbortController, file: DocFile, restore: boolean): Promise<void> {
@@ -740,27 +784,42 @@ export class RefineSession {
     const target = doc ?? this.currentStage();
     if (!target) throw new ConflictError('todas as etapas já foram concluídas');
     if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
-    const low = (this.state.doneStages ?? []).includes(target) ? null : this.lowScore(target);
-    if (low !== null && !confirmLowScore) throw new ConflictError(`A nota do Jev de ${target} está em ${low}%, abaixo de ${percentOf(PASS_LINE)}%. Confirme para continuar mesmo assim.`);
-    // A finished document only goes back to the graph when a human edit took it out of there: the review then comes first, and the extraction adds it again.
-    const finished = (this.state.doneStages ?? []).includes(target);
-    if (finished && (this.state.repositories !== true || (this.state.graphed ?? []).includes(target))) throw new ConflictError(`a etapa ${target} já foi concluída`);
+    const low = this.checkAdvance(target, confirmLowScore);
     if (this.state.repositories === true) {
-      this.guardStage(target);
-      const why = stageReviewBlock(this.state, target);
-      if (why) throw new ConflictError(why);
       const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
       if (problem) throw new ConflictError(problem);
-      if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
-      await this.skipOpenQuestions(target);
-      // The owner's confirmation of a low score is kept with the advance, so the audit shows what was accepted and when.
-      if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
-      // The stage advances only once the graph has the document: the request answers at once, the extraction runs in the background.
-      await this.startIndexing(target);
+      await this.advanceInGraph(target, low);
       return;
     }
     if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
     await this.journal.fact(RefineEvent.StageAdvanced, { doc: target, cycle: this.state.cycle });
+  }
+
+  /** Refuses a stage that cannot move on before anything is written, and returns the confirmed low Jev score or null; a not-applicable mark counts as processed and reviewed. */
+  private checkAdvance(target: DocFile, confirmLowScore: boolean, marked = false): number | null {
+    if (this.state.staleBy?.[target]) throw new ConflictError(`Processe a etapa ${target} de novo antes de continuar.`);
+    const finished = (this.state.doneStages ?? []).includes(target);
+    // A mark is the owner's own choice, so the score of the text it replaces does not gate it.
+    const low = finished || marked ? null : this.lowScore(target);
+    if (low !== null && !confirmLowScore) throw new ConflictError(`A nota do Jev de ${target} está em ${low}%, abaixo de ${percentOf(PASS_LINE)}%. Confirme para continuar mesmo assim.`);
+    // A finished document only goes back to the graph when a human edit took it out of there: the review then comes first, and the extraction adds it again.
+    if (finished && (this.state.repositories !== true || (this.state.graphed ?? []).includes(target))) throw new ConflictError(`a etapa ${target} já foi concluída`);
+    if (this.state.repositories === true) {
+      this.guardStage(target);
+      const view = marked ? { ...this.state, passedStages: [...(this.state.passedStages ?? []), target], reviewedStages: [...(this.state.reviewedStages ?? []), target] } : this.state;
+      const why = stageReviewBlock(view, target);
+      if (why) throw new ConflictError(why);
+      if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
+    }
+    return low;
+  }
+
+  /** In a repository session the stage advances once the graph has its document: the request answers at once, the extraction runs in the background. */
+  private async advanceInGraph(target: DocFile, low: number | null): Promise<void> {
+    await this.skipOpenQuestions(target);
+    // The owner's confirmation of a low score is kept with the advance, so the audit shows what was accepted and when.
+    if (low !== null) await this.journal.fact(RefineEvent.LowScoreConfirmed, { doc: target, score: low, cycle: this.state.cycle });
+    await this.startIndexing(target);
   }
 
   /** A reprocessed stage does not wait for its mandatory questions: moving on skips the open ones. */
@@ -775,10 +834,13 @@ export class RefineSession {
   async markNotApplicable(): Promise<void> {
     this.guard();
     if (this.state.stages === true) this.guardStage('design.md');
+    const repositories = this.state.stages === true && this.state.repositories === true;
+    // The stage is checked before the mark is written, so a refused mark leaves the document as it was.
+    if (repositories) this.checkAdvance('design.md', false, true);
     await writeDoc(this.deps.draft, 'design.md', NOT_APPLICABLE_DESIGN);
     await this.journal.fact(RefineEvent.DocEdited, { file: 'design.md', hash: sha256(NOT_APPLICABLE_DESIGN), source: 'human' });
     await this.keepPassed('design.md', NOT_APPLICABLE_DESIGN);
-    if (this.state.stages === true && this.state.repositories === true) await this.continueStage('design.md');
+    if (repositories) await this.advanceInGraph('design.md', null);
   }
 
   /** Saves the documents and specs in the documentation repository now, when the session has one. */
@@ -823,10 +885,17 @@ export class RefineSession {
   }
 
   /** `baseHash` is the hash of the file the text was typed over: a file another change has moved since is a conflict, never an overwrite. Returns the hash of the file as saved. */
-  async saveDoc(file: DocFile, text: string, baseHash?: string): Promise<string> {
-    this.guardLight();
+  saveDoc(file: DocFile, text: string, baseHash?: string): Promise<string> {
+    const run = (this.docSaves.get(file) ?? Promise.resolve()).then(() => this.writeOwnerDoc(file, text, baseHash));
+    this.docSaves.set(file, run.catch(() => undefined));
+    return run;
+  }
+
+  /** Runs after the saves of the same file before it, so the base hash is checked against the text they wrote. */
+  private async writeOwnerDoc(file: DocFile, text: string, baseHash?: string): Promise<string> {
+    this.guardSave();
     if (baseHash !== undefined && sha256(await readDoc(this.deps.draft, file)) !== baseHash) {
-      throw new ConflictError('O documento mudou desde que você o abriu. Recarregue a página antes de salvar.');
+      throw new ConflictError('O documento mudou desde que você o abriu, então seu texto não foi salvo. Copie o seu texto antes de atualizar a página.');
     }
     const saved = file === 'briefing.md' ? await this.keepDecisions(text) : text;
     await writeDoc(this.deps.draft, file, saved);
@@ -847,10 +916,21 @@ export class RefineSession {
   async suggest(file: SuggestFile): Promise<string> {
     this.guard();
     this.guardStage(file);
+    return this.holdForSuggestion(() => this.composeSuggestion(file));
+  }
+
+  private async composeSuggestion(file: SuggestFile): Promise<string> {
+    // A blank or template flow.md is refused before any document is written.
+    const flow = await readDoc(this.deps.draft, 'flow.md');
+    if (flow.trim() === '' || flow === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     // The document takes its template's layout before the agent writes from it.
-    await formatStageDocument({ draft: this.deps.draft, journal: this.journal }, this.state.cycle, file);
+    this.reshaping = true;
+    try {
+      await formatStageDocument({ draft: this.deps.draft, journal: this.journal }, this.state.cycle, file);
+    } finally {
+      this.reshaping = false;
+    }
     const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(this.deps.draft, f)]))) as Record<DocFile, string>;
-    if (docs['flow.md'].trim() === '' || docs['flow.md'] === flowTemplate()) throw new ConflictError('Preencha o flow.md antes de pedir uma sugestão.');
     const specHash = sha256(`${file}\n${DOC_FILES.map((f) => docs[f]).join('\n')}`);
     return this.runSuggest(SUGGEST_ROLE[file], fitPackBudget(suggestPack({ file, projectId: this.deps.draft.projectId, specHash, docs, earlierOnly: this.state.stages === true })), specHash);
   }
@@ -858,6 +938,10 @@ export class RefineSession {
   /** "Anexar imagem": the agent's design.md adjusted from template images; nothing is saved and the images are deleted after the step. */
   async suggestDesignFromImages(images: { data: string }[]): Promise<string> {
     this.guard();
+    return this.holdForSuggestion(() => this.composeDesignFromImages(images));
+  }
+
+  private async composeDesignFromImages(images: { data: string }[]): Promise<string> {
     if (images.length < 1 || images.length > MAX_IMAGES) throw new RangeError(`envie de 1 a ${MAX_IMAGES} imagens`);
     const files = images.map((img) => {
       const bytes = Buffer.from(img.data, 'base64');
@@ -877,6 +961,17 @@ export class RefineSession {
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }
+  }
+
+  /** Holds the session while an agent writes a suggestion: no review or reshape runs meanwhile, but the owner's saves go on. */
+  private holdForSuggestion(write: () => Promise<string>): Promise<string> {
+    this.suggesting = true;
+    const run = write().finally(() => {
+      this.running = null;
+      this.suggesting = false;
+    });
+    this.running = run.then(() => undefined, () => undefined);
+    return run;
   }
 
   private async runSuggest(role: 'po' | 'sm', pack: ContextPackInput, specHash: string): Promise<string> {
@@ -1791,12 +1886,12 @@ export class RefineSession {
   /** Spec (refinement) §3.6 steps 1–2. */
   async freeze(): Promise<{ spec: Spec; project: Project }> {
     if (this.state.backlog?.enabled) throw new ConflictError('O início a partir do backlog ainda não está disponível: por enquanto o backlog serve para organizar e priorizar.');
-    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
     if (this.running) await this.running;
     const inputHash = this.state.derived && (await planInputHash(this.deps.draft, this.state));
     // A spec not derived yet is refused below; a derived one needs its plan preparation first.
     if (inputHash) this.refuseWithoutSpeckit(inputHash);
-    if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
+    if (!canStart(this.state)) throw cannotStart(this.state.status);
     const derived = this.state.derived!;
     // Every answer of this session travels with the frozen spec, also one given after the last evaluation (R11.7.1).
     const value = { project: derived.project, spec: freezeSpec(withDecisions(derived.spec, this.state.questions)) };
@@ -1837,7 +1932,7 @@ export class RefineSession {
   async freezeProgram(summaryHash?: string, owned?: ReadonlySet<string>): Promise<ProgramEntry[]> {
     if (!this.state.backlog?.enabled) throw new ConflictError('Esta sessão não está em modo backlog.');
     this.guardStagesDone();
-    if (this.state.status === 'started') throw new ConflictError('session already started a run');
+    if (this.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
     if (this.running) await this.running;
     const backlog = this.state.backlog;
     // Each item's status on main, which the start's sync just brought into the base copy (R11.7.2).
@@ -1855,7 +1950,7 @@ export class RefineSession {
       if (!this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de iniciar o desenvolvimento.');
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
-    if (!canStart(this.state)) throw new ConflictError(`session cannot start now (${this.state.status})`);
+    if (!canStart(this.state)) throw cannotStart(this.state.status);
     const entries = programEntries(this.deps.draft.specId, backlog, onMain, owned);
     // A spec main already started keeps the start tag it got then: only the specs this start begins get one.
     await this.closeDocs(entries.filter((e) => !isStarted(onMain[e.specId])).map((e) => e.specId));

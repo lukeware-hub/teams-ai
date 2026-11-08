@@ -1,6 +1,7 @@
 import { AgentSetting, automaticSettingsOf, Config, defaultAgentSetting, isSlot, PLAN_AGENTS_MAX, SETTING_KEYS, storedSettingOf, TIMER_MAX_MS, agentsDecideFor, stepBudgetFor, type AutomaticRow, type AutomaticSettings, type Role, type SettingKey } from '../config/config.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import { effortFor } from '../runner/model-policy.js';
+import type { Effort } from '../decide/decisions/model-tier.js';
 import { readUserConfig, setAgentSetting, setAgentsDecide, setAutomaticSettings, setSpeckitAgents, setStepTimeout } from '../onboarding/config-store.js';
 import { HttpError, type Route } from './server.js';
 import { configProblem } from './onboarding-routes.js';
@@ -64,22 +65,36 @@ const agentsOf = (input: unknown): number => {
   return agents;
 };
 
-/** `{tiers: {small, medium, large}, architecture, laterCycle}` from the Settings page: each row a model the agents accept and an effort. */
+/** `{tiers, architecture, laterCycle, naming, defaultEffort, effortCaps}` from the Settings page: each row a model the agents accept and an effort. */
 const automaticOf = (input: unknown): AutomaticSettings => {
   const body = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {};
   const tiers = typeof body.tiers === 'object' && body.tiers !== null ? (body.tiers as Record<string, unknown>) : {};
+  const caps = typeof body.effortCaps === 'object' && body.effortCaps !== null ? (body.effortCaps as Record<string, unknown>) : {};
   const rowOf = (value: unknown): AutomaticRow => {
     const parsed = AgentSetting.safeParse(value);
     if (!parsed.success) throw new HttpError(400, 'each row needs a model the agents accept and an effort of low, medium, high or max');
     return parsed.data;
   };
-  return { tiers: { small: rowOf(tiers.small), medium: rowOf(tiers.medium), large: rowOf(tiers.large) }, architecture: rowOf(body.architecture), laterCycle: rowOf(body.laterCycle) };
+  const effortOf = (value: unknown): Effort => {
+    const parsed = AgentSetting.shape.effort.safeParse(value);
+    if (!parsed.success) throw new HttpError(400, 'O esforço deve ser low, medium, high ou max.');
+    return parsed.data;
+  };
+  return {
+    tiers: { small: rowOf(tiers.small), medium: rowOf(tiers.medium), large: rowOf(tiers.large) },
+    architecture: rowOf(body.architecture),
+    laterCycle: rowOf(body.laterCycle),
+    // The naming step has its own model and effort.
+    naming: rowOf(body.naming),
+    defaultEffort: effortOf(body.defaultEffort),
+    effortCaps: { haiku: effortOf(caps.haiku), sonnet: effortOf(caps.sonnet), opus: effortOf(caps.opus) },
+  };
 };
 
-/** The model and effort an automatic role uses by default: its role profile model, at the effort the model allows when nothing is asked. */
+/** The model and effort an automatic role uses by default: its role profile model, at the default effort when nothing is asked, held to the caps. */
 const automaticSetting = (cfg: Config, role: Role): AgentSetting => {
   const model = cfg.roles[role].model;
-  return { model, effort: effortFor(model, undefined) } as AgentSetting;
+  return { model, effort: effortFor(model, undefined, cfg.routing.efforts.automatic, cfg.routing.automaticEffortCap) } as AgentSetting;
 };
 
 /** What a key runs on now: its manual setting, else the automatic default (a slot has no automatic one, so its default). */

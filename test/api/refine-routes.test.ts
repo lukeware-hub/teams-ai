@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
-import { ConflictError } from '../../server/refine/session.js';
+import { ConflictError, EVALUATION_BUSY } from '../../server/refine/session.js';
 
 describe('refine routes', () => {
   it('reprocesses the named document from its passed text, and refuses a name outside the five', async () => {
@@ -78,6 +78,14 @@ describe('refine routes', () => {
     expect(log).toHaveBeenCalledWith('refine shop/shop-002: journal down');
     const refused = refineRoutes({ registry: { get: vi.fn(async () => ({ runPlans: () => { throw new ConflictError('evaluation in progress'); } })) } as never });
     await expect(refused.find((r) => r.path.endsWith('/plans'))!.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('refuses an evaluation while another one runs, with the busy text the owner reads', async () => {
+    const busy = 'Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.';
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ busy: true })) } as never, log: vi.fn() });
+    const route = routes.find((r) => r.method === 'POST' && r.path === '/api/refine/:projectId/:specId/evaluate')!;
+    await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 409, message: busy });
+    expect(EVALUATION_BUSY).toBe(busy);
   });
 
   it('answers 422 with the reason when a document is too big for one review', async () => {

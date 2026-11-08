@@ -133,16 +133,36 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('continues a stage the owner edited after its review, without a new review, and adds the document as it is to the graph', async () => {
+  it('refuses to continue a stage the owner edited after its review, and continues it once it is reviewed again', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO))];
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.saveDoc('flow.md', `${FLOW}\nNova etapa editada pelo dono.\n`);
+    await expect(s.continueStage()).rejects.toThrow('Revise a etapa flow.md antes de continuar: o texto mudou depois da última revisão.');
+    expect(s.state.doneStages ?? []).toEqual([]);
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
+    await s.evaluateStage('flow.md');
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
     expect(s.state.graphed).toContain('flow.md');
+    await s.close();
+  });
+
+  it('refuses to continue a stage that a later edit of an earlier document made stale, until it is processed again', async () => {
+    const s = await stamped();
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.continueStage();
+    await s.settled();
+    await s.evaluateStage('project.md');
+    await s.continueStage('project.md');
+    await s.settled();
+    await s.saveDoc('flow.md', `${FLOW}\nEditado depois das etapas.\n`);
+    expect(s.state.staleBy).toEqual({ 'project.md': 'flow.md' });
+    await expect(s.continueStage('project.md')).rejects.toThrow('Processe a etapa project.md de novo antes de continuar.');
     await s.close();
   });
 

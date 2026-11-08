@@ -19,8 +19,31 @@ describe('step names in the address', () => {
 });
 
 describe('initialStep', () => {
-  it('opens the step named in the address', () => {
-    expect(initialStep(state({ doneStages: ['flow.md'] }), 'stack.md')).toBe('stack.md');
+  it('opens the step named in the address when it is open', () => {
+    expect(initialStep(state({ doneStages: ['flow.md'] }), 'project.md')).toBe('project.md');
+    expect(initialStep(state({ doneStages: ['flow.md', 'project.md'] }), 'flow.md')).toBe('flow.md');
+  });
+
+  it('opens the first step not done instead of a named document after it', () => {
+    expect(initialStep(state({ doneStages: ['flow.md'] }), 'stack.md')).toBe('project.md');
+  });
+
+  it('opens a finished document named in the address, as the stepper does', () => {
+    expect(initialStep(state({ doneStages: ['flow.md', 'stack.md'] }), 'stack.md')).toBe('stack.md');
+  });
+
+  it('opens any document named in the address once every document is done', () => {
+    expect(initialStep(state({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] }), 'design.md')).toBe('design.md');
+  });
+
+  it('opens a named review, architecture or backlog as named', () => {
+    expect(initialStep(state({ doneStages: [] }), 'revisao')).toBe('review');
+    expect(initialStep(state({ doneStages: [] }), 'arquitetura')).toBe('architecture');
+    expect(initialStep(state({ doneStages: [] }), 'backlog')).toBe('backlog');
+  });
+
+  it('opens a document named in the address in a project that records no stages', () => {
+    expect(initialStep(state({ stages: undefined, doneStages: undefined }), 'stack.md')).toBe('stack.md');
   });
 
   it('opens the first document not done, or the review when all are done', () => {

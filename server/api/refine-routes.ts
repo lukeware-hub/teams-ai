@@ -3,7 +3,7 @@ import { DOC_STAGES } from '../refine/doc-stages.js';
 import type { DocFile } from '../refine/draft.js';
 import type { SessionRegistry } from '../refine/registry.js';
 import type { SuggestFile } from '../refine/suggest.js';
-import { ConflictError, NotFoundError } from '../refine/session.js';
+import { ALREADY_STARTED, ConflictError, EVALUATION_BUSY, NotFoundError } from '../refine/session.js';
 import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
 import { acceptAllPending, resolveEverything, runExtension } from '../refine/autopilot.js';
@@ -160,8 +160,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/evaluate`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        if (s.busy) throw new ConflictError('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
-        if (s.state.status === 'started') throw new ConflictError('session already started a run');
+        if (s.busy) throw new ConflictError(EVALUATION_BUSY);
+        if (s.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
         s.ensureCanEvaluate();
         s.evaluate().catch(logRunFailure(params));
         json(202, { state: 'evaluating' });

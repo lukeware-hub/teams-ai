@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, refineApi, runApi, settingsApi, usageApi, type Item, type ProjectRow, type Status } from '../api.js';
+import { api, refineApi, runApi, settingsApi, usageApi, type AutomaticSettings, type Item, type ProjectRow, type Status } from '../api.js';
 import { SettingsPage } from './Settings.js';
 
 afterEach(() => {
@@ -29,7 +29,10 @@ const automatic = {
   tiers: { small: { model: 'claude-haiku-5-5', effort: 'low' }, medium: { model: 'claude-sonnet-5-5', effort: 'low' }, large: { model: 'claude-sonnet-5-5', effort: 'low' } },
   architecture: { model: 'claude-opus-5-5', effort: 'low' },
   laterCycle: { model: 'claude-sonnet-5-5', effort: 'low' },
-} as const;
+  naming: { model: 'claude-haiku-5-5', effort: 'low' },
+  defaultEffort: 'low',
+  effortCaps: { haiku: 'low', sonnet: 'high', opus: 'low' },
+} as const satisfies AutomaticSettings;
 
 function mockEnv() {
   vi.spyOn(settingsApi, 'planAgents').mockResolvedValue({ agents: 5 });
@@ -117,6 +120,114 @@ describe('SettingsPage', () => {
     expect(effort.value).toBe('low');
     fireEvent.change(effort, { target: { value: 'max' } });
     await waitFor(() => expect(save).toHaveBeenCalledWith({ ...automatic, tiers: { ...automatic.tiers, large: { model: 'claude-sonnet-5-5', effort: 'max' } } }));
+  });
+
+  it('shows the defaults of the naming model and the efforts when the server returns them', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    expect(((await screen.findByLabelText('Nomes e pedidos sugeridos')) as HTMLSelectElement).value).toBe('claude-haiku-5-5');
+    expect((screen.getByLabelText('Esforço de Nomes e pedidos sugeridos') as HTMLSelectElement).value).toBe('low');
+    expect((screen.getByLabelText('Esforço padrão das etapas automáticas') as HTMLSelectElement).value).toBe('low');
+    expect((screen.getByLabelText('Esforço máximo de Haiku') as HTMLSelectElement).value).toBe('low');
+    expect((screen.getByLabelText('Esforço máximo de Sonnet') as HTMLSelectElement).value).toBe('high');
+    expect((screen.getByLabelText('Esforço máximo de Opus') as HTMLSelectElement).value).toBe('low');
+  });
+
+  it('shows the naming model and effort from the server and saves a change to the model', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const served = { ...automatic, naming: { model: 'claude-sonnet-5-5', effort: 'medium' } } as const;
+    vi.spyOn(settingsApi, 'automatic').mockResolvedValue(served);
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue(served);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const model = (await screen.findByLabelText('Nomes e pedidos sugeridos')) as HTMLSelectElement;
+    expect(model.value).toBe('claude-sonnet-5-5');
+    expect((screen.getByLabelText('Esforço de Nomes e pedidos sugeridos') as HTMLSelectElement).value).toBe('medium');
+    fireEvent.change(model, { target: { value: 'claude-haiku-5-5' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...served, naming: { model: 'claude-haiku-5-5', effort: 'medium' } }));
+  });
+
+  it('saves a change to the naming effort through setAutomatic', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const saved = { ...automatic, naming: { model: 'claude-haiku-5-5', effort: 'high' } } as const;
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue(saved);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const effort = (await screen.findByLabelText('Esforço de Nomes e pedidos sugeridos')) as HTMLSelectElement;
+    fireEvent.change(effort, { target: { value: 'high' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith(saved));
+  });
+
+  it('shows the default effort from the server, saves a change to it and shows the answer of the server', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const served = { ...automatic, defaultEffort: 'medium' } as const;
+    vi.spyOn(settingsApi, 'automatic').mockResolvedValue(served);
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue(served);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const effort = (await screen.findByLabelText('Esforço padrão das etapas automáticas')) as HTMLSelectElement;
+    expect(effort.value).toBe('medium');
+    fireEvent.change(effort, { target: { value: 'high' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...served, defaultEffort: 'high' }));
+    await waitFor(() => expect(effort.value).toBe('medium'));
+  });
+
+  it('shows the effort cap of each model from the server, saves a change to one of them and shows the answer of the server', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    const served = { ...automatic, effortCaps: { haiku: 'medium', sonnet: 'max', opus: 'high' } } as const;
+    vi.spyOn(settingsApi, 'automatic').mockResolvedValue(served);
+    const save = vi.spyOn(settingsApi, 'setAutomatic').mockResolvedValue(served);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    const sonnet = (await screen.findByLabelText('Esforço máximo de Sonnet')) as HTMLSelectElement;
+    expect(sonnet.value).toBe('max');
+    expect((screen.getByLabelText('Esforço máximo de Haiku') as HTMLSelectElement).value).toBe('medium');
+    expect((screen.getByLabelText('Esforço máximo de Opus') as HTMLSelectElement).value).toBe('high');
+    fireEvent.change(sonnet, { target: { value: 'high' } });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ ...served, effortCaps: { ...served.effortCaps, sonnet: 'high' } }));
+    await waitFor(() => expect(sonnet.value).toBe('max'));
+  });
+
+  it('shows every automatic value the server returns', async () => {
+    mockEnv();
+    vi.spyOn(runApi, 'projects').mockResolvedValue([project]);
+    vi.spyOn(settingsApi, 'agents').mockResolvedValue({ agents });
+    vi.spyOn(settingsApi, 'automatic').mockResolvedValue({
+      tiers: { small: { model: 'claude-opus-5-5', effort: 'medium' }, medium: { model: 'claude-haiku-5-5', effort: 'high' }, large: { model: 'claude-sonnet-5-5', effort: 'max' } },
+      architecture: { model: 'claude-sonnet-5-5', effort: 'high' },
+      laterCycle: { model: 'claude-opus-5-5', effort: 'medium' },
+      naming: { model: 'claude-sonnet-5-5', effort: 'medium' },
+      defaultEffort: 'high',
+      effortCaps: { haiku: 'medium', sonnet: 'max', opus: 'high' },
+    });
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
+    await screen.findByLabelText('Tarefa pequena');
+    const shown = (label: string) => (screen.getByLabelText(label) as HTMLSelectElement).value;
+    const expected: Array<[string, string]> = [
+      ['Tarefa pequena', 'claude-opus-5-5'],
+      ['Esforço de Tarefa pequena', 'medium'],
+      ['Tarefa média', 'claude-haiku-5-5'],
+      ['Esforço de Tarefa média', 'high'],
+      ['Tarefa grande', 'claude-sonnet-5-5'],
+      ['Esforço de Tarefa grande', 'max'],
+      ['Arquitetura', 'claude-sonnet-5-5'],
+      ['Esforço de Arquitetura', 'high'],
+      ['Refinamento, ciclos seguintes', 'claude-opus-5-5'],
+      ['Esforço de Refinamento, ciclos seguintes', 'medium'],
+      ['Nomes e pedidos sugeridos', 'claude-sonnet-5-5'],
+      ['Esforço de Nomes e pedidos sugeridos', 'medium'],
+      ['Esforço padrão das etapas automáticas', 'high'],
+      ['Esforço máximo de Haiku', 'medium'],
+      ['Esforço máximo de Sonnet', 'max'],
+      ['Esforço máximo de Opus', 'high'],
+    ];
+    for (const [label, value] of expected) expect([label, shown(label)]).toEqual([label, value]);
   });
 
   it('shows the chat and graphify settings beside the agents, on a fixed model and effort with no automatic choice', async () => {

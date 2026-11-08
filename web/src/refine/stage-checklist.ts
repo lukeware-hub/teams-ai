@@ -31,7 +31,8 @@ export function stageChecklist(input: StageChecklistInput): StageCheck[] {
     { id: 'no-question', label: 'Sem pergunta obrigatória aberta', ok: input.openQuestions === 0, hint: 'Responda a pergunta obrigatória desta etapa.' },
     { id: 'no-suggestion', label: 'Sem sugestão pendente', ok: input.pendingSuggestions === 0, hint: 'Aceite ou rejeite as sugestões desta etapa.' },
     { id: 'format', label: 'Formato do modelo', ok: input.formatProblem === null, hint: input.formatProblem },
-    { id: 'graphed', label: 'No Graphify', ok: input.graphed, hint: input.graphError ?? 'Adicione o documento ao Graphify para avançar.' },
+    // While the extraction runs it is the line that says so; a failure of an earlier run waits until the run ends.
+    { id: 'graphed', label: 'No Graphify', ok: input.graphed, hint: input.graphing ? null : (input.graphError ?? 'Adicione o documento ao Graphify para avançar.') },
   ];
 }
 

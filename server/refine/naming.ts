@@ -5,6 +5,7 @@ import { canonicalJson, sha256 } from '../contracts/hash.js';
 import { stepId } from '../core/ids.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import type { NameOutput } from '../agents/outputs.js';
+import type { Effort } from '../decide/decisions/model-tier.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
 import type { RunAgent } from './cycle.js';
@@ -70,14 +71,14 @@ export function uniqueId(id: string, taken: readonly string[]): string {
  * Roadmap R11.12: one small PO step that names a new project or spec. It runs before any workspace exists, so it gets a
  * throwaway directory under the workspaces root (the step runner refuses a cwd outside it) and an in-memory journal.
  */
-export async function suggestName(deps: { runAgent: RunAgent; workspacesRoot: string; model?: string }, input: NameInput): Promise<NameSuggestion> {
+export async function suggestName(deps: { runAgent: RunAgent; workspacesRoot: string; model?: string; effort?: Effort }, input: NameInput): Promise<NameSuggestion> {
   const specHash = sha256(canonicalJson({ kind: input.kind, name: input.name, description: input.description, projectId: input.projectId ?? null }));
   const cwd = path.join(deps.workspacesRoot, '_naming', randomUUID());
   await fs.mkdir(cwd, { recursive: true });
   let seq = 0;
   try {
     const out = (await deps.runAgent<'name'>(
-      { kind: 'name', role: 'po', pack: fitPackBudget(namePack({ ...input, specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, model: deps.model },
+      { kind: 'name', role: 'po', pack: fitPackBudget(namePack({ ...input, specHash })), cwd, phase: 'refine', taskId: null, attempt: 1, model: deps.model, effort: deps.effort },
       { journal: { allocStepSeq: () => ++seq, fact: async () => undefined } as never, stepDir: (n) => path.join(cwd, 'steps', stepId(n)), specHash },
     )) as StepOutcome<NameOutput>;
     if (!out.ok) throw ownerFailure('A sugestão de nome', out.failure, out.errors, TRY_AGAIN);

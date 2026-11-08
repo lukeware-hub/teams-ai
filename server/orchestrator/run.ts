@@ -428,6 +428,8 @@ export class Run {
       stepDir: (seq) => stepDir(this.deps.ws, this.runId, seq),
       sessionDir: (taskId) => sessionDir(this.deps.ws, this.runId, taskId),
       stepSetting: (kind) => automaticStepOf(cfg.routing, kind),
+      effortCaps: cfg.routing.automaticEffortCap,
+      defaultEffort: cfg.routing.efforts.automatic,
       agentSetting: async (role) => (await this.manualSettings())[role],
       secretValues: () => this.secretValues(),
       docsRoot: this.deps.docs?.snapshot,

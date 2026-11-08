@@ -67,4 +67,12 @@ describe('the plan box and its button outside the wizard', () => {
     expect(prepare.disabled).toBe(true);
     expect(prepare.title).toBe('Avalie a spec antes de preparar');
   });
+
+  it('sends one preparation of the plans, and locks the button while the request is pending', () => {
+    const h = { ...handlers(), onPreparePlans: vi.fn(() => new Promise<boolean>(() => undefined)) };
+    renderView(session({}), h);
+    fireEvent.click(screen.getByTestId('speckit-prepare'));
+    fireEvent.click(screen.getByTestId('speckit-prepare'));
+    expect(h.onPreparePlans).toHaveBeenCalledTimes(1);
+  });
 });

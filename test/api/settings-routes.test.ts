@@ -59,17 +59,42 @@ describe('settings routes', () => {
       tiers: { small: low, medium: { model: 'claude-sonnet-5-5', effort: 'low' }, large: { model: 'claude-sonnet-5-5', effort: 'low' } },
       architecture: { model: 'claude-opus-5-5', effort: 'low' },
       laterCycle: { model: 'claude-sonnet-5-5', effort: 'low' },
+      naming: low,
+      defaultEffort: 'low',
+      effortCaps: { haiku: 'low', sonnet: 'high', opus: 'low' },
     });
     const next = {
       tiers: { small: { model: 'claude-haiku-5-5', effort: 'max' }, medium: { model: 'claude-opus-5-5', effort: 'low' }, large: { model: 'claude-opus-5-5', effort: 'high' } },
       architecture: { model: 'claude-opus-5-5', effort: 'medium' },
       laterCycle: { model: 'claude-haiku-5-5', effort: 'low' },
+      naming: { model: 'claude-sonnet-5-5', effort: 'high' },
+      defaultEffort: 'high',
+      effortCaps: { haiku: 'low', sonnet: 'medium', opus: 'max' },
     };
     expect((await put(url, next)).status).toBe(200);
     expect(await (await fetch(url)).json()).toEqual(next);
     expect((await put(url, { ...next, architecture: { model: 'gpt', effort: 'low' } })).status).toBe(400);
     expect((await put(url, { ...next, laterCycle: { model: 'claude-haiku-5-5', effort: 'extreme' } })).status).toBe(400);
+    expect((await put(url, { ...next, naming: { model: 'gpt', effort: 'low' } })).status).toBe(400);
+    expect((await put(url, { ...next, naming: { model: 'claude-sonnet-5-5', effort: 'extreme' } })).status).toBe(400);
+    expect((await put(url, { ...next, effortCaps: { haiku: 'low', sonnet: 'high' } })).status).toBe(400);
     expect((await put(url, { tiers: next.tiers })).status).toBe(400);
+  });
+
+  it('saves the default effort of the automatic steps, and refuses one outside low, medium, high and max', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/automatic`;
+    const current = (await (await fetch(url)).json()) as Record<string, unknown>;
+    expect((await put(url, { ...current, defaultEffort: 'high' })).status).toBe(200);
+    expect(await (await fetch(url)).json()).toMatchObject({ defaultEffort: 'high', naming: { effort: 'low' } });
+    expect((await put(url, { ...current, defaultEffort: 'extreme' })).status).toBe(400);
+    expect(await (await fetch(url)).json()).toMatchObject({ defaultEffort: 'high' });
+  });
+
+  it('saves the naming effort apart from the default effort, and gives it back on GET', async () => {
+    const url = `http://127.0.0.1:${api.port}/api/settings/automatic`;
+    const current = (await (await fetch(url)).json()) as Record<string, unknown>;
+    expect((await put(url, { ...current, naming: { model: 'claude-haiku-5-5', effort: 'medium' }, defaultEffort: 'high' })).status).toBe(200);
+    expect(await (await fetch(url)).json()).toMatchObject({ defaultEffort: 'high', naming: { model: 'claude-haiku-5-5', effort: 'medium' } });
   });
 
   it('refuses an unknown role with 404 and a bad model, effort, mode or project id with 400', async () => {

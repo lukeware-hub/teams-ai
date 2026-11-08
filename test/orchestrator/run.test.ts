@@ -168,6 +168,21 @@ describe('Run', () => {
     await run.close();
   });
 
+  it('gives an automatic review step with no line of its own the default effort the config sets', async () => {
+    // The project keeps the test role automatic; its other roles would take their manual default here.
+    const efforts: Array<string | undefined> = [];
+    const d = deps(happy, { cfg: loadConfig({ paths: { workspaces: '/tmp/ws', runs: '/tmp/runs', secrets: '/tmp/none' }, routing: { efforts: { automatic: 'medium' } }, agentSettings: { 'todo-api': { test: null } } }) });
+    const wrapped: RunDeps['runStep'] = (async (req: StepRequest, stepDeps: { accounting: Accounting }) => {
+      if (req.kind === 'review') efforts.push(req.effort);
+      return d.runStep(req, stepDeps as never);
+    }) as RunDeps['runStep'];
+    const run = await Run.create(await withAgents({ ...d, runStep: wrapped }));
+    await run.execute();
+    await run.close();
+    expect(efforts.length).toBeGreaterThan(0);
+    expect([...new Set(efforts)]).toEqual(['medium']);
+  });
+
   it('runs two independent tasks in parallel to merged and finishes complete', async () => {
     const run = await Run.create(await withAgents(deps(happy)));
     expect(await run.execute()).toBe('complete');

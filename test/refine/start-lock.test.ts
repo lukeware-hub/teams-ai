@@ -40,6 +40,16 @@ describe('the start lock', () => {
     await s.close();
   });
 
+  it('the busy refusals of a start or a discard are in Portuguese, so the owner gets the busy dialog', async () => {
+    const s = await RefineSession.create(deps(), 'new-spec');
+    s.beginStart();
+    expect(() => s.beginStart()).toThrow(/^Já tem um início/);
+    s.failStart();
+    s.beginDiscard();
+    await expect(s.answerConfidentiality(false)).rejects.toThrow(/^Já tem um descarte/);
+    await s.close();
+  });
+
   it('a main sync during a start is refused and does not release the start', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     s.beginStart();

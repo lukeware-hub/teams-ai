@@ -70,3 +70,17 @@ describe('refineApi.scoreDoc', () => {
     expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toEqual({ confidential: true });
   });
 });
+
+describe('refineApi.saveDoc', () => {
+  it('can ask the browser to keep the save request after the page closes', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, hash: 'hash-after' }), { status: 200 }));
+    await expect(refineApi.saveDoc('shop', 'shop-002', 'flow.md', '# Fluxo', 'hash-before', true)).resolves.toEqual({ ok: true, hash: 'hash-after' });
+    expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ method: 'PUT', keepalive: true });
+  });
+
+  it('sends a body too large for the browser keepalive limit without keepalive', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, hash: 'hash-after' }), { status: 200 }));
+    await expect(refineApi.saveDoc('shop', 'shop-002', 'flow.md', 'x'.repeat(61 * 1024), 'hash-before', true)).resolves.toEqual({ ok: true, hash: 'hash-after' });
+    expect(fetchSpy.mock.calls[0]![1]).toMatchObject({ method: 'PUT', keepalive: false });
+  });
+});

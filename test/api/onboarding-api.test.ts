@@ -10,6 +10,7 @@ import { FakeExec } from '../fixtures/fake-exec.js';
 
 const KEY = 'sk-or-v1-' + 'ab'.repeat(32);
 const TOKEN = 'ghp_' + 'c'.repeat(36);
+const okFetch = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13', answers: { probe: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }), { status: 200 })) as typeof fetch;
 
 class FakePty implements Pty {
   writes: string[] = [];
@@ -41,7 +42,6 @@ beforeEach(async () => {
     .onArgs('gh', ['auth', 'status'], () => ({ exitCode: 1, stderr: 'not logged in' }))
     .onArgs('gh', ['api', 'user/orgs'], () => ({ stdout: 'acme\nplatform\nacme\n' }))
     .onArgs('gh', ['api', 'user'], (s) => (s.env?.GH_TOKEN === TOKEN ? { stdout: `HTTP/2.0 200 OK\nX-Oauth-Scopes: repo\n\n{"login":"diego"}` } : { exitCode: 1, stderr: `HTTP 401 for ${s.env?.GH_TOKEN ?? ''}` }));
-  const okFetch = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13', answers: { probe: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 1, output_tokens: 1, cost: 0.000001 } }), { status: 200 })) as typeof fetch;
   api = await startApi(
     { routes: onboardingRoutes({ exec: exec.exec, fetch: okFetch, home, secretsDir: path.join(home, 'secrets'), onClaudeLogin: () => { claudeLogins += 1; }, spawn: (_s: PtySpec) => { const p = new FakePty(); ptys.push(p); return p; } }), log: (l) => logs.push(l) },
     0,
@@ -77,6 +77,21 @@ describe('api server', () => {
     expect(s.items.claude!.ok).toBe(true);
     expect(s.allOk).toBe(false);
     expect((await fetch(`${base()}/api/onboarding/nope`)).status).toBe(404);
+  });
+
+  it('GET /status shows the Jev accumulated total in US$ with a decimal comma when the routes get it', async () => {
+    const withTotal = await startApi(
+      { routes: onboardingRoutes({ exec: exec.exec, fetch: okFetch, home, secretsDir: path.join(home, 'secrets'), accumulatedUsd: async () => 0.2887, spawn: (_s: PtySpec) => new FakePty() }), log: () => {} },
+      0,
+    );
+    try {
+      const at = `http://127.0.0.1:${withTotal.port}`;
+      expect((await fetch(`${at}/api/onboarding/secrets/OPENROUTER_API_KEY`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: KEY }) })).status).toBe(200);
+      const s = (await (await fetch(`${at}/api/onboarding/status`)).json()) as { items: Record<string, { ok: boolean; detail: string }> };
+      expect(s.items.openrouterKey).toMatchObject({ ok: true, detail: 'typesafe/jev-1.13 · custo acumulado US$ 0,2887' });
+    } finally {
+      await withTotal.close();
+    }
   });
 
   it('serves onboarding through the versioned API prefix', async () => {

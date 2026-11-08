@@ -836,7 +836,7 @@ describe('refine api', () => {
     expect((await call('POST', '/api/projects/hello-app/specs/hello-002/continue')).status).toBe(409);
     const closed = await call('POST', '/api/projects/hello-app/specs/hello-009/continue');
     expect(closed.status).toBe(409); // a concluded spec is read-only; the next delivery is a new spec
-    expect((await closed.json()).error).toContain('concluded');
+    expect((await closed.json()).error).toContain('já foi concluída');
     const described = await call('POST', '/api/projects/hello-app/specs', { specId: 'hello-003', description: 'Greet in Portuguese too.' });
     expect(described.status).toBe(200);
     const snap3 = await (await fetch(`${base()}/api/refine/hello-app/hello-003`)).json();
@@ -1286,6 +1286,20 @@ describe('refine api', () => {
     expect(await fs.access(draftRoot).then(() => true, () => false)).toBe(true);
   });
 
+  it('refuses to delete a draft whose run already started, in plain words', async () => {
+    await specDraft();
+    await (await registry.get('hello-app', 'hello-app-001')).markStarted('hello-app--hello-app-001--run-1');
+    await expect(registry.deleteDraft('hello-app', 'hello-app-001')).rejects.toThrow('Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.');
+  });
+
+  it('refuses an evaluation of a draft whose run already started, in plain words', async () => {
+    await specDraft();
+    await (await registry.get('hello-app', 'hello-app-001')).markStarted('hello-app--hello-app-001--run-1');
+    const refused = await call('POST', '/api/refine/hello-app/hello-app-001/evaluate');
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe('Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.');
+  });
+
   it('force-deletes a draft whose evaluation is running, aborting only that session', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     await call('POST', '/api/projects/new', { projectId: 'other-app', name: 'Other' });
@@ -1326,7 +1340,7 @@ describe('refine api', () => {
 
     spawnShouldFail = false;
     const retried = await call('POST', '/api/refine/hello-app/hello-app-001/start');
-    expect(retried.status).toBe(200); // the earlier failure must not leave the session locked with 'a start is already in progress'
+    expect(retried.status).toBe(200); // the earlier failure must not leave the session locked with 'Já tem um início ou uma sincronização em andamento'
     expect(spawns).toHaveLength(2);
   });
 

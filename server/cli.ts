@@ -134,7 +134,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     runEscalation: async () => { throw new Error('UI-server decisions do not escalate to Claude'); },
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
-  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents,
+  const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents, effortCaps: async () => (await readUserConfig()).cfg.routing.automaticEffortCap,
     // The agents of refinement query the brain of their project, and the global one unless the project is confidential.
     graphAccess: async (projectId) => {
       const live = (await readUserConfig()).cfg;
@@ -273,7 +273,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       guard,
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
-        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}) }),
+        ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}), accumulatedUsd: () => jevTotalUsd(cfg) }),
         ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, brain: brainDeps, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
         ...refineRoutes({

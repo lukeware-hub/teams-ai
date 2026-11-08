@@ -146,6 +146,124 @@ describe('RefinementPage of a new project', () => {
     await waitFor(() => expect(again).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
   });
 
+  it('keeps the owner text on screen when a save conflicts, and shows the conflict beside the editor, not at the top', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState(), hashes: { 'flow.md': 'hash-of-flow' } });
+    vi.spyOn(refineApi, 'saveDoc').mockRejectedValue(new Error('O documento mudou desde que você o abriu, então seu texto não foi salvo. Copie o seu texto antes de atualizar a página.'));
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as never;
+    renderPage();
+    const editor = await screen.findByTestId('doc-flow.md');
+    fireEvent.change(editor, { target: { value: '# Flow\n\nMinha edição.\n' } });
+    fireEvent.blur(editor);
+    expect((await screen.findByTestId('refinement-save-error')).textContent).toContain('Copie o seu texto antes de atualizar a página.');
+    expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).value).toBe('# Flow\n\nMinha edição.\n');
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('saves again by itself when the server is organizing the document, with no message and no dialog', async () => {
+    // The layout moves the document to a new hash during the refusal: a save over the hash from before it is a conflict.
+    const served = { ...stageState({ doneStages: ['flow.md'] }), hashes: { 'project.md': 'hash-of-project' } };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(served);
+    const save = vi.spyOn(refineApi, 'saveDoc')
+      .mockImplementationOnce(async () => {
+        served.hashes = { 'project.md': 'hash-after-layout' };
+        throw new Error('Já tem o documento sendo organizado. Tente salvar de novo em instantes.');
+      })
+      .mockImplementation(async (_p: string, _s: string, _file: string, _text: string, baseHash?: string) => {
+        if (baseHash !== served.hashes['project.md']) throw new Error('O documento mudou desde que você o abriu, então seu texto não foi salvo. Copie o seu texto antes de atualizar a página.');
+        served.hashes = { 'project.md': 'hash-after-save' };
+        return { ok: true, hash: 'hash-after-save' };
+      });
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as never;
+    renderPage();
+    const editor = await screen.findByTestId('doc-project.md');
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(editor, { target: { value: '# Projeto organizado\n' } });
+      fireEvent.blur(editor);
+      // The retry comes before the autosave timer, which would send the text too.
+      await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenLastCalledWith('hello-app', 'hello-001', 'project.md', '# Projeto organizado\n', 'hash-after-layout');
+      expect(screen.queryByTestId('refinement-save-error')).toBeNull();
+      expect(screen.queryByTestId('busy-dialog-ok')).toBeNull();
+      expect(scrollTo).not.toHaveBeenCalled();
+      expect((screen.getByTestId('doc-project.md') as HTMLTextAreaElement).value).toBe('# Projeto organizado\n');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a save refused during an evaluation, and does not send it again while the evaluation runs', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState({ doneStages: ['flow.md'] }), hashes: { 'project.md': 'hash-of-project' } });
+    const save = vi.spyOn(refineApi, 'saveDoc').mockRejectedValue(new Error('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.'));
+    renderPage();
+    const editor = await screen.findByTestId('doc-project.md');
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(editor, { target: { value: '# Projeto digitado\n' } });
+      fireEvent.blur(editor);
+      await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+      expect(save).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('refinement-save-error').textContent).toContain('Já tem uma avaliação em andamento');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the snapshot again after a document is saved, so the format check follows the saved text', async () => {
+    const spy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState(), hashes: { 'flow.md': 'hash-of-flow' } });
+    vi.spyOn(refineApi, 'saveDoc').mockResolvedValue({ ok: true, hash: 'hash-after-save' });
+    renderPage();
+    const editor = await screen.findByTestId('doc-flow.md');
+    const before = spy.mock.calls.length;
+    fireEvent.change(editor, { target: { value: '# Flow\n\nCorrigido.\n' } });
+    fireEvent.blur(editor);
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('opens the busy dialog when the server refuses a click during a process, whatever the refusal says in Portuguese', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
+    vi.spyOn(refineApi, 'continueStage').mockRejectedValue(new Error('Já tem um processo em andamento. Aguarde ele terminar e tente de novo.'));
+    renderPage();
+    fireEvent.click(await screen.findByTestId('wizard-continue'));
+    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
+  });
+
+  it('opens the busy dialog when a suggestion is refused while the document is being organized, with no message at the top', async () => {
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ doneStages: ['flow.md'] }));
+    vi.spyOn(refineApi, 'suggestDoc').mockRejectedValue(new Error('Já tem o documento sendo organizado. Tente salvar de novo em instantes.'));
+    const scrollTo = vi.fn();
+    window.scrollTo = scrollTo as never;
+    renderPage();
+    fireEvent.click(await screen.findByTestId('suggest'));
+    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
+    expect(screen.queryByTestId('refinement-error')).toBeNull();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('opens the busy dialog when the server cannot start the run now, as it does for any refusal that starts with Já tem', async () => {
+    window.history.replaceState(null, '', '/?vista=backlog');
+    const item = { key: 'a', title: 'A', epic: 'e', priority: 'P0', rank: 1, size: 'S', scope: 'x', rationale: 'r', dependsOn: [], sources: [] };
+    const backlog = { enabled: true, detail: true, items: [item], epics: [], specs: {}, preplans: { a: { preplan: { tasks: [] } } }, flowHeadings: [] };
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState({ status: 'ready', backlog, speckit: { status: 'done', stale: false } }), specsApproved: true });
+    vi.spyOn(refineApi, 'start').mockRejectedValue(new Error('Já tem um processo em andamento. Aguarde ele terminar e tente de novo.'));
+    renderPage();
+    fireEvent.click(await screen.findByTestId('start'));
+    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
+  });
+
+  it('reads the snapshot again after a refused action, so the page shows what the server holds', async () => {
+    const spy = vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState());
+    vi.spyOn(refineApi, 'continueStage').mockRejectedValue(new Error('Revise a etapa flow.md antes de continuar.'));
+    renderPage();
+    const button = await screen.findByTestId('wizard-continue');
+    const before = spy.mock.calls.length;
+    fireEvent.click(button);
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(before));
+  });
+
   it('asks the Jev for the score of the document on screen', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ confidential: false }));
     const score = vi.spyOn(refineApi, 'scoreDoc').mockResolvedValue({ ok: true });

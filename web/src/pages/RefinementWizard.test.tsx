@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Snapshot } from '../api.js';
-import { RefinementView } from './Refinement.js';
+import type { Snapshot, StoredEvent } from '../api.js';
+import { RefinementView, stageNow } from './Refinement.js';
 
 const base = (over: Record<string, unknown> = {}): Snapshot => ({
   projectId: 'hello-app',
@@ -17,7 +17,7 @@ const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, m
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
 const verdict = (specsHash: string, value: 'approved' | 'rejected', findings: string[] = []) => ({ specsHash, verdict: value, findings, reason: null, at: '2026-11-03T14:02:00.000Z' });
-const on = () => ({ onSaveDoc: vi.fn(), onEvaluate: vi.fn(), onCheckSpecs: vi.fn(),onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn(), onNotApplicable: vi.fn(() => true) });
+const on = () => ({ onSaveDoc: vi.fn(), onReadDoc: vi.fn(), onEvaluate: vi.fn(), onCheckSpecs: vi.fn(),onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn(), onNotApplicable: vi.fn(() => true) });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -40,15 +40,27 @@ describe('one stage per screen', () => {
 
   it('opens the step named in the address', () => {
     open('?etapa=stack.md');
-    show(base());
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md'] }));
     expect(editor('stack.md').value).toBe('# Stack');
+  });
+
+  it('opens the first open step when the address names a step after it', () => {
+    open('?etapa=stack.md');
+    show(base());
+    expect(editor('flow.md').value).toBe('# Flow');
   });
 
   it('opens the step named in the address after the development started, read-only', () => {
     open('?etapa=stack.md');
-    show(base({ status: 'started' }));
+    show(base({ status: 'started', doneStages: ['flow.md', 'project.md', 'briefing.md'] }));
     expect(editor('stack.md').value).toBe('# Stack');
     expect(editor('stack.md').readOnly).toBe(true);
+  });
+
+  it('opens the first open step after the development started when the address names a step after it', () => {
+    open('?etapa=stack.md');
+    show(base({ status: 'started', doneStages: ['flow.md'] }));
+    expect(editor('project.md').value).toBe('# Hello');
   });
 
   it('opens the backlog after the development started when the address names no step', () => {
@@ -69,14 +81,14 @@ describe('one stage per screen', () => {
 
   it('shows the usage of the whole refinement as one line in the footer', () => {
     show(base());
-    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens · US$ 0,0200');
+    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens · US$ 0,0200 sem o Graphify');
   });
 
   it('keeps the text the owner typed when moving to another screen', () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(editor('project.md'), { target: { value: '# Editado' } });
     fireEvent.click(screen.getByTestId('wizard-back'));
-    expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Editado');
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Editado', undefined);
   });
 });
 
@@ -102,6 +114,17 @@ describe('Voltar and Continuar', () => {
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(editor('briefing.md').value).toBe('## Objectives'));
     expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md', false);
+  });
+
+  it('keeps the owner on a repository session stage while its document goes into Graphify in the background', async () => {
+    const done = ['flow.md', 'project.md', 'briefing.md'];
+    const handlers = show(base({ doneStages: done, graphed: done, repositories: true, reviewedStages: ['stack.md'] }));
+    expect(editor('stack.md').value).toBe('# Stack');
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md', false));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(editor('stack.md').value).toBe('# Stack');
+    expect(screen.queryByTestId('doc-design.md')).toBeNull();
   });
 
   it('only moves the view with Continuar on a stage that is already done', async () => {
@@ -177,6 +200,22 @@ describe('processing a stage', () => {
     expect(screen.queryByTestId('stage-confirm')).toBeNull();
     expect(confirm).not.toHaveBeenCalled();
     confirm.mockRestore();
+  });
+
+  it('offers Avaliar esta etapa beside Reprocessar after a hand edit of a passed stage, and holds Continuar until the review', async () => {
+    const handlers = on();
+    const passed = (reviewed: string[]) => base({ doneStages: ['flow.md'], passedStages: ['project.md'], reviewedStages: reviewed, repositories: true });
+    const { rerender } = render(<MemoryRouter><RefinementView snap={passed(['flow.md'])} busy={false} {...handlers} /></MemoryRouter>);
+    fireEvent.change(editor('project.md'), { target: { value: '# Projeto editado à mão' } });
+    expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-continue-reason').textContent).toContain('Avalie esta etapa de novo.');
+    fireEvent.click(screen.getByTestId('wizard-evaluate'));
+    await waitFor(() => expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md'));
+    expect(handlers.onReprocessStage).not.toHaveBeenCalled();
+    rerender(<MemoryRouter><RefinementView snap={passed(['flow.md', 'project.md'])} busy={false} {...handlers} /></MemoryRouter>);
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('wizard-evaluate')).toBeNull();
   });
 
   it('waits while a run is on, and says why when the rounds of the stage are used up', () => {
@@ -290,6 +329,8 @@ describe('the confidentiality question', () => {
 });
 
 describe('the actions of the editor', () => {
+  // A stage named in the address opens only after the documents before it are done.
+  const beforeDesign = ['flow.md', 'project.md', 'briefing.md', 'stack.md'];
   it('attaches a text file to the document on screen, and saves it', async () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.change(screen.getByTestId('attach-doc'), { target: { files: [new File(['# Projeto novo'], 'projeto.md', { type: 'text/markdown' })] } });
@@ -300,7 +341,7 @@ describe('the actions of the editor', () => {
     expect(document.querySelector('.confirm-icon')!.className).toContain('is-accent');
     fireEvent.click(dialog);
     await waitFor(() => expect(editor('project.md').value).toBe('# Projeto novo'));
-    expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Projeto novo');
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('project.md', '# Projeto novo', undefined);
   });
 
   it('keeps the document when the owner does not confirm that a file replaces its text', async () => {
@@ -327,7 +368,7 @@ describe('the actions of the editor', () => {
     open('?etapa=design.md');
     const dropped = (questionId: string, file: string) => ({ questionId, role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: false, relatedAcIds: [], file, matchedQuestionId: 'po-s1-0', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' });
     const handlers = { ...on(), onReask: vi.fn() };
-    show(base({ droppedQuestions: [dropped('po-s2-0', 'design.md'), dropped('po-s2-1', 'project.md')] }), handlers);
+    show(base({ doneStages: beforeDesign, droppedQuestions: [dropped('po-s2-0', 'design.md'), dropped('po-s2-1', 'project.md')] }), handlers);
     const list = screen.getByTestId('dropped-repeats');
     expect(list.textContent).toContain('Perguntas repetidas que não foram feitas de novo (1)');
     expect(list.textContent).toContain('Antes: Qual o prazo do link?');
@@ -338,7 +379,7 @@ describe('the actions of the editor', () => {
 
   it('marks the design as not applicable after the owner confirms, and leaves it when they do not', () => {
     open('?etapa=design.md');
-    const handlers = show(base());
+    const handlers = show(base({ doneStages: beforeDesign }));
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(handlers.onNotApplicable).not.toHaveBeenCalled();
@@ -351,7 +392,7 @@ describe('the actions of the editor', () => {
 
   it('marks an empty design as not applicable without asking', () => {
     open('?etapa=design.md');
-    const snap = base();
+    const snap = base({ doneStages: beforeDesign });
     const handlers = show({ ...snap, docs: { ...snap.docs, 'design.md': '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Não se aplica' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -509,11 +550,18 @@ describe('the final review', () => {
 
   it('continues from the review to the architecture step in a repository session, not to the backlog', async () => {
     open('?etapa=revisao');
-    const handlers = show(reviewSnap({ repositories: true }));
+    const handlers = show(reviewSnap({ repositories: true, doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'] }));
     expect(screen.queryByTestId('enable-backlog')).toBeNull();
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(window.location.search).toContain('etapa=arquitetura'));
     expect(handlers.onEnableBacklog).not.toHaveBeenCalled();
+  });
+
+  it('does not continue from the review while a document is still to be written, and names the documents', () => {
+    open('?etapa=revisao');
+    show(reviewSnap({ repositories: true }));
+    expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-action-reason').textContent).toBe('Conclua as etapas dos documentos antes: falta briefing.md, stack.md, design.md.');
   });
 
   it('opens stage 7 when the backlog exists, and comes back to the review from it', async () => {
@@ -570,7 +618,7 @@ describe('saving what the owner typed', () => {
       fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo novo' } });
       expect(handlers.onSaveDoc).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1600);
-      expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo novo');
+      expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo novo', undefined);
     } finally {
       vi.useRealTimers();
     }
@@ -595,3 +643,350 @@ describe('the status of the verification list on the summary', () => {
   });
 });
 
+describe('saving the text the owner typed, and what a save leaves on screen', () => {
+  // A server that lays out the document while it refuses the first save: a save over the hash from before the layout is a conflict.
+  const layoutServer = (handlers: ReturnType<typeof on>) => {
+    let hash = 'hash-before-layout';
+    handlers.onSaveDoc
+      .mockImplementationOnce(async () => {
+        hash = 'hash-after-layout';
+        throw new Error('Já tem o documento sendo organizado. Tente salvar de novo em instantes.');
+      })
+      .mockImplementation(async (_file: string, _text: string, baseHash?: string) => {
+        if (baseHash !== hash) throw new Error('O documento mudou desde que você o abriu, então seu texto não foi salvo. Copie o seu texto antes de atualizar a página.');
+        hash = 'hash-after-save';
+        return hash;
+      });
+    handlers.onReadDoc.mockImplementation(async () => ({ text: '# Projeto com layout', hash }));
+  };
+
+  it('keeps the text typed after a save when the page reads the saved text back', async () => {
+    const handlers = on();
+    const snap = base();
+    const { rerender } = render(<MemoryRouter><RefinementView snap={snap} busy={false} {...handlers} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo salvo' } });
+    await waitFor(() => expect(handlers.onSaveDoc).toHaveBeenCalled());
+    fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo salvo\n\nMais texto.' } });
+    rerender(<MemoryRouter><RefinementView snap={{ ...snap, docs: { ...snap.docs, 'flow.md': '# Fluxo salvo' } }} busy={false} {...handlers} /></MemoryRouter>);
+    expect(editor('flow.md').value).toBe('# Fluxo salvo\n\nMais texto.');
+  });
+
+  it('stays on the stage when saving the typed text fails', async () => {
+    const handlers = on();
+    handlers.onSaveDoc.mockResolvedValue(null);
+    show(base({ doneStages: ['flow.md'] }), handlers);
+    fireEvent.change(screen.getByTestId('doc-project.md'), { target: { value: '# Projeto editado' } });
+    fireEvent.click(screen.getByTestId('wizard-continue'));
+    await waitFor(() => expect(handlers.onSaveDoc).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(handlers.onContinueStage).not.toHaveBeenCalled();
+    expect(editor('project.md').value).toBe('# Projeto editado');
+  });
+
+  it('saves again by itself when the server refuses the save while it organizes the document, and keeps the text', async () => {
+    vi.useFakeTimers();
+    try {
+      const handlers = on();
+      layoutServer(handlers);
+      show(base({ doneStages: ['flow.md'] }), handlers);
+      fireEvent.change(editor('project.md'), { target: { value: '# Projeto organizado' } });
+      fireEvent.blur(editor('project.md'));
+      // The retry comes before the autosave timer, which would send the text too.
+      await vi.advanceTimersByTimeAsync(600);
+      expect(handlers.onSaveDoc).toHaveBeenCalledTimes(2);
+      expect(handlers.onSaveDoc).toHaveBeenLastCalledWith('project.md', '# Projeto organizado', 'hash-after-layout');
+      expect(editor('project.md').value).toBe('# Projeto organizado');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the document once before the retry, and a later save goes over the hash the retry returned, with no conflict', async () => {
+    vi.useFakeTimers();
+    try {
+      const handlers = on();
+      layoutServer(handlers);
+      show(base({ doneStages: ['flow.md'] }), handlers);
+      fireEvent.change(editor('project.md'), { target: { value: '# Projeto organizado' } });
+      fireEvent.blur(editor('project.md'));
+      await vi.advanceTimersByTimeAsync(600);
+      expect(handlers.onReadDoc).toHaveBeenCalledTimes(1);
+      expect(handlers.onSaveDoc).toHaveBeenCalledTimes(2);
+      fireEvent.change(editor('project.md'), { target: { value: '# Projeto organizado\n\nDepois do layout.' } });
+      fireEvent.blur(editor('project.md'));
+      await vi.advanceTimersByTimeAsync(600);
+      expect(handlers.onSaveDoc).toHaveBeenCalledTimes(3);
+      expect(handlers.onSaveDoc).toHaveBeenLastCalledWith('project.md', '# Projeto organizado\n\nDepois do layout.', 'hash-after-save');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('saves the text typed in the last moment when the browser hides the page, and asks the browser to keep the request', () => {
+    const handlers = on();
+    render(<MemoryRouter><RefinementView snap={base()} busy={false} {...handlers} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo oculto' } });
+    window.dispatchEvent(new Event('pagehide'));
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo oculto', undefined, true);
+  });
+
+  it('sends the text at once when the page hides, even while an earlier save is still in flight', () => {
+    const handlers = on();
+    handlers.onSaveDoc.mockReturnValueOnce(new Promise(() => undefined));
+    show(base(), handlers);
+    fireEvent.change(editor('flow.md'), { target: { value: '# Fluxo um' } });
+    fireEvent.blur(editor('flow.md'));
+    fireEvent.change(editor('flow.md'), { target: { value: '# Fluxo dois' } });
+    window.dispatchEvent(new Event('pagehide'));
+    expect(handlers.onSaveDoc).toHaveBeenLastCalledWith('flow.md', '# Fluxo dois', undefined, true);
+  });
+
+  it('saves the text when the browser hides the tab, as it does when the page closes', () => {
+    const handlers = on();
+    show(base(), handlers);
+    fireEvent.change(editor('flow.md'), { target: { value: '# Fluxo aba' } });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    try {
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo aba', undefined, true);
+    } finally {
+      Reflect.deleteProperty(document, 'hidden');
+    }
+  });
+
+  it('saves the text typed in the last moment when the page closes, before the autosave timer', () => {
+    const handlers = on();
+    const { unmount } = render(<MemoryRouter><RefinementView snap={base()} busy={false} {...handlers} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('doc-flow.md'), { target: { value: '# Fluxo digitado' } });
+    unmount();
+    expect(handlers.onSaveDoc).toHaveBeenCalledWith('flow.md', '# Fluxo digitado', undefined);
+  });
+
+  it('goes back to the step before with the browser Back, not out of the wizard', async () => {
+    window.history.pushState(null, '', '/?etapa=project.md');
+    show(base({ doneStages: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    expect(editor('flow.md').value).toBe('# Flow');
+    window.history.back();
+    await waitFor(() => expect(editor('project.md').value).toBe('# Hello'));
+  });
+
+  it('browser Back and forward open a named step only when it is open', async () => {
+    window.history.replaceState(null, '', '/?etapa=flow.md');
+    window.history.pushState(null, '', '/?etapa=design.md');
+    show(base({ doneStages: ['flow.md'] }));
+    expect(editor('project.md').value).toBe('# Hello');
+    window.history.back();
+    await waitFor(() => expect(editor('flow.md').value).toBe('# Flow'));
+    window.history.forward();
+    await waitFor(() => expect(editor('project.md').value).toBe('# Hello'));
+  });
+});
+
+describe('Sugerir and Anexar imagem replace a document only after the owner confirms', () => {
+  const withDocs = (docs: Partial<Snapshot['docs']>, over: Record<string, unknown> = {}) => ({ ...base(over), docs: { ...base().docs, ...docs } });
+
+  it('keeps the text typed while the suggestion is written, and asks before it replaces the text', async () => {
+    let answer!: (text: string | null) => void;
+    const suggest = vi.fn(() => new Promise<string | null>((resolve) => { answer = resolve; }));
+    render(<MemoryRouter><RefinementView snap={base({ doneStages: ['flow.md'] })} busy={false} {...on()} onSuggestDoc={suggest} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('suggest'));
+    fireEvent.change(editor('project.md'), { target: { value: '# Digitado enquanto sugere' } });
+    await act(async () => answer('# Sugerido'));
+    expect(editor('project.md').value).toBe('# Digitado enquanto sugere');
+    fireEvent.click(await screen.findByTestId('stage-confirm'));
+    expect(editor('project.md').value).toBe('# Sugerido');
+  });
+
+  it('replaces an empty document at once, without asking', async () => {
+    const suggest = vi.fn(async () => '# Sugerido');
+    render(<MemoryRouter><RefinementView snap={withDocs({ 'project.md': '' }, { doneStages: ['flow.md'] })} busy={false} {...on()} onSuggestDoc={suggest} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('suggest'));
+    await waitFor(() => expect(editor('project.md').value).toBe('# Sugerido'));
+    expect(screen.queryByTestId('stage-confirm')).toBeNull();
+  });
+
+  it('asks before Anexar imagem replaces the design that has text', async () => {
+    open('?etapa=design.md');
+    const images = vi.fn(async () => '# Design de imagens');
+    render(<MemoryRouter><RefinementView snap={base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'] })} busy={false} {...on()} onDesignFromImages={images} /></MemoryRouter>);
+    fireEvent.change(screen.getByTestId('attach-images'), { target: { files: [new File(['x'], 'exemplo.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(images).toHaveBeenCalled());
+    expect(editor('design.md').value).toBe('# Design');
+    fireEvent.click(await screen.findByTestId('stage-confirm'));
+    expect(editor('design.md').value).toBe('# Design de imagens');
+  });
+
+  it('does not offer Sugerir while flow.md is empty, and says why', () => {
+    render(<MemoryRouter><RefinementView snap={withDocs({ 'flow.md': '' }, { doneStages: ['flow.md'] })} busy={false} {...on()} onSuggestDoc={vi.fn(async () => null)} /></MemoryRouter>);
+    const suggest = screen.getByTestId('suggest') as HTMLButtonElement;
+    expect(suggest.disabled).toBe(true);
+    expect(suggest.title).toBe('Preencha o flow.md antes de pedir uma sugestão.');
+  });
+});
+
+describe('the buttons that run the agents wait while a document is in Graphify', () => {
+  const ALL_DOCS = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+
+  it('disables the stage actions, with the reason, and leaves the editor open', () => {
+    open('?etapa=design.md');
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'], graphing: 'design.md' }));
+    expect((screen.getByTestId('refinement-stage-not-applicable') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('wizard-process') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-graph-reason').textContent).toContain('Espere a extração do Graphify terminar');
+    expect(editor('design.md').readOnly).toBe(false);
+  });
+
+  it('sends one Adicionar ao Graphify, and locks the button while the request is pending', () => {
+    open('?etapa=revisao');
+    const handlers = { ...on(), onAddToGraph: vi.fn(() => new Promise<boolean>(() => undefined)) as never };
+    show(base({ doneStages: ALL_DOCS, graphed: ['flow.md'] }), handlers);
+    fireEvent.click(screen.getByTestId('graph-add-project.md'));
+    fireEvent.click(screen.getByTestId('graph-add-project.md'));
+    expect(handlers.onAddToGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends one Perguntar de novo, and locks the button while the request is pending', () => {
+    open('?etapa=design.md');
+    const dropped = { questionId: 'po-s2-0', role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: false, relatedAcIds: [], file: 'design.md', matchedQuestionId: 'po-s1-0', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' };
+    const handlers = { ...on(), onReask: vi.fn(() => new Promise<boolean>(() => undefined)) };
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'], droppedQuestions: [dropped] }), handlers);
+    fireEvent.click(screen.getByTestId('reask-po-s2-0'));
+    fireEvent.click(screen.getByTestId('reask-po-s2-0'));
+    expect(handlers.onReask).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends one decision of the architecture, and locks the button while the request is pending', () => {
+    open('?etapa=arquitetura');
+    const handlers = { ...on(), onDecideArchitecture: vi.fn(() => new Promise<boolean>(() => undefined)) };
+    show(base({ doneStages: ALL_DOCS, repositories: true, reviewClosed: true, architecture: null }), handlers);
+    fireEvent.click(screen.getByTestId('architecture-decide'));
+    fireEvent.click(screen.getByTestId('architecture-decide'));
+    expect(handlers.onDecideArchitecture).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the typed answer in its field until the server accepts it', async () => {
+    const handlers = on();
+    handlers.onAnswer.mockResolvedValue(false);
+    show(base({ doneStages: ['flow.md'], questions: [question('po-s1-0', { file: 'project.md' })] }), handlers);
+    fireEvent.change(screen.getByTestId('answer'), { target: { value: 'Clientes ativos' } });
+    fireEvent.click(screen.getByTestId('answer-po-s1-0'));
+    await waitFor(() => expect(handlers.onAnswer).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((screen.getByTestId('answer') as HTMLTextAreaElement).value).toBe('Clientes ativos');
+  });
+
+  it('keeps the typed secret in its field until the server saves it', async () => {
+    open('?etapa=revisao');
+    const handlers = on();
+    handlers.onSecret.mockResolvedValue(false);
+    const snap = base({ doneStages: ALL_DOCS, graphed: ALL_DOCS });
+    show({ ...snap, secrets: [{ name: 'API_KEY', present: false, hint: null, uses: [], mentions: [] }] }, handlers);
+    fireEvent.change(screen.getByTestId('secret-API_KEY'), { target: { value: 'segredo' } });
+    fireEvent.click(screen.getByTestId('save-secret-API_KEY'));
+    await waitFor(() => expect(handlers.onSecret).toHaveBeenCalledWith('API_KEY', 'segredo'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((screen.getByTestId('secret-API_KEY') as HTMLInputElement).value).toBe('segredo');
+  });
+});
+
+
+describe('the steps the owner can open, and the guards of the stage actions', () => {
+  it('does not open a step after the one in progress, and shows it as unavailable', () => {
+    open('?etapa=design.md');
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md'] }));
+    const review = screen.getByTestId('step-review') as HTMLButtonElement;
+    expect(review.disabled).toBe(true);
+    fireEvent.click(review);
+    expect(window.location.search).not.toContain('etapa=revisao');
+  });
+
+  it('does not continue from a finished stage that was outdated by an edit, and says to process it again', () => {
+    open('?etapa=project.md');
+    show(base({ doneStages: ['flow.md', 'project.md'], graphed: ['flow.md', 'project.md'], staleBy: { 'project.md': 'flow.md' } }));
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-continue-reason').textContent).toBe('Processe a etapa project.md de novo antes de continuar.');
+  });
+
+  it('does not hold Continuar for a document edited after its score, only for a stage outdated by an earlier one', () => {
+    open('?etapa=project.md');
+    show(base({ doneStages: ['flow.md'], readiness: scored({ 'project.md': 0.8 }), outdatedDocs: ['project.md'] }));
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('wizard-continue-reason')).toBeNull();
+  });
+
+  it('does not continue from an empty flow.md, and says what to write first', () => {
+    open('?etapa=flow.md');
+    show({ ...base(), docs: { ...base().docs, 'flow.md': '' } });
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-continue-reason').textContent).toBe('Escreva o flow.md antes de continuar: a etapa está vazia.');
+  });
+
+  it('does not break the backlog down while a document is still outside Graphify, and names it', () => {
+    open('?etapa=backlog');
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'], reviewClosed: true, repositories: true, graphed: ['flow.md', 'project.md'] }));
+    expect((screen.getByTestId('enable-backlog') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-action-reason').textContent).toBe('Adicione os cinco documentos ao Graphify antes: falta briefing.md, stack.md, design.md.');
+  });
+
+  it('does not open the backlog while a finished stage is outdated, and names the stage', () => {
+    open('?etapa=revisao');
+    show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'], staleBy: { 'stack.md': 'briefing.md' } }));
+    expect((screen.getByTestId('enable-backlog') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wizard-action-reason').textContent).toBe('Revise de novo as etapas desatualizadas antes: stack.md.');
+  });
+});
+
+describe('the copy and the figures the stage screen shows', () => {
+  const ALL5 = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
+  const reviewed = (over: Record<string, unknown>) => base({ doneStages: ALL5, graphed: ALL5, ...over });
+
+  it('says in the reprocess dialog that accepted suggestions stay, except those built on a text edited after the pass', () => {
+    show(base({ passedStages: ['flow.md'] }));
+    fireEvent.click(screen.getByTestId('wizard-process'));
+    expect(screen.getByRole('alertdialog').textContent).toContain('As sugestões aceitas continuam, exceto as que dependem de um texto editado depois da entrega.');
+  });
+
+  it('counts only the suggestions the agents applied and kept, not those a Reprocessar reverted', () => {
+    open('?etapa=revisao');
+    const reverted = { ...patch('auto-1', 'flow.md'), status: 'dropped', auto: true, decision: 'Voltou ao texto entregue com o Reprocessar.' };
+    show(reviewed({ patches: [reverted] }));
+    expect(screen.queryByTestId('final-auto-applied')).toBeNull();
+  });
+
+  it('flags a score as below the pass line only when the percent on screen is below it', () => {
+    open('?etapa=project.md');
+    show(base({ doneStages: ['flow.md'], readiness: scored({ 'project.md': 0.4957 }) }));
+    expect(screen.queryByTestId('wizard-low-score')).toBeNull();
+    expect(screen.getByTestId('wizard-continue').textContent).toBe('Continuar');
+  });
+
+  it('shows 49.6% as 50%, and does not flag it as below the pass line', () => {
+    open('?etapa=project.md');
+    show(base({ doneStages: ['flow.md'], readiness: scored({ 'project.md': 0.496 }) }));
+    expect(screen.getByTestId('doc-score-percent').textContent).toBe('50%');
+    expect(screen.queryByTestId('wizard-low-score')).toBeNull();
+    expect(screen.getByTestId('wizard-continue').textContent).toBe('Continuar');
+  });
+
+  it('does not show a score the owner has edited since as low, and does not hold Continuar for it', () => {
+    open('?etapa=project.md');
+    show(base({ doneStages: ['flow.md'], readiness: scored({ 'project.md': 0.4 }), outdatedDocs: ['project.md'] }));
+    expect(screen.queryByTestId('wizard-low-score')).toBeNull();
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('wizard-continue').textContent).toBe('Continuar');
+  });
+
+  it('says the Jev outage on a full round as the server runs it: the evaluation goes on without it', () => {
+    const outage = { seq: 1, at: '', runId: 'hello-app/hello-001', specHash: 'draft', type: 'REFINE_DOCS_VALIDATED', kind: 'fact', data: { cycle: 1, available: false } } as unknown as StoredEvent;
+    expect(stageNow([outage], 1).stage).toBe('O Jev não respondeu. A avaliação segue sem as notas dele.');
+  });
+
+  it('shows on the architecture step that the decision is out of date when the documents changed after it', () => {
+    open('?etapa=arquitetura');
+    const decision = { style: 'monolith', rationale: 'Um só serviço.', repositories: [], integrations: [] };
+    show({ ...reviewed({ repositories: true, architecture: { docsHash: 'h', decision } }), architectureStale: true } as Snapshot);
+    expect(screen.getByTestId('architecture-card-stale').textContent).toContain('A decisão está desatualizada');
+  });
+});

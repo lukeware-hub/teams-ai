@@ -17,7 +17,7 @@ export function kindLabel(name: string, style: ArchitectureView['style']): strin
  * offers the one primary action. A decision that broke a rule lists each rule still open, so the owner corrects the documents
  * before deciding again.
  */
-export function ArchitectureCard({ architecture, error, issues = [], busy, locked = false, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; busy: boolean; locked?: boolean; startedAt?: string | null; onDecide: () => void }) {
+export function ArchitectureCard({ architecture, error, issues = [], busy, locked = false, stale = false, blocked = null, startedAt, onDecide }: { architecture: { docsHash: string; decision: ArchitectureView } | null | undefined; error: string | null | undefined; issues?: string[]; busy: boolean; locked?: boolean; /** The documents changed after the decision: the backlog decides again. */ stale?: boolean; /** Why the decision waits now, in plain words; null when it can run. */ blocked?: string | null; startedAt?: string | null; onDecide: () => unknown }) {
   const decision = architecture?.decision;
   return (
     <section className="card my-4 grid gap-3 p-4" aria-label="Arquitetura" data-testid="architecture-card">
@@ -26,6 +26,7 @@ export function ArchitectureCard({ architecture, error, issues = [], busy, locke
         <h3 className="m-0 text-[1rem] font-semibold" data-testid="architecture-card-title">Arquitetura</h3>
         {decision && <span className="count-pill" data-testid="architecture-style">{decision.style === 'monolith' ? 'Monólito' : 'Microsserviços'}</span>}
       </div>
+      {decision && stale && <p className="hint" data-testid="architecture-card-stale">A decisão está desatualizada, porque os documentos mudaram depois dela: o backlog decide a arquitetura de novo ao ser quebrado.</p>}
       {!decision && !busy && <p className="hint" data-testid="architecture-empty">Nenhuma arquitetura decidida ainda: decida-a a partir dos cinco documentos.</p>}
       {busy && (
         <ProcessBox title="Decidindo a arquitetura" since={startedAt ?? null} testId="architecture-progress">
@@ -59,8 +60,9 @@ export function ArchitectureCard({ architecture, error, issues = [], busy, locke
           )}
         </>
       )}
+      {blocked && <p className="hint" data-testid="architecture-card-blocked">{blocked}</p>}
       <div className="flex flex-wrap gap-2" data-testid="architecture-card-actions">
-        <ActionButton data-testid="architecture-decide" className={decision ? 'secondary' : 'primary'} disabled={busy || locked} title={locked ? 'O desenvolvimento já começou: a arquitetura não muda mais.' : undefined} onClick={onDecide} icon={<Icon name="refresh" size={16} />}>
+        <ActionButton data-testid="architecture-decide" className={decision ? 'secondary' : 'primary'} disabled={busy || locked || blocked !== null} title={locked ? 'O desenvolvimento já começou: a arquitetura não muda mais.' : (blocked ?? undefined)} onClick={onDecide} icon={<Icon name="refresh" size={16} />}>
           {decision ? 'Redefinir' : 'Decidir a arquitetura'}
         </ActionButton>
       </div>

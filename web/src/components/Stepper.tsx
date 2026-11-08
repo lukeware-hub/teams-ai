@@ -14,10 +14,12 @@ interface Props {
   steps: readonly StepperStep[];
   ariaLabel: string;
   onSelect?: (key: string) => void;
+  /** Whether a step can be opened now; a step that cannot is shown disabled. */
+  canSelect?: (key: string) => boolean;
 }
 
 /** Numbered steps in the look of the onboarding; a step opens on click when `onSelect` is given. */
-export function Stepper({ steps, ariaLabel, onSelect }: Props) {
+export function Stepper({ steps, ariaLabel, onSelect, canSelect }: Props) {
   // On a phone the flags do not fit under their labels, so the flagged steps are named in a line below the steps.
   const flagged = steps.filter((step) => step.marker);
   const flags = [...new Set(flagged.map((step) => step.marker))].join(' · ');
@@ -41,6 +43,7 @@ export function Stepper({ steps, ariaLabel, onSelect }: Props) {
                 <button
                   type="button"
                   data-testid={`step-${step.key}`}
+                  disabled={canSelect ? !canSelect(step.key) : undefined}
                   aria-label={[step.label, step.marker, step.badge].filter(Boolean).join(', ')}
                   className="grid h-auto min-h-11 w-full min-w-0 justify-items-center gap-[0.45rem] rounded-md border-0 bg-transparent p-0 shadow-none"
                   onClick={() => onSelect(step.key)}

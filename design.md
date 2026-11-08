@@ -1840,28 +1840,41 @@ A seção `Modelos e esforço` lista os oito papéis e mais duas linhas, `Chat` 
 
 ### 34.2 Modelos automáticos, globais
 
-Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Configuração Global do Ambiente`. Ele mostra cinco escolhas, usadas pelos papéis em `Automático` em todos os projetos deste computador:
+Um bloco `Modelos automáticos` fica entre `Configurações por Projetos` e `Configuração Global do Ambiente`. Ele mostra seis linhas com modelo e esforço e mais quatro escolhas só de esforço, usadas pelos papéis em `Automático` em todos os projetos deste computador:
 
 | Linha | Usada em |
 |---|---|
 | Tarefa pequena | tarefa de tamanho pequeno no modo de roteamento |
 | Tarefa média | tarefa de tamanho médio |
 | Tarefa grande | tarefa de tamanho grande |
-| Arquitetura | passos de tech-spec, plano, services-plan e arquitetura |
+| Arquitetura | passos de tech-spec, plano, services-plan e arquitetura; o padrão é Opus |
 | Refinamento, ciclos seguintes | passos de refinamento a partir do segundo ciclo |
+| Nomes e pedidos sugeridos | nomes de specs e de pedidos sugeridos |
+| Esforço padrão das etapas automáticas | passos automáticos sem linha própria, como revisão, testes, segurança e lacunas |
+| Esforço máximo de Haiku | limite de esforço do modelo Haiku no nome e nos passos que usam o esforço padrão |
+| Esforço máximo de Sonnet | limite de esforço do modelo Sonnet no nome e nos passos que usam o esforço padrão |
+| Esforço máximo de Opus | limite de esforço do modelo Opus no nome e nos passos que usam o esforço padrão |
 
-Cada linha tem um modelo e um esforço. O esforço de cada linha vale como escolhido, em qualquer modelo, como no modo manual. O padrão de cada linha é Baixo. Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro.
+Cada linha de modelo tem um modelo e um esforço. O esforço das linhas de tarefa, de arquitetura e de ciclos seguintes vale como escolhido, em qualquer modelo, como no modo manual. O padrão de cada linha é Baixo. Cada escolha salva ao mudar. Se o salvamento falha, a escolha volta à anterior e aparece a mensagem de erro.
 
-O limite de esforço por modelo continua valendo só para a escolha do decider do Jev, quando ele responde. Nesse caso, Haiku e Opus ficam em Baixo e Sonnet vai até Alto.
+`Nomes e pedidos sugeridos` tem modelo e esforço próprios, e o esforço dele segue o limite do modelo escolhido. `Esforço padrão das etapas automáticas` vale para os passos automáticos sem linha própria. Ele não se aplica à arquitetura nem aos ciclos seguintes, que têm as suas próprias linhas.
+
+Os limites por modelo valem para o nome, para os passos que usam o esforço padrão e para a escolha do decider do Jev, quando ele responde. Os padrões são Baixo para Haiku, Alto para Sonnet e Baixo para Opus.
+
+Na refinação, as linhas de arquitetura e de ciclos seguintes e o esforço padrão valem depois de reiniciar o Teams AI. Os limites valem na hora.
 
 ```
-Modelos automáticos                                    (i)
-Usados pelos papéis em Automático, em todos os projetos.
-Tarefa pequena                  [ Haiku 5.5  v ]  [ Baixo  v ]
-Tarefa média                    [ Sonnet 5.5 v ]  [ Baixo  v ]
-Tarefa grande                   [ Sonnet 5.5 v ]  [ Baixo  v ]
-Arquitetura                     [ Opus 5.5   v ]  [ Baixo  v ]
-Refinamento, ciclos seguintes   [ Sonnet 5.5 v ]  [ Baixo  v ]
+Modelos automáticos                                              (i)
+Tarefa pequena                        [ Haiku 5.5  v ]  [ Baixo  v ]
+Tarefa média                          [ Sonnet 5.5 v ]  [ Baixo  v ]
+Tarefa grande                         [ Sonnet 5.5 v ]  [ Baixo  v ]
+Arquitetura                           [ Opus 5.5   v ]  [ Baixo  v ]
+Refinamento, ciclos seguintes         [ Sonnet 5.5 v ]  [ Baixo  v ]
+Nomes e pedidos sugeridos             [ Haiku 5.5  v ]  [ Baixo  v ]
+Esforço padrão das etapas automáticas                   [ Baixo  v ]
+Esforço máximo de Haiku                                 [ Baixo  v ]
+Esforço máximo de Sonnet                                [ Alto   v ]
+Esforço máximo de Opus                                  [ Baixo  v ]
 ```
 
 ### 34.3 Fora desta tela

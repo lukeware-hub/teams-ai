@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Snapshot } from '../api.js';
@@ -391,14 +391,14 @@ describe('a document scored below the pass line', () => {
   const score = (value: number) => ({ score: value, checks: { complete: value, concrete: value, consistent: value, scoped: value }, doubts: [] });
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
 
-  it('says the score and asks the owner to continue anyway, and sends the confirmation', () => {
+  it('says the score and asks the owner to continue anyway, and sends the confirmation', async () => {
     const h = { ...handlers(), onContinueStage: vi.fn() };
     renderView(project({ stages: true, readiness: { docs: { 'flow.md': score(0.42) } } } as never), h);
     expect(screen.getByTestId('wizard-low-score').textContent).toContain('42%');
     const button = screen.getByTestId('wizard-continue');
     expect(button.textContent).toContain('Continuar mesmo assim');
     fireEvent.click(button);
-    expect(h.onContinueStage).toHaveBeenCalledWith('flow.md', true);
+    await waitFor(() => expect(h.onContinueStage).toHaveBeenCalledWith('flow.md', true));
   });
 
   it('shows nothing special for a good score', () => {
@@ -547,6 +547,14 @@ describe('the button that lets the team resolve everything', () => {
     expect(button.textContent).toContain('Preparando');
   });
 
+  it('stops showing the spinner once the request has answered and the server is idle', async () => {
+    const h = { ...handlers(), onResolveAll: vi.fn(() => Promise.resolve(true)) };
+    renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
+    fireEvent.click(screen.getByTestId('prepare-backlog'));
+    fireEvent.click(screen.getByTestId('stage-confirm'));
+    await waitFor(() => expect(screen.getByTestId('prepare-backlog').textContent).not.toContain('Preparando'));
+  });
+
   it('is not offered when nothing keeps the start closed', () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never, h);
@@ -562,7 +570,7 @@ describe('discarded suggestions', () => {
       { role: 'po', file: 'docs/briefing.md', reason: 'b' },
     ];
     window.history.replaceState(null, '', '/?etapa=briefing.md');
-    renderView(project({ stages: true, discarded: rows as never }));
+    renderView(project({ stages: true, doneStages: ['flow.md', 'project.md'], discarded: rows as never }));
     const group = screen.getByTestId('refinement-stage-discarded-group') as HTMLDetailsElement;
     expect(group.open).toBe(false);
     expect(within(group).getByTestId('refinement-stage-discarded-summary').textContent).toContain('2 sugestões descartadas');

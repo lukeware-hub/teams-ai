@@ -5,7 +5,7 @@ import { toJsonSchema, type OutputOf, type StepKind } from '../agents/outputs.js
 import type { AgentDefinition } from '../agents/registry.js';
 import type { Governor } from '../budget/governor.js';
 import type { QuotaBreaker } from '../budget/quota-breaker.js';
-import type { AgentSetting, AutomaticRow, RoleProfile, Role, SettingKey } from '../config/config.js';
+import type { AgentSetting, AutomaticRow, EffortCaps, RoleProfile, Role, SettingKey } from '../config/config.js';
 import { SCAFFOLD_TASK_ID, type Plan, type PlanTask } from '../contracts/plan.js';
 import type { Preplan } from '../contracts/preplan.js';
 import type { PlatformService, Project } from '../contracts/project.js';
@@ -649,6 +649,10 @@ export interface AgentStepDeps {
   sessionDir?: (taskId: string) => string;
   /** The automatic model and effort of every step of one kind, ahead of the role profile (config `routing`); `attempt` is the refinement cycle there. */
   stepSetting?: (kind: StepKind, attempt: number) => AutomaticRow | undefined;
+  /** The most effort each model family takes on the automatic path, from Settings; absent keeps the model-policy defaults. */
+  effortCaps?: EffortCaps;
+  /** The effort an automatic step takes when it asks for none and has no line of its own, from Settings. */
+  defaultEffort: Effort;
   /** A model and effort the user fixed for this role or slot in this project; they win over the request and the routing. */
   agentSetting?: (key: SettingKey) => AgentSetting | undefined | Promise<AgentSetting | undefined>;
   secretValues: () => readonly string[];
@@ -683,7 +687,7 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const auto = manual || req.model !== undefined ? undefined : deps.stepSetting?.(req.kind, req.attempt);
   const model = manual?.model ?? req.model ?? auto?.model ?? profile.model;
   // The effort the CLI runs at, for the model the step actually runs on; journaled so the run page can show it. A manual or automatic effort runs as set.
-  const effortOf = (m: string): Effort => manual?.effort ?? req.routedEffort ?? (auto && m === auto.model ? auto.effort : effortFor(m, req.effort));
+  const effortOf = (m: string): Effort => manual?.effort ?? req.routedEffort ?? (auto && m === auto.model ? auto.effort : effortFor(m, req.effort, deps.defaultEffort, deps.effortCaps));
   await deps.journal.fact(OrchEvent.StepStarted, {
     stepId: id,
     kind: req.kind,

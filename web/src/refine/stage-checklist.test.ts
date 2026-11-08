@@ -25,6 +25,13 @@ describe('stage checklist', () => {
     const check = stageChecklist({ ...ready, graphed: false, graphError: 'limite de uso atingido' }).find((c) => c.id === 'graphed');
     expect(check?.hint).toBe('limite de uso atingido');
   });
+
+  it('gives the graph line no hint while the extraction runs, so an earlier failure never shows as the current one', () => {
+    const running = stageChecklist({ ...ready, graphed: false, graphing: true, graphError: 'limite de uso atingido' }).find((c) => c.id === 'graphed');
+    expect(running?.hint).toBeNull();
+    const failed = stageChecklist({ ...ready, graphed: false, graphing: false, graphError: 'limite de uso atingido' }).find((c) => c.id === 'graphed');
+    expect(failed?.hint).toBe('limite de uso atingido');
+  });
 });
 
 describe('graph label', () => {

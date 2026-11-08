@@ -193,7 +193,7 @@ export const MAX_DESCRIPTION = 20_000;
 /** The text the user wrote when creating a project or a spec: trimmed, and refused when it is too long to be a brief. */
 export function cleanDescription(text: string | undefined): string {
   const t = (text ?? '').trim();
-  if (t.length > MAX_DESCRIPTION) throw new RangeError(`description must have at most ${MAX_DESCRIPTION} characters`);
+  if (t.length > MAX_DESCRIPTION) throw new RangeError(`A descrição tem no máximo ${MAX_DESCRIPTION} caracteres.`);
   return t;
 }
 

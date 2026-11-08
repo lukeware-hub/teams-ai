@@ -76,16 +76,19 @@ export async function setAgentSetting(projectId: string, key: SettingKey, settin
   });
 }
 
-/** Sets the automatic rows of every project: the task sizes, the architecture steps and the later refinement cycles. The other routing settings stay. */
+/** Sets the automatic rows of every project: the task sizes, the architecture steps, the later refinement cycles, the naming model and the efforts. The other routing settings stay. */
 export async function setAutomaticSettings(settings: AutomaticSettings, home?: string): Promise<Config> {
   const kinds = (group: readonly string[], model: string) => Object.fromEntries(group.map((kind) => [kind, model]));
-  const { tiers, architecture, laterCycle } = settings;
+  const { tiers, architecture, laterCycle, naming, defaultEffort, effortCaps } = settings;
   return updateUserConfig(home, (raw, cfg) => ({
     ...raw,
     routing: {
       ...cfg.routing,
       models: { small: tiers.small.model, medium: tiers.medium.model, large: tiers.large.model },
-      efforts: { small: tiers.small.effort, medium: tiers.medium.effort, large: tiers.large.effort, architecture: architecture.effort, laterCycle: laterCycle.effort },
+      namingModel: naming.model,
+      namingEffort: naming.effort,
+      efforts: { ...cfg.routing.efforts, small: tiers.small.effort, medium: tiers.medium.effort, large: tiers.large.effort, architecture: architecture.effort, laterCycle: laterCycle.effort, automatic: defaultEffort },
+      automaticEffortCap: effortCaps,
       stepModels: { ...cfg.routing.stepModels, ...kinds(ARCHITECTURE_KINDS, architecture.model) },
       laterCycleModels: { ...cfg.routing.laterCycleModels, ...kinds(LATER_CYCLE_KINDS, laterCycle.model) },
     },

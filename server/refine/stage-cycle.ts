@@ -4,7 +4,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
 import type { StepOutcome } from '../runner/step.js';
-import { failureMessage, internalErrorMessage, retryOnSchema, withNote } from './agent-failure.js';
+import { failureMessage, internalErrorMessage, PROCESS_AGAIN, retryOnSchema, withNote } from './agent-failure.js';
 import { isConfidential, type CycleJournal, type RunAgent } from './cycle.js';
 import { docSections } from './sections.js';
 import { DOC_STAGES, earlierDocs } from './doc-stages.js';
@@ -18,6 +18,9 @@ import { reshapeStage } from './reshape.js';
 import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
 import { patchChangesScope } from './scope-guard.js';
 import { MAX_STAGE_PARTS, PART_TOKENS, stageParts } from './stage-parts.js';
+
+/** The times one part is asked when it runs past its time limit, before the round ends. */
+const PART_TRIES = 3;
 import { consultDocs, fileGraphDir, type GraphNotes } from './stage-consult.js';
 import { SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from './readiness.js';
 
@@ -154,6 +157,12 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     const confidential = await isConfidential(draft, journal.state);
     // The model now and then gives an answer the schema rejects: one more try, told what was wrong, before the stage gives up.
     const askOnce = (pack: ContextPackInput, part?: { index: number; total: number }) => retryOnSchema((note) => call(withNote(pack, note), part), RefineOutput);
+    // A part that runs past its time limit is asked again: the parts already read are kept, so one slow part does not end the round.
+    const askPart = async (pack: ContextPackInput, part?: { index: number; total: number }) => {
+      let review = await askOnce(pack, part);
+      for (let tries = 1; !review.ok && review.failure === 'timeout' && tries < PART_TRIES && !deps.signal?.aborted; tries += 1) review = await askOnce(pack, part);
+      return review;
+    };
     let n = 0;
     // Every patch is checked against the documents as the reshape left them, and only the stage document may change.
     const propose = async (patches: ReadonlyArray<{ file: string; find: string; replace: string; reason: string }>) => {
@@ -179,10 +188,10 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
       const part = parts.length > 1 ? { index: i + 1, total: parts.length, text } : undefined;
       // The other documents are consulted for this part, by search and by graph; none is read whole.
       const consult = await consultDocs({ docs, consulted: DOC_STAGES.filter((f) => f !== file), part: text, graphDirOf: (doc) => fileGraphDir(draft.root, doc), graphNotes: deps.graphNotes });
-      const review = await askOnce(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected'), part, consult })), part ? { index: part.index, total: part.total } : undefined);
+      const review = await askPart(fitPackBudget(stageReviewPack({ role, specHash, principles: deps.principles(), file, docs, score: indexed ? score : undefined, specId: draft.specId, history: journal.state.questions, rejected: journal.state.patches.filter((p) => p.status === 'rejected'), part, consult })), part ? { index: part.index, total: part.total } : undefined);
       if (!review.ok) {
         const label = part ? `A revisão da parte ${part.index} de ${part.total} de ${file}` : `A revisão de ${file}`;
-        await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(label, review.failure, review.errors) });
+        await journal.fact(RefineEvent.CycleFailed, { cycle, ...failureMessage(label, review.failure, review.errors, PROCESS_AGAIN) });
         return;
       }
       outcomes.push(review.value);
@@ -215,6 +224,6 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     for (const { question, matches } of guarded.unresolved) await journal.fact(RefineEvent.QuestionDropped, droppedOf(question, matches[0]!, file));
     await journal.fact(RefineEvent.StageReviewed, { cycle, file, questions: guarded.kept, divergences, discardedPatches, inputKey });
   } catch (err) {
-    await journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage(`A revisão de ${file}`, err) });
+    await journal.fact(RefineEvent.CycleFailed, { cycle, ...internalErrorMessage(`A revisão de ${file}`, err, PROCESS_AGAIN) });
   }
 }

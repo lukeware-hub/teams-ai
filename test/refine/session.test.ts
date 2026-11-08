@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sha256 } from '../../server/contracts/hash.js';
 import { writeSecret } from '../../server/core/secrets.js';
 import type { Workspace } from '../../server/orchestrator/workspace.js';
-import { createNewProject, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
+import { createNewProject, designTemplate, draftPaths, readDoc, renderBriefMd, writeDoc } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
-import { BusyError, ConflictError, programEntries, RefineJournal, RefineSession } from '../../server/refine/session.js';
+import { formatByTemplate } from '../../server/refine/template-layout.js';
+import { DOC_FILES } from '../../server/refine/suggest.js';
+import { BusyError, ConflictError, programEntries, RefineJournal, RefineSession, type RunAgent } from '../../server/refine/session.js';
 import type { BacklogState } from '../../server/refine/state.js';
 import { makeProject, makeSpec } from '../fixtures/contracts.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
@@ -135,6 +137,39 @@ describe('RefineSession', () => {
     expect(st.checklist.find((i) => i.id === 'sm.no-open-questions')).toMatchObject({ passed: false });
     expect(calls.map((c) => c.kind)).toEqual(['derive', 'refine', 'refine']);
     expect((await s.snapshot()).tokens.steps).toBe(3);
+  });
+
+  it('counts the Jev score usage in the snapshot tokens, one step per score with usage', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    await journal.fact(RefineEvent.DocsScored, { cycle: 1, files: ['project.md'], available: true, usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.5 } });
+    await journal.fact(RefineEvent.DocsScored, { cycle: 1, files: ['project.md'], available: true, usage: null, reused: true });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 100, outputTokens: 10, costUsd: 0.5, steps: 1 });
+    await s.close();
+  });
+
+  it('counts the Jev attempts of a decision in the snapshot tokens, one step per attempt with usage', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    await journal.fact('DECISION_MADE', { record: { attempts: [{ backend: 'jev', usage: { inputTokens: 50, outputTokens: 5, costUsd: 0.25 } }, { backend: 'claude', usage: { inputTokens: 999, outputTokens: 9, costUsd: 9 } }] } });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0.25, steps: 1 });
+    await s.close();
+  });
+
+  it('counts a Jev attempt without a cost as one step, with its tokens and no cost', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    await journal.fact(RefineEvent.DecisionMade, { record: { attempts: [{ backend: 'jev', usage: { inputTokens: 50, outputTokens: 5, costUsd: null } }] } });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0, steps: 1 });
+    await s.close();
+  });
+
+  it('counts nothing in the snapshot for a Jev attempt that has no usage', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    await journal.fact(RefineEvent.DecisionMade, { record: { attempts: [{ backend: 'jev', usage: null }] } });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 });
+    await s.close();
   });
 
   it('routes Front patches to design.md and keeps them reviewable', async () => {
@@ -437,6 +472,16 @@ describe('RefineSession', () => {
     expect(await readDoc(draft(), 'project.md')).toBe('# Hello\n\n## Mine\n');
   });
 
+  it('a save over a file that changed says the typed text was not saved, and to copy it before the page reloads', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const snap = await s.snapshot();
+    await s.saveDoc('project.md', '# Hello\n\n## Mine\n');
+    await expect(s.saveDoc('project.md', '# Hello\n\n## Typed\n', snap.hashes['project.md'])).rejects.toThrow(
+      /^O documento mudou desde que você o abriu, então seu texto não foi salvo\. Copie o seu texto antes de atualizar a página\.$/,
+    );
+    await s.close();
+  });
+
   it('accepting a patch drops the pending patches it made stale, with a message in Portuguese', async () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     script['derive/po'] = [derived];
@@ -598,7 +643,42 @@ describe('RefineSession', () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     s.state.backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
     s.state.status = 'evaluating';
-    await expect(s.freezeProgram()).rejects.toThrow('session cannot start now (evaluating)');
+    await expect(s.freezeProgram()).rejects.toThrow('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
+  });
+
+  it('refuses a start of a session that already started its run, in plain words', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    await s.markStarted('run-1');
+    await expect(s.freeze()).rejects.toThrow('Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.');
+    await s.close();
+  });
+
+  it('refuses a start while an evaluation holds the session, in plain words', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    s.state.status = 'evaluating';
+    await expect(s.freeze()).rejects.toThrow('Já tem uma avaliação em andamento. Aguarde ela terminar e tente de novo.');
+    await s.close();
+  });
+
+  it('refuses a start that is not ready yet, in plain words', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    await expect(s.freeze()).rejects.toThrow('Este refinamento não pode iniciar agora. Confira o que falta e tente de novo.');
+    await s.close();
+  });
+
+  it('refuses a change of a session that already started its run, in plain words', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    await s.markStarted('run-1');
+    await expect(s.answerConfidentiality(false)).rejects.toThrow('Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.');
+    await s.close();
+  });
+
+  it('refuses a backlog start of a session that already started its run, in plain words', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    s.state.backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {}, flowHeadings: [] } as never;
+    await s.markStarted('run-1');
+    await expect(s.freezeProgram()).rejects.toThrow('Este refinamento já iniciou uma execução. Acompanhe a execução na tela da spec.');
+    await s.close();
   });
 
   it('writes custom secret names without marking the spec stale', async () => {
@@ -989,6 +1069,137 @@ describe('RefineSession stage review', () => {
   });
 });
 
+/** A design.md with its "Interaction and motion" section left out: its template layout puts the section back. */
+const designMissingMotion = (): string => designTemplate().replace(/<[^>]+>/g, 'valor').replace(/## Interaction and motion[\s\S]*?(?=## Accessibility and content)/, '');
+
+/** A run agent whose suggestions wait until `release` is called; every other call runs as the scripted agent does. `arrived` resolves when a suggestion reaches the agent. */
+function holdingSuggestions(agent: RunAgent): { runAgent: RunAgent; release: () => void; arrived: Promise<void> } {
+  let release!: () => void;
+  let arrive!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const arrived = new Promise<void>((resolve) => {
+    arrive = resolve;
+  });
+  const runAgent = (async (req, ctx) => {
+    if (req.kind === 'suggest') {
+      arrive();
+      await gate;
+    }
+    return agent(req, ctx);
+  }) as RunAgent;
+  return { runAgent, release: () => release(), arrived };
+}
+
+describe('RefineSession suggestion', () => {
+  it('refuses an evaluation while a suggestion is written, and the suggestion returns its text', async () => {
+    const held = holdingSuggestions(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\nTexto do fluxo.\n');
+    script['suggest/po'] = [{ text: '# Projeto sugerido\n' }];
+    const suggestion = s.suggest('project.md');
+    expect(() => s.evaluateStage('flow.md')).toThrow(BusyError);
+    expect(() => s.evaluateStage('flow.md')).toThrow('Já tem uma sugestão sendo escrita.');
+    held.release();
+    await expect(suggestion).resolves.toBe('# Projeto sugerido\n');
+    await s.close();
+  });
+
+  it('saves the owner text while a suggestion is written, and still refuses an evaluation', async () => {
+    const held = holdingSuggestions(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\nTexto do fluxo.\n');
+    script['suggest/po'] = [{ text: '# Projeto sugerido\n' }];
+    const suggestion = s.suggest('project.md');
+    // The save waits until the agent writes: the suggestion has read the documents by then, so no save races a read.
+    await held.arrived;
+    await s.saveDoc('flow.md', '# Fluxo\n\nTexto salvo durante a sugestão.\n');
+    expect(await readDoc(draft(), 'flow.md')).toBe('# Fluxo\n\nTexto salvo durante a sugestão.\n');
+    expect(() => s.evaluateStage('flow.md')).toThrow(BusyError);
+    held.release();
+    await expect(suggestion).resolves.toBe('# Projeto sugerido\n');
+    await s.close();
+  });
+
+  it('refuses to accept a suggestion while another one is written, and still saves the owner text', async () => {
+    const held = holdingSuggestions(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    script['derive/po'] = [derived];
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## V', reason: 'r' }])];
+    script['refine/sm'] = [refineOut(green(SM))];
+    await passStages(s);
+    await s.evaluate();
+    const pending = s.state.patches.find((p) => p.status === 'pending')!;
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\nTexto do fluxo.\n');
+    script['suggest/po'] = [{ text: '# Projeto sugerido\n' }];
+    const suggestion = s.suggest('project.md');
+    // The owner acts once the agent writes: the suggestion has read the documents by then, so no save races a read.
+    await held.arrived;
+    await expect(s.accept(pending.patchId)).rejects.toBeInstanceOf(BusyError);
+    expect(s.state.patches.find((p) => p.patchId === pending.patchId)?.status).toBe('pending');
+    await s.saveDoc('flow.md', '# Fluxo\n\nTexto salvo durante a sugestão.\n');
+    expect(await readDoc(draft(), 'flow.md')).toBe('# Fluxo\n\nTexto salvo durante a sugestão.\n');
+    held.release();
+    await expect(suggestion).resolves.toBe('# Projeto sugerido\n');
+    await s.close();
+  });
+
+  it('refuses a save while the layout of a suggestion is written, and saves once it is written', async () => {
+    const held = holdingSuggestions(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    await writeDoc(draft(), 'flow.md', '# Fluxo\n\nTexto do fluxo.\n');
+    await writeDoc(draft(), 'design.md', designMissingMotion());
+    const layout = formatByTemplate('design.md', designMissingMotion(), draft().projectId);
+    if (!layout.ok) throw new Error(layout.reason);
+    script['suggest/po'] = [{ text: '# Design sugerido\n' }];
+    // The owner's save lands right after the layout is written, while the suggestion is still being composed.
+    const refusals: unknown[] = [];
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    journal.onFact = (e) => {
+      if (e.type === RefineEvent.DocReshaped) void s.saveDoc('design.md', 'Texto digitado durante a organização.\n').catch((err: unknown) => refusals.push(err));
+    };
+    const suggestion = s.suggest('design.md');
+    held.release();
+    await expect(suggestion).resolves.toBe('# Design sugerido\n');
+    expect(s.events.some((e) => e.type === RefineEvent.DocReshaped), 'the layout was written').toBe(true);
+    expect(refusals, 'the save during the layout is refused').toHaveLength(1);
+    expect(refusals[0]).toBeInstanceOf(BusyError);
+    expect((refusals[0] as Error).message).toBe('Já tem o documento sendo organizado. Tente salvar de novo em instantes.');
+    expect(await readDoc(draft(), 'design.md')).toBe(layout.text);
+    await s.saveDoc('design.md', '# Design salvo depois\n');
+    expect(await readDoc(draft(), 'design.md')).toBe('# Design salvo depois\n');
+    await s.close();
+  });
+
+  it('refuses a suggestion while flow.md is empty or the template, and writes no document', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    // A design with one section missing: its template layout would put the section back, so a refusal must leave it as it is.
+    await writeDoc(draft(), 'design.md', designMissingMotion());
+    const docs = async () => Object.fromEntries(await Promise.all(DOC_FILES.map(async (f) => [f, await readDoc(draft(), f)])));
+    const template = await docs();
+    await expect(s.suggest('design.md')).rejects.toThrow('Preencha o flow.md antes de pedir uma sugestão.');
+    expect(await docs()).toEqual(template);
+    await writeDoc(draft(), 'flow.md', '');
+    const empty = await docs();
+    await expect(s.suggest('design.md')).rejects.toThrow('Preencha o flow.md antes de pedir uma sugestão.');
+    expect(await docs()).toEqual(empty);
+    await s.close();
+  });
+
+  it('holds the session while an image suggestion is written too', async () => {
+    const held = holdingSuggestions(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    script['suggest/po'] = [{ text: '# Design sugerido\n' }];
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+    const suggestion = s.suggestDesignFromImages([{ data: png }]);
+    expect(() => s.evaluateStage('flow.md')).toThrow(BusyError);
+    held.release();
+    await expect(suggestion).resolves.toBe('# Design sugerido\n');
+    await s.close();
+  });
+});
+
 describe('RefineSession briefing decisions', () => {
   it('a save of the briefing that leaves out its decisions keeps the section the owner answered', async () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
@@ -997,6 +1208,18 @@ describe('RefineSession briefing decisions', () => {
     const briefing = (await s.snapshot()).docs['briefing.md'];
     expect(briefing).toContain('# Briefing novo');
     expect(briefing).toContain('Answer: Trinta dias');
+    await s.close();
+  });
+});
+
+describe('RefineSession saves of one document', () => {
+  it('lets one of two saves over the same base hash through, and refuses the other as a conflict', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const base = sha256(await readDoc(draft(), 'flow.md'));
+    const saves = await Promise.allSettled([s.saveDoc('flow.md', 'Primeiro texto.\n', base), s.saveDoc('flow.md', 'Segundo texto.\n', base)]);
+    expect(saves.map((save) => save.status)).toEqual(['fulfilled', 'rejected']);
+    expect((saves[1] as PromiseRejectedResult).reason).toBeInstanceOf(ConflictError);
+    expect(await readDoc(draft(), 'flow.md')).toBe('Primeiro texto.\n');
     await s.close();
   });
 });

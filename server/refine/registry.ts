@@ -27,7 +27,7 @@ import { cleanDescription, createFromRepo, createNewProject, draftExists, draftP
 import { docsRepoMain } from './docs-main.js';
 import { suggestName, type NameKind, type NameSuggestion } from './naming.js';
 import { suggestRequest } from './request-suggest.js';
-import { ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
+import { ALREADY_STARTED, ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
 import { runExtension } from './autopilot.js';
@@ -76,8 +76,9 @@ export interface DraftRow {
   extension?: boolean;
 }
 
+const ID_LABELS: Record<string, string> = { projectId: 'O identificador do projeto', specId: 'O identificador da spec', firstSpecId: 'O identificador da primeira spec', draftId: 'O identificador do rascunho' };
 const slug = (v: string, what: string) => {
-  if (!ID_PATTERNS.SLUG.test(v)) throw new RangeError(`${what} must match ${ID_PATTERNS.SLUG}`);
+  if (!ID_PATTERNS.SLUG.test(v)) throw new RangeError(`${ID_LABELS[what] ?? 'O identificador'} deve ter só letras minúsculas, números e hífens.`);
   return v;
 };
 const exists = (p: string) => fs.access(p).then(() => true, () => false);
@@ -192,7 +193,7 @@ export class SessionRegistry {
   /** Roadmap R11.12: a readable English id for a new project (plus its first spec) or a new spec of `projectId`. */
   async suggestName(kind: NameKind, input: { projectId?: string; name: string; description: string }): Promise<NameSuggestion> {
     cleanDescription(input.description);
-    if (input.name.trim() === '' && input.description.trim() === '') throw new RangeError('name or description is required');
+    if (input.name.trim() === '' && input.description.trim() === '') throw new RangeError('Informe o nome ou a descrição.');
     const cfg = await this.deps.cfg();
     const root = expandHome(cfg.paths.workspaces, this.deps.home);
     let taken: string[];
@@ -204,14 +205,14 @@ export class SessionRegistry {
       const onMain = (await isDocsRepo(ws)) ? await listState(ws, 'specs') : await fs.readdir(path.posix.join(ws.repo, 'docs', 'specs')).catch(() => [] as string[]);
       taken = [...drafts, ...onMain];
     }
-    return suggestName({ runAgent: this.deps.runAgent, workspacesRoot: root, model: cfg.decisions.modelTiers.small }, { kind, ...input, taken });
+    return suggestName({ runAgent: this.deps.runAgent, workspacesRoot: root, model: cfg.routing.namingModel, effort: cfg.routing.namingEffort }, { kind, ...input, taken });
   }
 
   /** "Sugestão" of the new spec modal: the typed text rewritten as a detailed spec from what the project's code already has; nothing is saved. */
   async suggestRequest(projectId: string, description: string): Promise<string> {
     slug(projectId, 'projectId');
     const text = cleanDescription(description);
-    if (text === '') throw new RangeError('description is required');
+    if (text === '') throw new RangeError('Informe a descrição.');
     const root = expandHome((await this.deps.cfg()).paths.workspaces, this.deps.home);
     const { projectGraphContext } = this.deps;
     return suggestRequest({ runAgent: inProject(this.deps.runAgent, projectId), workspacesRoot: root, graphContext: projectGraphContext && ((question, budget) => projectGraphContext(projectId, question, budget)) }, text);
@@ -221,14 +222,14 @@ export class SessionRegistry {
     slug(projectId, 'projectId');
     if (firstSpecId) slug(firstSpecId, 'firstSpecId');
     cleanDescription(description);
-    if (name.trim() === '') throw new RangeError('name must not be empty');
+    if (name.trim() === '') throw new RangeError('Informe o nome.');
     const ws = await this.ws(projectId);
     if (this.docsRepoLayout && projectId === CENTRAL_REPO) throw new RangeError(`${CENTRAL_REPO} é o nome do repositório central de documentos; escolha outro nome para o projeto.`);
     const specId = firstSpecId || `${projectId}-001`;
     if (this.docsRepoLayout) aliasOrConflict(specId, !firstSpecId);
     const draft = draftPaths(ws, specId);
     if ((await this.deps.projectDir(projectId)) || (await draftExists(draft)) || (await exists(ws.repo)) || (this.docsRepoLayout && (await isDocsRepo(ws)))) {
-      throw new ConflictError(`project ${projectId} already exists; register it instead`);
+      throw new ConflictError(`O projeto ${projectId} já existe. Cadastre-o em vez de criar outro.`);
     }
     await createNewProject(draft, name, description);
     return this.session(draft, ws, 'new-project');
@@ -285,8 +286,8 @@ export class SessionRegistry {
     slug(specId, 'specId');
     cleanDescription(description);
     const draft = draftPaths(ws, specId);
-    if (await draftExists(draft)) throw new ConflictError(`spec ${specId} already has a refinement session`);
-    if (await this.specOnMain(ws, specId)) throw new ConflictError(`spec ${specId} already exists on main`);
+    if (await draftExists(draft)) throw new ConflictError(`A spec ${specId} já tem um refinamento. Escolha outro nome para a spec.`);
+    if (await this.specOnMain(ws, specId)) throw new ConflictError(`A spec ${specId} já existe na main. Escolha outro nome para a spec.`);
     await this.assertMirrorProject(ws);
     await this.assertAliasFree(ws, specId);
     await createFromRepo(draft, ws.repo, this.deps.exec, { kind: 'new-spec', description }, await this.mainOf(ws));
@@ -301,7 +302,7 @@ export class SessionRegistry {
   async addRequest(projectId: string, description: string): Promise<RefineSession> {
     slug(projectId, 'projectId');
     const text = cleanDescription(stripControls(description));
-    if (text === '') throw new RangeError('description is required');
+    if (text === '') throw new RangeError('Informe a descrição.');
     return serialized(this.requests, projectId, async () => {
       const ws = await this.ws(projectId);
       await this.assertMirrorProject(ws);
@@ -357,8 +358,8 @@ export class SessionRegistry {
     const ws = await this.ws(projectId);
     await this.assertMirrorProject(ws);
     const spec = await this.specOnMain(ws, specId);
-    if (spec?.status === 'done') throw new ConflictError(`spec ${specId} is concluded; create a new spec`);
-    if (spec?.status !== 'awaiting-validation') throw new ConflictError(`spec ${specId} is ${spec?.status ?? 'absent'} on main; only awaiting-validation specs continue`);
+    if (spec?.status === 'done') throw new ConflictError(`A spec ${specId} já foi concluída. Crie uma nova spec.`);
+    if (spec?.status !== 'awaiting-validation') throw new ConflictError(`A spec ${specId} não está aguardando validação na main. Só specs aguardando validação podem continuar.`);
     const draft = draftPaths(ws, specId);
     if (await draftExists(draft)) {
       const session = await this.get(projectId, specId);
@@ -544,7 +545,7 @@ export class SessionRegistry {
   /** Discards a draft that never started a run, so the user can begin that spec's refinement again from scratch. */
   async deleteDraft(projectId: string, specId: string): Promise<void> {
     const session = await this.get(projectId, specId);
-    if (session.state.status === 'started') throw new ConflictError('session already started a run');
+    if (session.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
     await this.discardDraft(projectId, specId, session, true);
   }
 

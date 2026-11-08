@@ -148,16 +148,18 @@ describe('the request screen keeps only what the owner needs in view', () => {
 });
 
 describe('an address with ?etapa= opens that document of the request', () => {
+  // A follow-on request belongs to a project in development, so its documents are all done.
+  const allDone = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
   it('opens briefing.md inside the request, with a way back', () => {
     window.history.replaceState(null, '', '/?etapa=briefing.md');
-    renderView(request());
+    renderView(request({ doneStages: allDone }));
     expect(screen.getByTestId('request-document')).toBeTruthy();
     expect(screen.queryByTestId('request-screen')).toBeNull();
   });
 
   it('shows the pending suggestions of that document so the owner can accept one', () => {
     window.history.replaceState(null, '', '/?etapa=briefing.md');
-    renderView(request({ patches: [patch] }));
+    renderView(request({ doneStages: allDone, patches: [patch] }));
     expect(screen.getByTestId('accept-po-c1-0')).toBeTruthy();
   });
 

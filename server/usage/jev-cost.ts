@@ -13,12 +13,24 @@ async function subdirs(root: string): Promise<string[]> {
 
 const usd = (cost: unknown): number => (typeof cost === 'number' && Number.isFinite(cost) ? cost : 0);
 
+/** The token counts and cost one Jev call reports; a null cost counts as zero. */
+interface JevUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number | null;
+}
+
+/** The usage of each Jev attempt that one journaled decision carries; any other event carries none. */
+export function jevUsages(event: StoredEvent): JevUsage[] {
+  if (event.type !== DECISION_MADE) return [];
+  const attempts = (event.data.record as { attempts?: Array<{ backend: string; usage?: JevUsage | null }> } | undefined)?.attempts ?? [];
+  return attempts.flatMap((a) => (a.backend === 'jev' && a.usage ? [a.usage] : []));
+}
+
 /** What one journaled event charged the Jev, in US$. */
 function jevCharge(event: StoredEvent): number {
   if (event.type === DOCS_SCORED) return usd((event.data.usage as { costUsd?: unknown } | undefined)?.costUsd);
-  if (event.type !== DECISION_MADE) return 0;
-  const attempts = (event.data.record as { attempts?: Array<{ backend: string; usage: { costUsd?: unknown } | null }> } | undefined)?.attempts ?? [];
-  return attempts.filter((a) => a.backend === 'jev').reduce((sum, a) => sum + usd(a.usage?.costUsd), 0);
+  return jevUsages(event).reduce((sum, u) => sum + usd(u.costUsd), 0);
 }
 
 /** The Jev's total cost in US$ across every project and spec: refinement journals first, then run journals. */

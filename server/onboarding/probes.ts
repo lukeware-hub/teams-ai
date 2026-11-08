@@ -14,6 +14,8 @@ export interface ProbeDeps {
   hostEnv?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   onJevCost?: (costUsd: number) => void;
+  /** The Jev's total spend so far in US$; the OpenRouter probe shows it when it can be read. */
+  accumulatedUsd?: () => Promise<number>;
 }
 
 const TIMEOUT = 30_000;
@@ -95,9 +97,25 @@ export async function ghToken(d: ProbeDeps, token: string): Promise<ProbeResult>
   }
 }
 
+/** The Jev's total spend so far, or null when it cannot be read: the probe never fails because of it. */
+async function accumulatedOrNull(d: ProbeDeps): Promise<number | null> {
+  try {
+    const total = await d.accumulatedUsd?.();
+    return total !== undefined && Number.isFinite(total) ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Money in the costs screen's pt-BR format, such as US$ 1.234,5000. */
+const usdFormat = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const usdText = (value: number): string => usdFormat.format(value);
+
 export async function openrouterKey(d: ProbeDeps, key: string, model = 'typesafe/jev-1.13'): Promise<ProbeResult> {
   const jev = new JevOpenRouterBackend({ fetch: d.fetch, apiKey: key, baseUrl: 'https://openrouter.ai/api', model, timeoutMs: d.timeoutMs ?? TIMEOUT, maxTries: 1, backoffMs: 0, sleep: async () => {}, onCost: d.onJevCost });
   const r = await jev.evaluate({ state: 'The onboarding probe checks the key.', questions: { probe: { type: 'noul', instructions: 'Is this sentence in English?' } }, escalateTo: 'test' });
-  if (r.ok) return { ok: true, detail: `${r.model} · $${(r.usage.costUsd ?? 0).toFixed(4)}` };
-  return { ok: false, detail: redactSecrets(r.message, [key]) };
+  if (!r.ok) return { ok: false, detail: redactSecrets(r.message, [key]) };
+  const total = await accumulatedOrNull(d);
+  if (total === null) return { ok: true, detail: `${r.model} · ${usdText(r.usage.costUsd ?? 0)}` };
+  return { ok: true, detail: `${r.model} · custo acumulado ${usdText(total)}` };
 }

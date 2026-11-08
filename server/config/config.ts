@@ -31,13 +31,20 @@ const CLAUDE_DEFAULTS: Record<Role, RoleProfile> = {
   env: { model: MODELS.sonnet },
 };
 
-/** The steps that decide architecture: the only ones that run on Opus (always at low effort, see `effortFor`). */
-const ARCHITECTURE_MODELS: Partial<Record<StepKind, string>> = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus, architecture: MODELS.opus };
+/** The steps that decide architecture: the only ones that run on Opus by default (at low effort by default, see `effortFor`). */
+const ARCHITECTURE_MODELS = { 'tech-spec': MODELS.opus, plan: MODELS.opus, 'services-plan': MODELS.opus, architecture: MODELS.opus } as const;
+
+/** The model of each refinement step from the second cycle on: the schema default, and the row's model when the config drops one. */
+const LATER_CYCLE_MODELS = { refine: MODELS.sonnet, derive: MODELS.sonnet, coverage: MODELS.sonnet, backlog: MODELS.sonnet, answer: MODELS.sonnet } as const;
 
 /** The architecture steps: the Settings screen sets their model as one. */
 export const ARCHITECTURE_KINDS = ['tech-spec', 'plan', 'services-plan', 'architecture'] as const satisfies readonly StepKind[];
 /** The refinement steps from the second cycle on: the Settings screen sets their model as one. */
 export const LATER_CYCLE_KINDS = ['refine', 'derive', 'coverage', 'backlog', 'answer'] as const satisfies readonly StepKind[];
+/** The most effort each model family takes on the automatic path; Settings sets it. */
+export type EffortCaps = Record<'haiku' | 'sonnet' | 'opus', Effort>;
+/** The caps that keep the model-policy rules: Haiku and Opus at low, Sonnet at high. */
+export const DEFAULT_EFFORT_CAPS: EffortCaps = { haiku: 'low', sonnet: 'high', opus: 'low' };
 
 const positive = z.number().int().min(1);
 /** The most agents that prepare the plans at once. */
@@ -100,8 +107,8 @@ const pinnedModel = z
 
 export const StepBudget = z.object({
   timeoutMs: positive.default(60 * 60_000),
-  /** The time limit of one stage review part: a review that runs longer is stopped. A review should take under a minute. */
-  reviewTimeoutMs: positive.default(2 * 60_000),
+  /** The time limit of one stage review part: a review that runs longer is asked again, up to three tries. */
+  reviewTimeoutMs: positive.default(5 * 60_000),
   maxTurns: positive.default(60),
   /** Output tokens one stage review may write: it is sent to the CLI as CLAUDE_CODE_MAX_OUTPUT_TOKENS. */
   maxOutputTokens: positive.default(40_000),
@@ -201,7 +208,11 @@ export const Config = z.object({
       tiers: z.enum(['off', 'shadow', 'on']).default('on'),
       models: z.object({ small: z.string().min(1).default(MODELS.haiku), medium: z.string().min(1).default(MODELS.sonnet), large: z.string().min(1).default(MODELS.sonnet) }).prefault({}),
       stepModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default(ARCHITECTURE_MODELS),
-      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default({ refine: MODELS.sonnet, derive: MODELS.sonnet, coverage: MODELS.sonnet, backlog: MODELS.sonnet, answer: MODELS.sonnet }),
+      laterCycleModels: z.partialRecord(z.enum(STEP_KINDS), z.string().min(1)).default(LATER_CYCLE_MODELS),
+      /** The model that suggests the names of projects, specs and requests. */
+      namingModel: z.string().min(1).default(MODELS.haiku),
+      /** The effort of the naming step, shown beside its model in Settings. */
+      namingEffort: z.enum(EFFORT_LEVELS).default('low'),
       /** The effort of each automatic group, shown beside its model in Settings: the task sizes, the architecture steps and the later cycles. */
       efforts: z
         .object({
@@ -210,6 +221,16 @@ export const Config = z.object({
           large: z.enum(EFFORT_LEVELS).default('low'),
           architecture: z.enum(EFFORT_LEVELS).default('low'),
           laterCycle: z.enum(EFFORT_LEVELS).default('low'),
+          /** The default effort of the automatic steps, set in Settings; the task-size, architecture and later-cycle rows keep their own. */
+          automatic: z.enum(EFFORT_LEVELS).default('low'),
+        })
+        .prefault({}),
+      /** The most effort each model family takes on the automatic path, set in Settings. */
+      automaticEffortCap: z
+        .object({
+          haiku: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT_CAPS.haiku),
+          sonnet: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT_CAPS.sonnet),
+          opus: z.enum(EFFORT_LEVELS).default(DEFAULT_EFFORT_CAPS.opus),
         })
         .prefault({}),
     })
@@ -331,6 +352,11 @@ export interface AutomaticSettings {
   tiers: { small: AutomaticRow; medium: AutomaticRow; large: AutomaticRow };
   architecture: AutomaticRow;
   laterCycle: AutomaticRow;
+  /** The model and effort of the steps that name projects, specs and requests. */
+  naming: AutomaticRow;
+  /** The effort of every automatic step that is not an architecture step. */
+  defaultEffort: Effort;
+  effortCaps: EffortCaps;
 }
 
 /** Reads the automatic rows from the routing settings; a group with no model left in the file shows its default. */
@@ -340,8 +366,11 @@ export const automaticSettingsOf = (routing: Config['routing']): AutomaticSettin
     medium: { model: routing.models.medium, effort: routing.efforts.medium },
     large: { model: routing.models.large, effort: routing.efforts.large },
   },
-  architecture: { model: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? MODELS.opus, effort: routing.efforts.architecture },
-  laterCycle: { model: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? MODELS.sonnet, effort: routing.efforts.laterCycle },
+  architecture: { model: routing.stepModels[ARCHITECTURE_KINDS[0]] ?? ARCHITECTURE_MODELS[ARCHITECTURE_KINDS[0]], effort: routing.efforts.architecture },
+  laterCycle: { model: routing.laterCycleModels[LATER_CYCLE_KINDS[0]] ?? LATER_CYCLE_MODELS[LATER_CYCLE_KINDS[0]], effort: routing.efforts.laterCycle },
+  naming: { model: routing.namingModel, effort: routing.namingEffort },
+  defaultEffort: routing.efforts.automatic,
+  effortCaps: routing.automaticEffortCap,
 });
 
 /** The automatic model and effort of one step: a step from the second refinement cycle on takes `laterCycleModels`, else `stepModels`. */
@@ -350,7 +379,7 @@ export const automaticStepOf = (routing: Config['routing'], kind: StepKind, cycl
   if (later) return { model: later, effort: routing.efforts.laterCycle };
   const model = stepModelFor(routing, kind);
   if (!model) return undefined;
-  return { model, effort: ARCHITECTURE_KINDS.some((k) => k === kind) ? routing.efforts.architecture : 'low' };
+  return { model, effort: ARCHITECTURE_KINDS.some((k) => k === kind) ? routing.efforts.architecture : routing.efforts.automatic };
 };
 
 /** The step budget one project runs with: its time limit from Settings, else `budgets.step`. */

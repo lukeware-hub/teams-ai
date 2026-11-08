@@ -30,20 +30,27 @@ const HELP_PLAN_AGENTS = 'Quantos agentes escrevem os planos dos itens do backlo
 const PLAN_AGENTS_LOAD_ERROR = 'Não foi possível carregar os agentes em paralelo.';
 const HELP_AGENTS_DECIDE = 'Não: uma tarefa bloqueada fica parada até você decidir. Sim: os agentes decidem sozinhos as escolhas técnicas e de negócio, pesquisam na internet e executam comandos de shell neste projeto, com rede no shell só para pacotes e pesquisa na web livre. Com Sim, o botão Reprocessar não aparece na execução.';
 const AGENTS_DECIDE_LOAD_ERROR = 'Não foi possível carregar a autonomia dos agentes.';
-const HELP_AUTOMATIC = 'Modelos e esforços que os papéis em Automático usam, em todos os projetos deste computador. Tarefa pequena, média e grande seguem o tamanho de cada tarefa. Arquitetura são os passos de tech-spec, plano e arquitetura. Refinamento, ciclos seguintes são os passos de refinamento a partir do segundo ciclo. Cada escolha salva ao mudar.';
+const HELP_AUTOMATIC = 'Modelos e esforços que os papéis em Automático usam, em todos os projetos deste computador. Tarefa pequena, média e grande seguem o tamanho de cada tarefa. Arquitetura são os passos de tech-spec, plano e arquitetura. Refinamento, ciclos seguintes são os passos de refinamento a partir do segundo ciclo. Nomes e pedidos sugeridos é o modelo e o esforço que sugerem nomes de specs e pedidos. Esforço padrão vale para os demais passos automáticos, fora arquitetura e ciclos seguintes. Esforço máximo de Haiku, Sonnet e Opus é o limite de esforço de cada modelo no modo Automático. Cada escolha salva ao mudar.';
 const AUTOMATIC_LOAD_ERROR = 'Não foi possível carregar os modelos automáticos.';
-type AutomaticKey = 'small' | 'medium' | 'large' | 'architecture' | 'laterCycle';
+type AutomaticKey = 'small' | 'medium' | 'large' | 'architecture' | 'laterCycle' | 'naming';
 const AUTOMATIC_ROWS: Array<{ key: AutomaticKey; label: string }> = [
   { key: 'small', label: 'Tarefa pequena' },
   { key: 'medium', label: 'Tarefa média' },
   { key: 'large', label: 'Tarefa grande' },
   { key: 'architecture', label: 'Arquitetura' },
   { key: 'laterCycle', label: 'Refinamento, ciclos seguintes' },
+  { key: 'naming', label: 'Nomes e pedidos sugeridos' },
 ];
-const rowOf = (settings: AutomaticSettings, key: AutomaticKey): AutomaticRow => (key === 'architecture' || key === 'laterCycle' ? settings[key] : settings.tiers[key]);
+const EFFORT_CAPS: Array<{ key: keyof AutomaticSettings['effortCaps']; label: string }> = [
+  { key: 'haiku', label: 'Esforço máximo de Haiku' },
+  { key: 'sonnet', label: 'Esforço máximo de Sonnet' },
+  { key: 'opus', label: 'Esforço máximo de Opus' },
+];
+const rowOf = (settings: AutomaticSettings, key: AutomaticKey): AutomaticRow => (key === 'architecture' || key === 'laterCycle' || key === 'naming' ? settings[key] : settings.tiers[key]);
 const withRow = (settings: AutomaticSettings, key: AutomaticKey, row: AutomaticRow): AutomaticSettings => {
   if (key === 'architecture') return { ...settings, architecture: row };
   if (key === 'laterCycle') return { ...settings, laterCycle: row };
+  if (key === 'naming') return { ...settings, naming: row };
   return { ...settings, tiers: { ...settings.tiers, [key]: row } };
 };
 
@@ -332,6 +339,21 @@ function PlanAgentsPanel() {
   );
 }
 
+/** One automatic effort on a row of its own: the default effort, or the effort cap of one model. */
+function AutomaticEffortLine({ id, label, value, onChange }: { id: string; label: string; value: AgentEffort; onChange: (effort: AgentEffort) => void }) {
+  return (
+    <li className={row} data-testid={`settings-automatic-${id}`}>
+      <span className={rowId}>{label}</span>
+      <div className={rowActions}>
+        <Select wrapperClassName="w-full md:w-[8.5rem]" aria-label={label} value={value} onChange={(e) => onChange(e.target.value as AgentEffort)}>
+          {AGENT_EFFORTS.map((e) => <option key={e} value={e}>{EFFORT_LABELS[e]}</option>)}
+        </Select>
+      </div>
+      {value === 'max' ? <p className="hint m-0" data-testid={`settings-automatic-effort-max-note-${id}`}>{EFFORT_MAX_NOTE}</p> : null}
+    </li>
+  );
+}
+
 function AutomaticModelsCard() {
   const [models, setModels] = useState<AutomaticSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -347,15 +369,21 @@ function AutomaticModelsCard() {
       active = false;
     };
   }, []);
-  const change = (key: AutomaticKey, patch: Partial<AutomaticRow>) => {
-    if (!models) return;
-    const next = withRow(models, key, { ...rowOf(models, key), ...patch });
+  const save = (next: AutomaticSettings) => {
     setModels(next);
     setError(null);
     queue.current = queue.current.then(() => settingsApi.setAutomatic(next)).then(setModels).catch(() => {
       setError(SAVE_ERROR);
       void settingsApi.automatic().then(setModels).catch(() => undefined);
     });
+  };
+  const change = (key: AutomaticKey, patch: Partial<AutomaticRow>) => {
+    if (!models) return;
+    save(withRow(models, key, { ...rowOf(models, key), ...patch }));
+  };
+  const changeEffort = (patch: Partial<AutomaticSettings>) => {
+    if (!models) return;
+    save({ ...models, ...patch });
   };
   return (
     <section className={`${panel} gap-3`} aria-labelledby="automatic-title" data-testid="settings-automatic-section">
@@ -384,6 +412,10 @@ function AutomaticModelsCard() {
               </li>
             );
           })}
+          <AutomaticEffortLine id="defaultEffort" label="Esforço padrão das etapas automáticas" value={models.defaultEffort} onChange={(effort) => changeEffort({ defaultEffort: effort })} />
+          {EFFORT_CAPS.map(({ key, label }) => (
+            <AutomaticEffortLine key={key} id={`effortCaps-${key}`} label={label} value={models.effortCaps[key]} onChange={(effort) => changeEffort({ effortCaps: { ...models.effortCaps, [key]: effort } })} />
+          ))}
         </ul>
       ) : null}
     </section>

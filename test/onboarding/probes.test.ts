@@ -5,6 +5,7 @@ import { FakeExec } from '../fixtures/fake-exec.js';
 const KEY = 'sk-or-v1-' + 'ab'.repeat(32);
 const TOKEN = 'ghp_' + 'c'.repeat(36);
 const noFetch = (async () => { throw new Error('no network'); }) as typeof fetch;
+const jevOk = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13-20260917', answers: { probe: { type: 'noul', noul: 0.99 } }, usage: { input_tokens: 40, output_tokens: 2, cost: 0.0123 } }), { status: 200 })) as typeof fetch;
 
 describe('probes', () => {
   it('claude: loggedIn true → ok with email and plan; false or bad json → red', async () => {
@@ -50,12 +51,24 @@ describe('probes', () => {
   });
 
   it('openrouter: one noul through Jev; ok reports model and cost, a 401 is red without the key', async () => {
-    const ok = (async () => new Response(JSON.stringify({ model: 'typesafe/jev-1.13-20260917', answers: { probe: { type: 'noul', noul: 0.99 } }, usage: { input_tokens: 40, output_tokens: 2, cost: 0.0000017 } }), { status: 200 })) as typeof fetch;
-    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: ok }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · $0.0000' });
+    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: jevOk }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · US$ 0,0123' });
     const unauthorized = (async () => new Response(`invalid key ${KEY}`, { status: 401 })) as typeof fetch;
     const r = await openrouterKey({ exec: new FakeExec().exec, fetch: unauthorized }, KEY);
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('401');
     expect(r.detail).not.toContain(KEY);
+  });
+
+  it('openrouter: the detail shows the accumulated Jev spend next to the model', async () => {
+    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: jevOk, accumulatedUsd: async () => 0.2887 }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · custo acumulado US$ 0,2887' });
+  });
+
+  it('openrouter: a failing accumulated total does not fail the probe, and the detail keeps the probe cost', async () => {
+    const failing = async () => { throw new Error('ledger unreadable'); };
+    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: jevOk, accumulatedUsd: failing }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · US$ 0,0123' });
+  });
+
+  it('openrouter: thousands get a dot, and US$ keeps a no-break space, as the costs screen writes them', async () => {
+    expect(await openrouterKey({ exec: new FakeExec().exec, fetch: jevOk, accumulatedUsd: async () => 1234.5 }, KEY)).toEqual({ ok: true, detail: 'typesafe/jev-1.13-20260917 · custo acumulado US$ 1.234,5000' });
   });
 });

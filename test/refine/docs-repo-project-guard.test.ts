@@ -23,6 +23,12 @@ describe('a new project under the documentation repository layout', () => {
     await s.close();
   });
 
+  it('names the existing project in plain words and asks to register it instead', async () => {
+    rig = await makeRig({ docsRepoLayout: true, owner: 'acme' });
+    await writeDocsMarker(rig.ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'hello-app' }, firstSha: null });
+    await expect(rig.registry.newProject('hello-app', 'Hello')).rejects.toThrow('O projeto hello-app já existe. Cadastre-o em vez de criar outro.');
+  });
+
   it('refuses a project whose id already has a documentation repository marker', async () => {
     rig = await makeRig({ docsRepoLayout: true, owner: 'acme' });
     await writeDocsMarker(rig.ws, { layout: 'docs-repo', style: 'monolith', target: { owner: 'acme', name: 'hello-app' }, firstSha: null });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, agentsDecideFor, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
+import { automaticSettingsOf, ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, agentsDecideFor, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
 
 describe('stepModelFor', () => {
   it("gives a services plan the plan's model unless it has its own, since both plan the run", () => {
@@ -29,8 +29,21 @@ describe('loadConfig', () => {
   });
 
   it('runs every automatic group at low effort unless the owner sets another', () => {
-    expect(loadConfig({}).routing.efforts).toEqual({ small: 'low', medium: 'low', large: 'low', architecture: 'low', laterCycle: 'low' });
+    expect(loadConfig({}).routing.efforts).toEqual({ small: 'low', medium: 'low', large: 'low', architecture: 'low', laterCycle: 'low', automatic: 'low' });
     expect(loadConfig({ routing: { efforts: { architecture: 'max' } } }).routing.efforts.architecture).toBe('max');
+  });
+
+  it('gives the naming model, the naming effort, the automatic effort and the effort caps their defaults, and keeps an explicit value', () => {
+    const routing = loadConfig({}).routing;
+    expect(routing.namingModel).toBe('claude-haiku-5-5');
+    expect(routing.namingEffort).toBe('low');
+    expect(routing.efforts.automatic).toBe('low');
+    expect(routing.automaticEffortCap).toEqual({ haiku: 'low', sonnet: 'high', opus: 'low' });
+    const set = loadConfig({ routing: { namingModel: 'claude-sonnet-5-5', namingEffort: 'medium', efforts: { automatic: 'high' }, automaticEffortCap: { sonnet: 'medium' } } }).routing;
+    expect(set.namingModel).toBe('claude-sonnet-5-5');
+    expect(set.namingEffort).toBe('medium');
+    expect(set.efforts.automatic).toBe('high');
+    expect(set.automaticEffortCap).toEqual({ haiku: 'low', sonnet: 'medium', opus: 'low' });
   });
 
   it('merges partial overrides without dropping sibling defaults', () => {
@@ -77,6 +90,24 @@ describe('loadConfig', () => {
     expect(agentsDecideFor(cfg, 'demo')).toBe(true);
     expect(agentsDecideFor(cfg, 'other')).toBe(false);
     expect(agentsDecideFor(cfg, 'constructor')).toBe(false);
+  });
+});
+
+describe('automaticSettingsOf', () => {
+  it('shows the architecture model the config holds, and the config default when it holds none', () => {
+    expect(automaticSettingsOf({ ...DEFAULT_CONFIG.routing, stepModels: { 'tech-spec': 'claude-sonnet-5-5' } }).architecture.model).toBe('claude-sonnet-5-5');
+    expect(automaticSettingsOf({ ...DEFAULT_CONFIG.routing, stepModels: {} }).architecture.model).toBe('claude-opus-5-5');
+  });
+
+  it('shows the later-cycle model the config holds, and the schema default when it holds none', () => {
+    expect(automaticSettingsOf({ ...DEFAULT_CONFIG.routing, laterCycleModels: { refine: 'claude-opus-5-5' } }).laterCycle.model).toBe('claude-opus-5-5');
+    expect(automaticSettingsOf({ ...DEFAULT_CONFIG.routing, laterCycleModels: {} }).laterCycle.model).toBe(DEFAULT_CONFIG.routing.laterCycleModels.refine);
+  });
+});
+
+describe('stage review part limit', () => {
+  it('gives a stage review part five minutes by default, since a part of a large document takes more than two', () => {
+    expect(loadConfig({}).budgets.step.reviewTimeoutMs).toBe(5 * 60_000);
   });
 });
 

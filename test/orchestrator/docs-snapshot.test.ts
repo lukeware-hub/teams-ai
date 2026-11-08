@@ -95,6 +95,7 @@ async function stepDeps(seen: string[][]): Promise<AgentStepDeps & { journal: Jo
     journal,
     stepDir: (seq) => path.join(dir, 'steps', String(seq)),
     secretValues: () => [],
+    defaultEffort: 'low',
     specHash: HASH,
   } as AgentStepDeps & { journal: Journal };
 }

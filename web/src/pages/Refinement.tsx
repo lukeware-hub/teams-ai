@@ -48,7 +48,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, specsQuestions, speckitQuestions, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, specsQuestions, speckitQuestions, stepOpen, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { PASS_LINE, percentOf } from '@server/refine/readiness';
 
@@ -75,6 +75,8 @@ const errorText = (text: string | null) => text
 // The server refuses a second evaluation while one runs: the owner waits for it, so the page shows progress, not an error.
 /** The pause after the last keystroke before a stage document is saved on its own. */
 const AUTOSAVE_MS = 1500;
+/** The pause before a save the server refused while it organizes a document is sent again. */
+const BUSY_SAVE_RETRY_MS = 500;
 
 /** The card each step of a request opens on the page: the owner's words, the impact, the replan, and the ready bar. */
 const REQUEST_STEP_TARGET: Record<string, string> = { pedido: 'step-card-request', impacto: 'step-card-impact', specs: 'step-card-replan', pronto: 'request-ready' };
@@ -89,7 +91,10 @@ function BusyDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-const isBusyError = (e: Error) => e.message.startsWith('Já tem uma avaliação em andamento');
+// Every refusal for a process still running starts with "Já tem": the busy dialog explains them all.
+const isBusyError = (e: Error) => e.message.startsWith('Já tem ');
+// The server refuses a save for a moment while it organizes a document after a suggestion: only that save is sent again.
+const isOrganizingError = (e: Error) => e.message.startsWith('Já tem o documento sendo organizado');
 const typeLabel: Record<string, string> = { feature: 'Feature', bug: 'Bug', maintenance: 'Manutenção', refactor: 'Refatoração' };
 
 /** The alignment line: the last stage review's divergences of the document, or else the full round's contradictions check. */
@@ -234,7 +239,7 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
   if (!jevEvent) return 'Jev está validando os cinco documentos do projeto.';
   // The status says whether the Jev answered, never a verdict on the documents.
   const stage = jevEvent.data.stage !== undefined;
-  if (jevEvent.data.available === false) return stage ? 'Jev indisponível: confira a chave do OpenRouter. A etapa segue sem a nota dele.' : 'Jev indisponível: confira a chave do OpenRouter. A avaliação não continua sem ele.';
+  if (jevEvent.data.available === false) return stage ? 'Jev indisponível: confira a chave do OpenRouter. A etapa segue sem a nota dele.' : 'O Jev não respondeu. A avaliação segue sem as notas dele.';
 
   const active = runningSteps(events, cycle);
   if (active.some((step) => step.kind === 'backlog')) return 'PO está quebrando os documentos em backlog, com épicos e prioridades.';
@@ -254,7 +259,12 @@ function currentClaudeStage(events: StoredEvent[], cycle: number, jevEvent: Stor
 export interface ViewProps {
   snap: Snapshot;
   busy: boolean;
-  onSaveDoc(file: DocFile, text: string): void | Promise<unknown>;
+  /** Saves a document over the hash its text was typed over; resolves to the hash it has now, or null when the server refused. */
+  onSaveDoc(file: DocFile, text: string, baseHash?: string, keepalive?: boolean): Promise<string | null> | void;
+  /** Reads a document as the server holds it now, with its hash; resolves to null when the read fails. */
+  onReadDoc?(file: DocFile): Promise<{ text: string; hash?: string } | null>;
+  /** The message of the last save the server refused: shown beside the editor until a save goes through. */
+  saveError?: string | null;
   /** "Sugerir": the agent's version of a document written from flow.md, or null when it failed. */
   onSuggestDoc?(file: Exclude<DocFile, 'flow.md'>): Promise<string | null>;
   /** "Anexar imagem": the agent's design.md adjusted from template images (base64), or null when it failed. */
@@ -297,13 +307,15 @@ export interface ViewProps {
   /** The owner's answer on whether the project is confidential. */
   onConfidential?(value: boolean): void | Promise<unknown>;
   /** Stage 2 of a new project: the whole backlog in one run, stopped by a question or an error and resumed by the next call. */
-  onAnswer(id: string, text: string, docsAnswered: boolean): void | Promise<unknown>;
+  /** Resolves to `false` when the server refused the answer: the owner's text then stays in its field. */
+  onAnswer(id: string, text: string, docsAnswered: boolean): void | boolean | Promise<unknown>;
   onSkip(id: string): void | Promise<unknown>;
   /** The owner asks again for a question the guard dropped. */
   onReask?(id: string): void | Promise<unknown>;
   onAccept(id: string): void | Promise<unknown>;
   onReject(id: string, reason: string | null): void | Promise<unknown>;
-  onSecret(name: string, value: string): void | Promise<unknown>;
+  /** Resolves to `false` when the server refused the value: the owner's text then stays in its field. */
+  onSecret(name: string, value: string): void | boolean | Promise<unknown>;
   onStart(): void | Promise<unknown>;
   startState?: { label: string; busy: boolean };
   /** The score banner above offers the start, so the review panel does not repeat it. */
@@ -362,7 +374,7 @@ function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: Drop
                 <p data-testid={`refinement-dropped-repeat-answer-${r.questionId}`} className="m-0 text-[0.875rem] font-semibold text-ink">{r.matchedAnswer === null ? 'Você ignorou esta pergunta.' : `Você respondeu: ${r.matchedAnswer}`}</p>
               </>
             )}
-            <button type="button" className="secondary h-10 w-fit px-3 text-[0.8125rem]" data-testid={`reask-${r.questionId}`} disabled={locked} onClick={() => onReask(r.questionId)}>Perguntar de novo</button>
+            <ActionButton className="secondary h-10 w-fit px-3 text-[0.8125rem]" data-testid={`reask-${r.questionId}`} disabled={locked} onClick={() => onReask(r.questionId)}>Perguntar de novo</ActionButton>
           </li>
         ))}
       </ul>
@@ -372,10 +384,15 @@ function DroppedRepeats({ rows, locked, onReask, compact = false }: { rows: Drop
 
 export function RefinementView(p: ViewProps) {
   const navigate = useNavigate();
-  const { snap, busy } = p;
+  const { snap, busy, saveError } = p;
   const st = snap.state;
   const [tab, setTab] = useState<DocFile>('flow.md');
   const [docs, setDocs] = useState(snap.docs);
+  // The text on screen as of now: an answer from the agents arrives after the click, so it reads the text it finds then.
+  const docsNow = useRef(docs);
+  useEffect(() => {
+    docsNow.current = docs;
+  }, [docs]);
   const [suggesting, setSuggesting] = useState(false);
   const [askRe, setAskRe] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(true);
@@ -384,13 +401,13 @@ export function RefinementView(p: ViewProps) {
   const [busyDialog, setBusyDialog] = useState(false);
   const [ask, setAsk] = useState<{ title: string; text: string; confirmLabel: string; tone?: 'danger' | 'accent'; icon?: 'trash' | 'refresh' | 'file' | 'check'; onConfirm: () => void } | null>(null);
   // The owner's button for everything: the team takes the autonomy to answer, decide, repair and prepare, after one confirmation.
-  const resolveAll = () => setAsk({ title: 'Preparar o backlog', text: 'O time revisa os documentos (PO e SM), aceita as sugestões, responde as perguntas, gera o specs.md e os planos, corrige o que for reprovado, coloca os cinco documentos no Graphify e salva tudo nos repositórios. Só para quando o desenvolvimento puder começar. Isso usa chamadas de agente.', confirmLabel: 'Preparar backlog', tone: 'accent', icon: 'check', onConfirm: () => { setPreparing(true); void Promise.resolve(p.onResolveAll?.()).catch(() => setPreparing(false)); } });
+  const resolveAll = () => setAsk({ title: 'Preparar o backlog', text: 'O time revisa os documentos (PO e SM), aceita as sugestões, responde as perguntas, gera o specs.md e os planos, corrige o que for reprovado, coloca os cinco documentos no Graphify e salva tudo nos repositórios. Só para quando o desenvolvimento puder começar. Isso usa chamadas de agente.', confirmLabel: 'Preparar backlog', tone: 'accent', icon: 'check', onConfirm: () => { setPreparing(true); void Promise.resolve(p.onResolveAll?.()).finally(() => setPreparing(false)); } });
   // A new project is refined one document per screen; the step lives in the address, so a reload opens the same screen.
-  // A running project opens on the step named in the address, else stage 7; an old `vista=backlog` address opens stage 7.
+  // A running project opens on the step named in the address when it is open, else stage 7; an old `vista=backlog` address opens stage 7.
   const [step, setStep] = useState<WizardStep>(() => {
     const query = new URLSearchParams(window.location.search);
     if (query.get('vista') === 'backlog') return 'backlog';
-    if (snap.state.status === 'started') return parseStep(query.get('etapa')) ?? 'backlog';
+    if (snap.state.status === 'started' && parseStep(query.get('etapa')) === null) return 'backlog';
     return initialStep(snap.state, query.get('etapa'));
   });
   const stepMoved = useRef(false);
@@ -420,16 +437,64 @@ export function RefinementView(p: ViewProps) {
   };
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [newSecrets, setNewSecrets] = useState<Array<{ id: number; name: string; value: string }>>([]);
-  const saved = useRef(snap.docs);
+  // The text the server holds for each document, with its hash: a save is sent over that hash, and text typed beyond it is not saved yet.
+  const baseline = useRef<Partial<Record<DocFile, { text: string; hash?: string }>>>(
+    Object.fromEntries(DOC_STAGES.map((file) => [file, { text: snap.docs[file], hash: snap.hashes?.[file] }])),
+  );
+  // A reload moves the editor to the server text, except where the owner typed text the server does not hold yet.
   useEffect(() => {
-    // A reload keeps a tab's unsaved text unless that same file also changed on the server.
-    const before = saved.current;
-    setDocs((local) => Object.fromEntries(Object.entries(snap.docs).map(([f, text]) => {
-      const file = f as DocFile;
-      return [file, local[file] !== before[file] && text === before[file] ? local[file] : text];
-    })) as typeof snap.docs);
-    saved.current = snap.docs;
+    const held = baseline.current;
+    const adopted: Partial<Record<DocFile, string>> = {};
+    for (const file of DOC_STAGES) {
+      if (docs[file] !== held[file]?.text) continue;
+      held[file] = { text: snap.docs[file], hash: snap.hashes?.[file] };
+      if (snap.docs[file] !== docs[file]) adopted[file] = snap.docs[file];
+    }
+    if (Object.keys(adopted).length === 0) return;
+    // Only a file still showing the text read above takes the server text: a keystroke made meanwhile stays.
+    setDocs((local) => {
+      const next = { ...local };
+      for (const file of DOC_STAGES) {
+        if (adopted[file] !== undefined && local[file] === docs[file]) next[file] = adopted[file];
+      }
+      return next;
+    });
   }, [snap.docs]);
+  // Saves run one after another, so each one is sent over the hash the one before it left; an idle page sends at once.
+  const saves = useRef<Promise<boolean> | null>(null);
+  const sendSave = async (file: DocFile, text: string, keepalive: boolean): Promise<boolean> => {
+    const held = baseline.current[file];
+    if (held?.text === text) return true;
+    try {
+      const hash = keepalive ? await p.onSaveDoc(file, text, held?.hash, true) : await p.onSaveDoc(file, text, held?.hash);
+      if (hash === null) return false;
+      baseline.current[file] = { text, hash: hash ?? undefined };
+      return true;
+    } catch (e) {
+      if (!isOrganizingError(e as Error)) return false;
+      // The server is organizing the document for a moment: the text is sent again by itself, with no message.
+      await new Promise((resolve) => setTimeout(resolve, BUSY_SAVE_RETRY_MS));
+      // The layout moved the document to a new hash, so the retry is sent over the one the server holds now.
+      const fresh = await p.onReadDoc?.(file);
+      if (!fresh) return false;
+      baseline.current[file] = fresh;
+      return sendSave(file, text, keepalive);
+    }
+  };
+  const saveText = (file: DocFile, text: string): Promise<boolean> => {
+    const run = () => sendSave(file, text, false);
+    saves.current = saves.current ? saves.current.then(run, run) : run();
+    return saves.current;
+  };
+  // A save made as the page hides is sent at once, not behind an earlier save, so the browser can still send it as the page closes.
+  const saveHidden = (file: DocFile, text: string): void => {
+    saves.current = sendSave(file, text, true);
+  };
+  // The text typed last is saved before the server reads the document: a save the server refuses stops the action.
+  const saveTyped = async (): Promise<boolean> => {
+    if (!isDocStep(step) || locked || docs[step] === baseline.current[step]?.text) return true;
+    return saveText(step, docs[step] ?? '');
+  };
   const copyDoc = (text: string) => {
     if (navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(text);
@@ -445,22 +510,15 @@ export function RefinementView(p: ViewProps) {
     try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
   };
   const evaluating = busy || st.status === 'evaluating';
-  // The button shows the spinner from the click until the server has worked and gone idle again.
+  // The button shows the spinner until the request answers; the server's own work keeps it on while the snapshot reports it busy.
   const [preparing, setPreparing] = useState(false);
-  const preparingSeen = useRef(false);
   // The server holds a process of its own (the plans, the specs, a check) that the page may not have seen start: the decisions on suggestions wait for it, with a notice on the click.
   const serverBusy = snap.busy === true && !st.graphing;
-  useEffect(() => {
-    if (!preparing) return;
-    if (serverBusy || evaluating) preparingSeen.current = true;
-    else if (preparingSeen.current) { preparingSeen.current = false; setPreparing(false); }
-  }, [preparing, serverBusy, evaluating]);
-  useEffect(() => {
-    if (!preparing) return;
-    const timer = setTimeout(() => setPreparing(false), 20_000);
-    return () => clearTimeout(timer);
-  }, [preparing]);
   const locked = evaluating || st.status === 'started';
+  // A document in Graphify holds the buttons that run the agents: the server refuses them until the extraction ends, the editor stays open.
+  const graphingNow = Boolean(st.graphing);
+  const runLocked = locked || graphingNow;
+  const graphReason = 'Espere a extração do Graphify terminar: os botões liberam sozinhos.';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
   const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
   const current = pending[0];
@@ -470,6 +528,7 @@ export function RefinementView(p: ViewProps) {
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
+  const limitTitle = atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined;
   const backlogOn = st.backlog?.enabled === true;
   // A new project's refinement has two mandatory stages: the documents, then the backlog the program runs from.
   const newProject = st.mode === 'new-project';
@@ -479,13 +538,13 @@ export function RefinementView(p: ViewProps) {
   const staleFrom = st.staleBy?.[tab] as DocFile | undefined;
   const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
   const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
-  // The text typed on a stage screen is saved a moment after the owner stops typing, so a pause or a closed tab loses nothing.
+  // The text typed on a stage screen is saved a moment after the owner stops typing.
   const typed = isDocStep(step) ? docs[step] : undefined;
   useEffect(() => {
-    if (!newProject || !isDocStep(step) || locked || typed === undefined || typed === snap.docs[step]) return;
-    const timer = setTimeout(() => void p.onSaveDoc(step, typed), AUTOSAVE_MS);
+    if (!newProject || !isDocStep(step) || locked || typed === undefined) return;
+    const timer = setTimeout(() => void saveText(step, typed), AUTOSAVE_MS);
     return () => clearTimeout(timer);
-  }, [typed, step, locked, newProject, snap.docs]);
+  }, [typed, step, locked, newProject]);
   // A new project's owner sees the document of the stage they are on; Continuar moves the view along.
   // The view follows only an owner who is on the stage that just ended: one reading another document stays there.
   const stageBefore = useRef(onStage);
@@ -535,7 +594,7 @@ export function RefinementView(p: ViewProps) {
   // A backlog prepares once it is detailed, a single spec once it is derived.
   const preparable = backlogOn ? st.backlog?.detail === true : Boolean(st.derived);
   const prepareButton = (
-    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={locked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => { setPrepareClick({ at: Date.now(), inputHash: speckit?.inputHash }); p.onPreparePlans?.(); }} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
+    <ActionButton data-testid="speckit-prepare" className={speckitReady ? 'secondary' : 'primary'} busy={speckitRunning} disabled={runLocked || speckitRunning || !preparable} title={preparable ? undefined : backlogOn ? 'Espere o backlog ficar detalhado' : 'Avalie a spec antes de preparar'} onClick={() => { setPrepareClick({ at: Date.now(), inputHash: speckit?.inputHash }); return p.onPreparePlans?.(); }} icon={<Icon name={speckit ? 'refresh' : 'play'} size={16} />}>
       {speckitRunning ? 'Preparando…' : speckit ? 'Preparar de novo' : 'Preparar os planos'}
     </ActionButton>
   );
@@ -598,9 +657,12 @@ export function RefinementView(p: ViewProps) {
   const suggest = (file: Exclude<DocFile, 'flow.md'>) => {
     setSuggesting(true);
     return p.onSuggestDoc!(file)
-      .then((text) => { if (text !== null) setDocs((d) => ({ ...d, [file]: text })); })
+      .then((text) => { if (text !== null) replaceDoc(file, suggestionDialog, () => setDocs((d) => ({ ...d, [file]: text }))); })
       .finally(() => setSuggesting(false));
   };
+  // Without flow.md the agents have nothing to write from: the server refuses, so the button says so first.
+  const flowEmpty = docs['flow.md'].trim() === '';
+  const suggestTitle = graphingNow ? graphReason : flowEmpty ? 'Preencha o flow.md antes de pedir uma sugestão.' : 'Gera este documento a partir do flow.md';
   const toBase64 = (f: File) =>
     new Promise<string>((resolve, reject) => {
       const r = new FileReader();
@@ -614,7 +676,7 @@ export function RefinementView(p: ViewProps) {
     try {
       const images = await Promise.all([...files].map((f) => toBase64(f).then((data) => ({ data }))));
       const text = await p.onDesignFromImages!(images);
-      if (text !== null) setDocs((d) => ({ ...d, 'design.md': text }));
+      if (text !== null) replaceDoc('design.md', suggestionDialog, () => setDocs((d) => ({ ...d, 'design.md': text })));
     } finally {
       setSuggesting(false);
     }
@@ -634,11 +696,15 @@ export function RefinementView(p: ViewProps) {
   ) : null;
   /** Replacing a document that holds text asks the owner first; an empty one is replaced at once. */
   const replaceDoc = (doc: DocFile, dialog: { title: string; text: string; confirmLabel: string; icon: 'file' | 'check' }, apply: () => void) => {
-    if (docs[doc].trim() === '') apply();
+    if (docsNow.current[doc].trim() === '') apply();
     else setAsk({ ...dialog, tone: 'accent', onConfirm: apply });
   };
+  /** The agent's text takes the place of the document only after the owner confirms. */
+  const suggestionDialog = { title: 'Substituir pelo texto sugerido', text: 'O texto atual deste documento será trocado pelo texto sugerido. Copie o seu texto antes, se quiser guardá-lo.', confirmLabel: 'Substituir', icon: 'file' as const };
   const markNotApplicable = () => replaceDoc('design.md', { title: 'Marcar o design como não se aplica', text: 'O texto do design será trocado por "Não se aplica".', confirmLabel: 'Marcar', icon: 'check' }, () => {
     setDocs((d) => ({ ...d, 'design.md': NOT_APPLICABLE_DESIGN }));
+    // The server writes the mark itself, so the text counts as held: the reload brings the hash it has now.
+    baseline.current['design.md'] = { text: NOT_APPLICABLE_DESIGN };
     void p.onNotApplicable?.();
   });
   const attachDoc = async (files: FileList | null, doc: DocFile = tab) => {
@@ -648,7 +714,7 @@ export function RefinementView(p: ViewProps) {
     if (text === null) return;
     replaceDoc(doc, { title: 'Anexar o arquivo', text: 'O texto atual deste documento será trocado pelo arquivo anexado.', confirmLabel: 'Anexar', icon: 'file' }, () => {
       setDocs((d) => ({ ...d, [doc]: text }));
-      p.onSaveDoc(doc, text);
+      void saveText(doc, text);
     });
   };
   const tabButton = (f: DocFile) => (
@@ -726,13 +792,13 @@ export function RefinementView(p: ViewProps) {
         {/* The editor's actions sit above it, so they never cover the document's first lines. */}
         <div data-testid="refinement-docs-actions" className="flex flex-col gap-2">
           {tab !== 'flow.md' && p.onSuggestDoc && (
-            <ActionButton data-testid="suggest" className="h-10 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
+            <ActionButton data-testid="suggest" className="h-10 px-[0.8rem]" busy={suggesting} disabled={runLocked || flowEmpty} title={suggestTitle} onClick={() => suggest(tab)} icon={<Icon name="lightbulb" size={16} />}>
               {suggesting ? 'Sugerindo…' : 'Sugerir'}
             </ActionButton>
           )}
           {tab === 'design.md' && p.onDesignFromImages && (
             <>
-            <button type="button" data-testid="refinement-docs-attach-image" className="h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+            <button type="button" data-testid="refinement-docs-attach-image" className="h-10 px-[0.8rem]" disabled={runLocked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
               Anexar imagem
               <Icon name="file" size={16} />
             </button>
@@ -749,7 +815,7 @@ export function RefinementView(p: ViewProps) {
             </>
           )}
           {newProject && tab === 'design.md' && (
-            <button type="button" data-testid="refinement-docs-not-applicable" className="h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+            <button type="button" data-testid="refinement-docs-not-applicable" className="h-10 px-[0.8rem]" disabled={runLocked} title={graphingNow ? graphReason : undefined} onClick={markNotApplicable}>Não se aplica</button>
           )}
           <button type="button" data-testid="refinement-docs-copy" className="h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[tab] ?? '')}>
             Copiar
@@ -762,18 +828,19 @@ export function RefinementView(p: ViewProps) {
         data-testid={`doc-${tab}`}
         value={docs[tab] ?? ''}
         readOnly={locked}
-        onChange={(e) => setDocs({ ...docs, [tab]: e.target.value })}
+        onChange={(e) => setDocs((d) => ({ ...d, [tab]: e.target.value }))}
         onBlur={() => {
-          if (!locked && docs[tab] !== snap.docs[tab]) p.onSaveDoc(tab, docs[tab] ?? '');
+          if (!locked) void saveText(tab, docs[tab] ?? '');
         }}
       />
+      {saveError && <p role="alert" data-testid="refinement-save-error" className={notice}>{saveError}</p>}
       </div>
       {newProject && (
         <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="stage-nav">
           <button type="button" data-testid="stage-back" disabled={!previousStage(tab) || locked} onClick={() => setTab(previousStage(tab)!)}>Voltar</button>
           {onStage ? (
             <>
-              <ActionButton data-testid="stage-evaluate" disabled={locked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
+              <ActionButton data-testid="stage-evaluate" disabled={runLocked || atMax} onClick={() => p.onEvaluateStage?.(onStage)} icon={<Icon name="check" size={16} />}>Avaliar esta etapa</ActionButton>
               <ActionButton data-testid="stage-continue" className="primary" disabled={locked || stageBlock(onStage) !== null} title={stageBlock(onStage)?.hint ?? undefined} onClick={() => p.onContinueStage?.()} icon={<Icon name="check" size={16} />}>Continuar</ActionButton>
             </>
           ) : (
@@ -883,10 +950,10 @@ export function RefinementView(p: ViewProps) {
               className="primary"
               data-testid={`answer-${current.questionId}`}
               disabled={answerLocked || answer.trim() === ''}
-              onClick={() => {
-                const sent = p.onAnswer(current.questionId, answer, docsAnswered);
-                setDrafts((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== current.questionId)));
-                return sent;
+              onClick={async () => {
+                const sent = await p.onAnswer(current.questionId, answer, docsAnswered);
+                // The answer leaves the field only once the server has taken it: a refused one stays for another try.
+                if (sent !== false) setDrafts((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== current.questionId)));
               }}
               icon={<Icon name="send" size={16} />}
             >
@@ -946,7 +1013,7 @@ export function RefinementView(p: ViewProps) {
       <div data-testid="refinement-review-actions" className="mb-4 flex flex-wrap items-center gap-3">
         {newProject && !p.hideStart && startButton}
         {showEvaluate && (
-        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={locked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
+        <ActionButton data-testid="evaluate" className={`${newProject && stageStep !== 'evaluate' ? 'secondary' : 'primary'} min-w-40 flex-auto`} busy={evaluating} disabled={runLocked || atMax} onClick={unchanged ? () => setAskRe(true) : p.onEvaluate} icon={<Icon name="check" size={16} />}>
           {st.cycle === 0 ? 'Avaliar' : 'Reavaliar'}
         </ActionButton>
         )}
@@ -1092,45 +1159,76 @@ export function RefinementView(p: ViewProps) {
           <li data-testid={`refinement-secret-${s.name}`} key={s.name} className={`${secretRow} border-line bg-surface-sunken`}>
             {/* A hint made only of asterisks is a mask, not a hint: it tells the user nothing. */}
             <div data-testid={`refinement-secret-header-${s.name}`} className="flex min-w-0 items-center gap-[0.45rem]"><code data-testid={`refinement-secret-name-${s.name}`} className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{s.name}</code><InfoTip label={s.name} text={secretTip(s)} />{s.hint && /[^*]/.test(s.hint) && <small data-testid={`refinement-secret-hint-${s.name}`} className="text-[0.7rem] text-ink-soft">termina em {s.hint}</small>}<span data-testid={`refinement-secret-status-${s.name}`} className={`status-dot ${s.present ? 'ok' : 'warn'}`}>{s.present ? 'Salvo' : 'Não salvo'}</span></div>
-            <div data-testid={`refinement-secret-entry-${s.name}`} className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><ActionButton className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={() => { const value = secretValues[s.name]!; setSecretValues({ ...secretValues, [s.name]: '' }); return p.onSecret(s.name, value); }} icon={<Icon name="check" size={14} />}>Salvar</ActionButton></div>
+            <div data-testid={`refinement-secret-entry-${s.name}`} className={`${secretEntry} grid-cols-[minmax(0,1fr)_7rem]`}><input type="password" autoComplete="new-password" className={secretInput} data-testid={`secret-${s.name}`} aria-label={`Novo valor de ${s.name}`} placeholder={s.present ? 'Digite um novo valor para substituir' : 'Cole o valor da chave'} value={secretValues[s.name] ?? ''} onChange={(e) => setSecretValues({ ...secretValues, [s.name]: e.target.value })} /><ActionButton className={secretSave} data-testid={`save-secret-${s.name}`} disabled={!(secretValues[s.name] ?? '')} onClick={async () => { const value = secretValues[s.name]!; if ((await p.onSecret(s.name, value)) !== false) setSecretValues((all) => ({ ...all, [s.name]: '' })); }} icon={<Icon name="check" size={14} />}>Salvar</ActionButton></div>
           </li>
         ))}
-        {newSecrets.map((s) => <li data-testid={`refinement-new-secret-${s.id}`} key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div data-testid={`refinement-new-secret-title-${s.id}`} className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div data-testid={`refinement-new-secret-entry-${s.id}`} className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input data-testid={`refinement-new-secret-name-${s.id}`} className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input data-testid={`refinement-new-secret-value-${s.id}`} type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button data-testid={`refinement-new-secret-save-${s.id}`} className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={() => { p.onSecret(s.name, s.value); setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
+        {newSecrets.map((s) => <li data-testid={`refinement-new-secret-${s.id}`} key={s.id} className={`${secretRow} border-accent-line bg-accent-soft`}><div data-testid={`refinement-new-secret-title-${s.id}`} className="flex items-center gap-[0.45rem] text-[0.78rem] font-bold text-ink">Nova variável<InfoTip text="Valor sigiloso que o projeto lê para acessar um serviço externo, como NATS_URL com o endereço do servidor de mensagens. Fica salvo neste computador e o valor nunca volta a ser exibido." /></div><div data-testid={`refinement-new-secret-entry-${s.id}`} className={`${secretEntry} grid-cols-[minmax(8rem,0.7fr)_minmax(0,1fr)_auto] max-[720px]:grid-cols-1`}><input data-testid={`refinement-new-secret-name-${s.id}`} className={secretInput} aria-label="Nome da chave" placeholder="NOME_DA_CHAVE" value={s.name} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, name: e.target.value.toUpperCase() } : row))} /><input data-testid={`refinement-new-secret-value-${s.id}`} type="password" autoComplete="new-password" className={secretInput} aria-label="Valor da chave" placeholder="Cole o valor da chave" value={s.value} onChange={(e) => setNewSecrets((rows) => rows.map((row) => row.id === s.id ? { ...row, value: e.target.value } : row))} /><button data-testid={`refinement-new-secret-save-${s.id}`} className={secretSave} disabled={!/^[A-Z][A-Z0-9_]*$/.test(s.name) || !s.value} onClick={async () => { if ((await p.onSecret(s.name, s.value)) !== false) setNewSecrets((rows) => rows.filter((row) => row.id !== s.id)); }}>Salvar<Icon name="check" size={16} /></button></div></li>)}
       </ul>
     </section>
   );
   const qualityPanel = qualityBlock(qualityCard);
+  // The text of the step on screen is saved before the owner leaves it: by a step change, by Back, or by closing the page.
+  const leaving = useRef<(hidden?: boolean) => void>(() => {});
+  leaving.current = (hidden = false) => {
+    if (!isDocStep(step) || locked) return;
+    if (hidden) saveHidden(step, docs[step] ?? '');
+    else void saveText(step, docs[step] ?? '');
+  };
+  useEffect(() => {
+    // The text is saved when the page is hidden or closed, best effort: the browser may drop the request on the way out.
+    const onHide = () => leaving.current(true);
+    const onVisibility = () => {
+      if (document.hidden) leaving.current(true);
+    };
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      leaving.current();
+    };
+  }, []);
+  useEffect(() => {
+    // Each step is an entry of the history, so the browser's Back returns to the step before.
+    const onBack = () => {
+      const named = initialStep(st, new URLSearchParams(window.location.search).get('etapa'));
+      if (named === step) return;
+      leaving.current();
+      stepMoved.current = true;
+      setStep(named);
+    };
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, [step, st]);
   const goTo = (next: WizardStep | null) => {
-    if (next === null) return;
-    // The editor of this screen unmounts, so its text is saved before the step changes.
-    if (isDocStep(step) && !locked && docs[step] !== snap.docs[step]) p.onSaveDoc(step, docs[step] ?? '');
+    if (next === null || next === step) return;
+    leaving.current();
     stepMoved.current = true;
     setStep(next);
     const url = new URL(window.location.href);
     url.searchParams.set('etapa', stepParam(next));
     url.searchParams.delete('vista');
-    window.history.replaceState(null, '', url);
-  };
-  // A step opens from the stepper up to the first one not done: the later ones wait for the stage before.
-  const canOpenStep = (key: WizardStep): boolean => {
-    const nodes = wizardNodes(st, step);
-    const firstOpen = nodes.findIndex((node) => node.state !== 'done' && node.key !== step);
-    const target = nodes.findIndex((node) => node.key === key);
-    return target >= 0 && (firstOpen === -1 || target <= firstOpen || nodes[target]!.state === 'done');
+    window.history.pushState(null, '', url);
   };
   const stageSession = st.stages === true;
   const doneStages = st.doneStages ?? [];
+  const outdatedDocs = st.outdatedDocs ?? [];
   // What keeps Continuar closed, in plain words; the graph check is not one: Continuar itself adds the document.
-  // A document scored below the pass line: the agents already tried once, so the owner decides to go on.
-  const lowScore = isDocStep(step) && !doneStages.includes(step) && st.readiness?.docs?.[step] !== undefined && st.readiness.docs[step]!.score < PASS_LINE ? percentOf(st.readiness.docs[step]!.score) : null;
-  const continueBlock = ((): StageCheck | null => {
-    if (!stageSession || st.repositories !== true || !isDocStep(step) || doneStages.includes(step)) return null;
+  // A document scored below the pass line and not edited since: the agents already tried once, so the owner decides to go on.
+  // The flag compares the percent on screen, so 49.6% (shown as 50%) is not below the line.
+  const lowScore = isDocStep(step) && !doneStages.includes(step) && !outdatedDocs.includes(step) && st.readiness?.docs?.[step] !== undefined && percentOf(st.readiness.docs[step]!.score) < percentOf(PASS_LINE) ? percentOf(st.readiness.docs[step]!.score) : null;
+  // A stale document, or an empty flow.md, closes Continuar in every stage session; a repository session also keeps the stage checks, but not the graph check, which Continuar itself serves.
+  const continueBlock = ((): string | null => {
+    if (!stageSession || !isDocStep(step)) return null;
+    if (st.staleBy?.[step] !== undefined) return `Processe a etapa ${step} de novo antes de continuar.`;
+    if (step === 'flow.md' && docs['flow.md'].trim() === '') return 'Escreva o flow.md antes de continuar: a etapa está vazia.';
+    if (st.repositories !== true || doneStages.includes(step)) return null;
     const block = stageBlock(step);
-    return block?.id === 'graphed' ? null : block;
+    return block && block.id !== 'graphed' ? block.hint : null;
   })();
   const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
-  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${money(snap.tokens.costUsd)}`;
-  const outdatedDocs = st.outdatedDocs ?? [];
+  // The tokens count the Graphify extraction too, the cost does not: the line says so.
+  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${money(snap.tokens.costUsd)} sem o Graphify`;
   const stageScreen = (file: DocFile) => {
     const score = st.readiness?.docs?.[file];
     const scoreOutdated = outdatedDocs.includes(file);
@@ -1163,13 +1261,13 @@ export function RefinementView(p: ViewProps) {
             </button>
             <input ref={docFileInput} data-testid="attach-doc" type="file" accept=".md,.txt,text/markdown,text/plain" hidden onChange={(e) => { void attachDoc(e.target.files, file); e.target.value = ''; }} />
             {file !== 'flow.md' && p.onSuggestDoc && (
-              <ActionButton data-testid="suggest" className="secondary h-10 px-[0.8rem]" busy={suggesting} disabled={locked} title="Gera este documento a partir do flow.md" onClick={() => suggest(file)} icon={<Icon name="lightbulb" size={16} />}>
+              <ActionButton data-testid="suggest" className="secondary h-10 px-[0.8rem]" busy={suggesting} disabled={runLocked || flowEmpty} title={suggestTitle} onClick={() => suggest(file)} icon={<Icon name="lightbulb" size={16} />}>
                 {suggesting ? 'Sugerindo…' : 'Sugerir'}
               </ActionButton>
             )}
             {file === 'design.md' && p.onDesignFromImages && (
               <>
-                <button type="button" data-testid="refinement-stage-attach-image" className="secondary h-10 px-[0.8rem]" disabled={locked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
+                <button type="button" data-testid="refinement-stage-attach-image" className="secondary h-10 px-[0.8rem]" disabled={runLocked || suggesting} title="Ajusta o design.md pelas cores, fontes e alinhamentos de imagens de exemplo; as imagens são apagadas depois" onClick={() => attachInput.current?.click()}>
                   Anexar imagem
                   <Icon name="file" size={16} />
                 </button>
@@ -1177,7 +1275,7 @@ export function RefinementView(p: ViewProps) {
               </>
             )}
             {file === 'design.md' && (
-              <button type="button" data-testid="refinement-stage-not-applicable" className="secondary h-10 px-[0.8rem]" disabled={locked} onClick={markNotApplicable}>Não se aplica</button>
+              <button type="button" data-testid="refinement-stage-not-applicable" className="secondary h-10 px-[0.8rem]" disabled={runLocked} title={graphingNow ? graphReason : undefined} onClick={markNotApplicable}>Não se aplica</button>
             )}
             <button type="button" data-testid="refinement-stage-copy" className="secondary h-10 px-[0.8rem]" aria-label="Copiar documento" onClick={() => copyDoc(docs[file] ?? '')}>
               Copiar
@@ -1190,11 +1288,12 @@ export function RefinementView(p: ViewProps) {
             data-testid={`doc-${file}`}
             value={docs[file] ?? ''}
             readOnly={locked}
-            onChange={(e) => setDocs({ ...docs, [file]: e.target.value })}
+            onChange={(e) => setDocs((d) => ({ ...d, [file]: e.target.value }))}
             onBlur={() => {
-              if (!locked && docs[file] !== snap.docs[file]) p.onSaveDoc(file, docs[file] ?? '');
+              if (!locked) void saveText(file, docs[file] ?? '');
             }}
           />
+          {saveError && <p role="alert" data-testid="refinement-save-error" className={notice}>{saveError}</p>}
           <span data-testid="refinement-stage-autosave-note" className="inline-flex items-start gap-[0.45rem] text-[0.8125rem] leading-[1.35] text-ink-soft"><Icon name="info" size={18} />As alterações são salvas automaticamente ao sair do editor.</span>
         </div>
         <aside data-testid="refinement-stage-review" className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 border-line @max-3xl:border-t @max-3xl:pt-6 @3xl:border-l @3xl:pl-6" aria-label="Revisão da etapa">
@@ -1211,7 +1310,7 @@ export function RefinementView(p: ViewProps) {
                 {!score && <p data-testid="refinement-stage-no-score" className={`m-0 ${muted}`}>Sem nota do Jev ainda.</p>}
                 {score && scoreOutdated && <p data-testid="refinement-stage-score-outdated" className={`m-0 ${muted}`}>Nota anterior à última edição.</p>}
                 {jevBlocked && <p data-testid="refinement-stage-jev-blocked" className={`m-0 ${muted}`}>Responda se o projeto é confidencial para usar o Jev.</p>}
-                <ActionButton data-testid="score-doc" className="secondary h-10 w-full" disabled={locked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
+                <ActionButton data-testid="score-doc" className="secondary h-10 w-full" disabled={runLocked || jevBlocked || (score !== undefined && !scoreOutdated)} title={score && !scoreOutdated ? 'A nota já está atual' : undefined} onClick={() => p.onScoreDoc?.(file)} icon={<Icon name="check" size={16} />}>
                   Validar com o Jev
                 </ActionButton>
               </>
@@ -1236,13 +1335,14 @@ export function RefinementView(p: ViewProps) {
           {!locked && patches.map(patchCard)}
           <DiscardedNotices rows={discarded} testId="refinement-stage-discarded" named={false} />
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
-          {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+          {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
         </aside>
       </div>
     );
   };
   const finalScreen = () => {
-    const autoApplied = st.patches.filter((x) => x.auto === true).length;
+    // Only the suggestions the agents applied and the owner kept: a Reprocessar reverts the others.
+    const autoApplied = st.patches.filter((x) => x.auto === true && x.status === 'accepted').length;
     const needsScore = DOC_STAGES.some((file) => !st.readiness?.docs?.[file] || outdatedDocs.includes(file));
     return (
       <div data-testid="refinement-final-layout" className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1272,7 +1372,7 @@ export function RefinementView(p: ViewProps) {
             {confidentialProject ? (
               <p data-testid="refinement-final-confidential" className={`m-0 ${muted}`}>Projeto confidencial: o Jev não lê os documentos.</p>
             ) : needsScore && (
-              <ActionButton data-testid="score-all" className="secondary h-10 w-full" disabled={locked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
+              <ActionButton data-testid="score-all" className="secondary h-10 w-full" disabled={runLocked || (stageSession && st.confidential === undefined)} onClick={() => p.onScoreAll?.()} icon={<Icon name="check" size={16} />}>
                 Validar com o Jev
               </ActionButton>
             )}
@@ -1284,7 +1384,7 @@ export function RefinementView(p: ViewProps) {
               return (
                 <div key={file} className="flex flex-wrap items-center justify-between gap-3 text-[0.875rem] text-ink" data-testid={`graph-row-${file}`}>
                   <span data-testid={`refinement-final-graph-status-${file}`}>{docLabel[file]}: {inGraph ? 'no Graphify' : 'fora do Graphify'}</span>
-                  {!inGraph && <button type="button" data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={locked} onClick={() => p.onAddToGraph?.(file)}>Adicionar ao Graphify</button>}
+                  {!inGraph && <ActionButton data-testid={`graph-add-${file}`} className="secondary h-10 px-3" disabled={runLocked} title={graphingNow ? graphReason : undefined} onClick={() => p.onAddToGraph?.(file)}>Adicionar ao Graphify</ActionButton>}
                 </div>
               );
             })}
@@ -1294,8 +1394,24 @@ export function RefinementView(p: ViewProps) {
       </div>
     );
   };
+  // Why the final review cannot move on to the backlog yet, as the server words it; null when it can.
+  const reviewBlock = ((): string | null => {
+    if (!stageSession) return null;
+    const open = DOC_STAGES.filter((file) => !doneStages.includes(file));
+    if (st.repositories === true && open.length > 0) return `Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`;
+    const stale = Object.keys(st.staleBy ?? {});
+    return stale.length > 0 ? `Revise de novo as etapas desatualizadas antes: ${stale.join(', ')}.` : null;
+  })();
+  // Breaking the backlog down also waits for every document in Graphify, in a repository session.
+  const breakdownBlock = ((): string | null => {
+    const missing = DOC_STAGES.filter((file) => !(st.graphed ?? []).includes(file));
+    if (reviewBlock) return reviewBlock;
+    return st.repositories === true && stageSession && missing.length > 0 ? `Adicione os cinco documentos ao Graphify antes: falta ${missing.join(', ')}.` : null;
+  })();
   // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
   const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
+  // A hand edit of a passed stage takes it out of the reviewed set: the owner evaluates it again and keeps the edit.
+  const reviewOwed = isDocStep(step) && reprocess && st.repositories === true && !(st.reviewedStages ?? []).includes(step);
   // The answers given since the stage's last review wait for Reprocessar.
   const awaiting = isDocStep(step) ? (p.snap.answersAwaiting?.[step] ?? 0) : 0;
   const failingChecks = st.checklist.filter((c) => !c.passed).length;
@@ -1320,7 +1436,7 @@ export function RefinementView(p: ViewProps) {
         {backlogOn && speckitStatus}
         {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
         {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
-        {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+        {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
       </StepCard>
       <StepCard id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
         {verificationDetails}
@@ -1402,7 +1518,7 @@ export function RefinementView(p: ViewProps) {
                 ))}
               </div>
             )}
-            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={locked} onReask={(id) => p.onReask?.(id)} />}
+            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
   );
@@ -1434,20 +1550,25 @@ export function RefinementView(p: ViewProps) {
         <h2 data-testid="refinement-architecture-title" className="m-0 text-[1.25rem] font-semibold text-ink">Arquitetura</h2>
         <p data-testid="refinement-architecture-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
-      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); void p.onDecideArchitecture?.(); }} />
+      <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} stale={snap.architectureStale === true} blocked={graphingNow ? graphReason : null} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); return p.onDecideArchitecture?.(); }} />
     </div>
   );
   const wizardActions = step === 'backlog' ? (
     !backlogOn ? (
-      <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
-    ) : <><ActionButton data-testid="prepare-backlog" className={startMissing.length > 0 ? 'primary' : 'secondary'} busy={preparing || serverBusy || evaluating} disabled={locked || preparing || evaluating || serverBusy || !p.onResolveAll} onClick={resolveAll} icon={<Icon name="check" size={16} />}>{preparing || serverBusy || evaluating ? 'Preparando…' : 'Preparar backlog'}</ActionButton>{developButton}</>
+      <>
+        {breakdownBlock && <p data-testid="wizard-action-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{breakdownBlock}</p>}
+        <ActionButton data-testid="enable-backlog" className="primary" disabled={runLocked || breakdownBlock !== null} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
+      </>
+    ) : <><ActionButton data-testid="prepare-backlog" className={startMissing.length > 0 ? 'primary' : 'secondary'} busy={preparing || serverBusy || evaluating} disabled={runLocked || preparing || evaluating || serverBusy || !p.onResolveAll} onClick={resolveAll} icon={<Icon name="check" size={16} />}>{preparing || serverBusy || evaluating ? 'Preparando…' : 'Preparar backlog'}</ActionButton>{developButton}</>
   ) : step === 'review' ? (
     <>
+      {reviewBlock && <p data-testid="wizard-action-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{reviewBlock}</p>}
       {backlogOn || st.repositories === true ? (
         <>
         <ActionButton
           data-testid="open-backlog"
           className="primary"
+          disabled={runLocked || reviewBlock !== null}
           onClick={async () => {
             if (stageSession && !st.reviewClosed) {
               const result = await p.onCloseReview?.();
@@ -1462,7 +1583,7 @@ export function RefinementView(p: ViewProps) {
         </ActionButton>
         </>
       ) : (
-        <ActionButton data-testid="enable-backlog" className="primary" disabled={locked} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
+        <ActionButton data-testid="enable-backlog" className="primary" disabled={runLocked || reviewBlock !== null} onClick={() => p.onEnableBacklog?.()} icon={<Icon name="play" size={16} />}>Quebrar o backlog</ActionButton>
       )}
     </>
   ) : step === 'architecture' ? (
@@ -1482,28 +1603,36 @@ export function RefinementView(p: ViewProps) {
     </>
   ) : (
     <>
-      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
+      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={runLocked || atMax} title={limitTitle} onClick={() => {
           if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
           // Going back to the passed text drops the edits made since; the suggestions accepted since stay.
-          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. As sugestões aceitas continuam.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
+          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. As sugestões aceitas continuam, exceto as que dependem de um texto editado depois da entrega.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? (awaiting > 0 ? `Reprocessar · ${awaiting} ${awaiting === 1 ? 'resposta' : 'respostas'}` : 'Reprocessar') : 'Processar com agentes'}
       </ActionButton>
-      {awaiting > 0 && <p data-testid="wizard-answers-awaiting" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{awaiting === 1 ? 'Uma resposta guardada' : `${awaiting} respostas guardadas`}: clique em Reprocessar para aplicar.</p>}
-      {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{continueBlock.hint}</p>}
+      {reviewOwed && (
+        <ActionButton data-testid="wizard-evaluate" className="secondary" disabled={runLocked || atMax} title={limitTitle} onClick={async () => { if (await saveTyped()) p.onEvaluateStage?.(step); }} icon={<Icon name="check" size={16} />}>
+          Avaliar esta etapa
+        </ActionButton>
+      )}
+      {awaiting > 0 &&<p data-testid="wizard-answers-awaiting" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{awaiting === 1 ? 'Uma resposta guardada' : `${awaiting} respostas guardadas`}: clique em Reprocessar para aplicar.</p>}
+      {graphingNow && <p data-testid="wizard-graph-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{graphReason}</p>}
+      {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{continueBlock}</p>}
       {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn @3xl:order-first">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
       <ActionButton
         data-testid="wizard-continue"
         className="primary"
-        disabled={locked || continueBlock !== null}
+        disabled={runLocked || continueBlock !== null}
         onClick={async () => {
-          // The text typed last is saved before the server reads the document.
-          if (isDocStep(step) && !locked && docs[step] !== snap.docs[step]) await p.onSaveDoc(step, docs[step] ?? '');
+          // A save the server refuses keeps the owner on the stage.
+          if (!(await saveTyped())) return;
           // A document still outside the Graphify graph is added on Continuar, even when its stage is already done.
           const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
           if (stageSession && (!doneStages.includes(step) || notGraphed)) {
             const result = await p.onContinueStage?.(step, lowScore !== null);
             if (result === false) return;
+            // In a repository session the document goes into Graphify in the background: the owner stays on it until it is in the graph.
+            if (st.repositories === true) return;
           }
           goTo(nextWizardStep(step, stepsOf(st)));
         }}
@@ -1593,7 +1722,7 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
-          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" onSelect={(key) => { if (canOpenStep(key as WizardStep)) goTo(key as WizardStep); }} />}
+          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" canSelect={(key) => stepOpen(st, key as WizardStep)} onSelect={(key) => { if (stepOpen(st, key as WizardStep)) goTo(key as WizardStep); }} />}
           stepKey={step}
           meta={usageLine}
           back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
@@ -1648,14 +1777,22 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // One snapshot read at a time: a request made during a read is answered by one more read after it, so a burst costs two reads.
   const reading = useRef<Promise<void> | null>(null);
   const rereadQueued = useRef(false);
+  // Each write the server answered counts here: a read that started before one is older than it, so the page reads again.
+  const writes = useRef(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const load = (): void => {
     if (reading.current) {
       rereadQueued.current = true;
       return;
     }
+    const started = writes.current;
     reading.current = refineApi
       .snapshot(projectId, specId)
       .then((s) => {
+        if (started !== writes.current) {
+          rereadQueued.current = true;
+          return;
+        }
         // The snapshot already holds every event up to its seq: the replay applies only the ones after it.
         applied.current = s.seq ?? 0;
         setStreamFrom((from) => from ?? s.seq ?? 0);
@@ -1694,11 +1831,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
   }, []);
-  // The hash of each document as the page last read it: a save states it, so a file another change has moved is a conflict, not an overwrite.
-  const baseHashes = useRef<Snapshot['hashes']>(undefined);
-  useEffect(() => {
-    baseHashes.current = snap?.hashes;
-  }, [snap?.hashes]);
   // The program ledger moves with the runs, not with the refinement journal: poll it while a started backlog is on screen.
   const following = snap?.state.status === 'started' && snap.state.backlog?.enabled === true;
   const { program, phases } = useProgram(projectId, specId, following);
@@ -1723,23 +1855,48 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       {error ? <p data-testid="refinement-loading-error" className="error">{error}</p> : <Loading />}
     </main>
   );
+  // A refused click during a process is explained in a dialog right where the owner is, not by a jump to the top of the page.
+  const refused = (e: Error) => {
+    if (isBusyError(e)) {
+      setBusyNotice(true);
+      setBusyDialog(true);
+    } else {
+      setError(e.message);
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    }
+  };
   // A failed action writes its reason at the top of the page: the page goes there, so the owner sees it from any step.
-  // Resolves to whether the action succeeded, so a caller moves on only after it.
+  // Resolves to whether the action succeeded, so a caller moves on only after it. The page reads the snapshot again after the action, win or lose.
   const act = (f: () => Promise<unknown>) => () => {
     setError(null);
     setBusyNotice(false);
-    return f().then(() => true, (e: Error) => {
-      // A refused click during a process is explained in a dialog right where the owner is, not by a jump to the top of the page.
-      if (isBusyError(e)) {
-        setBusyNotice(true);
-        setBusyDialog(true);
-        return false;
-      }
-      setError(e.message);
-      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    return f().then(() => {
+      writes.current += 1;
+      load();
+      return true;
+    }, (e: Error) => {
+      refused(e);
+      load();
       return false;
     });
   };
+  // A save the server answers counts as a write. A refused save keeps the owner's text in the editor; the page reads the snapshot again either way.
+  // A save refused while the server organizes the document rejects instead: the editor sends it again, with no message.
+  const saveDoc = (file: DocFile, text: string, baseHash?: string, keepalive?: boolean): Promise<string | null> => (keepalive
+    ? refineApi.saveDoc(projectId, specId, file, text, baseHash, true)
+    : refineApi.saveDoc(projectId, specId, file, text, baseHash))
+    .then((r) => {
+      writes.current += 1;
+      setSaveError(null);
+      return r.hash;
+    }, (e: Error) => {
+      if (isOrganizingError(e)) throw e;
+      setSaveError(e.message);
+      return null;
+    })
+    .finally(load);
+  // The document as the server holds it now: a save refused for the layout is sent again over its hash.
+  const readDoc = (file: DocFile) => refineApi.snapshot(projectId, specId).then((s) => ({ text: s.docs[file], hash: s.hashes?.[file] }), (e: Error) => (setSaveError(e.message), null));
   // A repository session starts on the summary the owner read: its hash goes with the start, and the server refuses a stale one.
   const startWith = (summaryHash?: string) => act(() => {
     setStarting(true);
@@ -1790,17 +1947,16 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       <RefinementView
         snap={snap}
         busy={snap.state.status === 'evaluating' || evaluationOpen(snap.state)}
-        onSaveDoc={(f, t) => act(async () => {
-          const { hash } = await refineApi.saveDoc(projectId, specId, f, t, baseHashes.current?.[f]);
-          baseHashes.current = { ...baseHashes.current, [f]: hash };
-        })()}
+        onSaveDoc={saveDoc}
+        onReadDoc={readDoc}
+        saveError={saveError}
         onSuggestDoc={(f) => {
           setError(null);
-          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
+          return refineApi.suggestDoc(projectId, specId, f).then((r) => r.text, (e: Error) => (refused(e), null));
         }}
         onDesignFromImages={(images) => {
           setError(null);
-          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (setError(e.message), window.scrollTo?.({ top: 0, behavior: 'smooth' }), null));
+          return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (refused(e), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onCheckSpecs={async () => {
@@ -1808,7 +1964,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           try {
             return await refineApi.checkSpecs(projectId, specId);
           } catch (e) {
-            setError((e as Error).message);
+            refused(e as Error);
             return undefined;
           }
         }}
@@ -1822,10 +1978,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onDecideArchitecture={act(() => refineApi.decideArchitecture(projectId, specId))}
         onContinueStage={(doc, confirmLowScore) => act(() => refineApi.continueStage(projectId, specId, doc, confirmLowScore))()}
         onAddToGraph={(doc) => act(() => refineApi.addToGraph(projectId, specId, doc))()}
-        onNotApplicable={act(async () => {
-          await refineApi.notApplicable(projectId, specId);
-          load();
-        })}
+        onNotApplicable={act(() => refineApi.notApplicable(projectId, specId))}
         onCloseReview={act(() => refineApi.closeReview(projectId, specId))}
         onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
@@ -1838,7 +1991,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onReask={(id) => act(() => refineApi.reask(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
-        onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v).then(load))()}
+        onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v))()}
         onStart={repositorySession ? openSummary : startRun}
         startState={startLabel}
         hideStart={bannerStarts}

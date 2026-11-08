@@ -13,6 +13,8 @@ const DETAIL_CHARS = 1000;
 const NOTE_CHARS = 300;
 /** The last sentence of a refinement failure: the owner asks again from the evaluation. */
 const REVALUATE = 'Clique em Reavaliar.';
+/** The last sentence of a stage review failure: the stage wizard asks again with its process button. */
+export const PROCESS_AGAIN = 'Clique em Processar com agentes.';
 /** The last sentence of a suggestion failure: a suggestion has no revaluate button. */
 export const TRY_AGAIN = 'Tente de novo.';
 
@@ -37,10 +39,10 @@ export function ownerFailure(stage: string, failure: FailureKind, errors: readon
 }
 
 /** The reason for an error of this code; an oversized pack keeps its own message, which says what to do. */
-export function internalErrorMessage(stage: string, err: unknown): { reason: string; detail: string } {
+export function internalErrorMessage(stage: string, err: unknown, again = REVALUATE): { reason: string; detail: string } {
   if (err instanceof PackTooLargeError) return { reason: err.message, detail: err.message };
   const text = err instanceof Error ? err.message : String(err);
-  return { reason: `${stage} parou por um erro interno. ${REVALUATE}`, detail: clip(redactSecrets(text)) };
+  return { reason: `${stage} parou por um erro interno. ${again}`, detail: clip(redactSecrets(text)) };
 }
 
 /** Runs an agent call, and when its answer fails the output schema, repairs the answer when `schema` is given, else runs it once more with a note on what was wrong. */

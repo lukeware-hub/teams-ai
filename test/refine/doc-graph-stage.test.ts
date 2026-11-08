@@ -277,6 +277,36 @@ Editado.
     await s.close();
   });
 
+  it('marks the design as not applicable even when its score is low, since the mark replaces that text', async () => {
+    const lowDesign = { available: true, model: 'jev-1.13.0', average: 0.4, docs: { 'design.md': { score: 0.4, checks: { complete: 0.4, concrete: 0.4, consistent: 0.4, scoped: 0.4 } } }, usage: null };
+    const s = await RefineSession.create({ ...deps(), extractDocs, scoreDocs: (async () => lowDesign) as never }, 'new-project', { repositories: true });
+    await s.answerConfidentiality(false);
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishStages(s, DOC_STAGES.slice(0, 4));
+    await s.evaluateStage('design.md');
+    await s.settled();
+    expect(s.state.readiness?.docs?.['design.md']?.score).toBe(0.4);
+    await s.markNotApplicable();
+    await s.settled();
+    expect(await readDoc(draft(), 'design.md')).toMatch(/^Não se aplica/);
+    await s.close();
+  });
+
+  it('refuses the not applicable mark while design.md waits on an answer, and writes nothing', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    await finishStages(s, DOC_STAGES.slice(0, 4));
+    script['refine/front'] = [refineOut([], [{ text: 'Há uma tela?', blocking: true, relatedAcIds: [], options: [] }])];
+    await s.evaluateStage('design.md');
+    await s.settled();
+    const before = await readDoc(draft(), 'design.md');
+    await expect(s.markNotApplicable()).rejects.toThrow('Responda as perguntas obrigatórias da etapa design.md.');
+    expect(await readDoc(draft(), 'design.md')).toBe(before);
+    expect(await fs.readFile(path.join(draft().root, 'passed', 'design.md'), 'utf8')).not.toMatch(/^Não se aplica/);
+    expect(s.state.doneStages).toEqual(DOC_STAGES.slice(0, 4));
+    await s.close();
+  });
+
   it('reprocessing a not applicable design keeps the mark: the agents improve it and no reshape writes the template', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
@@ -396,6 +426,28 @@ describe('the Jev pass line', () => {
     expect(s.state.doneStages).toEqual(['flow.md']);
     // The advance keeps the score the owner confirmed, so the audit shows what was accepted below the pass line.
     expect(s.events.some((e) => e.type === RefineEvent.LowScoreConfirmed && e.data.doc === 'flow.md' && e.data.score === 40)).toBe(true);
+    await s.close();
+  });
+
+  it('a score that rounds to the pass line does not gate a continue', async () => {
+    const edge = { ...low, average: 0.4957, docs: { 'flow.md': { score: 0.4957, checks: { complete: 0.4957, concrete: 0.4957, consistent: 0.4957, scoped: 0.4957 } } } };
+    const s = await session(async () => edge);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    await s.continueStage('flow.md');
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
+    await s.close();
+  });
+
+  it('an outdated low score does not gate a continue: the stage is reviewed first', async () => {
+    const s = await session(async () => low);
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    await s.settled();
+    await s.saveDoc('flow.md', `${FLOW}\nEditado depois da nota.\n`);
+    await expect(s.continueStage('flow.md')).rejects.toThrow('Revise a etapa flow.md antes de continuar: o texto mudou depois da última revisão.');
     await s.close();
   });
 });

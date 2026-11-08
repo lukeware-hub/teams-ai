@@ -48,7 +48,7 @@ const answer = (docPatch: unknown[], questions: unknown[] = [], contradictions: 
 /** The reorganization pass gets its answer; the owner's review gets the other. */
 const passes = (reorg: unknown, review: unknown) => vi.fn(async (req: { pack: { feedback?: string } }, _opts: unknown) => ((req.pack.feedback ?? '').includes('(reorganize in full)') ? reorg : review));
 
-const REVIEW_FAILED = 'A revisão de project.md não devolveu o resultado em formato válido. Clique em Reavaliar.';
+const REVIEW_FAILED = 'A revisão de project.md não devolveu o resultado em formato válido. Clique em Processar com agentes.';
 
 /** A reshape answer: the whole document as the agent writes it back. */
 const reshaped = (text: string) => ({ ...answer([]), value: { specHash: 'draft', text } });
@@ -306,7 +306,7 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => { throw new Error('agent down'); });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent down' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Processar com agentes.', detail: 'agent down' });
     expect(await readDoc(draft, 'project.md')).toContain('# Shop');
   });
 
@@ -685,7 +685,7 @@ describe('runStageCycle', () => {
     const journal = foldingJournal();
     const runAgent = vi.fn(async () => { throw 'agent stopped'; });
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
-    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Reavaliar.', detail: 'agent stopped' });
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md parou por um erro interno. Clique em Processar com agentes.', detail: 'agent stopped' });
   });
 });
 
@@ -710,6 +710,68 @@ describe('runStageCycle reviews a document too big for one part in parts', () =>
     expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
     // The template's layout comes first, so the document is laid out; its three parts are all still in it.
     expect(await readDoc(draft, 'briefing.md')).toContain('## Parte 3');
+  });
+
+  it('asks again a part that ran past its time limit, and keeps the parts already read', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', bigSections(3));
+    const journal = foldingJournal();
+    let slowOnce = true;
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind !== 'refine') return answer([]);
+      const index = /part (\d) of 3/.exec(req.pack.feedback ?? '')?.[1];
+      if (index === '2' && slowOnce) {
+        slowOnce = false;
+        return { ok: false, failure: 'timeout', errors: [], summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null }, sandboxDisabled: false };
+      }
+      return answer(index ? [{ file: 'briefing.md', find: `## Parte ${index}`, replace: `## Parte ${index} revisada`, reason: 'r' }] : []);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.events.some((e) => e.type === RefineEvent.CycleFailed)).toBe(false);
+    expect(runAgent.mock.calls.filter(([req]) => req.kind === 'refine')).toHaveLength(4);
+    expect(journal.events.filter((e) => e.type === RefineEvent.PatchProposed)).toHaveLength(3);
+    expect(journal.events.some((e) => e.type === RefineEvent.StageReviewed)).toBe(true);
+  });
+
+  it('ends the round after its tries when a part keeps running past its time limit, and names the part', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', bigSections(3));
+    const journal = foldingJournal();
+    const timeout = { ok: false, failure: 'timeout', errors: [], summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null }, sandboxDisabled: false };
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind !== 'refine') return answer([]);
+      return /part 2 of 3/.test(req.pack.feedback ?? '') ? timeout : answer([]);
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    const failed = journal.events.find((e) => e.type === RefineEvent.CycleFailed);
+    expect(failed?.data).toMatchObject({ cycle: 1, reason: expect.stringMatching(/parte 2 de 3 de briefing\.md passou do tempo limite/) });
+    expect(runAgent.mock.calls.filter(([req]) => req.kind === 'refine' && /part 2 of 3/.test((req as { pack: { feedback?: string } }).pack.feedback ?? ''))).toHaveLength(3);
+    expect(runAgent.mock.calls.some(([req]) => /part 3 of 3/.test((req as { pack: { feedback?: string } }).pack.feedback ?? ''))).toBe(false);
+  });
+
+  it('a stage review that times out names the Processar com agentes button, which the stage wizard shows', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const timeout = { ok: false, failure: 'timeout', errors: [], summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null }, sandboxDisabled: false };
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => (req.kind === 'refine' && !(req.pack.feedback ?? '').includes('(reorganize in full)') ? timeout : answer([])));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'project.md');
+    expect(journal.events.find((e) => e.type === RefineEvent.CycleFailed)?.data).toMatchObject({ cycle: 1, reason: 'A revisão de project.md passou do tempo limite. Clique em Processar com agentes.' });
+  });
+
+  it('does not ask a part again once the session is aborted', async () => {
+    const draft = await newDraft();
+    await writeDoc(draft, 'briefing.md', bigSections(3));
+    const journal = foldingJournal();
+    const ctl = new AbortController();
+    const timeout = { ok: false, failure: 'timeout', errors: [], summary: { usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, durationMs: 0, numTurns: 0, rateLimit: null }, sandboxDisabled: false };
+    const runAgent = vi.fn(async (req: { kind: string; pack: { feedback?: string } }) => {
+      if (req.kind !== 'refine') return answer([]);
+      if (!/part 2 of 3/.test(req.pack.feedback ?? '')) return answer([]);
+      ctl.abort();
+      return timeout;
+    });
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [], signal: ctl.signal }, 1, 'briefing.md');
+    expect(runAgent.mock.calls.filter(([req]) => req.kind === 'refine' && /part 2 of 3/.test((req as { pack: { feedback?: string } }).pack.feedback ?? ''))).toHaveLength(1);
   });
 
   it('refuses a document with more parts than one review may read, and says how many', async () => {

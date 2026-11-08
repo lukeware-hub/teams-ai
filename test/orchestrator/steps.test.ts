@@ -73,6 +73,7 @@ async function deps(fake: (req: { kind: string; prompt: string }) => Promise<Ste
     journal,
     stepDir: (seq) => path.join(dir, 'steps', String(seq)),
     secretValues: () => ['s3cr3t-value'],
+    defaultEffort: 'low',
     specHash: HASH,
   };
 }
@@ -700,6 +701,27 @@ describe('runAgentStep', () => {
     expect((await seeing('sonnet', undefined)).seen[0]!.effort).toBe('low');
     expect((await seeing('sonnet', 'max')).seen[0]!.effort).toBe('high');
     expect((await seeing('opus', 'max')).seen[0]!.effort).toBe('low');
+  });
+
+  it('holds a requested effort to the cap of its model family, and a manual setting is not capped', async () => {
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.effortCaps = { haiku: 'low', sonnet: 'medium', opus: 'low' };
+    const dev = { kind: 'dev' as const, role: 'dev' as const, pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1, model: 'sonnet', effort: 'max' as const };
+    await runAgentStep(dev, d);
+    d.agentSetting = (role) => (role === 'dev' ? { model: 'claude-sonnet-5-5', effort: 'max' } : undefined);
+    await runAgentStep({ ...dev, taskId: 'T2' }, d);
+    expect(seen.map((s) => s.effort)).toEqual(['medium', 'max']);
+  });
+
+  it('gives an automatic step with no line of its own the default effort the config sets', async () => {
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    const seen: Array<{ model: string; effort?: string }> = [];
+    d.runStep = (async (req: { model: string; effort?: string }) => { seen.push(req); return { ok: true, value: { specHash: HASH, status: 'done', summary: 's', changedFiles: [], commitMessage: 'm' }, summary: summary() }; }) as unknown as AgentStepDeps['runStep'];
+    d.defaultEffort = 'medium';
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null }), cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(seen.map((s) => s.effort)).toEqual(['medium']);
   });
 
   it('gives full access to a step the owner lets decide, and never to a judge', async () => {
