@@ -1484,8 +1484,8 @@ export function RefinementView(p: ViewProps) {
     <>
       <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={locked || atMax} title={atMax ? `Limite de ${snap.limits?.max} rodadas nesta etapa` : undefined} onClick={() => {
           if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
-          // Going back to the passed text drops the edits and the suggestions accepted since.
-          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições e as sugestões aceitas depois.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
+          // Going back to the passed text drops the edits made since; the suggestions accepted since stay.
+          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. As sugestões aceitas continuam.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
         }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
         {reprocess ? (awaiting > 0 ? `Reprocessar · ${awaiting} ${awaiting === 1 ? 'resposta' : 'respostas'}` : 'Reprocessar') : 'Processar com agentes'}
       </ActionButton>
