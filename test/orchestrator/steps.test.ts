@@ -523,6 +523,20 @@ describe('runAgentStep', () => {
     expect(prompts[2]).not.toContain('Graph access');
   });
 
+  it('offers no graph to the architecture and backlog steps, whose prompt already holds the documents', async () => {
+    const prompts: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push(req.prompt);
+      return { ok: false, failure: 'schema', errors: [], summary: summary(), sandboxDisabled: false };
+    }) as AgentStepDeps['runStep'];
+    d.graphAccess = { projectGraph: '/ws/p/graph/project/graphify-out/graph.json' };
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    for (const kind of ['architecture', 'backlog'] as const) await runAgentStep({ kind, role: 'sm', pack, cwd: dir, phase: 'refine', taskId: null, attempt: 1 }, d);
+    expect(prompts).toHaveLength(2);
+    for (const p of prompts) expect(p).not.toContain('Graph access');
+  });
+
   it('runs a step kind on the model routing names, ahead of the role profile and behind an explicit model', async () => {
     const models: string[] = [];
     const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));

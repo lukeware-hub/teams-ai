@@ -18,7 +18,7 @@ import { buildContextPack, estimateTokens, type CodeContext, type GraphAccess, t
 import type { Hit } from '../knowledge/retrieval.js';
 import { effortFor } from '../runner/model-policy.js';
 import { hasSession } from '../runner/session-store.js';
-import { limitMsOf, type runStep as runStepFn, type StepDeps, type StepOutcome, type StepRequest } from '../runner/step.js';
+import { isLean, limitMsOf, type runStep as runStepFn, type StepDeps, type StepOutcome, type StepRequest } from '../runner/step.js';
 import type { TestResult } from '../evidence/junit.js';
 import type { DocsInput } from '../validators/docs.js';
 import type { RefContext } from '../validators/references.js';
@@ -677,8 +677,8 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const id = stepId(seq);
   const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
   const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
-  // A stage review reads only the document and its context in the prompt: the graph is not offered to it.
-  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess && req.review !== true ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
+  // A lean step reads only the context in its prompt: the graph is not offered to it.
+  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess && !isLean(req) ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);

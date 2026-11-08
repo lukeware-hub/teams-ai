@@ -437,6 +437,18 @@ describe('runStep', () => {
     expect(await toolsOf()).toMatch(/,WebSearch,WebFetch$/);
   });
 
+  it('gives the architecture and backlog steps no tools, plugins or web, even with full access', async () => {
+    const capture = path.join(dir, 'capture.json');
+    withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });
+    const agent = { ...devAgent, tools: ['Read', 'Grep', 'Glob', 'Bash'] };
+    for (const kind of ['architecture', 'backlog'] as const) {
+      await runStep(request({ kind, agent, fullAccess: true }), deps);
+      const captured = JSON.parse(await fs.readFile(capture, 'utf8'));
+      expect(JSON.parse(await fs.readFile(captured.argv[captured.argv.indexOf('--agents') + 1], 'utf8')).dev.tools).toEqual([]);
+      expect(captured.argv.join(' ')).not.toMatch(/WebSearch|--plugin-dir/);
+    }
+  });
+
   it('gives a refinement step no file-editing tools either, since its changes reach the docs only as patches', async () => {
     const capture = path.join(dir, 'capture.json');
     withFake({ FAKE_CLAUDE_FIXTURE: fixture('success'), FAKE_CLAUDE_CAPTURE: capture });

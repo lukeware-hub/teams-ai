@@ -118,6 +118,10 @@ export const writeDirsFor = (docsRepo: boolean): Partial<Record<StepKind, readon
   docsRepo ? Object.fromEntries(Object.entries(LEGACY_WRITE_DIRS).map(([kind, dirs]) => [kind, dirs?.filter((dir) => !STORE_OWNED_DOCS.includes(dir))])) : LEGACY_WRITE_DIRS;
 /** The turns a stage review may use: it answers in one structured reply, so more turns is a loop. */
 export const REVIEW_MAX_TURNS = 3;
+/** Steps whose prompt already carries every document they need: like a stage review, they get no tools, plugins, catalogs or graph. */
+const LEAN_KINDS: readonly StepKind[] = ['architecture', 'backlog'];
+/** Whether a step runs lean: a stage review, or a kind whose prompt holds all its context. */
+export const isLean = (req: { kind: StepKind; review?: true }): boolean => req.review === true || LEAN_KINDS.includes(req.kind);
 /** The time limit of a step: a stage review has its own, shorter one. */
 export const limitMsOf = (caps: ProcessCaps, review: boolean): number => (review ? (caps.reviewTimeoutMs ?? caps.timeoutMs) : caps.timeoutMs);
 export const stepCaps = (kind: StepKind, caps: ProcessCaps, review = false): ProcessCaps => {
@@ -345,19 +349,20 @@ async function stepPluginDirs(deps: StepDeps, role: Role, home: string): Promise
 
 async function runStepIn<K extends StepKind>(req: StepRequest, deps: StepDeps, hostEnv: NodeJS.ProcessEnv, home: string): Promise<StepOutcome<OutputOf<K>>> {
   // The reference catalogs of the role are searched with Grep, never installed: the agent is told where they are.
-  const refs = deps.skillsRoot && req.review !== true ? referenceDirs(deps.skillsRoot, req.role) : [];
+  const lean = isLean(req);
+  const refs = deps.skillsRoot && !lean ? referenceDirs(deps.skillsRoot, req.role) : [];
   await ensureTrusted(req.cwd, path.join(home, '.claude.json'));
   const writeDirs = writeDirsFor(req.docsRepo === true)[req.kind]?.map((dir) => path.join(req.cwd, dir));
   // dontAsk denies a Read no rule allows, so a skill reads its own plugin files only through these rules.
-  const pluginDirs = req.review === true ? [] : await stepPluginDirs(deps, req.role, home);
+  const pluginDirs = lean ? [] : await stepPluginDirs(deps, req.role, home);
   const settingsPath = await writeRoleSettings(deps.settingsDir, req.role, { allowedDomains: deps.network.allowedDomains, stacks: deps.stacks, extraAllow: [...(req.extraAllow ?? []), ...(req.webSearch === true && req.kind === 'chat' ? ['WebSearch'] : []), ...[...refs, ...pluginDirs].map((dir) => `Read(${absoluteRule(dir)}/**)`)], extraDenyRead: req.denyRead, protectedDirs: [deps.agentPluginsRoot, dynamicPluginDir(home), ...(req.protectedDirs ?? [])].filter((dir): dir is string => dir !== undefined), writeDirs, sandboxEnabled: deps.sandbox?.enabled, fullAccess: req.fullAccess, hostHome: hostEnv.HOME, stepHome: home, projectSecretsDirs: await projectSecretsDirs(deps.workspacesRoot) });
   if (req.resume && req.sessionStore) await restoreSession(req.sessionStore, home);
   // A review, a UI check and a refinement never edit the files they judge (R11.13 slice 2).
   // The chat searches its own guide and history with the tools of CHAT_TOOLS only; its Bash rules allow graphify queries and nothing else.
   const kindTools = KIND_TOOLS[req.kind];
-  const scoped = req.review === true ? { ...req.agent, tools: [] } : READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
+  const scoped = lean ? { ...req.agent, tools: [] } : READ_ONLY_KINDS.includes(req.kind) ? { ...req.agent, tools: req.agent.tools.filter((t) => !REVIEW_DENIED_TOOLS.includes(t)) } : kindTools ? { ...req.agent, tools: [...kindTools] } : req.agent;
   const searching = req.webSearch === true && req.kind === 'chat' ? { ...scoped, tools: [...scoped.tools, 'WebSearch'] } : scoped;
-  const agent = req.fullAccess && req.review !== true ? { ...searching, tools: [...new Set([...searching.tools, ...FULL_ACCESS_TOOLS])] } : searching;
+  const agent = req.fullAccess && !lean ? { ...searching, tools: [...new Set([...searching.tools, ...FULL_ACCESS_TOOLS])] } : searching;
   const catalogNote = refs.length > 0 ? `Reference catalog (search it with Grep; never load it whole): ${refs.join(', ')}` : '';
   const systemExtra = [req.systemExtra, catalogNote].filter(Boolean).join('\n\n');
   const agentWithExtra = systemExtra ? { ...agent, body: `${agent.body}\n\n${systemExtra}` } : agent;
