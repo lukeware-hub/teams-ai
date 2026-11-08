@@ -79,6 +79,8 @@ Every screen waits for an approved mock. Planned: an autopilot switch, a final r
 
 Each increment ships alone, with its tests, the full root and web suites, a plan file, a commit and a push.
 
+Status checked against the code on 2026-11-08.
+
 | # | Increment | Status |
 |---|---|---|
 | 1 | Measurement: full decision records and an honest-label replay | done (plan 95) |
@@ -86,18 +88,18 @@ Each increment ships alone, with its tests, the full root and web suites, a plan
 | 3 | Spec Kit repair rounds and lane isolation | done (plan 98) |
 | 4 | Heal driver behind `refine.heal.enabled`, off by default | done (plan 99) |
 | 5 | Stage history in the stage review pack | done (plan 100) |
-| 6 | Unified evidence verifier with diagnostics | next (plan 101) |
-| 7 | Ask policy and caps in shadow; effort comparison | planned |
-| 8 | One scope definition, canary set, and the shared hold on Iniciar | planned |
-| 9 | Resolver replay with strata and gates; a live record only if an acting tier needs one | plan 101 starts it |
-| 10 | Assume mode for Spec Kit specify, clarify and plan, per stratum that clears the gate | planned |
-| 11 | Autopilot chain: stage chain, parked exceptions, answer queue | planned |
-| 12 | Auto-apply safe patches with undo; notice auto-close | planned, needs the owner's yes |
-| 13 | Resolver at the stage and round sites | planned |
-| 14 | Owner surface after mock approval | planned |
-| 15 | Effort tiers, per-item slices, stable prefix | planned |
-| 16 | Optional adapters, one at a time, off by default | planned |
-| 17 | Retire the old answer paths | planned |
+| 6 | Unified evidence verifier with diagnostics | done as diagnostics only (plan 101, step 2); no flow uses it |
+| 7 | Ask policy and caps in shadow; effort comparison | partial: only the replay script measures the caps (plan 106); the server does not apply them; the effort comparison was not run |
+| 8 | One scope definition, canary set, and the shared hold on Iniciar | not started |
+| 9 | Resolver replay with strata and gates; a live record only if an acting tier needs one | done as a replay (plan 101, rules frozen as `r2`); no stratum clears the gate, and on 2026-10-28 the owner decided to build nothing more until the holdout is measured |
+| 10 | Assume mode for Spec Kit specify, clarify and plan, per stratum that clears the gate | not started; it waits for a stratum to clear the gate |
+| 11 | Autopilot chain: stage chain, parked exceptions, answer queue | partial: a follow-on request runs to ready on its own (`server/refine/autopilot.ts`); the main refinement has no stage chain, no parked exceptions and no answer queue |
+| 12 | Auto-apply safe patches with undo; notice auto-close | partial: safe suggestions are accepted on their own, a stage review takes only additions, and the team alone takes only additions or changes that keep the scope (`server/refine/team-rule.ts`); an accepted suggestion has no undo, and notices do not close on their own |
+| 13 | Resolver at the stage and round sites | not started; only the replay uses the resolver |
+| 14 | Owner surface after mock approval | not started; the refinement page shows only the team's own run of a follow-on request |
+| 15 | Effort tiers, per-item slices, stable prefix | not started; Settings has only an effort cap per model family |
+| 16 | Optional adapters, one at a time, off by default | not started |
+| 17 | Retire the old answer paths | not started |
 
 Estimates (not promises): increments 1 to 5 about 20 to 25 days; the full autopilot about 85 days from the start. Promotion of any acting tier needs at least 200 independent owner labels on a live project.
 
@@ -111,6 +113,19 @@ Estimates (not promises): increments 1 to 5 about 20 to 25 days; the full autopi
 ## Success metrics per project (targets)
 
 Owner actions at most 110 (baseline 1,091); idle at most 6 hours (baseline 60); at least 95% of failures healed without an owner event; at most one pause; automatic-patch undo at most 3%; assumption agreement lower bound at least 0.80; scope leak at most 5%.
+
+`npm run refine:metrics -- <events.ndjson>` measures the first four targets on a draft's journal (`autonomy` in its output). It counts them this way:
+
+- Owner actions: the events only an owner's click writes, plus a start after a failure outside the team's own run, which is the owner's retry. Owner events less than one second apart count as one click, because one click such as "accept all" writes many events. Answers by a role, suggestions the agents accepted and everything inside the team's own run are left out.
+- Idle hours: the time from the first to the last event in which no agent step, graph extraction or quota wait was running. The hours between a failure and the next start are shown apart.
+- Failures solved alone: a failed cycle, plan preparation, architecture decision or graph extraction counts as solved alone only when the team's own run started the work again. A failure still open at the end counts as not solved.
+- Pauses: the times the heal driver paused a draft for the owner.
+
+Limits of this count:
+
+- The journal does not say who started an evaluation, so an evaluation the owner starts without a failure before it is not counted as an owner action.
+- The heal driver does not journal its retries yet, so its retries count as the owner's. Before `refine.heal.enabled` is turned on, the driver needs to journal each retry, or this count will understate the failures it solves.
+- The baseline of 1,091 owner actions and 60 idle hours was measured by hand on a copy of the journal that is no longer kept, so it is close to this count but not the same.
 
 ## Not in scope
 
