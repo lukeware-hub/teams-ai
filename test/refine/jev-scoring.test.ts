@@ -77,13 +77,25 @@ describe('createJevScorer', () => {
     expect(result.docs!['flow.md']!.checks.concrete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
   });
 
-  it('takes the best window for completeness, and the worst for contradictions and foreign content, since one window can show a gap or a fault', async () => {
+  it('takes the worst window for contradictions and foreign content, since one window can show a fault', async () => {
     const long = 'x'.repeat(40_000);
     stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
     const result = await scorer()({ ...TEXTS, 'flow.md': long });
-    expect(result.docs!['flow.md']!.checks.complete).toBeCloseTo(0.9);
     expect(result.docs!['flow.md']!.checks.consistent).toBeCloseTo(0.2);
     expect(result.docs!['flow.md']!.checks.scoped).toBeCloseTo(0.2);
+  });
+
+  it('judges the completeness of a long document once, on the outline of its headings, since no window sees the whole document', async () => {
+    const long = ['## Início', 'x'.repeat(40_000), '## Fim', 'y'].join('\n');
+    const sent = stubJev((state, check) => (check === 'complete' ? (state.startsWith('flow.md (outline):') ? 0.7 : 0.1) : 0.9));
+    const result = await scorer()({ ...TEXTS, 'flow.md': long }, ['flow.md']);
+    const outline = sent.filter((s) => s.state.startsWith('flow.md (outline):'));
+    expect(outline).toHaveLength(1);
+    expect(outline[0]!.state).toBe('flow.md (outline):\n## Início\n## Fim\n');
+    expect(Object.keys(outline[0]!.questions)).toEqual(['complete']);
+    expect(outline[0]!.questions.complete!.instructions).toContain('outline of the whole flow.md');
+    for (const window of sent.filter((s) => s !== outline[0])) expect(Object.keys(window.questions)).toEqual(['concrete', 'consistent', 'scoped']);
+    expect(result.docs!['flow.md']!.checks.complete).toBeCloseTo(0.7);
   });
 
   it('reports each answered window with its place, size, opening heading and answers, and changes no score', async () => {
@@ -96,13 +108,15 @@ describe('createJevScorer', () => {
       reported.push(w);
     })({ ...TEXTS, 'flow.md': long });
     expect(result).toEqual(plain);
-    expect(reported).toHaveLength(6);
-    const flow = reported.filter((w) => w.file === 'flow.md');
+    expect(reported).toHaveLength(7);
+    const flow = reported.filter((w) => w.file === 'flow.md' && !w.outline);
     expect(flow.map((w) => w.part)).toEqual([1, 2]);
     expect(flow.every((w) => w.parts === 2)).toBe(true);
     expect(flow[0]!.firstHeading).toBe('## Overview');
     expect(flow[1]!.firstHeading).toBeNull();
-    expect(flow[0]!.checks).toEqual(values);
+    expect(flow[0]!.checks).toEqual({ concrete: 0.6, consistent: 1, scoped: 0.4 });
+    expect(reported.find((w) => w.file === 'flow.md' && w.outline)!.checks).toEqual({ complete: 0.8 });
+    expect(reported.find((w) => w.file === 'stack.md')!.checks).toEqual(values);
     expect(flow.reduce((sum, w) => sum + w.size, 0)).toBeGreaterThan(40_000);
   });
 

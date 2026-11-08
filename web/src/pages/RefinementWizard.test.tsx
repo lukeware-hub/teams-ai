@@ -278,15 +278,22 @@ describe('the Jev score of the document', () => {
     const inset = screen.getByTestId('doc-score');
     expect(inset.textContent).toContain('Nota do Jev · project.md');
     expect(screen.getByTestId('doc-score-percent').textContent).toBe('65%');
-    expect(inset.textContent).toContain('completo 44% · concreto 72% · consistente 84% · escopo 60%');
+    const rows = ['complete', 'concrete', 'consistent', 'scoped'].map((id) => screen.getByTestId(`doc-score-question-${id}`).textContent);
+    expect(rows).toEqual(['Tem tudo o que deveria ter?44%em dúvida', 'Dá para conferir o que diz?72%', 'Está livre de contradições?84%', 'Tem só o que é deste documento?60%']);
     expect(document.body.textContent).not.toMatch(/Mínimo|Pronto para|Ainda não está pronto/);
   });
 
-  it('explains the score and each check on the info icon beside it, in plain words', () => {
-    show(base({ doneStages: ['flow.md'], confidential: false, readiness: scored({ 'project.md': 0.65 }) }));
-    fireEvent.focus(screen.getByRole('button', { name: /^Nota do Jev:/ }));
-    const tip = screen.getByText(/^A nota do Jev é a média/);
-    for (const check of ['completo:', 'concreto:', 'consistente:', 'escopo:']) expect(tip.textContent).toContain(check);
+  it('lists where the Jev doubts each question, and one line when it doubts every part', () => {
+    const readiness = scored({ 'project.md': 0.65 });
+    const doubts = [
+      { check: 'consistent', value: 0.53, part: { index: 4, of: 6, from: '### 17.5 Médico auditor', to: '## 20. Formatos' } },
+      { check: 'consistent', value: 0.45, part: { index: 6, of: 6, from: '### 31.3 Governança', to: null } },
+      ...[1, 2].map((index) => ({ check: 'scoped' as const, value: index / 100, part: { index, of: 2, from: null, to: null } })),
+    ];
+    show(base({ doneStages: ['flow.md'], confidential: false, readiness: { ...readiness, docs: { 'project.md': { ...readiness.docs['project.md']!, doubts } } } }));
+    expect(screen.getByTestId('doc-score-question-consistent').textContent).toContain('parte 4 de 6 · de 17.5 Médico auditor até 20. Formatos — 53%parte 6 de 6 · de 31.3 Governança até o fim — 45%');
+    expect(screen.getByTestId('doc-score-question-scoped').textContent).toContain('Em todas as 2 partes (a pior: 1%)');
+    expect(screen.getByTestId('doc-score-how').textContent).toContain('Como a nota é calculada');
   });
 
   it('asks the Jev for the score of this document when it has none', () => {

@@ -47,8 +47,8 @@ async function main(): Promise<void> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error('OPENROUTER_API_KEY is not set');
   const score = createJevScorer(loadConfig({}), async () => ({ OPENROUTER_API_KEY: key }), (w) => {
-    const checks = SCORE_CHECKS.map((id) => `${id} ${percent(w.checks[id])}`).join('  ');
-    console.log(`  window ${w.file} part ${w.part}/${w.parts} (${w.size} chars, from "${w.firstHeading ?? '-'}")  ${checks}`);
+    const checks = SCORE_CHECKS.map((id) => `${id} ${percent(w.checks[id] ?? null)}`).join('  ');
+    console.log(`  window ${w.file} ${w.outline ? 'outline' : `part ${w.part}/${w.parts}`} (${w.size} chars, from "${w.firstHeading ?? '-'}")  ${checks}`);
   });
   const results: Record<string, DocsScoreRecord> = {};
   for (const set of sets) {
