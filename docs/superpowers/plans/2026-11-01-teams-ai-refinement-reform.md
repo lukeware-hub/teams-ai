@@ -2,7 +2,7 @@
 
 Plan: `~/.claude/plans/pasted-content-id-a9d6-revis-o-crystalline-swan.md` (not in the repository). Branch `feat/refinement-reform`, PR #35 (draft).
 
-Status on 2026-11-01: about 70% of the plan. The plan is not complete.
+Status on 2026-11-01: about 70% of the plan; increment F updated on 2026-11-08. The plan is not complete.
 
 | Increment | Status | Evidence |
 |---|---|---|
@@ -12,12 +12,18 @@ Status on 2026-11-01: about 70% of the plan. The plan is not complete.
 | C Architecture | Done, with gaps | `server/refine/architecture-step.ts`; architecture step follows the role setting (`9f79a562`) |
 | D Backlog and specs per repository | Done | `test/refine/backlog-repository.test.ts` |
 | E Plans and tasks | Done, with caveats | `server/refine/plan-prepare.ts`; task journaling fix (`17b63df3`) |
-| F Skills | Not done | Front probe, skill clauses, "no tools" lines and the 90% rule remain |
+| F Skills | Done, scope narrowed by the owner on 2026-11-08 | Skills run in the plan and `task.md` steps (`skillClause` in `server/refine/superpowers-pack.ts`) and in Front work (`.claude/agents/front.md`); stage reviews and specs stay without tools, as #61 decided; `scripts/evals/skill-usage.ts` exists; the 90% rule is measured in the live check of K |
 | G Closing | Done, with gaps | `server/refine/state.ts`; contradiction check not explicit |
 | H Read models and routes | Done, with gaps | `server/api/repositories.ts`; fix and deploy-fix tasks not counted apart |
 | I user interface | Partial | Components and web tests exist; Chrome captures incomplete; closing dialog not captured; final review pending |
 | J Follow-on drafts | Done | `test/refine/follow-on-stamp.test.ts`, `test/api/refine-api.test.ts` (`94769e27`, `562dcbfd`) |
 | K Docs and rollout | Partial | Guide and graph (`cf19028c`, `b484c010`); README paragraph added; closing audit found open items |
+
+Increment F, owner decision on 2026-11-08:
+
+- Stage reviews and specs keep no tools, as PR #61 (`642857b5`) decided for time and cost, so they get no skill clause and keep their "no tools" lines.
+- Front probe: only one catalog ships `impeccable` (`server/skills/catalog.ts`), so there is no duplicate to remove.
+- Front probe: the Setup of the pinned `impeccable` runs `scripts/impeccable context`, which downloads a 21 MB launcher from github.com; the Bash rules allow it, but github.com is not in the sandbox network list of any stack, so `front.md` tells the step to skip Setup and read `design.md`.
 
 Open decisions and blockers:
 

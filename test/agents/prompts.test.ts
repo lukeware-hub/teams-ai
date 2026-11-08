@@ -63,6 +63,7 @@ describe('agent prompts for a project of services (R12.6)', () => {
 
   it('tell each implementer which installed skills to use and how to request a missing one', () => {
     expect(agent('front')).toContain('For every frontend task, load `teams-ai-front:impeccable` first');
+    expect(agent('front')).toContain('the sandbox blocks that download on every stack: always skip Setup and read `design.md` instead');
     expect(agent('front')).toContain('no live browser unless SERVICE_URL is set');
     expect(agent('dev')).toContain('Use the installed skills');
     expect(agent('dev')).toContain('teams-ai-dev:test-driven-development');
