@@ -93,6 +93,16 @@ describe('autonomyMetrics', () => {
     expect(out.ownerActions.value).toBe(1);
   });
 
+  it('counts a failure the heal driver retried as solved alone, and its retry as no owner action', () => {
+    const out = autonomyMetrics([
+      ev('REFINE_CYCLE_FAILED', '2026-11-08T10:00:00Z', { kind: 'interrupted' }),
+      ev('REFINE_HEAL_RETRIED', '2026-11-08T10:01:00Z', { action: 'evaluate' }),
+      ev('REFINE_CYCLE_STARTED', '2026-11-08T10:01:00Z'),
+    ]);
+    expect(out.failures).toMatchObject({ total: 1, solvedAlone: 1, met: true });
+    expect(out.ownerActions.value).toBe(0);
+  });
+
   it('counts the pauses for the owner', () => {
     const out = autonomyMetrics([ev('AUTOPILOT_PAUSED', '2026-11-08T10:00:00Z'), ev('AUTOPILOT_PAUSED', '2026-11-08T11:00:00Z')]);
     expect(out.pauses).toEqual({ value: 2, target: 1, met: false });

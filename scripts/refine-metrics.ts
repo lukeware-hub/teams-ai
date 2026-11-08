@@ -106,11 +106,11 @@ function unionMs(intervals: Array<[number, number]>): number {
 }
 
 export interface AutonomyMetrics {
-  /** The owner's clicks, and the events they wrote. A start after a failure outside the team's own work counts as the owner's retry. */
+  /** The owner's clicks, and the events they wrote. A start after a failure counts as the owner's retry unless the team or the heal driver made it. */
   ownerActions: { value: number; events: number; target: number; met: boolean };
   /** Hours in which no agent, graph extraction or quota wait was running, and how many of them came after a failure. */
   idleHours: { value: number; afterFailure: number; target: number; met: boolean };
-  /** The failures, and those the team resumed on its own; the journal does not mark the heal driver's retries yet. */
+  /** The failures, and those the team or the heal driver started again with no owner click. */
   failures: { total: number; solvedAlone: number; share: number; target: number; met: boolean };
   pauses: { value: number; target: number; met: boolean };
 }
@@ -129,6 +129,7 @@ export function autonomyMetrics(events: readonly JournalEvent[]): AutonomyMetric
   let pauses = 0;
   let waiting = 0;
   let failedAt: number | null = null;
+  let healRetried = false;
   let afterFailureMs = 0;
   let first = Infinity;
   let last = -Infinity;
@@ -161,13 +162,15 @@ export function autonomyMetrics(events: readonly JournalEvent[]): AutonomyMetric
       failures += 1;
       waiting += 1;
       failedAt ??= at;
-    } else if (RESUMES.has(e.type) && failedAt !== null) {
+    } else if (e.type === 'REFINE_HEAL_RETRIED' && failedAt !== null) healRetried = true;
+    else if (RESUMES.has(e.type) && failedAt !== null) {
       // One start resumes every failure that waited for it.
-      if (teamAlone) solvedAlone += waiting;
+      if (teamAlone || healRetried) solvedAlone += waiting;
       else owner(at);
       afterFailureMs += at - failedAt;
       waiting = 0;
       failedAt = null;
+      healRetried = false;
     }
     if (!teamAlone && isOwnerEvent(e)) owner(at);
   }

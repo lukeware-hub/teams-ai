@@ -290,8 +290,8 @@ export const Config = z.object({
     .prefault({}),
   /** Directories holding docs/project.json, registered from the UI (spec run API §2). */
   projects: z.array(z.object({ dir: z.string().min(1) })).default([]),
-  /** Refinement settings. The heal driver starts a new cycle or preparation for the drafts a restart or a failure left in error; off by default. */
-  refine: z.object({ heal: z.object({ enabled: z.boolean().default(false) }).default({ enabled: false }) }).default({ heal: { enabled: false } }),
+  /** Refinement settings. The heal driver starts a new cycle or preparation for the drafts a restart or a failure left in error; on by default. */
+  refine: z.object({ heal: z.object({ enabled: z.boolean().default(true) }).default({ enabled: true }) }).default({ heal: { enabled: true } }),
   decisions: z
     .object({
       /** Off for runs 1 and 2 (spec §1.3); every decision then takes its System 2 path or default. */

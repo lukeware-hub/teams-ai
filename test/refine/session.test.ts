@@ -278,6 +278,22 @@ describe('RefineSession', () => {
     await s.close();
   });
 
+  it('a heal retry is journaled before the failed cycle starts again, so the metrics tell it from the owner', async () => {
+    const frontAgent = (async () => ({ ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false })) as never;
+    const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');
+    script['derive/po'] = [derived, derived];
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
+    await s.evaluate();
+    const before = s.events.length;
+    await s.healRetry('evaluate');
+    const types = s.events.slice(before).map((e) => e.type);
+    expect(types[0]).toBe(RefineEvent.HealRetried);
+    expect(types).toContain(RefineEvent.CycleStarted);
+    expect(s.events[before]?.data).toEqual({ action: 'evaluate' });
+    await s.close();
+  });
+
   it('keeps the kind of a quota failure in the journal, so the heal view reads it as a quota', async () => {
     const frontAgent = (async () => ({ ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false })) as never;
     const s = await RefineSession.create({ ...deps(), frontAgent }, 'new-spec');

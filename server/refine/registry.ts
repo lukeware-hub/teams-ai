@@ -599,8 +599,8 @@ export class SessionRegistry {
       out.push({
         key: `${row.projectId}/${row.specId}`,
         view: () => session.healView(),
-        evaluate: () => session.evaluate(),
-        prepare: () => session.runPlans(),
+        evaluate: () => session.healRetry('evaluate'),
+        prepare: () => session.healRetry('prepare'),
         pause: (reason) => session.pauseHeal(reason),
       });
     }
