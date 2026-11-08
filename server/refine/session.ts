@@ -464,6 +464,12 @@ export class RefineSession {
     else await this.journal.fact(RefineEvent.TeamAutopilotStopped, { reasons });
   }
 
+  /** The heal driver starts the failed work again; the retry is journaled first, so the metrics tell it from the owner's click. */
+  async healRetry(action: 'evaluate' | 'prepare'): Promise<void> {
+    await this.journal.fact(RefineEvent.HealRetried, { action });
+    await (action === 'evaluate' ? this.evaluate() : this.runPlans());
+  }
+
   /** The heal driver stops on this draft; a later failure, which the owner's action produces, lifts the pause. */
   async pauseHeal(reason: string): Promise<void> {
     await this.journal.fact(RefineEvent.AutopilotPaused, { reason });

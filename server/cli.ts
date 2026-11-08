@@ -205,7 +205,7 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   };
   const superviseTimer = setInterval(() => superviseAll().catch((err) => io.stderr(`supervise tick: ${err instanceof Error ? err.message : String(err)}`)), SUPERVISE_TICK_MS);
   superviseTimer.unref();
-  // The heal driver does nothing unless refine.heal.enabled is set, and it reads that flag on every tick.
+  // The heal driver does nothing when refine.heal.enabled is off, and it reads that flag on every tick.
   const heal = new RefineHealer(
     () => registry.healTargets(),
     async () => (await readUserConfig()).cfg.refine.heal.enabled,

@@ -78,6 +78,8 @@ export const RefineEvent = {
   SpeckitStepDone: 'PLANS_STEP_DONE',
   SpeckitStepRepaired: 'PLANS_STEP_REPAIRED',
   AutopilotPaused: 'AUTOPILOT_PAUSED',
+  /** The heal driver started failed work again, with no owner click: `{action}` is `evaluate` or `prepare`. */
+  HealRetried: 'REFINE_HEAL_RETRIED',
   /** The team applied what the reviewers found, so the checks they failed stand settled without a new evaluation: `{ids}`. */
   ChecklistSettled: 'CHECKLIST_SETTLED',
   /** A follow-on request waits in the queue of its project: the agents work on an earlier request first. `{reason}` in plain words. */

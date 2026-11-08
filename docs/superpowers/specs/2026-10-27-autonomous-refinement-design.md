@@ -86,7 +86,7 @@ Status checked against the code on 2026-11-08.
 | 1 | Measurement: full decision records and an honest-label replay | done (plan 95) |
 | 2 | Safety: save with a base hash (compare and swap), patch scope flag, journal only | done (plans 96, 97) |
 | 3 | Spec Kit repair rounds and lane isolation | done (plan 98) |
-| 4 | Heal driver behind `refine.heal.enabled`, off by default | done (plan 99) |
+| 4 | Heal driver behind `refine.heal.enabled` | done (plan 99); on by default since 2026-11-08, and each retry is journaled as `REFINE_HEAL_RETRIED` |
 | 5 | Stage history in the stage review pack | done (plan 100) |
 | 6 | Unified evidence verifier with diagnostics | done as diagnostics only (plan 101, step 2); no flow uses it |
 | 7 | Ask policy and caps in shadow; effort comparison | partial: only the replay script measures the caps (plan 106); the server does not apply them; the effort comparison was not run |
@@ -116,15 +116,14 @@ Owner actions at most 110 (baseline 1,091); idle at most 6 hours (baseline 60); 
 
 `npm run refine:metrics -- <events.ndjson>` measures the first four targets on a draft's journal (`autonomy` in its output). It counts them this way:
 
-- Owner actions: the events only an owner's click writes, plus a start after a failure outside the team's own run, which is the owner's retry. Owner events less than one second apart count as one click, because one click such as "accept all" writes many events. Answers by a role, suggestions the agents accepted and everything inside the team's own run are left out.
+- Owner actions: the events only an owner's click writes, plus a start after a failure that neither the team's own run nor the heal driver made, which is the owner's retry. Owner events less than one second apart count as one click, because one click such as "accept all" writes many events. Answers by a role, suggestions the agents accepted and everything inside the team's own run are left out.
 - Idle hours: the time from the first to the last event in which no agent step, graph extraction or quota wait was running. The hours between a failure and the next start are shown apart.
-- Failures solved alone: a failed cycle, plan preparation, architecture decision or graph extraction counts as solved alone only when the team's own run started the work again. A failure still open at the end counts as not solved.
+- Failures solved alone: a failed cycle, plan preparation, architecture decision or graph extraction counts as solved alone only when the team's own run or the heal driver started the work again. A failure still open at the end counts as not solved.
 - Pauses: the times the heal driver paused a draft for the owner.
 
 Limits of this count:
 
 - The journal does not say who started an evaluation, so an evaluation the owner starts without a failure before it is not counted as an owner action.
-- The heal driver does not journal its retries yet, so its retries count as the owner's. Before `refine.heal.enabled` is turned on, the driver needs to journal each retry, or this count will understate the failures it solves.
 - The baseline of 1,091 owner actions and 60 idle hours was measured by hand on a copy of the journal that is no longer kept, so it is close to this count but not the same.
 
 ## Not in scope
