@@ -2,6 +2,8 @@
 
 What was checked before writing the code of the brain, with the real graphify of the container and the real data of the hello-word project.
 
+> The global brain was removed on 2026-11-08: it merged projects that were never queried together, and the per-project graph covers what the agents use. Section 1 is kept only as a record.
+
 ## 1. Merging project graphs into one global graph
 
 `graphify merge-graphs` over the project graphs of `hello-word` (1285 nodes) and `live-skill` (285 nodes) gave 1570 nodes and 2342 edges.

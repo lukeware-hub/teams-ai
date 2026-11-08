@@ -7,7 +7,7 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, setBrainSource, setGraphMergedHook, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, setBrainSource, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
 import { workspacePaths } from '../../server/orchestrator/workspace.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
@@ -216,7 +216,6 @@ describe('graph failure record', () => {
 describe('the brain notes in the project graph', () => {
   afterEach(() => {
     setBrainSource(null);
-    setGraphMergedHook(null);
   });
   const stamp = (type: string, data: Record<string, unknown>) => ({ seq: 1, at: '2026-11-06T10:00:00.000Z', runId: 'r1', specHash: 'h', type, kind: 'fact', data }) as StoredEvent;
   const journal = { runId: 'r1', events: [stamp('RUN_STARTED', { specId: 'spec-a' }), stamp('TASK_PLANNED', { task: { id: 'T1', title: 'Registrar', description: 'd', criteriaRefs: ['AC-1'], affectedPaths: ['src/a.ts'] } })] };
@@ -259,14 +258,6 @@ describe('the brain notes in the project graph', () => {
     const written: { out?: string } = {};
     await buildLocatedProjectGraph(mergingGraphify(written), { ws, project: project as Project, newestSpec: undefined });
     expect(JSON.parse(await fs.readFile(path.join(written.out!, 'graphify-out', 'graph.json'), 'utf8')).links).toEqual([]);
-  });
-
-  it('tells the hook which project was merged', async () => {
-    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
-    const merged: string[] = [];
-    setGraphMergedHook((id) => merged.push(id));
-    await buildLocatedProjectGraph(mergingGraphify({}), { ws, project: project as Project, newestSpec: undefined });
-    expect(merged).toEqual(['kayron-hub']);
   });
 });
 

@@ -47,8 +47,7 @@ import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
 import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews, type DashboardSpecInput } from './repository-dashboard.js';
 import { graphLinkResolver } from './graph-links.js';
-import { buildBrainView, buildGraphView, linkNodes } from './repository-graph.js';
-import { buildGlobalBrainNow, globalBrainFailure, globalBrainFile, type BrainDeps } from '../knowledge/brain.js';
+import { buildGraphView, linkNodes } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
 import { RUN_TABLE, SPEC_TABLE, specPageRow } from './project-pages.js';
 import { VALIDATION_TABLES, validationPage, withoutTableRows } from './validation-tables.js';
@@ -67,8 +66,6 @@ export interface RunRoutesDeps {
   graphify?: Graphify;
   /** Erases the project's chat history, which lives outside its workspace. */
   clearChat?: (projectId: string) => Promise<void>;
-  /** The global brain: every project that is not confidential, merged. Without it the brain routes answer 501. */
-  brain?: BrainDeps;
   /** The stored chat answers of a project, to count how often the chat asked the graph. */
   chatMessages?: (projectId: string) => Promise<ReadonlyArray<{ usage?: { graphQueries?: number } }>>;
   /** Name resolution for the clone-host check; defaults to the system resolver. */
@@ -574,30 +571,6 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       },
     },
     {
-      method: 'GET',
-      path: `${P}/brain`,
-      handler: async ({ json }) => {
-        if (!deps.brain) throw new HttpError(501, 'o cérebro do Teams AI não está disponível neste servidor');
-        const file = globalBrainFile(deps.brain.dir);
-        const raw = await fs.readFile(file, 'utf8').catch(() => null);
-        const updatedAt = await fs.stat(file).then((s) => s.mtime.toISOString(), () => null);
-        json(200, { ...buildBrainView(raw), status: { updatedAt, failure: globalBrainFailure() } });
-      },
-    },
-    {
-      method: 'POST',
-      path: `${P}/brain/rebuild`,
-      handler: async ({ json }) => {
-        if (!deps.brain) throw new HttpError(501, 'o cérebro do Teams AI não está disponível neste servidor');
-        try {
-          await buildGlobalBrainNow(deps.brain);
-        } catch (err) {
-          throw new HttpError(500, `não foi possível construir o cérebro: ${(err as Error).message}`);
-        }
-        json(200, { ok: true });
-      },
-    },
-    {
       method: 'POST',
       path: `${P}/projects/:projectId/graph/rebuild`,
       handler: async ({ params, json }) => {
@@ -767,8 +740,6 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
           await removeProjectDirs(dirs, deps.home);
           await removeProjectSettings(projectId, deps.home);
           await deps.clearChat?.(projectId);
-          // The deleted project leaves the global brain now, not at the next scheduled build.
-          if (deps.brain) void buildGlobalBrainNow(deps.brain).catch(() => undefined);
           await teardownProject(deps.exec ?? execCommand, projectId, [...new Set(services)]); // frees the ports; no daemon means nothing runs
           await releaseDeployPort(path.dirname(ws.root), projectId);
           json(200, { deleted: true });

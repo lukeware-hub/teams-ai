@@ -13,8 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
-import { buildGlobalBrainNow, globalBrainFile, scheduleGlobalBrain, type BrainDeps, type BrainProject } from './knowledge/brain.js';
-import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph, setBrainSource, setGraphMergedHook } from './knowledge/project-graph.js';
+import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph, setBrainSource } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
 import { MAX_AUTO_RETURNS, Run, type ExecuteResult, type RunDeps } from './orchestrator/run.js';
@@ -135,15 +134,10 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   });
   // One agent runner for refinement and chat, so both share the governor, the quota breaker and the ledger.
   const runAgent = await makeRunAgent({ cfg, agentsDir: path.join(repoRoot, '.claude', 'agents'), hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), workspacesRoot: expandHome(cfg.paths.workspaces), agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, stepBudget: async (projectId) => stepBudgetFor((await readUserConfig()).cfg, projectId), speckitAgents: async () => (await readUserConfig()).cfg.concurrency.planAgents, effortCaps: async () => (await readUserConfig()).cfg.routing.automaticEffortCap,
-    // The agents of refinement query the brain of their project, and the global one unless the project is confidential.
+    // The agents of refinement query the brain of their project.
     graphAccess: async (projectId) => {
-      const live = (await readUserConfig()).cfg;
-      const dir = await projectDirOf(projectId);
-      const found = (file: string | null): string | undefined => (file && existsSync(file) ? file : undefined);
-      const projectGraph = found(graphFile(path.posix.join(workspacePaths(live, projectId).graph, 'project')));
-      const open = dir !== null && !(await isConfidential({ cfg: live, dir, projectId }));
-      const brainGraph = found(open ? globalBrainFile(path.join(expandHome(live.paths.workspaces), '_brain')) : null);
-      return { ...(projectGraph ? { projectGraph } : {}), ...(brainGraph ? { brainGraph } : {}) };
+      const projectGraph = graphFile(path.posix.join(workspacePaths((await readUserConfig()).cfg, projectId).graph, 'project'));
+      return existsSync(projectGraph) ? { projectGraph } : {};
     } });
   /** The model and effort a project's chat or graphify setting fixes in Settings. */
   const slotSettingIn = async (projectId: string, slot: Slot) => slotSettingOf((await readUserConfig()).cfg.agentSettings[projectId] ?? {}, slot);
@@ -223,26 +217,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
   const healSettle = setTimeout(healTick, HEAL_SETTLE_MS);
   healSettle.unref();
   const chatStore = new ChatStore(path.join(expandHome('~/.teams-ai'), 'chats'));
-  // The brain: notes written from the runs and the chat go into every project graph, and every project graph merges into the global brain.
+  // The brain: notes written from the runs and the chat go into every project graph.
   const brainIdx = async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid: number) => isAlive(defaultRunControl(repoRoot), pid) });
-  const brainDeps: BrainDeps = {
-    graphify,
-    dir: path.join(expandHome(cfg.paths.workspaces), '_brain'),
-    log: io.stderr,
-    projects: async () => {
-      const { cfg: live } = await brainIdx();
-      const found: BrainProject[] = [];
-      for (const { dir } of live.projects) {
-        const read = await readProject(dir).catch(() => null);
-        if (!read) continue;
-        const id = read.project.projectId;
-        // `isConfidential` answers true when the project cannot be read, so a failed check never opens a project to the others.
-        found.push({ projectId: id, graphDir: path.posix.join(workspacePaths(live, id).graph, 'project'), confidential: await isConfidential({ cfg: live, dir, projectId: id }) });
-      }
-      return found;
-    },
-  };
-  setGraphMergedHook(() => scheduleGlobalBrain(brainDeps));
   setBrainSource(async (projectId) => {
     const idx = await brainIdx();
     const dir = await projectDirOf(projectId);
@@ -274,14 +250,9 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
       routes: [
         ...licenseRoutes({ serviceUrl: process.env.LICENSE_SERVICE_URL ?? '', onChange: guard.reload }),
         ...onboardingRoutes({ exec: execCommand, fetch: globalThis.fetch, hostEnv: io.env, secretsDir: expandHome(cfg.paths.secrets), spawn: spawnScriptPty, log: io.stderr, onClaudeLogin: () => runAgent.resetQuota(), onJevCost: (costUsd) => void recordJevCost(cfg, costUsd).catch(() => {}), accumulatedUsd: () => jevTotalUsd(cfg) }),
-        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, brain: brainDeps, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
+        ...runRoutes({ cfg: async () => (await readUserConfig()).cfg, control: defaultRunControl(repoRoot), log: io.stderr, stoppedItems: (projectId) => registry.stoppedItems(projectId), queueInProgram: (p, s) => registry.queueInProgram(p, s), importBacklog: (projectId) => registry.startImportedBacklog(projectId), graphify, clearChat: (projectId) => chat.clear(projectId), chatMessages: (projectId) => chatStore.read(projectId), closeDrafts: (projectId) => registry.closeProjectDrafts(projectId) }),
         ...opsRoutes({ index: async () => ({ cfg: (await readUserConfig()).cfg, isAlive: (pid) => isAlive(defaultRunControl(repoRoot), pid) }) }),
-        ...refineRoutes({
-          registry,
-          log: io.stderr,
-          // A project that turns confidential leaves the global brain now, not at the next scheduled build.
-          confidentialityChanged: () => void buildGlobalBrainNow(brainDeps).catch(() => undefined),
-        }),
+        ...refineRoutes({ registry, log: io.stderr }),
         ...chatRoutes({ chat }),
         ...settingsRoutes({}),
         ...usageRoutes({
@@ -445,7 +416,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const marker = await readDocsMarker(ws);
   const docs = await docsRunOf(ws, projectDir, marker);
   const { planFile, taskFile } = await planFilesFor(projectDir, specId, spec, docs);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs, brainGraph: (await isConfidential({ cfg, dir: projectDir, projectId: project.projectId })) ? null : globalBrainFile(path.join(expandHome(cfg.paths.workspaces), '_brain')) };
+  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

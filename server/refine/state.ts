@@ -239,6 +239,8 @@ export interface RefineState {
   graphedHash?: Partial<Record<DocFile, string>>;
   /** The document whose extraction runs now, if any. */
   graphing?: DocFile | null;
+  /** When the running extraction started. */
+  graphingSince?: string | null;
   /** The last document the extraction could not add, with the reason in plain words; cleared by the next success. */
   graphError?: { file: DocFile; reason: string } | null;
   /** The architecture the documents support, with the hash of the documents it was decided on; a later edit of a document makes it stale. */
@@ -794,11 +796,13 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.DocGraphStarted:
       s.graphing = docName(d.file);
+      s.graphingSince = e.at ?? null;
       break;
     case RefineEvent.DocGraphed:
       s.graphed = [...new Set([...(s.graphed ?? []), docName(d.file)])];
       s.graphedHash = { ...(s.graphedHash ?? {}), [docName(d.file)]: String(d.hash) };
       s.graphing = null;
+      s.graphingSince = null;
       s.graphError = null;
       break;
     case RefineEvent.ArchitectureStarted:
@@ -810,6 +814,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       break;
     case RefineEvent.DocGraphFailed:
       s.graphing = null;
+      s.graphingSince = null;
       s.graphError = { file: docName(d.file), reason: String(d.reason) };
       break;
     case RefineEvent.ArchitectureDecided: {

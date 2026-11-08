@@ -62,8 +62,6 @@ import { readState, snapshotDesign, updateState } from '../docs/project-state.js
 
 export interface RunDeps {
   cfg: Config;
-  /** The global brain file the agents of this run may query; null (or absent) for a confidential project, which never sees it. */
-  brainGraph?: string | null;
   /** The project's manual model and effort per agent, read at each step; without it the run uses `cfg`. */
   agentSettings?: (projectId: string) => Promise<Partial<Record<Role, AgentSetting | null>>>;
   /** Whether the project's agents decide blocks themselves, read at each use; without it the run uses `cfg`. */
@@ -439,13 +437,12 @@ export class Run {
     };
   }
 
-  /** The graphs the agents of a step may query, each only when its file exists: the repository's, the project's brain and the global brain. */
+  /** The graphs the agents of a step may query, each only when its file exists: the repository's and the project's brain. */
   private graphAccess(view?: ServiceView): GraphAccess {
     const found = (file: string | null | undefined): string | undefined => (file && existsSync(file) ? file : undefined);
     const repoGraph = found(graphFile(graphDir(view ? this.wsOf(view) : this.deps.ws, null)));
     const projectGraph = found(graphFile(path.posix.join(this.deps.ws.graph, 'project')));
-    const brainGraph = found(this.deps.brainGraph);
-    return { ...(repoGraph ? { repoGraph } : {}), ...(projectGraph ? { projectGraph } : {}), ...(brainGraph ? { brainGraph } : {}) };
+    return { ...(repoGraph ? { repoGraph } : {}), ...(projectGraph ? { projectGraph } : {}) };
   }
 
   /** The names the environment step made readable by the suites, on top of the machine's own generated secrets. */

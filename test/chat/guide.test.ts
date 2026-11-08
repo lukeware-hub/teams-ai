@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageBrainGraph, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from '../../server/chat/guide.js';
+import { GUIDE_GRAPH, GUIDE_HASH, guideHash, relatedMessages, stageChatFiles, stageFailureDetails, stageProjectDocs, stageProjectGraph } from '../../server/chat/guide.js';
 
 const GUIDE = path.resolve('docs/guia');
 const hasGraphify = spawnSync('graphify', ['--version']).status === 0;
@@ -97,25 +97,6 @@ describe('the user guide the chat searches', () => {
       const accepted = Array.isArray(file) ? file : [file];
       expect(accepted.some((f) => top.includes(`src=${f}`)), question).toBe(true);
     }
-  });
-});
-
-describe('the global brain the chat queries', () => {
-  it('copies the brain into the working directory as brain/graph.json', async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-cwd-'));
-    const src = await fs.mkdtemp(path.join(os.tmpdir(), 'brain-src-'));
-    await fs.writeFile(path.join(src, 'graph.json'), '{"nodes":[{"id":"shop::a"}]}');
-    await stageBrainGraph(cwd, path.join(src, 'graph.json'));
-    expect(await fs.readFile(path.join(cwd, 'brain', 'graph.json'), 'utf8')).toBe('{"nodes":[{"id":"shop::a"}]}');
-    await fs.rm(cwd, { recursive: true, force: true });
-    await fs.rm(src, { recursive: true, force: true });
-  });
-
-  it('stages nothing, not even the folder, when the brain does not exist yet', async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'chat-cwd-'));
-    await stageBrainGraph(cwd, path.join(cwd, 'missing', 'graph.json'));
-    await expect(fs.access(path.join(cwd, 'brain'))).rejects.toThrow();
-    await fs.rm(cwd, { recursive: true, force: true });
   });
 });
 

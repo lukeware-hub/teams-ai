@@ -1933,7 +1933,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
       )}
       {busyDialog && <BusyDialog onClose={() => setBusyDialog(false)} />}
       {snap.state.graphing && (
-        <ProcessBox title={`Adicionando ${snap.state.graphing} ao Graphify`} tone="accent" testId="graphing-box">
+        <ProcessBox title={`Adicionando ${snap.state.graphing} ao Graphify`} since={snap.state.graphingSince ?? null} tone="accent" testId="graphing-box">
           <span className="text-[0.75rem] leading-[1.35]">Você pode seguir: responder, rejeitar e editar continuam disponíveis.</span>
         </ProcessBox>
       )}

@@ -106,6 +106,13 @@ describe('RefinementPage of a new project', () => {
     expect((screen.getByTestId('doc-flow.md') as HTMLTextAreaElement).readOnly).toBe(false);
   });
 
+  it('counts the time of the graph extraction', async () => {
+    const since = new Date(Date.now() - 75_000).toISOString();
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ graphing: 'flow.md', graphingSince: since }));
+    renderPage();
+    expect((await screen.findByTestId('graphing-box')).textContent).toContain('Tempo: 01:15');
+  });
+
   it('reads the snapshot again every few seconds while work is open, as a safety net for the stream', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     try {

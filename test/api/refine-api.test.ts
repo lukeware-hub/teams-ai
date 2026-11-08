@@ -21,7 +21,6 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 let home = '';
 let spawnShouldFail = false;
 let registerShouldFail = false;
-let confidentialityChanges = 0;
 let failLog = '';
 let api: { port: number; close(): Promise<void> };
 let registry: SessionRegistry;
@@ -163,8 +162,7 @@ beforeEach(async () => {
     },
     routeReport: async (_criteria, report) => ({ route: report.includes('/hello') ? 'bug-existing-ac' : 'unclear', confidence: 0.9, source: 'jev' }),
   });
-  confidentialityChanges = 0;
-  api = await startApi({ routes: refineRoutes({ registry, confidentialityChanged: () => { confidentialityChanges += 1; } }) }, 0);
+  api = await startApi({ routes: refineRoutes({ registry }) }, 0);
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -670,10 +668,7 @@ describe('refine api', () => {
   it('the owner answers whether a new project is confidential; a value that is not a boolean is refused', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: 'sim' })).status).toBe(400);
-    expect(confidentialityChanges).toBe(0);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/confidential', { confidential: true })).status).toBe(200);
-    // The global brain is told at once, so the project leaves it before the next scheduled build.
-    expect(confidentialityChanges).toBe(1);
     expect((await snapshot()).state.confidential).toBe(true);
   });
 

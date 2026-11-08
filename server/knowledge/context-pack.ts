@@ -23,12 +23,10 @@ export interface CodeContext {
   graphFile?: string;
 }
 
-/** The graph files an agent may query: the repository's, the project's brain and the global brain. Each is present only when its file exists. */
+/** The graph files an agent may query: the repository's and the project's brain. Each is present only when its file exists. */
 export interface GraphAccess {
   repoGraph?: string;
   projectGraph?: string;
-  /** Left out for a confidential project. */
-  brainGraph?: string;
 }
 
 export interface ContextPackInput {
@@ -106,9 +104,9 @@ const plain = (s: string, max = 80) => s.replace(/[^\p{L}\p{N} ._/()-]/gu, ' ').
 
 /** The graphs the agent may query and, for a step on a task, queries ready to run. */
 function renderGraphAccess(access: GraphAccess, task: PlanTask | undefined): string | null {
-  const files = [access.projectGraph ? `- project graph (code, documents, specs, tasks, run history and failures, costs, chat): ${access.projectGraph}` : null, access.repoGraph ? `- repository graph (the code of this repository): ${access.repoGraph}` : null, access.brainGraph ? `- global brain (every project of this machine that is not confidential): ${access.brainGraph}` : null].filter((l) => l !== null);
+  const files = [access.projectGraph ? `- project graph (code, documents, specs, tasks, run history and failures, costs, chat): ${access.projectGraph}` : null, access.repoGraph ? `- repository graph (the code of this repository): ${access.repoGraph}` : null].filter((l) => l !== null);
   if (files.length === 0) return null;
-  const main = access.projectGraph ?? access.repoGraph ?? access.brainGraph!;
+  const main = access.projectGraph ?? access.repoGraph!;
   const ready = task
     ? [`- graphify query "${plain(task.title)}" --graph ${main}`, ...task.affectedPaths.slice(0, 2).map((p) => `- graphify explain "${plain(p.split('/').pop() ?? p)}" --graph ${main}`)].filter((q) => !q.includes('""'))
     : [];

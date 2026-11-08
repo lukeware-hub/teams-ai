@@ -40,17 +40,6 @@ export async function stageProjectGraph(cwd: string, projectGraph: string): Prom
   });
 }
 
-/** Puts the global brain in the step's working directory as `brain/graph.json`; nothing is written when the brain does not exist yet. */
-export async function stageBrainGraph(cwd: string, brainGraph: string): Promise<void> {
-  const text = await fs.readFile(brainGraph).catch((err: NodeJS.ErrnoException) => {
-    if (err.code !== 'ENOENT') throw err;
-    return null;
-  });
-  if (text === null) return;
-  await fs.mkdir(path.join(cwd, 'brain'), { recursive: true });
-  await fs.writeFile(path.join(cwd, 'brain', 'graph.json'), text);
-}
-
 /** Puts the failure record of each spec in the step's working directory, where the chat searches it: `falhas/<spec>.md`. */
 export async function stageFailureDetails(cwd: string, details: ReadonlyMap<string, string>): Promise<void> {
   if (details.size === 0) return;

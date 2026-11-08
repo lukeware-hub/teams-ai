@@ -38,16 +38,10 @@ export async function projectMainDocs(located: LocatedProject | null): Promise<M
 export type BrainSource = (projectId: string) => Promise<{ runs: RunJournal[]; chat: ChatMessage[] | null }>;
 
 let brainSource: BrainSource | null = null;
-let onGraphMerged: ((projectId: string) => void) | null = null;
 
 /** Where the notes of the brain come from; set once when the server starts. Without it the graph has no notes. */
 export function setBrainSource(source: BrainSource | null): void {
   brainSource = source;
-}
-
-/** Called after the graph of a project was merged, so the global brain can follow; set once when the server starts. */
-export function setGraphMergedHook(hook: ((projectId: string) => void) | null): void {
-  onGraphMerged = hook;
 }
 
 /**
@@ -92,7 +86,6 @@ export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, proje
   await graphify.merge([...repos, { dir: infoGraph, name: 'project-info' }], merged);
   // graphify links notes to code only when both are extracted together, so the task links are added to the merged graph here.
   await linkBrainFile(graphFile(merged), links).catch(() => 0);
-  onGraphMerged?.(project.projectId);
 }
 
 /** The project's graph built from main as it is now: the repository is fetched, then every service whose clone is present is built and merged. */

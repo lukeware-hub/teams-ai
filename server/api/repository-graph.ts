@@ -161,46 +161,6 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
   return usage;
 }
 
-/** The project a node of the global brain belongs to: the folder name the merge put in front of its id. */
-const projectOf = (id: string): string => id.split('::')[0] ?? '';
-
-/**
- * A view of the global brain: the same shape as the graph of one project, but each project is one group, so the map colours
- * the nodes by project. Nothing is read from the runs, so the usage is empty.
- */
-export function buildBrainView(raw: string | null): GraphView {
-  const usage = emptyUsage();
-  let graph: RawGraph = {};
-  try {
-    graph = raw ? (JSON.parse(raw) as RawGraph) : {};
-  } catch {
-    graph = {};
-  }
-  const nodes = (graph.nodes ?? []).filter((n) => n.repo !== DESCRIPTION_REPO && projectOf(n.id) !== '');
-  if (nodes.length === 0) return { available: false, nodes: 0, links: 0, communities: 0, top: [], usage };
-  const kept = new Set(nodes.map((n) => n.id));
-  const links = (graph.links ?? []).filter((l) => kept.has(l.source) && kept.has(l.target));
-  const degree = new Map<string, number>();
-  for (const l of links) {
-    degree.set(l.source, (degree.get(l.source) ?? 0) + 1);
-    degree.set(l.target, (degree.get(l.target) ?? 0) + 1);
-  }
-  const sizes = new Map<string, number>();
-  for (const n of nodes) sizes.set(projectOf(n.id), (sizes.get(projectOf(n.id)) ?? 0) + 1);
-  const communities: GraphCommunity[] = [...sizes.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([id, size]) => ({ id, name: id, size }));
-  const byDegree = [...nodes].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || (a.id < b.id ? -1 : 1));
-  const mapNode = (n: (typeof nodes)[number]): GraphMapNode => ({ id: n.id, label: n.label ?? n.id, repo: n.repo ?? '', file: n.source_file ?? '', line: lineOf(n.source_location), community: projectOf(n.id), edges: degree.get(n.id) ?? 0 });
-  const drawn = byDegree.slice(0, MAP_NODES);
-  const shown = new Set(drawn.map((n) => n.id));
-  const map: GraphMap = {
-    nodes: drawn.map(mapNode),
-    links: links.filter((l) => shown.has(l.source) && shown.has(l.target)).map((l) => ({ source: l.source, target: l.target })),
-    communities,
-    truncated: nodes.length > MAP_NODES,
-  };
-  return { available: true, nodes: nodes.length, links: links.length, communities: communities.length, top: byDegree.slice(0, TOP_NODES).map((n) => ({ ...mapNode(n), url: null })), usage, map };
-}
-
 /**
  * Groups the nodes by modularity: each node starts alone and moves to the neighbouring group that tightens the groups the most, until none
  * moves. Nodes are visited in id order and ties go to the smaller group, so the same graph always gives the same groups. Nodes with no

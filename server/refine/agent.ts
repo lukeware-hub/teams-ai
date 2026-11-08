@@ -20,7 +20,7 @@ export interface AgentWiring {
   hostEnv: NodeJS.ProcessEnv;
   secretsDir: string;
   workspacesRoot: string;
-  /** The graphs the agents of one project may query (its brain, the global one unless it is confidential); read per step. */
+  /** The graphs the agents of one project may query (its brain); read per step. */
   graphAccess?: (projectId: string) => Promise<GraphAccess | undefined>;
   claudeJsonPath?: string;
   runStep?: typeof runStepFn;

@@ -69,10 +69,12 @@ describe('document graph in the stages', () => {
     await s.evaluateStage('flow.md');
     await s.continueStage();
     expect(s.state.graphing).toBe('flow.md');
+    expect(Date.parse(s.state.graphingSince ?? '')).not.toBeNaN();
     expect(s.state.doneStages ?? []).toEqual([]);
     release();
     await s.settled();
     expect(s.state.graphing).toBeNull();
+    expect(s.state.graphingSince).toBeNull();
     expect(s.state.graphed).toEqual(['flow.md']);
     expect(s.state.doneStages).toEqual(['flow.md']);
     await s.close();

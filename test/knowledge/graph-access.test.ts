@@ -14,7 +14,7 @@ const base: ContextPackInput = {
 
 const task = (over: Partial<PlanTask> = {}): PlanTask => ({ id: 'T1', title: 'Register the name', description: 'd', owner: 'dev', dependsOn: [], criteriaRefs: [], affectedPaths: ['internal/hello/handler.go', 'README.md', 'docs/extra.md'], ...over }) as PlanTask;
 
-const all = { projectGraph: '/ws/shop/graph/project/graphify-out/graph.json', repoGraph: '/ws/shop/graph/main/graphify-out/graph.json', brainGraph: '/ws/_brain/graphify-out/graph.json' };
+const all = { projectGraph: '/ws/shop/graph/project/graphify-out/graph.json', repoGraph: '/ws/shop/graph/main/graphify-out/graph.json' };
 
 describe('graph access in the pack', () => {
   it('names every graph the agent may query, in the one place after the code context', () => {
@@ -24,13 +24,9 @@ describe('graph access in the pack', () => {
     expect(pack.text).toContain('## Graph access (the brain)');
     expect(pack.text).toContain(`project graph (code, documents, specs, tasks, run history and failures, costs, chat): ${all.projectGraph}`);
     expect(pack.text).toContain(`repository graph (the code of this repository): ${all.repoGraph}`);
-    expect(pack.text).toContain(`global brain (every project of this machine that is not confidential): ${all.brainGraph}`);
   });
 
-  it('leaves the global brain out when the project may not have it, and the whole section when no graph exists', () => {
-    const open = buildContextPack({ ...base, graphAccess: { projectGraph: all.projectGraph } });
-    expect(open.text).toContain('project graph');
-    expect(open.text).not.toContain('global brain');
+  it('leaves the whole section out when no graph exists', () => {
     expect(buildContextPack({ ...base, graphAccess: {} }).sections).not.toContain('graph-access');
     expect(buildContextPack(base).sections).not.toContain('graph-access');
   });
