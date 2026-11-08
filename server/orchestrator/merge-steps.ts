@@ -186,10 +186,12 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
   };
 }
 
+/** The docs two specs that run together extend at once, at any depth of the numbered tree: a conflict there keeps both texts. */
+export const DOCS_UNION: readonly string[] = ['docs/**/*.md'];
+
 /** Docs branches (Phase 1 and 2) take the same path, minus gates and graph update (spec (orchestrator) §4.2). */
 export function docsMergeSteps(deps: MergeStepsDeps, branch: string, worktree: string, title: string, specId: string): MergeSteps {
-  // Two specs that run together extend the same README, RUNBOOK and API pages: a conflict there keeps both texts.
-  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.\n\nSpec: ${specId}`, false, null, ['docs/*.md']);
+  const base = common(deps, worktree, branch, title, async () => `Documentation update for the orchestrator run.\n\nSpec: ${specId}`, false, null, DOCS_UNION);
   return {
     ...base,
     afterMerge: async () => {

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DOCS_UNION } from '../../server/orchestrator/merge-steps.js';
 import {
   DEFAULT_COMMIT_EXCLUDES,
   GitError,
@@ -213,6 +214,21 @@ describe('changedFiles and rebase', () => {
     expect(text).toContain('from task');
     expect(text).not.toContain('<<<<<<<');
     expect(await git(wt, ['status', '--porcelain'])).toBe('');
+  });
+
+  it('keeps both sides of a file deep in the numbered docs tree under the docs merge union', async () => {
+    const wt = path.join(root, 'wt');
+    const file = 'docs/06-infra-e-deploy/runbooks/operacao.md';
+    await createWorktree(repo, wt, 'task/x', 'main');
+    await write(wt, file, '# Operação\n\nfrom task\n');
+    await commitAll(wt, 'docs: task');
+    await write(repo, file, '# Operação\n\nfrom main\n');
+    await commitAll(repo, 'docs: main');
+    const result = await rebaseOnto(wt, 'main', undefined, { union: DOCS_UNION });
+    expect(result.ok).toBe(true);
+    const text = await fs.readFile(path.join(wt, file), 'utf8');
+    expect(text).toContain('from main');
+    expect(text).toContain('from task');
   });
 
   it('still reports a conflict in a file the union does not name', async () => {

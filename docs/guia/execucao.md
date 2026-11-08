@@ -10,7 +10,7 @@ Com o repositório de documentos ligado, o início também deixa a tag `dev-star
 
 ## O que a tela mostra
 
-- As **fases** do trabalho e a fase atual: 0 Preparação do repositório, 1 Especificação técnica, 2 Plano, 3 Implementação, 4 Verificação, 5 Deploy (publicar o serviço no seu computador) e 6 Relatório.
+- As **fases** do trabalho e a fase atual: 0 Preparação do repositório, 1 Especificação técnica, 2 Plano, 3 Implementação, 4 Verificação, 5 Deploy (publicar o serviço no seu computador), Documentação (o agente de documentação escreve a pasta `docs/` de cada repositório que a spec mudou e abre um pull request para ela) e 6 Relatório.
 - As **tarefas** de cada fase, com a situação de cada uma: aguardando a vez, pronta, sendo desenvolvida, em testes, em revisão, concluída ou bloqueada.
 - O **custo estimado** e os **tokens** usados.
 - Os eventos ao vivo.
