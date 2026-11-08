@@ -35,6 +35,12 @@ describe('suggestPack (Sugerir)', () => {
     expect(feedback).not.toContain('### design.md');
   });
 
+  it('says so when a neighbour is a digest, since its excerpts are not the whole document', () => {
+    const big = { ...docs, 'project.md': `# Projeto\n\n${'Texto longo do projeto. '.repeat(20_000)}` };
+    const feedback = suggestPack({ file: 'design.md', projectId: 'shop', specHash: 'sha256:' + 'a'.repeat(64), docs: big }).feedback ?? '';
+    expect(feedback).toContain('The documents below are a digest');
+  });
+
   it('gives the briefing its own decisions while it is the target', () => {
     const feedback = pack('briefing.md');
     expect(feedback).toContain('### current briefing.md\n# Briefing\n\n## Decisões');

@@ -18,6 +18,11 @@ describe('progress of a refinement, read from its journal', () => {
     expect(running[0]).toMatchObject({ role: 'po', model: 'claude-sonnet-5-5', effort: 'low', part: { index: 2, total: 2 }, limitMs: 120_000 });
   });
 
+  it('a step id used again after it finished is running again, not finished', () => {
+    const reused = [ev(1, 'STEP_STARTED', { stepId: 's1', role: 'po' }), ev(2, 'STEP_FINISHED', { stepId: 's1' }), ev(3, 'STEP_STARTED', { stepId: 's1', role: 'sm' })];
+    expect(runningStepsOf(reused).map((s) => s.role)).toEqual(['sm']);
+  });
+
   it('names the stage under review until its evaluation ends', () => {
     expect(reviewingOf(journal)).toBe('flow.md');
     expect(reviewingOf([...journal, ev(5, 'REFINE_EVALUATION_ENDED')])).toBeNull();

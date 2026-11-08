@@ -34,6 +34,9 @@ export function docOf(file: string, specId: string, projectBriefing = false): Do
 /** Shown as the reason when another change covered a pending suggestion, so it no longer applies. */
 export const COVERED_REASON = 'Este ajuste já foi coberto por outra alteração e foi descartado.';
 
+/** Shown as the reason when a reprocess puts the passed text back and the suggestion's text is not in it. */
+export const NOT_IN_PASSED_TEXT = 'Não se aplica ao texto entregue com o Reprocessar.';
+
 /** Spec (refinement) §3.4: only known Markdown files, and `find` must occur exactly once; a change that says nothing new, writes an orchestrator id or joins two list items is refused too. */
 export function checkPatch(p: DocPatchIn, specId: string, docs: Partial<Record<DocFile, string>>, projectBriefing = false, request?: string): PatchCheck {
   const file = docOf(p.file, specId, projectBriefing);

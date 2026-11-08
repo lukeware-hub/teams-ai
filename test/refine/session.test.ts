@@ -484,6 +484,16 @@ describe('RefineSession', () => {
     expect(s.state.patches.filter((x) => x.status === 'pending').map((x) => x.file)).toEqual(['stack.md', 'flow.md']);
   });
 
+  it('a step cut by a restart is finished as interrupted, so the page shows nothing in use', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    await fs.appendFile(s.eventsFile, `${JSON.stringify({ seq: s.events.length + 1, at: new Date().toISOString(), runId: 'hello-app/hello-001', specHash: 'draft', type: 'STEP_STARTED', kind: 'fact', data: { stepId: 's00007', kind: 'refine', role: 'po', model: 'claude-sonnet-5-5', effort: 'low' } })}\n`);
+    await s.close();
+    const again = await RefineSession.open(deps());
+    expect((await again.snapshot()).running).toEqual([]);
+    expect(again.events.at(-1)).toMatchObject({ type: 'STEP_FINISHED', data: { stepId: 's00007', ok: false, failure: 'interrupted' } });
+    await again.close();
+  });
+
   it('replays after a restart and turns an open cycle into an interrupted error', async () => {
     const s = await RefineSession.create(deps(), 'new-spec');
     script['derive/po'] = [derived];
@@ -896,6 +906,54 @@ describe('RefineSession stage review', () => {
     await s.reprocessStage('project.md');
     expect(await readDoc(d.draft, 'project.md')).toBe('# Entregue\n');
     expect(s.state.cycle).toBe(2);
+    await s.close();
+  });
+
+  it('a reprocess keeps the suggestions accepted after the passed text, applied to the passed text', async () => {
+    const d = deps();
+    const s = await RefineSession.create(d, 'new-project', { repositories: false });
+    await writeDoc(d.draft, 'project.md', '# Entregue\n');
+    await s.evaluateStage('project.md');
+    await s.close();
+    const journal = await RefineJournal.open(d.draft.events, d.draft);
+    await journal.fact(RefineEvent.PatchProposed, { patchId: 'po-c1-9', role: 'po', file: 'project.md', find: 'Entregue', replace: 'Aceito', reason: 'r', diff: '', cycle: 1 });
+    await journal.fact(RefineEvent.PatchAccepted, { patchId: 'po-c1-9' });
+    await journal.close();
+    const again = await RefineSession.open(deps());
+    await writeDoc(d.draft, 'project.md', '# Mudou\n');
+    await again.reprocessStage('project.md');
+    expect(await readDoc(d.draft, 'project.md')).toBe('# Aceito\n');
+    expect(again.state.patches.find((p) => p.patchId === 'po-c1-9')).toMatchObject({ status: 'accepted' });
+    await again.close();
+  });
+
+  it('a reprocess drops an accepted suggestion the passed text no longer has, and says why', async () => {
+    const d = deps();
+    const s = await RefineSession.create(d, 'new-project', { repositories: false });
+    await writeDoc(d.draft, 'project.md', '# Entregue\n');
+    await s.evaluateStage('project.md');
+    await s.close();
+    const journal = await RefineJournal.open(d.draft.events, d.draft);
+    await journal.fact(RefineEvent.PatchProposed, { patchId: 'po-c1-9', role: 'po', file: 'project.md', find: 'Inexistente', replace: 'Aceito', reason: 'r', diff: '', cycle: 1 });
+    await journal.fact(RefineEvent.PatchAccepted, { patchId: 'po-c1-9' });
+    await journal.close();
+    const again = await RefineSession.open(deps());
+    await writeDoc(d.draft, 'project.md', '# Mudou\n');
+    await again.reprocessStage('project.md');
+    expect(await readDoc(d.draft, 'project.md')).toBe('# Entregue\n');
+    expect(again.state.patches.find((p) => p.patchId === 'po-c1-9')).toMatchObject({ status: 'dropped', decision: 'Não se aplica ao texto entregue com o Reprocessar.' });
+    await again.close();
+  });
+
+  it('a reprocess is logged as a reprocess of the passed text, not as a human edit', async () => {
+    const d = deps();
+    const s = await RefineSession.create(d, 'new-project', { repositories: false });
+    await writeDoc(d.draft, 'project.md', '# Entregue\n');
+    await s.evaluateStage('project.md');
+    await writeDoc(d.draft, 'project.md', '# Mudou\n');
+    await s.reprocessStage('project.md');
+    expect(s.events.some((e) => e.type === RefineEvent.DocEdited && e.data.source === 'reprocess')).toBe(true);
+    expect(s.events.filter((e) => e.type === RefineEvent.DocEdited && e.data.source === 'human')).toEqual([]);
     await s.close();
   });
 

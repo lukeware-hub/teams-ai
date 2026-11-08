@@ -24,11 +24,17 @@ export interface StageCost {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-/** The steps started but not finished, in the order they started. */
+/** The steps started but not finished, in the order they started. An id can start again after it finished, so each start is paired with the next finish of its id. */
 export function runningStepsOf(events: ReadonlyArray<StoredEvent>): RunningStep[] {
-  const finished = new Set(events.filter((e) => e.type === 'STEP_FINISHED').map((e) => str(e.data.stepId)));
-  return events
-    .filter((e) => e.type === 'STEP_STARTED' && !finished.has(str(e.data.stepId)))
+  const open = new Map<string, StoredEvent>();
+  for (const e of events) {
+    const id = str(e.data.stepId);
+    if (e.type === 'STEP_STARTED') {
+      open.delete(id);
+      open.set(id, e);
+    } else if (e.type === 'STEP_FINISHED') open.delete(id);
+  }
+  return [...open.values()]
     .map((e) => ({
       stepId: str(e.data.stepId),
       kind: str(e.data.kind),

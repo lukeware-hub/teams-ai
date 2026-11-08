@@ -14,6 +14,7 @@ import type { Project } from '../contracts/project.js';
 import { freezeSpec, providedSecretNames, Spec, type ExternalDependency } from '../contracts/spec.js';
 import { writeFileAtomic } from '../core/atomic-write.js';
 import { OwnerError } from '../core/owner-error.js';
+import { stepSeqOf } from '../core/ids.js';
 import { execCommand, type Exec } from '../exec/command.js';
 import { loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
 import type { ProgramEntry } from '../program/controller.js';
@@ -34,7 +35,7 @@ import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
-import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
+import { applyPatch, checkPatch, COVERED_REASON, NOT_IN_PASSED_TEXT, patchId as patchIdOf, unifiedDiff } from './patches.js';
 import { additiveOnly, patchChangesScope } from './scope-guard.js';
 import { autoAcceptable, inTeamAlone } from './team-rule.js';
 import { restoreMove } from './moves.js';
@@ -104,7 +105,7 @@ export class RefineJournal {
   private push(e: StoredEvent): void {
     this.log.push(e);
     applyRefineEvent(this.state, e);
-    if (e.type === 'STEP_STARTED') this.stepSeq += 1;
+    if (e.type === 'STEP_STARTED') this.stepSeq = Math.max(this.stepSeq, stepSeqOf(e.data.stepId));
   }
 
   async fact(type: string, data: Record<string, unknown> = {}): Promise<StoredEvent> {
@@ -340,6 +341,8 @@ export class RefineSession {
     if (journal.state.architectureRunning) await journal.fact(RefineEvent.ArchitectureFailed, { reason: 'A decisão da arquitetura foi interrompida quando o servidor reiniciou.', issues: [] });
     // A graph extraction cut by a restart is failed, so the stage does not wait forever; Continuar tries again.
     if (journal.state.graphing) await journal.fact(RefineEvent.DocGraphFailed, { file: journal.state.graphing, reason: 'A extração foi interrompida quando o servidor reiniciou.' });
+    // A step the restart cut has no process left: it is finished as interrupted, so the page does not show it in use.
+    for (const step of runningStepsOf(journal.events)) await journal.fact('STEP_FINISHED', { stepId: step.stepId, kind: step.kind, role: step.role, model: step.model, effort: step.effort, taskId: null, ok: false, failure: 'interrupted', usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: null, durationMs: 0, numTurns: 0 });
     // A crash between enabling backlog mode and moving the briefing: finish the move.
     if (journal.state.backlog?.enabled) await moveBriefingToProject(deps.draft, journal.state.extension ? requestHeading(journal.state.extension.requestId) : undefined);
     // A continued spec carries its JSON from main before any cycle has derived one.
@@ -654,14 +657,34 @@ export class RefineSession {
   private async keepPassedText(file: DocFile, restore: boolean): Promise<void> {
     const kept = path.posix.join(this.deps.draft.root, 'passed', file);
     if (restore) {
-      const text = await fs.readFile(kept, 'utf8');
-      await writeDoc(this.deps.draft, file, text);
-      await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'human' });
-      await this.journal.fact(RefineEvent.StageReprocessed, { file });
+      await this.restorePassed(file, await fs.readFile(kept, 'utf8'));
       return;
     }
     if ((this.state.passedStages ?? []).includes(file)) return;
     await this.keepPassed(file, await readDoc(this.deps.draft, file));
+  }
+
+  /** The reprocess puts the passed text back and applies again the suggestions accepted after it, so they stay in the document. */
+  private async restorePassed(file: DocFile, passed: string): Promise<void> {
+    const passedIds = new Set(this.state.passedPatchIds?.[file] ?? []);
+    const carried = this.state.patches.filter((p) => p.file === file && p.status === 'accepted' && !passedIds.has(p.patchId));
+    let text = passed;
+    const reapplied: string[] = [];
+    const lost: string[] = [];
+    for (const p of carried) {
+      const next = applyPatch(text, p);
+      if (next === null) lost.push(p.patchId);
+      else {
+        text = next;
+        reapplied.push(p.patchId);
+      }
+    }
+    await writeDoc(this.deps.draft, file, text);
+    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'reprocess' });
+    await this.journal.fact(RefineEvent.StageReprocessed, { file });
+    // The reprocess drops the suggestions accepted after the pass: the ones that still apply are accepted again, the others stay dropped.
+    for (const patchId of reapplied) await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
+    for (const patchId of lost) await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: NOT_IN_PASSED_TEXT });
   }
 
   /** Writes `text` as the text passed to a stage: the reprocess goes back to it. */

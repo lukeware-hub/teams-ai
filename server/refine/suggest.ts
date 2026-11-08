@@ -2,7 +2,7 @@ import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
 import { briefTemplate, designTemplate, projectTemplate, stackTemplate, type DocFile } from './draft.js';
 import { earlierDocs } from './doc-stages.js';
-import { buildWithDocs } from './docs-view.js';
+import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
 
 /** Every document but flow.md, which is the source the others are suggested from. */
 export type SuggestFile = Exclude<DocFile, 'flow.md'>;
@@ -19,7 +19,7 @@ export const DOC_FILES: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'f
 export function suggestPack(input: { file: SuggestFile; projectId: string; specHash: string; docs: Record<DocFile, string>; earlierOnly?: boolean }): ContextPackInput {
   // A stage of a new project reads only the documents before it; the other sessions read all the others.
   const others = input.earlierOnly ? earlierDocs(input.file) : DOC_FILES.filter((f) => f !== input.file);
-  const viewed = buildWithDocs(Object.fromEntries(others.map((f) => [f, input.docs[f]])) as Record<DocFile, string>, (view) => others.map((f) => `### ${f}\n${view[f]}`).join('\n\n'));
+  const viewed = buildWithDocs(Object.fromEntries(others.map((f) => [f, input.docs[f]])) as Record<DocFile, string>, (view, digested) => [...(digested ? [DIGEST_NOTE] : []), others.map((f) => `### ${f}\n${view[f]}`).join('\n\n')].join('\n\n'));
   const feedback = [
     `Write the complete docs/${input.file} in \`text\`, coherent with the other documents below.`,
     'Precedence when they disagree: the decisions recorded under "## Decisões" in the briefing first, then docs/flow.md, then the rest. Never remove, reword or reorder a recorded decision.',

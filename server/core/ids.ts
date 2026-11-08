@@ -60,6 +60,12 @@ export function stepId(seq: number): string {
   return `s${String(seq).padStart(5, '0')}`;
 }
 
+/** The sequence number a step id was made from; 0 for anything else. */
+export function stepSeqOf(id: unknown): number {
+  const seq = Number.parseInt(String(id).slice(1), 10);
+  return Number.isInteger(seq) && seq > 0 ? seq : 0;
+}
+
 export const RUN_KINDS = ['run', 'complete', 'readme', 'deploy'] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
