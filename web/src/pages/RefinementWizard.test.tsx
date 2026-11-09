@@ -451,7 +451,7 @@ describe('the final review', () => {
     open('?etapa=backlog');
     show(reviewSnap());
     expect(screen.getByTestId('pending-toggle').textContent).toBe('Ocultar pendências');
-    expect(screen.getByTestId('final-pending').textContent).toContain('project.md: 2 pendências');
+    expect(screen.getByTestId('pending-project.md').textContent).toBe('project.md2 pendências');
     expect(screen.getByTestId('answer-po-c1-0')).toBeTruthy();
     fireEvent.click(screen.getByTestId('pending-toggle'));
     expect(screen.queryByTestId('pending-project.md')).toBeNull();

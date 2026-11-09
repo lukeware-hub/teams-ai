@@ -1497,28 +1497,37 @@ export function RefinementView(p: ViewProps) {
   const acceptable = st.patches.filter((x) => x.status === 'pending').length;
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
-            {acceptable > 0 && p.onAcceptAll && (
-              <div className="grid gap-2" data-testid="accept-all-block">
-                <p data-testid="accept-all-note" className="m-0 text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>
-                <ActionButton data-testid="accept-all" className="primary h-10 justify-self-start" busy={serverBusy} disabled={locked || serverBusy} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
-                  Aceitar todas ({acceptable})
-                </ActionButton>
+            {acceptable > 0 && p.onAcceptAll && <p data-testid="accept-all-note" className="m-0 max-w-[72ch] text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>}
+            {(byDoc.length > 0 || (acceptable > 0 && p.onAcceptAll)) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {acceptable > 0 && p.onAcceptAll && (
+                  <div className="contents" data-testid="accept-all-block">
+                    <ActionButton data-testid="accept-all" className="primary h-10" busy={serverBusy} disabled={locked || serverBusy} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
+                      Aceitar todas ({acceptable})
+                    </ActionButton>
+                  </div>
+                )}
+                {byDoc.length > 0 && (
+                  <button type="button" className="secondary group h-10 px-3.5" data-testid="pending-toggle" aria-expanded={pendingOpen} aria-controls="pending-docs" onClick={() => setPendingOpen(!pendingOpen)}>
+                    {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
+                    <span className="inline-flex transition-transform duration-200 ease-out group-aria-expanded:-rotate-90 rotate-90 motion-reduce:transition-none" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>
+                  </button>
+                )}
               </div>
-            )}
-            {byDoc.length > 0 && (
-              <button type="button" className="secondary h-10 justify-self-start px-3" data-testid="pending-toggle" aria-expanded={pendingOpen} onClick={() => setPendingOpen(!pendingOpen)}>
-                {pendingOpen ? 'Ocultar pendências' : `Mostrar pendências (${pendingTotal})`}
-              </button>
             )}
             {pendingOpen && byDoc.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <ul id="pending-docs" className="m-0 grid list-none divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface-sunken p-0">
                 {byDoc.map(({ file, count }) => (
-                  <button key={file} type="button" className="link-button" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
-                    {docLabel[file]}: {count === 1 ? '1 pendência' : `${count} pendências`}
-                    <Icon name="arrow-right" size={16} />
-                  </button>
+                  <li key={file}>
+                    <button type="button" className="group flex h-auto min-h-11 w-full min-w-0 items-center gap-3 rounded-none border-0 bg-transparent px-3.5 py-2 text-left text-ink transition-colors duration-150 hover:bg-accent-soft focus-visible:bg-accent-soft" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
+                      <span className="inline-flex text-accent-text" aria-hidden="true"><Icon name="file" size={16} /></span>
+                      <span className="min-w-0 flex-1 truncate text-[0.875rem] font-semibold">{docLabel[file]}</span>
+                      <span className="rounded-full border border-warn-line bg-warn-soft px-2 py-0.5 text-[0.75rem] font-semibold tabular-nums text-warn">{count === 1 ? '1 pendência' : `${count} pendências`}</span>
+                      <span className="inline-flex text-ink-soft transition-transform duration-150 ease-out group-hover:translate-x-0.5 group-hover:text-accent-text motion-reduce:transition-none" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
             {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
             {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
