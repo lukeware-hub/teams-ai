@@ -1254,6 +1254,10 @@ export class RefineSession {
     if (backlog?.enabled && (!backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec))) {
       throw new ConflictError('Detalhe o backlog antes de preparar os planos: cada item precisa da sua spec.');
     }
+    // Plans written on an outdated backlog are thrown away at the next evaluation, so they wait for one on the current documents.
+    if (backlog?.enabled && (this.docsChangedSinceEvaluation() || backlog.items.some((i) => !backlog.preplans?.[i.key]?.preplan))) {
+      throw new ConflictError('Avalie o backlog com os documentos atuais antes de preparar os planos: cada item precisa do seu pré-plano.');
+    }
     if (!backlog?.enabled && !this.state.derived) throw new ConflictError('Avalie a spec antes de preparar os planos.');
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedPlans(ctl).finally(() => {
@@ -1264,6 +1268,13 @@ export class RefineSession {
     return run;
   }
 
+
+  /** Whether a document changed since the last evaluation, other than by an owner's answer, which the item specs freeze on their own. */
+  private docsChangedSinceEvaluation(): boolean {
+    const events = this.journal.events;
+    const last = events.findLastIndex((e) => e.type === RefineEvent.Evaluated);
+    return events.slice(last + 1).some((e) => e.type === RefineEvent.DocEdited && e.data.source !== 'decision');
+  }
 
   /** The journal keeps the preparation's start, each step and its end; a failure is journaled for the owner, never thrown. */
   private async timedPlans(ctl: AbortController): Promise<void> {

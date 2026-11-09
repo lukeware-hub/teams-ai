@@ -105,6 +105,30 @@ beforeEach(async () => {
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
+describe('RefineSession.runPlans waits for a current backlog', () => {
+  const journalOf = (s: RefineSession) => (s as unknown as { journal: RefineJournal }).journal;
+
+  it('refuses to prepare plans after a document changed since the evaluation, and writes none', async () => {
+    const session = await detailedSession();
+    await journalOf(session).fact(RefineEvent.DocEdited, { file: 'stack.md', hash: 'h', source: 'patch' });
+    expect(() => session.runPlans()).toThrow(/Avalie o backlog com os documentos atuais/);
+    expect(agentCalls).toEqual([]);
+  });
+
+  it("still prepares plans after an owner's answer, which the item specs freeze", async () => {
+    const session = await detailedSession();
+    await journalOf(session).fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: 'h', source: 'decision' });
+    await session.runPlans();
+    expect(agentCalls.map(keyOf).sort()).toEqual(['cart', 'login']);
+  });
+
+  it('refuses to prepare plans while an item has no pre-plan', async () => {
+    const session = await detailedSession();
+    await journalOf(session).fact(RefineEvent.PreplanDerived, { key: 'cart', inputHash: 'i', specRev: 'r', preplan: null, issues: ['falhou'], cycle: 2 });
+    expect(() => session.runPlans()).toThrow(/cada item precisa do seu pré-plano/);
+  });
+});
+
 describe('RefineSession.runPlans with the plan step', () => {
   it('writes one plan per item, publishes each into the draft docs, and marks the preparation done', async () => {
     const session = await detailedSession();

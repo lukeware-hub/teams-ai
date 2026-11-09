@@ -43,6 +43,18 @@ interface ReplaceOptions {
   stillCurrent?: () => Promise<boolean>;
 }
 
+/** A reader holding `file` open for an instant makes a rename over it fail on Windows; a few short retries let the reader close it. */
+async function renameOver(tmp: string, file: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fs.rename(tmp, file);
+    } catch (err) {
+      if (attempt >= 5 || !['EPERM', 'EACCES', 'EBUSY'].includes((err as NodeJS.ErrnoException).code ?? '')) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 20 * attempt));
+    }
+  }
+}
+
 /** Renames a fresh tmp file over `file`; returns false, with `file` untouched, when `stillCurrent` says no. */
 async function replace(file: string, content: string, { mode, stillCurrent }: ReplaceOptions = {}): Promise<boolean> {
   // Unique per call, so no writer ever renames or truncates another writer's tmp file (that was ENOENT).
@@ -52,7 +64,7 @@ async function replace(file: string, content: string, { mode, stillCurrent }: Re
     await fs.writeFile(tmp, content, mode === undefined ? undefined : { mode });
     if (mode !== undefined) await fs.chmod(tmp, mode).catch(() => undefined); // the umask may have masked `mode`
     if (stillCurrent && !(await stillCurrent())) return false;
-    await fs.rename(tmp, file);
+    await renameOver(tmp, file);
     renamed = true;
     return true;
   } finally {

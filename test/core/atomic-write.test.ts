@@ -36,6 +36,16 @@ describe('writeFileAtomic', () => {
     expect(await fs.readFile(file, 'utf8')).toBe('second');
     expect(await fs.readdir(dir)).toEqual(['data.txt']);
   });
+
+  it('retries a rename a reader blocks for an instant, as Windows does, and writes the file', async () => {
+    const file = path.join(dir, 'data.txt');
+    const locked = Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValueOnce(locked).mockRejectedValueOnce(locked);
+    await writeFileAtomic(file, 'saved');
+    expect(rename).toHaveBeenCalledTimes(3);
+    expect(await fs.readFile(file, 'utf8')).toBe('saved');
+    expect(await fs.readdir(dir)).toEqual(['data.txt']);
+  });
 });
 
 describe('updateFileAtomic', () => {

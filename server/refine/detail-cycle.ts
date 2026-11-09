@@ -18,7 +18,8 @@ import { validatePreplan } from '../validators/preplan.js';
 import type { CycleDeps } from './cycle.js';
 import { acNum } from './derive.js';
 import { citedSections, fitConflictsPack, preplanPack, specPack } from './detail-packs.js';
-import { repositoryContextOf } from './architecture-step.js';
+import { renderArchitectureMd, repositoryContextOf } from './architecture-step.js';
+import { sectionText } from './sections.js';
 import { leanRefine } from './limits.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
@@ -343,6 +344,10 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
 
   // Pre-plans, for the specs that are valid now.
   const planHash = new Map(items.filter((i) => specs[i.key]?.rev).map((i) => [i.key, planHashOf(i, specs[i.key]!.rev!)]));
+  // What the Jev compares each pre-plan with: the decided architecture and the owner's decisions in briefing.md.
+  const architecture = journal.state.architecture?.decision;
+  const ownerDecisions = sectionText(docs['briefing.md'], 'Decisões');
+  const decisionsText = [architecture ? renderArchitectureMd(architecture) : '', ownerDecisions ? `# Decisões do dono (briefing.md)\n\n${ownerDecisions}` : ''].filter(Boolean).join('\n\n');
   const acceptPreplan = async (item: Item, entry: ItemPreplan | undefined, review: boolean): Promise<Verdict> => {
     if (!entry) return { issues: ['o agente não devolveu o pré-plano desta spec'], detail: ['the answer has no pre-plan for this spec'] };
     const row = specs[item.key]!;
@@ -352,7 +357,7 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
     const rules = validatePreplan(parsed.data, spec);
     if (rules.length > 0) return { issues: rules };
     if (review && decider) {
-      const flags = await preplanFlags({ preplan: parsed.data, projectMd: docs['project.md'], stackMd: docs['stack.md'] }, decider, dctx);
+      const flags = await preplanFlags({ preplan: parsed.data, decisions: decisionsText }, decider, dctx);
       if (flags.length > 0) return { issues: flags, flagged: true };
     }
     preplans[item.key] = { inputHash: parsed.data.inputHash, specRev: parsed.data.specRev, preplan: parsed.data, issues: [], cycle };

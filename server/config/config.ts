@@ -85,8 +85,9 @@ const DECISION_DEFAULTS: Partial<Record<DecisionId, Partial<DecisionConfig>>> = 
   'patch-dedup': { chain: ['jev', 'local'], escalateTo: 'sm' },
   // R11.14: only decides whether another run is worth trying; a wrong answer costs one bounded run or one question to the owner.
   'failure-cause': { chain: ['jev', 'local'], escalateTo: 'sm' },
-  // R11.5a item 3: every detailing check asks the Jev; the other two were off until an eval, and the human turned them on (2026-10-13).
+  // R11.5a item 3: the detailing checks that ask the Jev; the human turned them on (2026-10-13).
   'spec-cited-sections': { chain: ['jev', 'local'], escalateTo: 'po' },
+  // A rule decides the shared-deploy check now (2026-11-09); the entry stays so a config that names it still loads.
   'criterion-shared-deploy': { chain: ['jev', 'local'], escalateTo: 'po' },
   'preplan-tech-decisions': { chain: ['jev', 'local'], escalateTo: 'sm' },
 };

@@ -706,13 +706,14 @@ describe('backlog detailing failure paths', () => {
 // R11.5a item 3 (plan 85): the Jev checks each first answer, and a flagged item goes back to its agent once.
 describe('backlog detailing checked by the Jev', () => {
   const quota = { ok: false, failure: 'quota', errors: ['janela de 5 horas'], summary: {}, sandboxDisabled: false };
-  const extra = (key: string) => ({ ...itemSpec(key), features: [key, 'pagamento'] });
-  /** The specs of every item a spec pack names, `caso` with a feature no section asks for. */
+  const extra = (key: string) => ({ ...itemSpec(key), objectives: [`Entregar ${key}`, 'Cobrar pagamento'] });
+  /** The specs of every item a spec pack names, `caso` with an objective no section asks for. */
   const withExtra = (req: Req) => ok({ specHash: H, specs: [...String(req.pack.feedback).matchAll(/^## Item ([a-z0-9-]+):/gm)].map((m) => (m[1] === 'caso' ? extra(m[1]) : itemSpec(m[1]!))) });
   const retried = (req: Req) => String(req.pack.feedback).includes('rejected');
   /** Derives the outline, then details it with the agent's hook and the Jev. */
-  const detailWith = async (hook: (req: Req) => unknown, decider: ReturnType<typeof jev>) => {
+  const detailWith = async (hook: (req: Req) => unknown, decider: ReturnType<typeof jev>, prepare?: (env: Awaited<ReturnType<typeof setup>>) => Promise<void>) => {
     const env = await setup();
+    await prepare?.(env);
     const agent = fakeAgent(() => OUTLINE, hook);
     await env.run(agent, 1);
     await env.journal.fact(RefineEvent.BacklogDetailEnabled, {});
@@ -720,15 +721,15 @@ describe('backlog detailing checked by the Jev', () => {
     await env.run(agent, 2, decider);
     return { ...env, retries: agent.calls.slice(from).filter((c) => c.feedback.includes('rejected')) };
   };
-  const featuresOf = async (env: { itemDir: (key: string) => string }, key: string) => JSON.parse(await readFile(`${env.itemDir(key)}/spec.json`, 'utf8')).features;
+  const objectivesOf = async (env: { itemDir: (key: string) => string }, key: string) => JSON.parse(await readFile(`${env.itemDir(key)}/spec.json`, 'utf8')).objectives;
 
   it('sends a spec the Jev flags back alone once with the flags, records the retry, and journals each check', async () => {
     const env = await detailWith((req) => (req.kind === 'spec' && !retried(req) ? withExtra(req) : undefined), jev('pagamento'));
     expect(env.retries.map((c) => c.kind)).toEqual(['spec']);
     expect(env.retries[0]!.feedback).toContain('## Item caso:');
     expect(env.retries[0]!.feedback).toContain('apontou que esta tentativa da spec acrescenta');
-    expect(env.retries[0]!.feedback).toContain('caso; pagamento');
-    expect(await featuresOf(env, 'caso')).toEqual(['caso']);
+    expect(env.retries[0]!.feedback).toContain('"Cobrar pagamento"');
+    expect(await objectivesOf(env, 'caso')).toEqual(['Entregar caso']);
     expect(env.journal.state.status).toBe('ready');
     expect(env.events.some((e) => e.type === 'DECISION_MADE' && (e.data.record as { decisionId: string }).decisionId === 'spec-cited-sections')).toBe(true);
   });
@@ -737,15 +738,16 @@ describe('backlog detailing checked by the Jev', () => {
     const decider = jev('pagamento');
     const env = await detailWith((req) => (req.kind === 'spec' ? withExtra(req) : undefined), decider);
     expect(env.retries).toHaveLength(1);
-    expect(decider.states.filter((s) => s.startsWith('item caso:'))).toHaveLength(1);
-    expect(await featuresOf(env, 'caso')).toEqual(['caso', 'pagamento']);
+    // One question per objective of the first answer, and none for the retry.
+    expect(decider.states.filter((s) => s.startsWith('item caso:'))).toHaveLength(2);
+    expect(await objectivesOf(env, 'caso')).toEqual(['Entregar caso', 'Cobrar pagamento']);
     expect(env.journal.state.status).toBe('ready');
   });
 
   it("keeps a flagged spec's first answer when its retry is not valid, with every criterion number unique", async () => {
     const env = await detailWith((req) => (req.kind !== 'spec' ? undefined : retried(req) ? ok({ specHash: H, specs: [{ ...itemSpec('caso'), type: 'bug' }] }) : withExtra(req)), jev('pagamento'));
     expect(env.retries).toHaveLength(1);
-    expect(await featuresOf(env, 'caso')).toEqual(['caso', 'pagamento']);
+    expect(await objectivesOf(env, 'caso')).toEqual(['Entregar caso', 'Cobrar pagamento']);
     expect(env.journal.state.backlog?.specs?.caso?.issues).toEqual([]);
     const ids = Object.values(env.journal.state.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria.map((c) => c.id) ?? []);
     expect(ids).toHaveLength(8);
@@ -755,7 +757,7 @@ describe('backlog detailing checked by the Jev', () => {
 
   it("keeps a flagged spec's first answer when its retry stops on quota, while the cycle fails on the quota", async () => {
     const env = await detailWith((req) => (req.kind !== 'spec' ? undefined : retried(req) ? quota : withExtra(req)), jev('pagamento'));
-    expect(env.journal.state.backlog?.specs?.caso?.spec?.features).toEqual(['caso', 'pagamento']);
+    expect(env.journal.state.backlog?.specs?.caso?.spec?.objectives).toEqual(['Entregar caso', 'Cobrar pagamento']);
     expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/limite de uso do Claude/);
   });
 
@@ -769,7 +771,7 @@ describe('backlog detailing checked by the Jev', () => {
       return ok({ specHash: H, specs: keys.map((k) => (k === 'caso' ? { ...itemSpec(k), type: 'bug' } : k === 'triagem' ? extra(k) : itemSpec(k))) });
     }, jev('pagamento'));
     expect(String(env.events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toMatch(/limite de uso do Claude/);
-    expect(env.journal.state.backlog?.specs?.triagem?.spec?.features).toEqual(['triagem', 'pagamento']);
+    expect(env.journal.state.backlog?.specs?.triagem?.spec?.objectives).toEqual(['Entregar triagem', 'Cobrar pagamento']);
   });
 
   it("keeps a confidential project's text away from the Jev", async () => {
@@ -784,7 +786,16 @@ describe('backlog detailing checked by the Jev', () => {
       if (req.kind !== 'preplan' || retried(req)) return undefined;
       const preplans = String(req.pack.feedback).split(/^## Spec /m).slice(1).map(preplanFor);
       return ok({ specHash: H, preplans: preplans.map((p) => (p.key === 'opme' ? { ...p, modules: [{ name: 'm', purpose: 'relógio do banco' }] } : p)) });
-    }, jev('relógio do banco'));
+    }, jev('relógio do banco'), async (env) => {
+      // The pre-plan is compared with the owner's decisions; with none there is nothing to check.
+      await writeFile(env.draft.briefingMd, `${await readFile(env.draft.briefingMd, 'utf8')}
+## Decisões
+
+### Relógio
+
+O horário vem de uma porta de relógio.
+`);
+    });
     expect(env.retries.map((c) => c.kind)).toEqual(['preplan']);
     expect(env.retries[0]!.feedback).toContain('## Spec opme:');
     expect(env.retries[0]!.feedback).toContain('apontou que esta tentativa do pré-plano contradiz');
