@@ -195,9 +195,19 @@ export interface SpecsVerdict {
   at: string | null;
 }
 
+/** A decision of the owner on a suggestion or a question. */
+export type OwnerDecision =
+  | { kind: 'accept'; id: string }
+  | { kind: 'reject'; id: string; reason: string | null }
+  | { kind: 'answer'; id: string; text: string; docsAnswered: boolean };
+
 export interface RefineState {
   status: RefineStatus;
   stale: boolean;
+  /** The owner's decisions taken while the team worked, applied in this order when it ends. */
+  queued?: OwnerDecision[];
+  /** Why a queued decision could not be applied, by suggestion or question id, until the owner decides it again. */
+  decisionDropped?: Record<string, string>;
   /** A doc changed after the running cycle started, so its evaluation is stale on arrival. */
   editedInCycle?: boolean;
   cycle: number;
@@ -253,6 +263,8 @@ export interface RefineState {
   specsFeedback?: Record<string, string[]>;
   /** The automatic repairs of specs.md since it was last approved. */
   specsRepairs?: number;
+  /** The items redone on the reviewers' feedback since the repairs last started over: a point that comes back on one goes to the owner. */
+  specsRedone?: string[];
   /** What the team tried on a rejected specs.md and what came of it, so the owner can read why it did not settle. */
   specsAttempts?: SpecsAttempt[];
   /** The text of specs.md the team already asked the owner about, so it asks once per text. */
@@ -482,6 +494,7 @@ function noteRepairedItem(s: RefineState, key: string, issues: readonly string[]
   const attempt = s.specsAttempts?.at(-1);
   if (!attempt || !s.specsFeedback?.[key]) return;
   if (!attempt.redone.includes(key)) attempt.redone.push(key);
+  if (!s.specsRedone?.includes(key)) s.specsRedone = [...(s.specsRedone ?? []), key];
   if (issues.length > 0) attempt.failed.push({ item: key, issues: [...issues] });
 }
 
@@ -556,6 +569,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         s.specsRepairs = 0;
         delete s.specsFeedback;
         delete s.specsAttempts;
+        delete s.specsRedone;
       }
       // What the reviewers said of the text a repair made.
       const attempt = s.specsAttempts?.at(-1);
@@ -586,10 +600,24 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (d.interrupted === true) delete s.evaluation;
       else if (s.evaluation) s.evaluation.endedAt = e.at ?? '';
       break;
+    case RefineEvent.DecisionQueued: {
+      const decision = d as unknown as OwnerDecision;
+      settleDecision(s, decision.id);
+      s.queued = [...(s.queued ?? []), decision];
+      break;
+    }
+    case RefineEvent.DecisionUnqueued:
+      settleDecision(s, String(d.id));
+      break;
+    case RefineEvent.DecisionDropped:
+      settleDecision(s, String(d.id));
+      s.decisionDropped = { ...s.decisionDropped, [String(d.id)]: String(d.reason) };
+      break;
     case RefineEvent.PatchAccepted:
     case RefineEvent.PatchRejected:
     case RefineEvent.PatchDropped: {
       const p = s.patches.find((x) => x.patchId === String(d.patchId));
+      settleDecision(s, String(d.patchId));
       if (p) {
         p.status = e.type === RefineEvent.PatchAccepted ? 'accepted' : e.type === RefineEvent.PatchRejected ? 'rejected' : 'dropped';
         if (e.type === RefineEvent.PatchAccepted && d.auto === true) p.auto = true;
@@ -667,6 +695,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
     case RefineEvent.QuestionAnswered:
     case RefineEvent.QuestionSkipped: {
       const q = s.questions.find((x) => x.questionId === String(d.questionId));
+      settleDecision(s, String(d.questionId));
       if (q) {
         q.status = e.type === RefineEvent.QuestionAnswered ? 'answered' : 'skipped';
         q.answer = (d.text as string | undefined) ?? null;
@@ -680,6 +709,7 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
       if (q?.origin === 'specs' && !s.questions.some((x) => x.origin === 'specs' && x.status === 'pending')) {
         s.specsRepairs = 0;
         delete s.specsFeedback;
+        delete s.specsRedone;
         s.specsAsked = undefined;
       }
       s.status = computeStatus(s);
@@ -776,6 +806,8 @@ export function applyRefineEvent(s: RefineState, e: { type: string; at?: string;
         s.backlog = { ...s.backlog, specs: { ...s.backlog.specs, [String(d.key)]: row }, acHighWater: Math.max(s.backlog.acHighWater ?? 0, Number(d.highWater ?? 0)) };
       }
       noteRepairedItem(s, String(d.key), (d.issues as string[]) ?? []);
+      // A new spec answers what the reviewers said of the item: an interrupted pre-plan does not detail it again.
+      if (s.specsFeedback && d.spec) delete s.specsFeedback[String(d.key)];
       markSpeckitStale(s);
       break;
     case RefineEvent.PreplanDerived:
@@ -949,4 +981,14 @@ export function reduceRefineEvents(events: ReadonlyArray<{ type: string; at?: st
   const s = emptyRefineState();
   for (const e of events) applyRefineEvent(s, e);
   return s;
+}
+
+/** A suggestion or a question was decided: it leaves the queue, and an earlier discard notice goes away. */
+function settleDecision(s: RefineState, id: string): void {
+  if (s.queued?.some((x) => x.id === id)) s.queued = s.queued.filter((x) => x.id !== id);
+  if (s.decisionDropped?.[id] !== undefined) {
+    const rest = { ...s.decisionDropped };
+    delete rest[id];
+    s.decisionDropped = rest;
+  }
 }

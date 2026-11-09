@@ -489,16 +489,15 @@ describe('a question the owner cannot answer yet', () => {
   const asked = { ...question(true), questionId: 'specs-1-0', origin: 'specs', text: 'Qual seção justifica o item base?', options: [{ label: 'Objetivos', detail: 'Usa os objetivos.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos.' }] };
   const snap = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, specsMd: { hash: 'h', bytes: 1 }, questions: [asked as never], ...over } as never);
 
-  it('says why while the team works, locks the choices and the button, and shows no note when free', () => {
+  it('lets the owner answer while the team works, and shows a queued answer in place of the button', () => {
     const first = render(<MemoryRouter><RefinementView snap={snap({ status: 'evaluating' })} busy events={[]} {...handlers()} /></MemoryRouter>);
-    expect(screen.getByTestId('question-waiting').textContent).toContain('libera sozinha');
-    expect((screen.getByTestId('answer-specs-1-0') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('option-group-option-objetivos') as HTMLButtonElement).disabled).toBe(true);
-    first.unmount();
-    render(<MemoryRouter><RefinementView snap={snap({ status: 'answering' })} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
-    expect(screen.queryByTestId('question-waiting')).toBeNull();
     expect((screen.getByTestId('answer-specs-1-0') as HTMLButtonElement).disabled).toBe(false);
+    first.unmount();
+    render(<MemoryRouter><RefinementView snap={snap({ status: 'evaluating', queued: [{ kind: 'answer', id: 'specs-1-0' }] })} busy events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.getByTestId('queued-specs-1-0').textContent).toContain('Resposta na fila');
+    expect(screen.queryByTestId('answer-specs-1-0')).toBeNull();
   });
+
 });
 
 describe('what the start waits for', () => {

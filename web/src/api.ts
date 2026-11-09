@@ -568,6 +568,10 @@ export interface RefineState {
   extension?: { requestId: string; title: string; text: string; at: string; before?: Array<{ key: string; rank: number; dependsOn: string[] }> };
   /** The team resolving a request on its own: running, or stopped with the reasons the owner must decide what is left. */
   autopilot?: { status: 'queued' | 'running' | 'stopped'; reasons: string[] };
+  /** The owner's decisions taken while the team worked, applied in this order when it ends. */
+  queued?: Array<{ kind: 'accept' | 'reject' | 'answer'; id: string }>;
+  /** Why a queued decision could not be applied, by suggestion or question id. */
+  decisionDropped?: Record<string, string>;
   /** The SM's impact of the request, with the outline it was made from; `issues` names what it broke. */
   impact?: { inputHash: string; impact: RequestImpact | null; issues: string[] };
   mode?: 'new-project' | 'new-spec' | 'continue' | null;
@@ -756,17 +760,18 @@ export const refineApi = {
   closeNotice: (p: string, s: string, noticeId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/notices/${encodeURIComponent(noticeId)}/close`).then((r) => json<{ ok: true }>(r)),
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   /** Accepts every suggestion that waits and has the agents run again on what was decided. */
-  acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number }>(r)),
+  acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number; queued: number }>(r)),
   autopilot: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/autopilot`).then((r) => json<{ ok: true }>(r)),
   askSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/ask`).then((r) => json<{ asked: boolean }>(r)),
   approveSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/approve`).then((r) => json<{ ok: true }>(r)),
   checkSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/check`).then((r) => json<{ started: boolean }>(r)),
-  answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true }>(r)),
+  answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true; queued: boolean }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
   reask: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/reask`).then((r) => json<{ ok: true }>(r)),
-  accept: (p: string, s: string, patchId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/accept`).then((r) => json<{ ok: true }>(r)),
+  accept: (p: string, s: string, patchId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/accept`).then((r) => json<{ ok: true; queued: boolean }>(r)),
+  unqueue: (p: string, s: string, id: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/queued/${encodeURIComponent(id)}/undo`).then((r) => json<{ ok: true }>(r)),
   reject: (p: string, s: string, patchId: string, reason: string | null) =>
-    send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true }>(r)),
+    send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/patches/${encodeURIComponent(patchId)}/reject`, { reason: reason ?? undefined }).then((r) => json<{ ok: true; queued: boolean }>(r)),
   secret: (p: string, s: string, name: string, value: string) => send('PUT', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/secrets/${encodeURIComponent(name)}`, { value }).then((r) => json<{ present: boolean; hint: string }>(r)),
   decideArchitecture: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/architecture`).then((r) => json<{ ok: boolean }>(r)),
   start: (p: string, s: string, summaryHash?: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/start`, summaryHash === undefined ? undefined : { summaryHash }).then((r) => json<{ runId: string; program?: ProgramView }>(r)),

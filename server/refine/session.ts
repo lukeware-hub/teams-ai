@@ -45,7 +45,7 @@ import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type OwnerDecision, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { specsIssues } from './specs-check.js';
 import { aboutADocument, decideQuestionPack, docNamedBy, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
@@ -263,6 +263,19 @@ export function programEntries(draftId: string, backlog: BacklogState, onMain: R
   return entries;
 }
 
+/**
+ * What the reviewers' findings ask of each backlog item: a finding that names items goes to them, one that names none to every item.
+ * An item already redone on feedback since the last approval is left out, so a point that comes back goes to the owner instead of another detail.
+ */
+export function feedbackByItem(findings: ReadonlyArray<{ role: string; text: string }>, keys: readonly string[], redone: ReadonlySet<string>): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const { role, text } of findings) {
+    const named = keys.filter((key) => namesItem(text, key));
+    for (const key of named.length > 0 ? named : keys) if (!redone.has(key)) (out[key] ??= []).push(`${role.toUpperCase()} (review of specs.md): ${text}`);
+  }
+  return out;
+}
+
 /** Cycles one click may spend: the documents, the backlog outline, the detail, and one more for what the detail left open. */
 /** Whether a finding names a backlog item by its key, not as a piece of a longer key. */
 export function namesItem(text: string, key: string): boolean {
@@ -304,7 +317,17 @@ export interface ClosingSummary {
 const approvedAt = (v: SpecsVerdict | undefined, hash: string): boolean => v?.specsHash === hash && v.verdict === 'approved';
 
 export class RefineSession {
-  private running: Promise<void> | null = null;
+  private work: Promise<void> | null = null;
+  /** The pass that applies the owner's queued decisions, while it runs. */
+  private draining: Promise<void> | null = null;
+  /** The background work of the session; when it ends, the owner's queued decisions are applied. */
+  private get running(): Promise<void> | null {
+    return this.work;
+  }
+  private set running(run: Promise<void> | null) {
+    this.work = run;
+    if (run === null && (this.state.queued?.length ?? 0) > 0) queueMicrotask(() => void this.applyQueued().catch(() => undefined));
+  }
   private abortCtl: AbortController | null = null;
   /** The owner handed the team full autonomy for this run: what would be asked is decided instead. */
   private autonomous = false;
@@ -366,6 +389,8 @@ export class RefineSession {
     if (!journal.state.derived) journal.state.derived = await readDerived(deps.draft);
     const session = new RefineSession(deps, journal);
     await session.attachDocs(true);
+    // Decisions queued before a restart are applied now that nothing runs.
+    await session.applyQueued();
     return session;
   }
 
@@ -1535,8 +1560,8 @@ export class RefineSession {
         feedback = repairable();
       }
       if (!feedback || ctl.signal.aborted) {
-        // The repairs are spent and a reviewer still rejects this text: the PO fixes the obvious in the documents and asks the owner the rest.
-        if (!ctl.signal.aborted && (this.state.specsRepairs ?? 0) >= this.specsRepairLimit && this.specsFeedbackOf(specs.hash) !== null) {
+        // The repairs are spent, or every item named was already redone, and a reviewer still rejects this text: the PO fixes the obvious in the documents and asks the owner the rest.
+        if (!ctl.signal.aborted && this.specsRejections(specs.hash).length > 0) {
           if (this.autonomous && decides < this.specsDecideLimit) {
             decides += 1;
             // The PO settles every open point in the documents, the backlog is detailed again on them, and the new text is checked.
@@ -1594,19 +1619,19 @@ export class RefineSession {
   }
 
   /** What the reviewers rejected in this specs.md text, by backlog item; a finding that names no item goes to every item. Null when nothing was rejected. */
-  private specsFeedbackOf(hash: string): Record<string, string[]> | null {
-    const keys = (this.state.backlog?.items ?? []).map((i) => i.key);
-    const findings = SPECS_REVIEWERS.flatMap((role) => {
+  /** The findings of the reviewers who rejected this text of specs.md; empty when none rejected it. */
+  private specsRejections(hash: string): Array<{ role: string; text: string }> {
+    return SPECS_REVIEWERS.flatMap((role) => {
       const review = this.state.specsReview?.[role];
       return review?.specsHash === hash && review.verdict === 'rejected' ? review.findings.map((text) => ({ role, text })) : [];
     });
-    if (findings.length === 0) return null;
-    const out: Record<string, string[]> = {};
-    for (const { role, text } of findings) {
-      const named = keys.filter((key) => namesItem(text, key));
-      for (const key of named.length > 0 ? named : keys) (out[key] ??= []).push(`${role.toUpperCase()} (review of specs.md): ${text}`);
-    }
-    return out;
+  }
+
+  /** What the agents redo for a rejected specs.md: the items not yet redone on feedback; null when none is left. */
+  private specsFeedbackOf(hash: string): Record<string, string[]> | null {
+    const redone = new Set(this.state.specsRedone ?? []);
+    const out = feedbackByItem(this.specsRejections(hash), (this.state.backlog?.items ?? []).map((i) => i.key), redone);
+    return Object.keys(out).length > 0 ? out : null;
   }
 
   /** Writes specs.md and reads it back, then PO and SM check it; a failure is journaled for each reviewer, never thrown. */
@@ -1802,6 +1827,54 @@ export class RefineSession {
     if (!p) throw new NotFoundError(`unknown patch ${id}`);
     if (p.status !== 'pending') throw new ConflictError(`patch ${id} already ${p.status}`);
     return p;
+  }
+
+  /** The owner's decision: applied now, or queued while the team works and applied when it ends; true when queued. */
+  async decide(d: OwnerDecision): Promise<boolean> {
+    if (this.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
+    if (d.kind === 'answer') this.question(d.id, true);
+    else this.patch(d.id);
+    try {
+      await this.applyDecision(d);
+      return false;
+    } catch (err) {
+      if (!(err instanceof BusyError) || !this.busy) throw err;
+    }
+    await this.journal.fact(RefineEvent.DecisionQueued, d);
+    return true;
+  }
+
+  /** The owner takes a queued decision back. */
+  async unqueue(id: string): Promise<void> {
+    if (!this.state.queued?.some((x) => x.id === id)) throw new NotFoundError(`no queued decision for ${id}`);
+    await this.journal.fact(RefineEvent.DecisionUnqueued, { id });
+  }
+
+  /** Applies the queued decisions in order while nothing runs; one that no longer applies is dropped with its reason. */
+  applyQueued(): Promise<void> {
+    this.draining ??= this.drainQueue().finally(() => {
+      this.draining = null;
+    });
+    return this.draining;
+  }
+
+  private async drainQueue(): Promise<void> {
+    for (const d of [...(this.state.queued ?? [])]) {
+      if (this.busy) return;
+      if (!this.state.queued?.some((x) => x.id === d.id)) continue;
+      try {
+        await this.applyDecision(d);
+      } catch (err) {
+        if (err instanceof BusyError) return;
+        await this.journal.fact(RefineEvent.DecisionDropped, { id: d.id, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+
+  private applyDecision(d: OwnerDecision): Promise<void> {
+    if (d.kind === 'accept') return this.accept(d.id);
+    if (d.kind === 'reject') return this.reject(d.id, d.reason);
+    return this.answer(d.id, d.text, d.docsAnswered);
   }
 
   /** Accepts a suggestion; `auto` marks one the team accepted on its own, which the impact card lists. */

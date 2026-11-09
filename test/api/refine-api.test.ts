@@ -966,7 +966,7 @@ describe('refine api', () => {
     expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(3);
   });
 
-  it('a specs.md the reviewers keep rejecting is repaired four times by the agents, then left to the owner with the findings', async () => {
+  it('a specs.md the reviewers keep rejecting has the item they name redone once by the agents, then is left to the owner with the findings', async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);
@@ -985,8 +985,8 @@ describe('refine api', () => {
     const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
     script['specs-review/po'] = Array(5).fill(rejected);
     script['specs-review/sm'] = Array(5).fill(rejected);
-    for (const role of ['po', 'sm']) script[`refine/${role}`] = Array.from({ length: 4 }, () => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }));
-    // After the second repair the PO is asked what to do: it asks the owner one question, as choices with a recommendation.
+    for (const role of ['po', 'sm']) script[`refine/${role}`] = Array.from({ length: 1 }, () => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }));
+    // After the repair the PO is asked what to do: it asks the owner one question, as choices with a recommendation.
     const ask = { id: 'q1', text: 'O item base precisa de uma origem. Qual seção dos documentos o justifica?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos do briefing', detail: 'A origem passa a ser a seção de objetivos.', recommended: true }, { label: 'Requisitos do projeto', detail: 'A origem passa a ser a seção de requisitos.' }] };
     script['refine/po'].push({ checklist: [], questions: [ask], docPatch: [] });
     script['spec/po'] = Array(4).fill(spec);
@@ -994,12 +994,13 @@ describe('refine api', () => {
     expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
     await settle();
     const done = await snapshot();
-    expect(calls.filter((c) => c.kind === 'specs-review').length - before).toBe(10);
-    expect(done.state.specsRepairs).toBe(4);
-    // The owner can read why: four attempts, each with the items redone and what the reviewers said of the new text.
-    expect(done.state.specsAttempts).toHaveLength(4);
+    // One check, one repair of the item named, and the check of the new text: the item already redone is not detailed again.
+    expect(calls.filter((c) => c.kind === 'specs-review').length - before).toBe(4);
+    expect(done.state.specsRepairs).toBe(1);
+    // The owner can read why: the attempt, with the item redone and what the reviewers said of the new text.
+    expect(done.state.specsAttempts).toHaveLength(1);
     expect(done.state.specsAttempts[0]).toMatchObject({ n: 1, items: ['base'], redone: ['base'] });
-    expect(done.state.specsAttempts[3].after.po.verdict).toBe('rejected');
+    expect(done.state.specsAttempts[0].after.po.verdict).toBe('rejected');
     expect(done.specsApproved).toBe(false);
     expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }, sm: { verdict: 'rejected' } });
     // The agents were told which item the reviewers named.
@@ -1033,8 +1034,8 @@ describe('refine api', () => {
     const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
     script['specs-review/po'] = Array(5).fill(rejected);
     script['specs-review/sm'] = Array(5).fill({ verdict: 'approved', findings: [] });
-    script['refine/po'] = [review('po'), review('po'), review('po'), review('po'), { checklist: [], questions: [{ id: 'q1', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] }], docPatch: [] }];
-    script['refine/sm'] = Array.from({ length: 4 }, () => review('sm'));
+    script['refine/po'] = [review('po'), { checklist: [], questions: [{ id: 'q1', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] }], docPatch: [] }];
+    script['refine/sm'] = [review('sm')];
     script['spec/po'] = Array(4).fill(spec);
     script['preplan/sm'] = Array(4).fill(preplan);
     await call('POST', `${url}/specs/check`);
@@ -1133,14 +1134,14 @@ describe('refine api', () => {
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
-    // The reviewers reject the text three times; the PO then decides alone and the new text is approved.
+    // The reviewers reject the text twice: the item is redone once, then the PO decides alone and the new text is approved.
     const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
-    script['specs-review/po'] = [rejected, rejected, rejected, { verdict: 'approved', findings: [] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }];
-    script['refine/po'] = [review('po'), review('po'), review('po'), review('po')];
-    script['refine/sm'] = [review('sm'), review('sm'), review('sm')];
-    script['spec/po'] = [spec, spec, spec];
-    script['preplan/sm'] = [preplan, preplan, preplan];
+    script['specs-review/po'] = [rejected, rejected, { verdict: 'approved', findings: [] }];
+    script['specs-review/sm'] = Array(3).fill({ verdict: 'approved', findings: [] });
+    script['refine/po'] = Array.from({ length: 5 }, () => review('po'));
+    script['refine/sm'] = Array.from({ length: 5 }, () => review('sm'));
+    script['spec/po'] = Array(5).fill(spec);
+    script['preplan/sm'] = Array(5).fill(preplan);
     script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
     const started = await call('POST', `${url}/autopilot`);
     expect(started.status).toBe(202);
@@ -1155,7 +1156,7 @@ describe('refine api', () => {
     expect(after.specsApproved).toBe(true);
     expect(after.state.questions.filter((q: { status: string }) => q.status === 'pending')).toEqual([]);
     // The PO was the one that decided: a refine call without a question came after the repairs.
-    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThanOrEqual(4);
+    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThanOrEqual(3);
   });
 
   it('a finding about a document is fixed in that document by the PO inside the automatic repair, not only in the items', async () => {

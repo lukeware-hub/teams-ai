@@ -149,6 +149,18 @@ const MemoBacklogPanel = memo(BacklogPanel);
 const MemoSpecTree = memo(SpecTree);
 
 // Builds the body only after the file is opened: a closed details still mounts its children.
+const QUEUED_TEXT = { accept: 'Aceita — entra quando o time terminar', reject: 'Rejeitada — entra quando o time terminar', answer: 'Resposta na fila — entra quando o time terminar' } as const;
+
+/** A decision the owner took while the team worked: it waits in line, and Desfazer takes it back. */
+function QueuedNote({ id, kind, onUndo }: { id: string; kind: keyof typeof QUEUED_TEXT; onUndo?: (id: string) => unknown }) {
+  return (
+    <div data-testid={`queued-${id}`} role="status" className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-warn-line bg-warn-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-warn"><Icon name="clock" size={14} />{QUEUED_TEXT[kind]}</span>
+      {onUndo && <ActionButton data-testid={`unqueue-${id}`} className="secondary h-9" onClick={() => onUndo(id)}>Desfazer</ActionButton>}
+    </div>
+  );
+}
+
 function LazyDetails({ className, summary, body }: { className: string; summary: ReactNode; body: () => ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
@@ -314,6 +326,8 @@ export interface ViewProps {
   onReask?(id: string): void | Promise<unknown>;
   onAccept(id: string): void | Promise<unknown>;
   onReject(id: string, reason: string | null): void | Promise<unknown>;
+  /** Takes back a decision queued while the team worked. */
+  onUnqueue?(id: string): void | Promise<unknown>;
   /** Resolves to `false` when the server refused the value: the owner's text then stays in its field. */
   onSecret(name: string, value: string): void | boolean | Promise<unknown>;
   onStart(): void | Promise<unknown>;
@@ -886,8 +900,9 @@ export function RefinementView(p: ViewProps) {
     </ConfirmDialog>
   ) : null;
   /** One pending question with its options, answer box and actions; `remaining` counts the open ones, this included. */
-  // A stage question can be answered while the agents review: the server only records it and runs one review for the batch.
-  const answerLocked = locked && (st.stages !== true || st.backlog?.enabled === true);
+  // A question is answered while the agents work: the server queues the answer and applies it when they end.
+  const answerLocked = st.status === 'started';
+  const queuedOf = (id: string) => st.queued?.find((x) => x.id === id);
   const questionCard = (current: QuestionRow, remaining: number) => {
     const typed = draftOf(current.questionId);
     // A question the team asked about specs.md comes with its recommended choice marked: one click confirms it.
@@ -944,8 +959,8 @@ export function RefinementView(p: ViewProps) {
             </label>
             <InfoTip text="Marque quando a resposta já estava nos documentos: essas marcas medem quando o Jev pode responder sozinho." />
           </div>}
-          {answerLocked && <p data-testid="question-waiting" className="m-0 mb-2 text-[0.8125rem] text-ink-soft" role="status">O time está trabalhando nos documentos. Você responde assim que ele terminar: esta tela libera sozinha.</p>}
-          <div data-testid="refinement-question-actions" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          {st.decisionDropped?.[current.questionId] && <p data-testid={`decision-dropped-${current.questionId}`} role="status" className="m-0 mb-2 text-[0.8125rem] text-warn">{st.decisionDropped[current.questionId]}</p>}
+          {queuedOf(current.questionId) ? <QueuedNote id={current.questionId} kind="answer" onUndo={p.onUnqueue} /> : <div data-testid="refinement-question-actions" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <ActionButton
               className="primary"
               data-testid={`answer-${current.questionId}`}
@@ -964,7 +979,7 @@ export function RefinementView(p: ViewProps) {
                 Ignorar
               </ActionButton>
             )}
-          </div>
+          </div>}
           <small data-testid="refinement-question-remaining" className="mt-2 block text-ink-soft">{remaining === 1 ? 'Esta é a última pergunta em aberto.' : remaining === 2 ? 'Mais 1 pergunta depois desta.' : `Mais ${remaining - 1} perguntas depois desta.`}</small>
         </div>
     );
@@ -979,8 +994,9 @@ export function RefinementView(p: ViewProps) {
               <span data-testid={`refinement-patch-reason-${x.patchId}`} className="flex-[1_1_100%] leading-[1.4] text-ink-soft">{x.reason}</span>
             </div>
             <pre data-testid={`refinement-patch-diff-${x.patchId}`} className="mx-0 my-3 overflow-auto rounded-md bg-term-bg p-[0.8rem] text-[0.75rem] leading-normal text-term-ink">{x.diff}</pre>
-            <div data-testid={`refinement-patch-actions-${x.patchId}`} className="grid grid-cols-2 items-center gap-2">
-            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`accept-${x.patchId}`} aria-disabled={locked || serverBusy} disabled={deciding !== null} onClick={() => (locked || serverBusy ? setBusyDialog(true) : decide(x.patchId, () => p.onAccept(x.patchId)))} icon={<Icon name="check" size={16} />}>
+            {st.decisionDropped?.[x.patchId] && <p data-testid={`decision-dropped-${x.patchId}`} role="status" className="m-0 mb-2 text-[0.8125rem] text-warn">{st.decisionDropped[x.patchId]}</p>}
+            {queuedOf(x.patchId) ? <QueuedNote id={x.patchId} kind={queuedOf(x.patchId)!.kind === 'reject' ? 'reject' : 'accept'} onUndo={p.onUnqueue} /> : <div data-testid={`refinement-patch-actions-${x.patchId}`} className="grid grid-cols-2 items-center gap-2">
+            <ActionButton className="min-w-[5.5rem] border-good-line bg-good-soft text-good hover:enabled:border-good aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`accept-${x.patchId}`} aria-disabled={answerLocked} disabled={deciding !== null} onClick={() => (answerLocked ? setBusyDialog(true) : decide(x.patchId, () => p.onAccept(x.patchId)))} icon={<Icon name="check" size={16} />}>
               Aceitar
             </ActionButton>
             <input
@@ -991,10 +1007,10 @@ export function RefinementView(p: ViewProps) {
               value={reasons[x.patchId] ?? ''}
               onChange={(e) => setReasons({ ...reasons, [x.patchId]: e.target.value })}
             />
-            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`reject-${x.patchId}`} aria-disabled={locked || serverBusy} disabled={deciding !== null} onClick={() => (locked || serverBusy ? setBusyDialog(true) : decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null)))} icon={<Icon name="close" size={16} />}>
+            <ActionButton className="min-w-[5.5rem] border-bad-line bg-bad-soft text-bad hover:enabled:border-bad aria-disabled:opacity-60 aria-disabled:cursor-not-allowed" data-testid={`reject-${x.patchId}`} aria-disabled={answerLocked} disabled={deciding !== null} onClick={() => (answerLocked ? setBusyDialog(true) : decide(x.patchId, () => p.onReject(x.patchId, reasons[x.patchId] || null)))} icon={<Icon name="close" size={16} />}>
               Rejeitar
             </ActionButton>
-            </div>
+            </div>}
           </div>
   );
   const reviewPanel = (
@@ -1493,8 +1509,9 @@ export function RefinementView(p: ViewProps) {
   const unfiled = unfiledQuestions(st);
   const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
-  /** The suggestions the owner can take at once. */
-  const acceptable = st.patches.filter((x) => x.status === 'pending').length;
+  /** The suggestions the owner can take at once: the pending ones not already queued. */
+  const acceptable = st.patches.filter((x) => x.status === 'pending' && !queuedOf(x.patchId)).length;
+  const queuedIn = (file: DocFile) => (st.queued ?? []).filter((d) => st.patches.some((x) => x.patchId === d.id && x.file === file) || st.questions.some((q) => q.questionId === d.id && q.file === file)).length;
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
             {acceptable > 0 && p.onAcceptAll && <p data-testid="accept-all-note" className="m-0 max-w-[72ch] text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>}
@@ -1502,7 +1519,7 @@ export function RefinementView(p: ViewProps) {
               <div className="flex flex-wrap items-center gap-2">
                 {acceptable > 0 && p.onAcceptAll && (
                   <div className="contents" data-testid="accept-all-block">
-                    <ActionButton data-testid="accept-all" className="primary h-10" busy={serverBusy} disabled={locked || serverBusy} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
+                    <ActionButton data-testid="accept-all" className="primary h-10" disabled={answerLocked} onClick={() => void p.onAcceptAll?.()} icon={<Icon name="check" size={16} />}>
                       Aceitar todas ({acceptable})
                     </ActionButton>
                   </div>
@@ -1522,7 +1539,7 @@ export function RefinementView(p: ViewProps) {
                     <button type="button" className="group flex h-auto min-h-11 w-full min-w-0 items-center gap-3 rounded-none border-0 bg-transparent px-3.5 py-2 text-left text-ink transition-colors duration-150 hover:bg-accent-soft focus-visible:bg-accent-soft" data-testid={`pending-${file}`} onClick={() => goTo(file)}>
                       <span className="inline-flex text-accent-text" aria-hidden="true"><Icon name="file" size={16} /></span>
                       <span className="min-w-0 flex-1 truncate text-[0.875rem] font-semibold">{docLabel[file]}</span>
-                      <span className="rounded-full border border-warn-line bg-warn-soft px-2 py-0.5 text-[0.75rem] font-semibold tabular-nums text-warn">{count === 1 ? '1 pendência' : `${count} pendências`}</span>
+                      <span className="rounded-full border border-warn-line bg-warn-soft px-2 py-0.5 text-[0.75rem] font-semibold tabular-nums text-warn">{count === 1 ? '1 pendência' : `${count} pendências`}{queuedIn(file) > 0 ? ` · ${queuedIn(file)} na fila` : ''}</span>
                       <span className="inline-flex text-ink-soft transition-transform duration-150 ease-out group-hover:translate-x-0.5 group-hover:text-accent-text motion-reduce:transition-none" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>
                     </button>
                   </li>
@@ -2010,6 +2027,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onReask={(id) => act(() => refineApi.reask(projectId, specId, id))()}
         onAccept={(id) => act(() => refineApi.accept(projectId, specId, id))()}
         onReject={(id, r) => act(() => refineApi.reject(projectId, specId, id, r))()}
+        onUnqueue={(id) => act(() => refineApi.unqueue(projectId, specId, id))()}
         onSecret={(n, v) => act(() => refineApi.secret(projectId, specId, n, v))()}
         onStart={repositorySession ? openSummary : startRun}
         startState={startLabel}

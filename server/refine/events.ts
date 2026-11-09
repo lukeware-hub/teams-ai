@@ -45,6 +45,12 @@ export const RefineEvent = {
   DocsReorganized: 'DOCS_REORGANIZED',
   /** The findings of one cycle whose quotes the documents show; they replace the earlier list, or with `files` only those of the documents named. */
   FindingsReported: 'FINDINGS_REPORTED',
+  /** The owner decided while the team worked: `{kind, id, ...}` waits in line and is applied when the work ends. */
+  DecisionQueued: 'REFINE_DECISION_QUEUED',
+  /** The owner took a queued decision back: `{id}`. */
+  DecisionUnqueued: 'REFINE_DECISION_UNQUEUED',
+  /** A queued decision no longer applied when the work ended: `{id, reason}`. */
+  DecisionDropped: 'REFINE_DECISION_DROPPED',
   QuestionAnswered: 'QUESTION_ANSWERED',
   QuestionSkipped: 'QUESTION_SKIPPED',
   /** A plan question dropped as a repeat of a decided one: the question, the earlier one it repeats and that answer. */

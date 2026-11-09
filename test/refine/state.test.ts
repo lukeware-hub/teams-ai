@@ -697,3 +697,20 @@ describe('ChecklistSettled: the team applied what the reviewers found', () => {
     expect(settled.status).toBe('ready');
   });
 });
+
+describe('specsRedone: the items redone on the reviewers feedback', () => {
+  const backlog = { type: RefineEvent.BacklogDerived, data: { cycle: 1, project: {}, epics: [], items: [{ key: 'caso' }, { key: 'fat' }] } };
+  const feedback = { type: RefineEvent.SpecsFeedback, data: { specsHash: 'h1', feedback: { caso: ['SM: falta um critério.'] } } };
+  const derived = { type: RefineEvent.SpecDerived, data: { cycle: 2, key: 'caso', specId: 'x-caso', inputHash: 'i', rev: 'r', spec: { specId: 'x-caso' }, issues: [] } };
+  const review = (role: string) => ({ type: RefineEvent.SpecsReviewed, data: { role, specsHash: 'h2', verdict: 'approved', findings: [] } });
+
+  it('holds an item once its new spec is derived, and spends its feedback', () => {
+    const s = reduceRefineEvents([backlog, feedback, derived] as never);
+    expect(s.specsRedone).toEqual(['caso']);
+    expect(s.specsFeedback?.caso).toBeUndefined();
+  });
+
+  it('starts over once both reviewers approve the same text', () => {
+    expect(reduceRefineEvents([backlog, feedback, derived, review('po'), review('sm')] as never).specsRedone).toBeUndefined();
+  });
+});

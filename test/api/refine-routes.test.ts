@@ -125,12 +125,12 @@ describe('refine routes', () => {
 describe('specs answers wait for Reprocessar on the specs', () => {
   it('an answer to a specs question starts no continuation, and Reprocessar on the specs starts it once', async () => {
     const continueSpecsAfterAnswers = vi.fn(() => Promise.resolve());
-    const answer = vi.fn(async () => undefined);
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ answer, continueSpecsAfterAnswers })) } as never, log: vi.fn() });
+    const decide = vi.fn(async () => false);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ decide, continueSpecsAfterAnswers })) } as never, log: vi.fn() });
     const answers = routes.find((r) => r.method === 'POST' && r.path.endsWith('/answers'))!;
     const json = vi.fn();
     await answers.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ questionId: 'specs-1', text: 'Sim' }), json } as never);
-    expect(answer).toHaveBeenCalledWith('specs-1', 'Sim', false);
+    expect(decide).toHaveBeenCalledWith({ kind: 'answer', id: 'specs-1', text: 'Sim', docsAnswered: false });
     expect(continueSpecsAfterAnswers).not.toHaveBeenCalled();
     const reprocess = routes.find((r) => r.method === 'POST' && r.path.endsWith('/specs/reprocess'))!;
     await reprocess.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);

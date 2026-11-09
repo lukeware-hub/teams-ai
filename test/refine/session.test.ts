@@ -1117,6 +1117,91 @@ function holdingSuggestions(agent: RunAgent): { runAgent: RunAgent; release: () 
   return { runAgent, release: () => release(), arrived };
 }
 
+/** A run agent whose reviews wait until `release` is called, once `hold` armed it; `arrived` resolves when a held review reaches the agent. */
+function holdingReviews(agent: RunAgent): { runAgent: RunAgent; hold: () => void; release: () => void; arrived: Promise<void> } {
+  let release!: () => void;
+  let arrive!: () => void;
+  let armed = false;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const arrived = new Promise<void>((resolve) => {
+    arrive = resolve;
+  });
+  const runAgent = (async (req, ctx) => {
+    if (armed) {
+      arrive();
+      await gate;
+    }
+    return agent(req, ctx);
+  }) as RunAgent;
+  return { runAgent, hold: () => { armed = true; }, release: () => release(), arrived };
+}
+
+describe('RefineSession queued decisions: the owner decides while the team works', () => {
+  async function busyWithPending() {
+    const held = holdingReviews(makeFakeRunAgent(script));
+    const s = await RefineSession.create({ ...deps(), runAgent: held.runAgent }, 'new-project', { repositories: false });
+    script['derive/po'] = [derived, derived];
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/project.md', find: '## Vision', replace: '## V', reason: 'r' }]), refineOut(green(PO))];
+    script['refine/sm'] = [refineOut(green(SM)), refineOut(green(SM))];
+    await passStages(s);
+    await s.evaluate();
+    const pending = s.state.patches.find((p) => p.status === 'pending')!;
+    held.hold();
+    const review = s.evaluate();
+    await held.arrived;
+    return { s, held, pending, review };
+  }
+
+  it('queues an accept while a review runs, and applies it when the review ends', async () => {
+    const { s, held, pending, review } = await busyWithPending();
+    await expect(s.decide({ kind: 'accept', id: pending.patchId })).resolves.toBe(true);
+    expect(s.state.queued).toEqual([{ kind: 'accept', id: pending.patchId }]);
+    expect(s.state.patches.find((p) => p.patchId === pending.patchId)?.status).toBe('pending');
+    held.release();
+    await review;
+    await s.applyQueued();
+    expect(s.state.patches.find((p) => p.patchId === pending.patchId)?.status).toBe('accepted');
+    expect(s.state.queued).toEqual([]);
+    await s.close();
+  });
+
+  it('takes a queued decision back, so nothing is applied when the review ends', async () => {
+    const { s, held, pending, review } = await busyWithPending();
+    await s.decide({ kind: 'reject', id: pending.patchId, reason: null });
+    await s.unqueue(pending.patchId);
+    expect(s.state.queued).toEqual([]);
+    held.release();
+    await review;
+    await s.applyQueued();
+    expect(s.state.patches.find((p) => p.patchId === pending.patchId)?.status).toBe('pending');
+    await s.close();
+  });
+
+  it('applies a decision at once when nothing runs', async () => {
+    const { s, held, pending, review } = await busyWithPending();
+    held.release();
+    await review;
+    await expect(s.decide({ kind: 'accept', id: pending.patchId })).resolves.toBe(false);
+    expect(s.state.patches.find((p) => p.patchId === pending.patchId)?.status).toBe('accepted');
+    await s.close();
+  });
+
+  it('drops a queued decision that no longer applies, with its reason', async () => {
+    const { s, held, pending, review } = await busyWithPending();
+    await s.decide({ kind: 'accept', id: pending.patchId });
+    // The text the suggestion replaces is gone by the time the queue is applied.
+    await writeDoc(draft(), 'project.md', (await readDoc(draft(), 'project.md')).replace('## Vision', '## Visão'));
+    held.release();
+    await review;
+    await s.applyQueued();
+    expect(s.state.queued).toEqual([]);
+    expect(s.state.decisionDropped?.[pending.patchId]).toMatch(/descartado/);
+    await s.close();
+  });
+});
+
 describe('RefineSession suggestion', () => {
   it('refuses an evaluation while a suggestion is written, and the suggestion returns its text', async () => {
     const held = holdingSuggestions(makeFakeRunAgent(script));

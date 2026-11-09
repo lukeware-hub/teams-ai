@@ -378,24 +378,40 @@ describe('RefinementPage while the server holds a process', () => {
   };
   const renderIt = () => render(<MemoryRouter initialEntries={['/refine/hello-app/hello-001']}><Routes><Route path="/refine/:projectId/:specId" element={<RefinementPage />} /></Routes></MemoryRouter>);
 
-  it('shows the process in green at the top, blocks the accept button, and explains on a click without sending it', async () => {
+  it('shows the process in green at the top and still sends the accept, which the server queues', async () => {
     journal.events = [];
-    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true });
+    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true, queued: true });
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageWithPatch(), busy: true });
     renderIt();
     expect(await screen.findByTestId('busy-process')).toBeTruthy();
     const button = await screen.findByTestId('accept-sm-c1-0');
-    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(button.getAttribute('aria-disabled')).toBe('false');
     fireEvent.click(button);
-    expect(await screen.findByTestId('busy-dialog-ok')).toBeTruthy();
-    expect(accept).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('busy-dialog-ok'));
-    await waitFor(() => expect(screen.queryByTestId('busy-dialog-ok')).toBeNull());
+    await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('busy-dialog-ok')).toBeNull();
+  });
+
+  it('shows a queued decision in place of the buttons, and Desfazer takes it back', async () => {
+    journal.events = [];
+    const unqueue = vi.spyOn(refineApi, 'unqueue').mockResolvedValue({ ok: true });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageWithPatch({ queued: [{ kind: 'accept', id: 'sm-c1-0' }] }), busy: true });
+    renderIt();
+    expect((await screen.findByTestId('queued-sm-c1-0')).textContent).toContain('Aceita — entra quando o time terminar');
+    expect(screen.queryByTestId('accept-sm-c1-0')).toBeNull();
+    fireEvent.click(screen.getByTestId('unqueue-sm-c1-0'));
+    await waitFor(() => expect(unqueue).toHaveBeenCalledWith('hello-app', 'hello-001', 'sm-c1-0'));
+  });
+
+  it('says why a queued decision was dropped', async () => {
+    journal.events = [];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageWithPatch({ decisionDropped: { 'sm-c1-0': 'Este ajuste (sm-c1-0) já foi coberto por outra alteração e foi descartado.' } }));
+    renderIt();
+    expect((await screen.findByTestId('decision-dropped-sm-c1-0')).textContent).toContain('descartado');
   });
 
   it('shows no banner and sends the accept when no process is open', async () => {
     journal.events = [];
-    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true });
+    const accept = vi.spyOn(refineApi, 'accept').mockResolvedValue({ ok: true, queued: false });
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageWithPatch());
     renderIt();
     const button = await screen.findByTestId('accept-sm-c1-0');

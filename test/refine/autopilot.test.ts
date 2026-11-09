@@ -18,6 +18,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
   const s = {
     state,
     accept: vi.fn(async (id: string) => { (state.patches as Array<{ patchId: string; status: string }>).find((p) => p.patchId === id)!.status = 'accepted'; }),
+    decide: vi.fn(async (_d: { kind: string; id: string }): Promise<boolean> => false),
     decideAnswer: vi.fn(async (id: string) => { (state.questions as Array<{ questionId: string; status: string }>).find((q) => q.questionId === id)!.status = 'answered'; }),
     evaluate: vi.fn(async () => { state.status = 'ready'; }),
     startSpecs: vi.fn(() => Promise.resolve()),
@@ -183,20 +184,28 @@ describe('acceptAllPending: the owner takes every suggestion at once', () => {
 
   it('accepts each pending suggestion, in order, and says how many', async () => {
     const s = fake({ patches: [row('a'), row('b', 'accepted'), row('c')] });
-    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(2);
-    expect(s.accept.mock.calls.map((c) => c[0])).toEqual(['a', 'c']);
+    expect(await acceptAllPending(s as unknown as RefineSession)).toEqual({ accepted: 2, queued: 0 });
+    expect(s.decide.mock.calls.map((c) => c[0])).toEqual([{ kind: 'accept', id: 'a' }, { kind: 'accept', id: 'c' }]);
   });
 
   it('skips one that another change already covered and goes on with the rest', async () => {
     const s = fake({ patches: [row('a'), row('b')] });
-    s.accept.mockRejectedValueOnce(new ConflictError('já foi coberto'));
-    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(1);
-    expect(s.accept.mock.calls.map((c) => c[0])).toEqual(['a', 'b']);
+    s.decide.mockRejectedValueOnce(new ConflictError('já foi coberto'));
+    expect(await acceptAllPending(s as unknown as RefineSession)).toEqual({ accepted: 1, queued: 0 });
+    expect(s.decide.mock.calls.map((c) => c[0].id)).toEqual(['a', 'b']);
+  });
+
+  it('queues them while the team works, and skips one already queued', async () => {
+    const s = fake({ patches: [row('a'), row('b')] });
+    s.state.queued = [{ kind: 'accept', id: 'a' }];
+    s.decide.mockResolvedValue(true);
+    expect(await acceptAllPending(s as unknown as RefineSession)).toEqual({ accepted: 0, queued: 1 });
+    expect(s.decide.mock.calls.map((c) => c[0].id)).toEqual(['b']);
   });
 
   it('accepts nothing and says zero when no suggestion waits', async () => {
     const s = fake();
-    expect(await acceptAllPending(s as unknown as RefineSession)).toBe(0);
+    expect(await acceptAllPending(s as unknown as RefineSession)).toEqual({ accepted: 0, queued: 0 });
   });
 });
 

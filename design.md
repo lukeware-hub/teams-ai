@@ -1425,6 +1425,20 @@ Antes da revisão e antes da sugestão, o documento recebe a forma do seu modelo
 | Documento curto | Quando o algoritmo não consegue formatar um documento curto, o agente reescreve como antes. Um documento longo que o algoritmo não consegue formatar fica como está, com o motivo. |
 | Desfazer | A formatação é uma reorganização: o texto anterior fica guardado em disco. Não há botão de desfazer na tela. |
 
+### 26.14 Decisão na fila (o time está trabalhando)
+
+O dono decide uma sugestão ou responde uma pergunta a qualquer momento. Se o time está trabalhando, a decisão entra numa fila e é aplicada quando o trabalho termina, na ordem dos cliques.
+
+| Elemento | Especificação |
+|---|---|
+| Botões | `Aceitar`, `Rejeitar` e `Responder` ficam ligados enquanto o time trabalha; só desligam depois de iniciado o desenvolvimento. |
+| Chip na fila | No lugar dos botões: tom `warn`, ícone `clock`, texto `Aceita — entra quando o time terminar`, `Rejeitada — entra quando o time terminar` ou `Resposta na fila — entra quando o time terminar`. |
+| Desfazer | Botão `secondary` ao lado do chip; tira a decisão da fila e devolve os botões. |
+| Aceitar todas | Ligado enquanto o time trabalha; com o time ocupado põe todas na fila. |
+| Precisa de você | Cada documento mostra `N pendências · M na fila` quando há decisões na fila. |
+| Descarte | Uma decisão que não cabe mais no texto é descartada; o motivo aparece num aviso da sugestão, nunca em silêncio. |
+| Ordem | As decisões do dono entram antes da decisão automática dos agentes (Settings, `Autorizo os agentes a tomar decisões?`). |
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:

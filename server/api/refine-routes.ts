@@ -195,13 +195,10 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/suggestions/accept-all`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        const waiting = s.state.patches.filter((p) => p.status === 'pending').length;
-        const accepted = await acceptAllPending(s);
-        // Nothing accepted while suggestions wait means the server was busy: the owner tries again, the agents do not start.
-        if (waiting > 0 && accepted === 0) throw new ConflictError('O time está trabalhando: espere ele terminar para aceitar as sugestões.');
-        // The agents run again on what the owner decided, with no new evaluation of the documents.
-        runTeam(s, { evaluate: false }).catch(logRunFailure(params));
-        json(202, { ok: true, accepted });
+        const { accepted, queued } = await acceptAllPending(s);
+        // Queued while the team works: they apply when it ends, so the agents are not started again now.
+        if (queued === 0) runTeam(s, { evaluate: false }).catch(logRunFailure(params));
+        json(202, { ok: true, accepted, queued });
       }),
     },
     {
@@ -248,8 +245,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         const questionId = str(b, 'questionId');
         // The answer is only kept: the stage's review runs when the owner clicks Reprocessar, with every answer kept so far.
-        await s.answer(questionId, str(b, 'text'), (b as Record<string, unknown> | null)?.docsAnswered === true);
-        json(200, { ok: true });
+        const queued = await s.decide({ kind: 'answer', id: questionId, text: str(b, 'text'), docsAnswered: (b as Record<string, unknown> | null)?.docsAnswered === true });
+        json(200, { ok: true, queued });
       }),
     },
     {
@@ -282,10 +279,19 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
+      path: `${S}/queued/:id/undo`,
+      // The owner takes back a decision queued while the team worked.
+      handler: wrap(async ({ params, json }) => {
+        await (await get(params)).unqueue(params.id!);
+        json(200, { ok: true });
+      }),
+    },
+    {
+      method: 'POST',
       path: `${S}/patches/:patchId/accept`,
       handler: wrap(async ({ params, json }) => {
-        await (await get(params)).accept(params.patchId!);
-        json(200, { ok: true });
+        const queued = await (await get(params)).decide({ kind: 'accept', id: params.patchId! });
+        json(200, { ok: true, queued });
       }),
     },
     {
@@ -293,8 +299,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/patches/:patchId/reject`,
       handler: wrap(async (ctx) => {
         const reason = str(await optionalBody(ctx), 'reason', true);
-        await (await get(ctx.params)).reject(ctx.params.patchId!, reason || null);
-        ctx.json(200, { ok: true });
+        const queued = await (await get(ctx.params)).decide({ kind: 'reject', id: ctx.params.patchId!, reason: reason || null });
+        ctx.json(200, { ok: true, queued });
       }),
     },
     {

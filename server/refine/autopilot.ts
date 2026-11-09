@@ -36,18 +36,17 @@ export async function decideWhenDelegated(s: RefineSession): Promise<void> {
   if (leftOpen(s) && (await s.agentsDecide())) await runTeam(s, { evaluate: false });
 }
 
-/** The owner's "accept all": every suggestion that waits is accepted, one another change already covered is skipped; returns how many were accepted. */
-export async function acceptAllPending(s: Pick<RefineSession, 'state' | 'accept'>): Promise<number> {
-  let accepted = 0;
-  for (const p of s.state.patches.filter((x) => x.status === 'pending')) {
+/** The owner's "accept all": every suggestion that waits is accepted, or queued while the team works; one another change already covered is skipped. */
+export async function acceptAllPending(s: Pick<RefineSession, 'state' | 'decide'>): Promise<{ accepted: number; queued: number }> {
+  const counts = { accepted: 0, queued: 0 };
+  for (const p of s.state.patches.filter((x) => x.status === 'pending' && !s.state.queued?.some((q) => q.id === x.patchId))) {
     try {
-      await s.accept(p.patchId);
-      accepted += 1;
+      counts[(await s.decide({ kind: 'accept', id: p.patchId })) ? 'queued' : 'accepted'] += 1;
     } catch (err) {
       if (!(err instanceof ConflictError)) throw err;
     }
   }
-  return accepted;
+  return counts;
 }
 
 const countOf = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
