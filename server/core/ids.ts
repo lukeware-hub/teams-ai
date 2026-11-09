@@ -1,7 +1,7 @@
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TASK_ID = /^T\d+(?:-[a-z0-9]+)*$/;
-/** The type a service repository ends with: notification-api, messagem-jobs, hospital-web. */
-export const SERVICE_SUFFIXES = ['api', 'jobs', 'web', 'mobile', 'workflow'] as const;
+/** The type a service repository ends with: notification-api, messagem-worker, hospital-web, medico-app, portal-bff. */
+export const SERVICE_SUFFIXES = ['api', 'worker', 'web', 'app', 'bff'] as const;
 const SERVICE = new RegExp(`^[a-z0-9]+(?:-[a-z0-9]+)*-(?:${SERVICE_SUFFIXES.join('|')})$`);
 
 export const ID_PATTERNS = { SLUG, TASK_ID, SERVICE } as const;

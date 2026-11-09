@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { RefineOutput } from '../agents/outputs.js';
+import { RefineOutput, type DocMoveProposal } from '../agents/outputs.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { sha256 } from '../contracts/hash.js';
 import { outputContract } from '../orchestrator/steps.js';
@@ -15,7 +15,8 @@ import { historyBlocks, PATCH_WORTH } from './packs.js';
 import { checkRepeats, droppedOf, STAGE_REPEAT_OVERLAP } from './question-guard.js';
 import type { PatchRow, QuestionRow } from './state.js';
 import { reshapeStage } from './reshape.js';
-import { applyPatch, checkPatch, docOf, patchId, unifiedDiff } from './patches.js';
+import { applyPatch, checkPatch, docOf, patchId, unifiedDiff, type PendingPatch } from './patches.js';
+import { planMove } from './moves.js';
 import { patchChangesScope } from './scope-guard.js';
 import { MAX_STAGE_PARTS, PART_TOKENS, stageParts } from './stage-parts.js';
 
@@ -35,6 +36,7 @@ function mergeReviews(outcomes: readonly RefineReview[]) {
   const docPatch = [...new Map(outcomes.flatMap((o) => o.docPatch).map((p) => [`${p.find}\u0000${p.replace}`, p] as const)).values()];
   return {
     docPatch,
+    moves: outcomes.flatMap((o) => o.moves ?? []),
     questions: outcomes.flatMap((o) => o.questions),
     findings: outcomes.flatMap((o) => o.findings ?? []),
     contradictions: outcomes.flatMap((o) => o.contradictions ?? []),
@@ -77,8 +79,21 @@ const LOOK_FOR: Record<ScoreCheck, string> = {
   complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
   concrete: 'replace a vague word or placeholder with the exact value, name, limit or behavior the documents already give; when they do not give it, record it as an assumption and change no text; never reword a question mark, a label or a comment',
   consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
-  scoped: 'find content the charter gives to another document; if an earlier document already holds it, remove it here; if not, leave it here: this stage changes only its own document',
+  scoped: 'find content the charter gives to another document; if an earlier document already holds it, remove it here; if not, propose a move to the earlier document that should hold it; content of a later document stays here',
 };
+
+/** A move the review proposes, as one suggestion: it takes the quote out of the stage document and adds the text to an earlier one, and nothing changes until the owner accepts it. */
+export function moveSuggestion(move: DocMoveProposal, file: DocFile, docs: Record<DocFile, string>, specId: string): { ok: true; patch: Omit<PendingPatch, 'patchId' | 'role'> } | { ok: false; reason: string } {
+  const plan = planMove(move, { specId, projectBriefing: false, docs, blank: new Set(), applied: [], undone: [] });
+  if (!plan.ok) return plan;
+  if (plan.from !== file || !earlierDocs(file).includes(plan.to)) return { ok: false, reason: `Esta etapa só move trechos de ${file} para um documento anterior.` };
+  const keep = move.keep?.trim();
+  const cut = keep ? { find: move.quote, replace: keep } : { find: plan.cut.removed, replace: '' };
+  // The text already in the earlier document needs no second edit; the move then only takes the quote out.
+  const add = plan.put.inserted === '' ? undefined : move.after ? { find: move.after, replace: move.after + plan.put.inserted } : { find: '', replace: move.text.trim() };
+  const diff = unifiedDiff(file, docs[file], applyPatch(docs[file], cut)!) + (add ? unifiedDiff(plan.to, docs[plan.to], applyPatch(docs[plan.to], add)!) : '');
+  return { ok: true, patch: { file, ...cut, reason: `Move para ${plan.to}: ${move.reason}`, diff, scopeChange: patchChangesScope(cut.find, cut.replace), ...(add ? { also: { file: plan.to, ...add } } : {}) } };
+}
 
 /** The place a doubt names in its document: the whole document, or the part with the headings that bound it. */
 const placeOf = (doubt: ScoreDoubt): string => {
@@ -117,6 +132,7 @@ export function stageReviewPack(input: { role: 'po' | 'sm' | 'front'; specHash: 
       ? `You review only ${input.file}, the document of this stage, part ${part.index} of ${part.total}. Read the part below against the document charter in your instructions. Quote only text that is in this part; the outline lists the headings of the whole document.`
       : `You review only ${input.file}, the document of this stage. Read it whole against the document charter in your instructions: look for what is missing, wrong or contradicted, not for wording.`,
     '- Propose changes to this document only, as docPatch entries. Touch no other document.',
+    `- Content of this document that the charter gives to a document before it (${earlierDocs(input.file).join(', ') || 'none'}) is a move, not a patch. When that document already holds it, remove it here with a docPatch instead. Each move is one entry in moves: from is this document; to is the earlier document that should hold it; quote is the whole lines to take out, copied character for character and found once; text is the same content written for that document, keeping every number and name; after is an exact existing line of that document to place the text below, or absent to append it at the end; keep is what stays here in place of the quote, such as how the screen shows the rule, or absent to cut it; reason says why it belongs there. Never move to a document after this stage. The owner accepts or rejects each move; nothing changes before.`,
     '- Return an empty checklist: this stage does not evaluate the checklist.',
     '- List in findings only the problems between this document and the documents before it, each quoting one of them; list in contradictions only the disagreements between them, quoting both sides. A document after this stage is reference only: raise nothing against it.',
     '- Ask a question only under question rule 5 (a scope change nothing that exists settles); decide everything else yourself and record it as an assumption. Mark a question blocking only when the stage cannot continue without the answer.',
@@ -198,6 +214,11 @@ export async function runStageCycle(deps: StageCycleDeps, cycle: number, file: D
     }
     const merged = mergeReviews(outcomes);
     await propose(merged.docPatch);
+    for (const move of merged.moves) {
+      const made = moveSuggestion(move, file, docs, draft.specId);
+      if (!made.ok) discardedPatches.push({ role, file, reason: `Movimento descartado: ${made.reason}` });
+      else await journal.fact(RefineEvent.PatchProposed, { patchId: patchId(role, cycle, n++), role, ...made.patch, cycle });
+    }
     // A visual scope gap Front finds goes to the owner through the PO, so it is never lost.
     const asker = role === 'front' ? 'po' : role;
     const questions: Question[] = merged.questions.map((q, i) => ({

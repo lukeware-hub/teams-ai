@@ -18,7 +18,7 @@ const STATUS_LABEL: Record<RepoCardView['status'], string> = {
 
 const STATUS_TONE: Record<RepoCardView['status'], string> = { blocked: 'bad', running: 'neutral', waiting: 'warn', refining: 'neutral', done: 'good', empty: '' };
 
-const KIND_LABEL: Record<string, string> = { api: 'API', jobs: 'Workers', web: 'Web', mobile: 'Mobile', workflow: 'Workflow', monolith: 'Monólito' };
+const KIND_LABEL: Record<string, string> = { api: 'API', worker: 'Worker', web: 'Web', app: 'App', bff: 'BFF', monolith: 'Monólito' };
 
 const kindOf = (repo: RepoCardView) => KIND_LABEL[repo.kind ?? ''] ?? repo.kind ?? 'sem tipo';
 

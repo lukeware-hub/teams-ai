@@ -22,7 +22,7 @@ describe('the naming rule of the services', () => {
     expect(backlogPack(input({ repositories: ['core-api'] })).feedback).not.toContain('Name each service as the docs name it');
   });
   it('keeps the naming rule in the pack of a draft without repositories', () => {
-    expect(backlogPack(input()).feedback).toContain('Name each service as the docs name it');
+    expect(backlogPack(input()).feedback).toContain('Name each service in English');
   });
 });
 

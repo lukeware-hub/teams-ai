@@ -67,7 +67,7 @@ Ao clicar em **Iniciar análise**, o sistema faz um commit de fechamento com os 
 
 ## Repositórios
 
-Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura diz se o sistema é **um monólito** (um repositório com o nome do projeto) ou **microsserviços** (um repositório por serviço, com o sufixo do tipo: `-api`, `-jobs`, `-web`, `-mobile` ou `-workflow`). Cada repositório cita um trecho dos documentos que o justifica.
+Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura diz se o sistema é **um monólito** (um repositório com o nome do projeto) ou **microsserviços** (um repositório por serviço, com o sufixo do tipo: `-api`, `-worker`, `-web`, `-app` ou `-bff`, e o nome todo em inglês). Cada repositório cita um trecho dos documentos que o justifica.
 
 - A etapa **Arquitetura** decide o estilo a partir dos cinco documentos. Se os documentos mudarem depois, a decisão aparece como desatualizada e você decide de novo.
 - O backlog agrupa as specs pelo repositório que cada uma muda. Uma funcionalidade que atravessa repositórios vira uma spec por repositório, com a dependência do consumidor para o provedor.
@@ -75,7 +75,9 @@ Um projeto com arquitetura organiza o trabalho por repositório. A arquitetura d
 
 ## Cada documento muda só pela sua etapa
 
-Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento.
+Um documento só é alterado pela etapa a que ele pertence. Quando você processa uma etapa, só o documento dessa etapa pode mudar. Nenhum agente move um trecho para outro documento por conta própria.
+
+Quando o agente encontra no documento da etapa um trecho que pertence a um documento de uma etapa anterior (por exemplo, uma regra de negócio dentro do design.md), ele propõe um movimento. O movimento é uma sugestão só, que mostra as duas mudanças: o trecho sai do documento da etapa, ou fica só como a tela o mostra, e entra no documento anterior. Nada muda antes de você clicar em Aceitar, que altera os dois documentos juntos. Rejeitar não altera nenhum. Um movimento nunca é aceito sozinho, nem quando o time trabalha sem você, e nunca vai para um documento de uma etapa posterior.
 
 Cada etapa também trabalha com um arquivo só: o agente do documento, o Jev e o Graphify recebem somente o documento da etapa. Os outros quatro documentos são as fontes da verdade: o agente os consulta por trechos e pelo grafo de cada um, sem lê-los inteiros, e não abre os outros arquivos do projeto.
 

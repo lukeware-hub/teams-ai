@@ -5,7 +5,7 @@ import { Pagination, TableFilters, usePagedTable } from '../components/DataTable
 import { Icon } from '../components/Icons.js';
 import { ProcessBox } from './ProcessingBanner.js';
 
-const KIND: Record<string, string> = { api: 'API', jobs: 'Workers', web: 'Web', mobile: 'Mobile', workflow: 'Workflow' };
+const KIND: Record<string, string> = { api: 'API', worker: 'Worker', web: 'Web', app: 'App', bff: 'BFF' };
 
 /** The kind a repository shows: the suffix of a service, or Monólito for the one repository of a monolith. */
 export function kindLabel(name: string, style: ArchitectureView['style']): string {

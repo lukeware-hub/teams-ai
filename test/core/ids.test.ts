@@ -22,7 +22,7 @@ describe('ids', () => {
   it('names the repository of a project by its id, and of a service by the service name', () => {
     expect(repoName('todo-api')).toBe('todo-api');
     expect(repoName('shop', 'orders-api')).toBe('orders-api');
-    expect(() => repoName('shop', 'orders')).toThrow('service must end with one of api, jobs, web, mobile, workflow');
+    expect(() => repoName('shop', 'orders')).toThrow('service must end with one of api, worker, web, app, bff');
     expect(() => repoName('shop', 'Orders-api')).toThrow(InvalidIdError);
   });
 

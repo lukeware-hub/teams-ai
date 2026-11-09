@@ -135,7 +135,7 @@ describe('architecture decision of a repository session', () => {
     await s.close();
   });
 
-  it('turns an open split into a blocking question that holds the backlog until the owner answers', async () => {
+  it('turns an open split into a blocking question that holds the backlog until the owner answers, then decides again on the answer', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await completeStages(s);
     const asked = { ...MICROSERVICES, questions: [{ text: 'O pagamento fica no hello-api?', context: 'O project.md não diz onde ele roda.', blocking: true, options: [{ label: 'Sim', detail: 'Fica no hello-api.' }] }] };
@@ -145,10 +145,11 @@ describe('architecture decision of a repository session', () => {
     const question = s.state.questions.find((q) => q.origin === 'architecture');
     expect(question).toMatchObject({ status: 'pending', blocking: true, role: 'sm' });
     await expect(s.enableBacklog()).rejects.toThrow('Responda as perguntas da arquitetura antes do backlog.');
-    await s.answer(question!.questionId, 'Sim');
+    // The last architecture answer decides the architecture again on its own, with the answer in the prompt.
     script['architecture/sm'] = [MICROSERVICES];
-    await s.decideArchitecture();
+    await s.answer(question!.questionId, 'Sim');
     await s.settled();
+    expect(architectureCalls().at(-1)!.prompt).toContain('O pagamento fica no hello-api?: Sim');
     expect(s.state.questions.filter((q) => q.origin === 'architecture' && q.status === 'pending')).toEqual([]);
     expect(s.state.questions.find((q) => q.origin === 'architecture' && q.status === 'answered')?.answer).toBe('Sim');
     // Recording the answer changes the briefing, so the enable decides the architecture once more on it.
@@ -219,6 +220,27 @@ ${line(seq + 1, 'REFINE_EVALUATION_STARTED', {})}
   it('refuses the decision in a draft that was not stamped with the repository flow', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: false });
     await expect(s.decideArchitecture()).rejects.toThrow('só um refinamento com repositórios decide a arquitetura');
+    await s.close();
+  });
+});
+
+describe('architecture questions', () => {
+  it('waits for every architecture question before it decides again', async () => {
+    const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
+    await completeStages(s);
+    const ask = (text: string) => ({ text, context: 'Os documentos não dizem.', blocking: true, options: [] });
+    script['architecture/sm'] = [{ ...MICROSERVICES, questions: [ask('Primeira?'), ask('Segunda?')] }];
+    await s.decideArchitecture();
+    await s.settled();
+    const [first, second] = s.state.questions.filter((q) => q.origin === 'architecture');
+    const before = architectureCalls().length;
+    await s.answer(first!.questionId, 'Sim');
+    await s.settled();
+    expect(architectureCalls()).toHaveLength(before);
+    script['architecture/sm'] = [MICROSERVICES];
+    await s.answer(second!.questionId, 'Não');
+    await s.settled();
+    expect(architectureCalls()).toHaveLength(before + 1);
     await s.close();
   });
 });

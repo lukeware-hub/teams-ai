@@ -81,6 +81,15 @@ describe('architecture pack', () => {
     expect(pack.feedback).toContain('precisa terminar com um sufixo');
   });
 
+  it('gives every service its own repository and turns a split the documents disagree on into a question', () => {
+    const pack = architecturePack({ specHash: docsHashOf(DOCS), principles: [], docs: DOCS, graphContext: '', existingServices: [], answers: [] });
+    expect(pack.feedback).toContain('every service the documents list gets its own repository');
+    expect(pack.feedback).toContain('Never group services as packages inside a core repository');
+    expect(pack.feedback).toContain('every portal, web front end and mobile app the five documents describe');
+    expect(pack.feedback).toContain('ask the owner one blocking question with both options');
+    expect(pack.feedback).toContain('Name each service in English');
+  });
+
   it('leaves out the optional blocks when there is nothing to put in them', () => {
     const pack = architecturePack({ specHash: docsHashOf(DOCS), principles: [], docs: DOCS, graphContext: '', existingServices: [], answers: [] });
     expect(pack.feedback).toContain('Several applications are not microservices by themselves.');

@@ -402,8 +402,8 @@ export interface QuestionRow {
   /** The document of a stage review's question; absent for a question of a full round. */
   file?: 'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md';
   options?: Array<{ label: string; detail: string; recommended?: boolean }>;
-  /** Set on a question plan left open during its preparation. */
-  origin?: 'speckit' | 'specs';
+  /** Where a question came from: the plan preparation, specs.md or the architecture decision. */
+  origin?: 'speckit' | 'specs' | 'architecture';
   /** The backlog item a plan question is about. */
   itemKey?: string;
   /** The plain words the owner reads about a plan question: what it is about and why it needs a decision. */

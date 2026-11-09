@@ -48,7 +48,7 @@ import { Workspace } from '../components/Workspace.js';
 import { Stepper } from '../components/Stepper.js';
 import { WizardShell } from '../components/WizardShell.js';
 import { DocScoreInset, ScoreChecks } from '../refine/DocScoreView.js';
-import { docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, specsQuestions, speckitQuestions, stepOpen, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
+import { architectureQuestions, docPatches, docQuestions, initialStep, isDocStep, nextStep as nextWizardStep, parseStep, pendingCount, prevStep, specsQuestions, speckitQuestions, stepOpen, stepsOf, stepParam, unfiledQuestions, wizardNodes, type WizardStep } from '../refine/wizard.js';
 import { DOC_STAGES } from '@server/refine/doc-stages';
 import { PASS_LINE, percentOf } from '@server/refine/readiness';
 
@@ -904,7 +904,7 @@ export function RefinementView(p: ViewProps) {
             {current.blocking && <Tipped text="Pergunta que bloqueia o avanço: precisa de resposta antes de seguir."><span data-testid="refinement-question-blocking-tag" className="tag ml-0">Obrigatória</span></Tipped>}
           </div>
           {current.origin === 'speckit' && current.itemKey && <p data-testid="refinement-question-item-title" className="m-0 text-[0.8125rem] font-semibold text-ink-soft">Sobre o item {itemTitles.get(current.itemKey) ?? current.itemKey}</p>}
-          {current.origin === 'speckit' && current.context && <p data-testid="refinement-question-context" className="m-0 leading-normal text-ink-soft">{current.context}</p>}
+          {(current.origin === 'speckit' || current.origin === 'architecture') && current.context && <p data-testid="refinement-question-context" className="m-0 leading-normal text-ink-soft">{current.context}</p>}
           <p data-testid="refinement-question-text" className="m-0">{questionText(current.text)}</p>
           {current.origin === 'speckit' && (current.distinctFrom ?? []).length > 0 && (
             <div className="grid gap-[0.3rem] rounded-lg border border-line bg-surface px-4 py-3" data-testid="distinct-from">
@@ -1535,6 +1535,7 @@ export function RefinementView(p: ViewProps) {
   const architectureBlock = (): string | null => (architectureBusy ? 'A arquitetura ainda está sendo decidida: espere ela terminar.'
     : st.architecture == null ? 'Decida a arquitetura antes de quebrar o backlog.'
     : null);
+  const architectureAsked = architectureQuestions(st);
   const architectureScreen = () => (
     <div className="grid min-w-0 gap-4" data-testid="architecture-step">
       {docsNoticeTarget && (
@@ -1551,6 +1552,13 @@ export function RefinementView(p: ViewProps) {
         <p data-testid="refinement-architecture-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Decida se o sistema é um monólito ou microsserviços, antes de quebrar o backlog por repositório.</p>
       </header>
       <ArchitectureCard architecture={st.architecture} error={st.architectureError} issues={st.architectureIssues} busy={architectureBusy} locked={st.status === 'started'} stale={snap.architectureStale === true} blocked={graphingNow ? graphReason : null} startedAt={st.evaluation && st.evaluation.endedAt === null ? st.evaluation.startedAt : null} onDecide={() => { setArchitectureNote(null); return p.onDecideArchitecture?.(); }} />
+      {architectureAsked.length > 0 && (
+        <section className="grid gap-3" aria-labelledby="architecture-questions-title" data-testid="architecture-questions">
+          <h3 id="architecture-questions-title" className="m-0 text-[1rem] font-semibold">Perguntas da arquitetura</h3>
+          <p className="m-0 text-[0.875rem] text-ink-soft" data-testid="architecture-questions-hint">Os cinco documentos não resolvem estes pontos. Ao responder a última, a arquitetura é decidida de novo com as respostas.</p>
+          {architectureAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, architectureAsked.length - i)}</Fragment>)}
+        </section>
+      )}
     </div>
   );
   const wizardActions = step === 'backlog' ? (

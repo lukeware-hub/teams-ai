@@ -7,7 +7,9 @@ import { additiveOnly } from './scope-guard.js';
  * document and a rewording that changes no scope, so it repairs contradictions, wording and stack gaps by itself. A change of
  * scope (adding or cutting functionality) and an adjustment's approval always wait for the owner.
  */
-export function autoAcceptable(p: Pick<PatchRow, 'find' | 'replace'> & { scopeChange?: boolean }, teamAlone: boolean): boolean {
+export function autoAcceptable(p: Pick<PatchRow, 'find' | 'replace' | 'also'> & { scopeChange?: boolean }, teamAlone: boolean): boolean {
+  // A move changes two documents, so it always waits for the owner.
+  if (p.also) return false;
   if (!teamAlone) return true;
   // A removal always waits for the owner: the scope guard does not see a cut line of a diagram.
   return !isApproval(p) && p.replace.trim() !== '' && (additiveOnly(p.find, p.replace) || p.scopeChange === false);

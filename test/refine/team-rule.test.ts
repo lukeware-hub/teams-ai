@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { asTeamAlone, inTeamAlone } from '../../server/refine/team-rule.js';
+import { asTeamAlone, autoAcceptable, inTeamAlone } from '../../server/refine/team-rule.js';
+
+describe('autoAcceptable: a move always waits for the owner', () => {
+  it('refuses a move with or without the team alone, and keeps accepting a plain addition', () => {
+    const move = { find: 'a', replace: 'a b', also: { file: 'briefing.md' as const, find: 'x', replace: 'x y' } };
+    expect(autoAcceptable(move, false)).toBe(false);
+    expect(autoAcceptable(move, true)).toBe(false);
+    expect(autoAcceptable({ find: 'a', replace: 'a b' }, false)).toBe(true);
+  });
+});
 
 describe('asTeamAlone: the team-alone mark reaches every step of the run and nothing else', () => {
   it('is seen by the steps the run awaits, however deep they are', async () => {

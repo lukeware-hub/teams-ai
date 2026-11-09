@@ -14,7 +14,7 @@ describe('Project.services', () => {
   });
 
   it('refuses a service name without a type suffix', () => {
-    expect(() => makeProject({ services: ['orders'] })).toThrow('a service name ends with one of api, jobs, web, mobile, workflow');
+    expect(() => makeProject({ services: ['orders'] })).toThrow('a service name ends with one of api, worker, web, app, bff');
     expect(() => makeProject({ services: ['orders-service'] })).toThrow('a service name ends with one of');
   });
 

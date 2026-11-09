@@ -1216,15 +1216,15 @@ Uma etapa do assistente entre `Revisão` e `Backlog`. A tela principal é um car
 | Elemento | Especificação |
 |---|---|
 | `Estilo` | `Monólito` ou `Microsserviços`, a razão e o documento e a seção em que a decisão se apoia. |
-| `Repositórios (n)` | linhas recolhíveis, como as dos épicos do backlog: nome, chip do tipo (`api`, `jobs`, `web`, `mobile`, `workflow`, ou `Monólito`), contagem de integrações. Aberta, mostra a responsabilidade e a citação. Com mais de 12 repositórios, filtro e paginação como nas specs. |
+| `Repositórios (n)` | linhas recolhíveis, como as dos épicos do backlog: nome, chip do tipo (`API`, `Worker`, `Web`, `App`, `BFF`, ou `Monólito`), contagem de integrações. Aberta, mostra a responsabilidade e a citação. Com mais de 12 repositórios, filtro e paginação como nas specs. |
 | `Integrações (n)` | linhas `consumidor → provedor · contrato`. |
-| `Perguntas da arquitetura` | os cartões de pergunta já usados no refinamento; uma pergunta bloqueante segura o backlog. |
+| `Perguntas da arquitetura` | abaixo do cartão, os cartões de pergunta já usados nas etapas dos documentos, com o contexto de cada pergunta; o agente pergunta só o que os cinco documentos não resolvem e o dono só responde. Uma pergunta bloqueante segura o backlog. Ao responder (ou ignorar) a última, a arquitetura é decidida de novo sozinha, com as respostas. |
 | Ações | `Voltar` (secundária), `Redefinir` (secundária), `Quebrar o backlog por repositório` (primária, sempre habilitada). Ao clicar, a etapa confere a decisão: sem decisão, mostra o motivo ao lado do botão e não avança; com os documentos mudados depois dela, grava as respostas do dono e decide a arquitetura de novo antes de criar o backlog. Sem dono no documento de projeto, o clique usa o dono configurado ou a conta GitHub conectada; sem conta conectada, o clique mostra o motivo e não avança. |
 | Trava | Nenhuma. A etapa só identifica o estilo (monólito ou microsserviços) e a interface de cada repositório (web, mobile, API). Não mostra aviso de documento mudado. |
 
 Estados: não decidida (vazio, com a única ação primária `Decidir a arquitetura`); decidindo (bloco de processo igual ao da preparação dos planos, com o título `Decidindo a arquitetura`, o `Tempo` e o que a decisão lê); decidida; falhou (motivo em palavras simples, a lista `O que ainda não fecha:` com cada regra que ficou aberta, e a ação `Decidir a arquitetura`); decisão de documentos mudados (a tela não mostra aviso nem trava; o clique em `Quebrar o backlog por repositório` mostra `Os documentos mudaram: decida a arquitetura de novo.` e não avança); com perguntas abertas.
 
-Rótulos aprovados: `-jobs` aparece como `Workers`, `-workflow` como `Workflow`, e um único repositório como `Monólito`.
+Em microsserviços, cada serviço que os documentos listam vira um repositório (cada portal um `-web`, cada aplicativo um `-app`, cada backend de um front um `-bff`, cada processo de fundo um `-worker`, os demais `-api`); nada fica agrupado num núcleo, e os portais e aplicativos descritos nos documentos também viram repositórios, mesmo fora da lista de serviços do `stack.md`. Quando os documentos divergem entre separar e juntar, o agente pergunta ao dono em vez de escolher. Os nomes dos repositórios são 100% em inglês, traduzidos dos documentos. Sufixos aceitos: `-api` (serviço que responde), `-worker` (processo de fundo), `-web` (front web), `-app` (aplicativo móvel) e `-bff` (backend de um front). Rótulos: `API`, `Worker`, `Web`, `App`, `BFF`, e um único repositório aparece como `Monólito`.
 
 ### 26.8 Backlog por repositório
 

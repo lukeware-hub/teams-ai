@@ -13,7 +13,7 @@ export const Persona = z.object({
 export const ServiceName = z.string().regex(ID_PATTERNS.SERVICE, { message: `a service name ends with one of ${SERVICE_SUFFIXES.join(', ')}` }).max(40);
 
 /** How a documented service gets its repository name: the name the docs give it plus the suffix of its type. */
-export const SERVICE_NAMING = 'Name each service as the docs name it plus the suffix of its type: -api for a service that answers requests (gRPC or HTTP), -jobs for a worker or batch process, -web for a web front end, -mobile for a mobile app, -workflow for a workflow engine. For example, case-evidence becomes case-evidence-api and reconciliation becomes reconciliation-jobs. Adding the suffix is no invention: never leave a documented service out because its name has no suffix.';
+export const SERVICE_NAMING = 'Name each service in English, translating the name the docs give it (medico becomes doctor, fornecedor becomes supplier), plus the suffix of its type: -api for a service that answers requests (gRPC or HTTP), -worker for a background or batch process, -web for a web front end, -app for a mobile app, -bff for the backend of one front end. For example, case-evidence becomes case-evidence-api, conciliação becomes reconciliation-worker and portal do médico becomes doctor-web. Adding the suffix is no invention: never leave a documented service out because its name has no suffix.';
 
 /** A shared container the docs declare for every service (a message broker, a shared database), reached on the project's network by its name; every value is literal. */
 export const PlatformService = z.object({

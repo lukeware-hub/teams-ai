@@ -29,7 +29,7 @@ Agents propose and build; the owner keeps scope and the start. Every number on s
 
 - Roles: PO, SM, Dev, Test, Security, DevOps, Front; the Jev reviews documents and only advises.
 - Everything local; cost is an alert, never a stop; Iniciar stays a manual click; a confidential project never sends a document to the Jev or the web.
-- Repository kinds: API, Workers, Web, Mobile, Workflow, or one Monolith repository.
+- Repository kinds: API, Worker, Web, App, BFF, or one Monolith repository.
 
 ## Brand Commitments
 

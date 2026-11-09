@@ -1724,12 +1724,24 @@ export class RefineSession {
       await this.journal.fact(RefineEvent.DocEdited, { file: 'briefing.md', hash: sha256(after), source: 'decision' });
     }
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
+    if (q.origin === 'architecture') await this.redecideOnAnswers();
+  }
+
+  /** The last architecture question answered decides the architecture again with the answers; a session that cannot decide now leaves it to Redefinir. */
+  private async redecideOnAnswers(): Promise<void> {
+    const open = this.state.questions.some((q) => q.origin === 'architecture' && q.status === 'pending');
+    if (open || this.busy || this.state.backlog?.enabled) return;
+    await this.decideArchitecture().catch((err: unknown) => {
+      if (!(err instanceof ConflictError)) throw err;
+    });
   }
 
   async skip(questionId: string): Promise<void> {
     this.guardLight();
-    if (this.question(questionId).blocking) throw new ConflictError(`question ${questionId} is blocking and cannot be skipped`);
+    const q = this.question(questionId);
+    if (q.blocking) throw new ConflictError(`question ${questionId} is blocking and cannot be skipped`);
     await this.journal.fact(RefineEvent.QuestionSkipped, { questionId });
+    if (q.origin === 'architecture') await this.redecideOnAnswers();
   }
 
   /** The owner asks again for a question the guard dropped: it comes back as a pending question. */
@@ -1751,9 +1763,10 @@ export class RefineSession {
   /** Accepts a suggestion; `auto` marks one the team accepted on its own, which the impact card lists. */
   async accept(patchId: string, auto = false): Promise<void> {
     this.guardLight();
-    const { file } = this.patch(patchId);
+    const { file, also } = this.patch(patchId);
     await this.applyPatchRow(patchId, auto);
     await this.markGraphOutdated(file as DocFile);
+    if (also) await this.markGraphOutdated(also.file);
   }
 
   /** A document already in the graph holds an older text now: it is marked, and goes back in once, when the stage continues or the summary runs. */
@@ -1795,19 +1808,24 @@ export class RefineSession {
 
   private async applyPatchRow(patchId: string, auto = false): Promise<void> {
     const p = this.patch(patchId);
-    const before = await readDoc(this.deps.draft, p.file);
-    const after = applyPatch(before, p);
-    if (after === null) {
+    // A move edits two documents: both edits must still apply, or neither is written.
+    const edits = [p, ...(p.also ? [p.also] : [])];
+    const afters = await Promise.all(edits.map(async (edit) => applyPatch(await readDoc(this.deps.draft, edit.file), edit)));
+    if (afters.includes(null)) {
       await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: COVERED_REASON });
       throw new ConflictError(`Este ajuste (${patchId}) já foi coberto por outra alteração e foi descartado.`);
     }
-    await writeDoc(this.deps.draft, p.file, after);
-    await this.journal.fact(RefineEvent.DocEdited, { file: p.file, hash: sha256(after), source: 'patch' });
+    for (const [i, edit] of edits.entries()) {
+      await writeDoc(this.deps.draft, edit.file, afters[i]!);
+      await this.journal.fact(RefineEvent.DocEdited, { file: edit.file, hash: sha256(afters[i]!), source: 'patch' });
+    }
     await this.journal.fact(RefineEvent.PatchAccepted, { patchId, ...(auto ? { auto: true } : {}) });
     // PO and SM often propose overlapping edits: the ones this change made stale leave the list now, instead of failing on click.
-    for (const other of this.state.patches) {
-      if (other.status === 'pending' && other.file === p.file && applyPatch(after, other) === null) {
-        await this.journal.fact(RefineEvent.PatchDropped, { patchId: other.patchId, reason: COVERED_REASON });
+    for (const [i, edit] of edits.entries()) {
+      for (const other of this.state.patches) {
+        if (other.status === 'pending' && other.file === edit.file && applyPatch(afters[i]!, other) === null) {
+          await this.journal.fact(RefineEvent.PatchDropped, { patchId: other.patchId, reason: COVERED_REASON });
+        }
       }
     }
   }

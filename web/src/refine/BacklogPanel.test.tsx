@@ -13,8 +13,8 @@ describe('BacklogPanel by repository', () => {
   const detailed = (items: BacklogView['items']): BacklogView => ({ ...view(items), detail: true, specs: { cart: spec } });
 
   it('gives each repository group its kind chip, and Monólito to a name without a service suffix', () => {
-    render(<BacklogPanel backlog={view([item('cart', { repository: 'shop-jobs' }), item('base', { repository: 'shop' })])} evaluating={false} locked={false} />);
-    expect(screen.getByTestId('backlog-group-kind-shop-jobs').textContent).toBe('Workers');
+    render(<BacklogPanel backlog={view([item('cart', { repository: 'shop-worker' }), item('base', { repository: 'shop' })])} evaluating={false} locked={false} />);
+    expect(screen.getByTestId('backlog-group-kind-shop-worker').textContent).toBe('Worker');
     expect(screen.getByTestId('backlog-group-kind-shop').textContent).toBe('Monólito');
   });
 

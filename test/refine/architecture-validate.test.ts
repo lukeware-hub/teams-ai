@@ -25,8 +25,8 @@ const repo = (name: string, quote = 'Plataforma de casos'): Repository => ({
 const microservices: Architecture = {
   style: 'microservices',
   rationale: 'Serviços separados.',
-  repositories: [repo('case-evidence-api'), { ...repo('reconciliation-jobs'), evidence: { doc: 'flow.md', quote: 'Fluxo do pedido' } }],
-  integrations: [{ consumer: 'reconciliation-jobs', provider: 'case-evidence-api', contract: 'HTTP /evidences' }],
+  repositories: [repo('case-evidence-api'), { ...repo('reconciliation-worker'), evidence: { doc: 'flow.md', quote: 'Fluxo do pedido' } }],
+  integrations: [{ consumer: 'reconciliation-worker', provider: 'case-evidence-api', contract: 'HTTP /evidences' }],
 };
 
 describe('validateArchitecture', () => {
@@ -72,7 +72,7 @@ describe('validateArchitecture', () => {
   });
 
   it('rule c: an integration names only repositories of the architecture', () => {
-    const integrations = [{ consumer: 'reconciliation-jobs', provider: 'billing-api', contract: 'HTTP' }];
+    const integrations = [{ consumer: 'reconciliation-worker', provider: 'billing-api', contract: 'HTTP' }];
     expect(validateArchitecture({ ...microservices, integrations }, input)).toHaveLength(1);
   });
 
@@ -82,14 +82,14 @@ describe('validateArchitecture', () => {
   });
 
   it('rule d: a missing evidence quote is reported with its repository', () => {
-    const repositories = [repo('case-evidence-api', 'Texto inexistente'), repo('reconciliation-jobs')];
+    const repositories = [repo('case-evidence-api', 'Texto inexistente'), repo('reconciliation-worker')];
     expect(validateArchitecture({ ...microservices, repositories }, input)).toEqual([
       'a citação do repositório "case-evidence-api" não existe em project.md.',
     ]);
   });
 
   it('rule d: a quote matches the document after normalization', () => {
-    const repositories = [repo('case-evidence-api', 'ORGAO PUBLICO'), repo('reconciliation-jobs')];
+    const repositories = [repo('case-evidence-api', 'ORGAO PUBLICO'), repo('reconciliation-worker')];
     expect(validateArchitecture({ ...microservices, repositories }, input)).toEqual([]);
   });
 });

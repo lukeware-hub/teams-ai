@@ -21,9 +21,9 @@ describe('docs tree', () => {
 describe('kind of a service repository', () => {
   it('reads the kind from the suffix of the service name', () => {
     expect(kindOfService('notification-api')).toBe('api');
-    expect(kindOfService('messagem-jobs')).toBe('api');
+    expect(kindOfService('messagem-worker')).toBe('api');
     expect(kindOfService('hospital-web')).toBe('web');
-    expect(kindOfService('patient-mobile')).toBe('mobile');
+    expect(kindOfService('patient-app')).toBe('mobile');
   });
 
   it('refuses a service name without a known suffix', () => {

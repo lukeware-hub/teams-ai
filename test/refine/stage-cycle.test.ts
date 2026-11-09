@@ -404,6 +404,47 @@ describe('runStageCycle', () => {
     expect(journal.events.some((e) => e.type === RefineEvent.DocMoved)).toBe(false);
   });
 
+  it('a move out of the stage document to an earlier one is one suggestion for both documents, and changes nothing before the owner accepts it', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    const design = '# Design\n\n## Telas\n\nA junta tem prazo de 2 dias úteis.\n\n## Cores\n\nAzul.\n';
+    const brief = '# Briefing\n\n## Regras de negócio\n\nPedido em até 30 dias.\n';
+    await writeDoc(draft, 'design.md', design);
+    await writeDoc(draft, 'briefing.md', brief);
+    const move = { from: 'docs/design.md', to: `docs/specs/${draft.specId}/briefing.md`, quote: 'A junta tem prazo de 2 dias úteis.', text: 'A junta tem prazo de 2 dias úteis.', after: 'Pedido em até 30 dias.', keep: 'A tela mostra o prazo da junta.', reason: 'regra de negócio' };
+    const runAgent = vi.fn(async (req: { kind: string }) => (req.kind === 'refine' ? answer([], [], [], [], [move]) : answer([])));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'design.md');
+    expect(await readDoc(draft, 'design.md')).toBe(design);
+    expect(await readDoc(draft, 'briefing.md')).toBe(brief);
+    expect(journal.state.patches).toEqual([expect.objectContaining({ status: 'pending', file: 'design.md', find: move.quote, replace: move.keep, reason: 'Move para briefing.md: regra de negócio', also: { file: 'briefing.md', find: move.after, replace: expect.stringContaining(`${move.after}\n\n${move.text}`) } })]);
+    expect(journal.state.patches[0]!.diff).toMatch(/design\.md[\s\S]*-A junta[\s\S]*briefing\.md[\s\S]*\+A junta/);
+  });
+
+  it('a move to a later document, out of another document, or that loses a number is discarded with its reason', async () => {
+    const draft = await newDraft();
+    const journal = foldingJournal();
+    await writeDoc(draft, 'project.md', '# Projeto\n\nO gestor aprova.\n');
+    await writeDoc(draft, 'briefing.md', '# Briefing\n\nPrazo de 30 dias.\n\nUsa Postgres 16.\n');
+    await writeDoc(draft, 'stack.md', '# Pilha\n\nNode.js.\n');
+    const later = { from: 'briefing.md', to: 'docs/stack.md', quote: 'Usa Postgres 16.', text: 'Usa Postgres 16.', reason: 'r' };
+    const other = { from: 'docs/project.md', to: 'docs/flow.md', quote: 'O gestor aprova.', text: 'O gestor aprova.', reason: 'r' };
+    const lossy = { from: 'briefing.md', to: 'docs/project.md', quote: 'Prazo de 30 dias.', text: 'Prazo curto.', reason: 'r' };
+    const runAgent = vi.fn(async (req: { kind: string }) => (req.kind === 'refine' ? answer([], [], [], [], [later, other, lossy]) : answer([])));
+    await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
+    expect(journal.state.patches).toEqual([]);
+    const reasons = (stageReviewed(journal)!.discardedPatches as Array<{ reason: string }>).map((d) => d.reason).filter((r) => r.startsWith('Movimento'));
+    expect(reasons).toEqual([
+      'Movimento descartado: Esta etapa só move trechos de briefing.md para um documento anterior.',
+      'Movimento descartado: Esta etapa só move trechos de briefing.md para um documento anterior.',
+      'Movimento descartado: o texto perde "30" do trecho',
+    ]);
+  });
+
+  it('tells the reviewer it may move content only to the documents before its stage', () => {
+    const pack = stageReviewPack({ role: 'front', specHash: 'h', principles: [], file: 'design.md', docs: { 'project.md': '', 'briefing.md': '', 'stack.md': '', 'flow.md': '', 'design.md': '# D' }, specId: 's', history: [], rejected: [] });
+    expect(pack.feedback).toContain('a document before it (flow.md, project.md, briefing.md, stack.md) is a move');
+  });
+
   it('a finding or a contradiction outside the stage and the documents before it is dropped', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();

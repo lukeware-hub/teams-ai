@@ -17,7 +17,7 @@ describe('the buttons of a repository, by its kind', () => {
 
   it('shows both buttons for a monolith, and only the Swagger for workers', () => {
     expect(shortcutsOf('monolith', 'live-skill', deploy(), probe(), HOST).map((s) => s.kind)).toEqual(['swagger', 'app']);
-    expect(shortcutsOf('jobs', 'worker', deploy(), probe(), HOST).map((s) => s.kind)).toEqual(['swagger']);
+    expect(shortcutsOf('worker', 'worker', deploy(), probe(), HOST).map((s) => s.kind)).toEqual(['swagger']);
   });
 
   it('shows no button for a mobile or workflow repository', () => {

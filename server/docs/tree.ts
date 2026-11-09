@@ -44,7 +44,7 @@ export const filesOfKind = (kind: AppKind): string[] => APP_FILES[kind].map((fil
 /** Every path of the docs tree, each under docs/: the common ones, then the files of all three kinds of application. */
 export const DOCS_TREE: readonly string[] = [...COMMON.map((path) => `docs/${path}`), ...APP_KINDS.flatMap(filesOfKind)];
 
-const SUFFIX_KIND: Record<(typeof SERVICE_SUFFIXES)[number], AppKind> = { api: 'api', jobs: 'api', workflow: 'api', web: 'web', mobile: 'mobile' };
+const SUFFIX_KIND: Record<(typeof SERVICE_SUFFIXES)[number], AppKind> = { api: 'api', worker: 'api', bff: 'api', web: 'web', app: 'mobile' };
 
 /** The kind of application a service repository holds, from the suffix its name ends with. */
 export function kindOfService(service: string): AppKind {

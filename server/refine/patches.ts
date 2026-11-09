@@ -19,6 +19,8 @@ export interface PendingPatch {
   diff: string;
   /** Whether the change adds or removes structure (a heading, a list item, a criterion id or a priority): see scope-guard.ts. Journaled only; nothing applies a patch because of it. */
   scopeChange?: boolean;
+  /** The second edit of a move: it adds the text to another document, and is accepted or rejected with this one. */
+  also?: { file: DocFile; find: string; replace: string };
 }
 export type PatchCheck = { ok: true; file: DocFile } | { ok: false; reason: string };
 

@@ -213,6 +213,26 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
+  it('a move waits for the owner even with the team alone; accepting it writes both documents, rejecting it writes none', async () => {
+    const s = await plain();
+    await writeDoc(draft(), 'project.md', '# Projeto\n\n## Regras\n\nO gestor aprova.\n');
+    await writeDoc(draft(), 'briefing.md', '# Briefing\n\nQuem cancela: o gestor do contrato.\n\nPrazo de 30 dias.\n\nQuem paga: o titular.\n');
+    const move = (quote: string) => ({ from: 'briefing.md', to: 'docs/project.md', quote, text: quote, after: 'O gestor aprova.', reason: 'quem pode agir' });
+    script['refine/po'] = [{ ...refineOut(green(PO)), moves: [move('Quem cancela: o gestor do contrato.'), move('Quem paga: o titular.')] }];
+    await asTeamAlone(true, () => s.evaluateStage('briefing.md'));
+    const [kept, refused] = s.state.patches.filter((p) => p.also);
+    expect([kept?.status, refused?.status]).toEqual(['pending', 'pending']);
+    await s.reject(refused!.patchId, null);
+    await s.accept(kept!.patchId);
+    const project = await fs.readFile(`${draft().root}/docs/project.md`, 'utf8');
+    const brief = await fs.readFile(`${draft().root}/docs/specs/hello-001/briefing.md`, 'utf8');
+    expect(project).toContain('O gestor aprova.\n\nQuem cancela: o gestor do contrato.');
+    expect(project).not.toContain('Quem paga');
+    expect(brief).not.toContain('Quem cancela');
+    expect(brief).toContain('Quem paga: o titular.');
+    await s.close();
+  });
+
   it('keeps the review valid when the owner accepts a patch of the review itself', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);

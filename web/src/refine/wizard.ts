@@ -95,6 +95,10 @@ export const docQuestions = (st: Pick<State, 'questions'>, file: DocFile): Quest
 export const unfiledQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
   pendingQuestions(st).filter((q) => q.file === undefined && q.origin !== 'speckit' && q.origin !== 'specs').sort((a, b) => Number(b.blocking) - Number(a.blocking));
 
+/** The pending questions the architecture decision asked, blocking ones first. */
+export const architectureQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
+  pendingQuestions(st).filter((q) => q.origin === 'architecture').sort((a, b) => Number(b.blocking) - Number(a.blocking));
+
 /** The pending questions the plan preparation asked while it prepared the development, blocking ones first. */
 export const speckitQuestions = (st: Pick<State, 'questions'>): QuestionRow[] =>
   pendingQuestions(st).filter((q) => q.origin === 'speckit').sort((a, b) => Number(b.blocking) - Number(a.blocking));

@@ -32,7 +32,7 @@ describe('repoKind', () => {
 
   it('returns the suffix of a service', () => {
     expect(repoKind('case-evidence-api', 'microservices')).toBe('api');
-    expect(repoKind('reconciliation-jobs', 'microservices')).toBe('jobs');
+    expect(repoKind('reconciliation-worker', 'microservices')).toBe('worker');
   });
 
   it('returns null when the service name has no suffix', () => {

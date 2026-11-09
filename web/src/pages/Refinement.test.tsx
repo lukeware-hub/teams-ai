@@ -782,4 +782,21 @@ describe('the architecture step names what the documentation repository does', (
     expect(h.onEnableBacklog).not.toHaveBeenCalled();
     expect(window.location.search).toContain('etapa=backlog');
   });
+
+  it('asks the architecture questions on the step, with their context, and sends the answer', () => {
+    const h = on();
+    const question = { questionId: 'arch-9-0', role: 'sm' as const, text: 'O pagamento fica no hello-api?', context: 'O project.md não diz onde ele roda.', blocking: true, relatedAcIds: [], cycle: 1, status: 'pending' as const, answer: null, origin: 'architecture' as const };
+    render(<MemoryRouter><RefinementView snap={architectureStep({ questions: [question] })} busy={false} events={[]} {...h} /></MemoryRouter>);
+    const box = screen.getByTestId('architecture-questions');
+    expect(within(box).getByTestId('refinement-question-text').textContent).toContain('O pagamento fica no hello-api?');
+    expect(within(box).getByTestId('refinement-question-context').textContent).toBe('O project.md não diz onde ele roda.');
+    fireEvent.change(within(box).getByRole('textbox'), { target: { value: 'Sim' } });
+    fireEvent.click(within(box).getByRole('button', { name: /Responder/ }));
+    expect(h.onAnswer).toHaveBeenCalledWith('arch-9-0', 'Sim', false);
+  });
+
+  it('shows no questions block when the architecture asked none', () => {
+    render(<MemoryRouter><RefinementView snap={architectureStep({})} busy={false} events={[]} {...on()} /></MemoryRouter>);
+    expect(screen.queryByTestId('architecture-questions')).toBeNull();
+  });
 });

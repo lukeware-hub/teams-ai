@@ -10,9 +10,9 @@ export interface Shortcut {
   reason: string | null;
 }
 
-/** The buttons a repository of this kind shows: Swagger for an API or workers, the application for a web repository, both for a monolith. */
+/** The buttons a repository of this kind shows: Swagger for an API, a worker or a BFF, the application for a web repository, both for a monolith. */
 export function shortcutsOf(kind: string | null, repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string, probeFailed = false): Shortcut[] {
-  const wanted: Shortcut['kind'][] = kind === 'api' || kind === 'jobs' ? ['swagger'] : kind === 'web' ? ['app'] : kind === 'monolith' ? ['swagger', 'app'] : [];
+  const wanted: Shortcut['kind'][] = kind === 'api' || kind === 'worker' || kind === 'bff' ? ['swagger'] : kind === 'web' ? ['app'] : kind === 'monolith' ? ['swagger', 'app'] : [];
   return wanted.flatMap((k) => shortcutOf(k, repo, deploy, probe, hostname, probeFailed) ?? []);
 }
 
