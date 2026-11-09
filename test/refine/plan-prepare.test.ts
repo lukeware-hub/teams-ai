@@ -122,6 +122,13 @@ describe('RefineSession.runPlans waits for a current backlog', () => {
     expect(agentCalls.map(keyOf).sort()).toEqual(['cart', 'login']);
   });
 
+  it('refuses to prepare plans while a blocking question is open, since its answer can change the backlog', async () => {
+    const session = await detailedSession();
+    await journalOf(session).fact(RefineEvent.SpecsQuestionsAsked, { specsHash: 'h', questions: [{ questionId: 'q-portais', role: 'po', text: 'Quantos portais?', blocking: true, relatedAcIds: [] }] });
+    expect(() => session.runPlans()).toThrow(/Responda as perguntas obrigatórias/);
+    expect(agentCalls).toEqual([]);
+  });
+
   it('refuses to prepare plans while an item has no pre-plan', async () => {
     const session = await detailedSession();
     await journalOf(session).fact(RefineEvent.PreplanDerived, { key: 'cart', inputHash: 'i', specRev: 'r', preplan: null, issues: ['falhou'], cycle: 2 });

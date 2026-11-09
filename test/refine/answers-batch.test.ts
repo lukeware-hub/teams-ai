@@ -51,9 +51,24 @@ describe('answers wait for Reprocessar', () => {
     script['refine/po'] = [out([ask('Quem usa?')]), { checklist: green, questions: [], docPatch: [{ file: 'project.md', find: 'Texto original.', replace: 'Texto novo.', reason: 'decisão' }] }, out()];
     await s.evaluateStage('flow.md');
     const question = s.state.questions.find((q) => q.status === 'pending');
-    await s.decideAnswer(question!.questionId);
+    // With nothing written, the question is not decided: it stays for the owner.
+    await expect(s.decideAnswer(question!.questionId)).rejects.toThrow(/fica para o dono/);
     expect(await readDoc(draft(), 'project.md')).toContain('Texto original.');
     expect(s.events.some((e) => e.type === RefineEvent.PatchDropped)).toBe(true);
+    expect(s.state.questions.find((q) => q.questionId === question!.questionId)?.status).toBe('pending');
+    await s.close();
+  });
+
+  it('a decision the PO writes into the documents answers the question with what it decided', async () => {
+    const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-project');
+    script['refine/po'] = [out([ask('Quem usa?')]), { checklist: green, questions: [], docPatch: [{ file: 'flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  B --> C[Clientes]', reason: 'quem usa são os clientes' }] }, out()];
+    await s.evaluateStage('flow.md');
+    const question = s.state.questions.find((q) => q.status === 'pending');
+    await s.decideAnswer(question!.questionId);
+    const answered = s.state.questions.find((q) => q.questionId === question!.questionId)!;
+    expect(answered.status).toBe('answered');
+    expect(answered.answer).toBe('Decidido pelo time com base nos documentos: quem usa são os clientes.');
+    expect(await readDoc(draft(), 'flow.md')).toContain('C[Clientes]');
     await s.close();
   });
 });

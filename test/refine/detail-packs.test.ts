@@ -116,6 +116,14 @@ describe('preplanPack', () => {
     expect(pack.feedback).toContain('porta de relógio');
     expect(pack.feedback).toMatch(/technical decisions in project\.md/);
   });
+
+  it('opens every batch with the same docs, a digest of a fixed size when they are large, so the prompt cache is reused', () => {
+    const big = ['# Stack', ...Array.from({ length: 400 }, (_, n) => `## Regra ${n}\n\n${'texto da regra '.repeat(200)}`)].join('\n\n');
+    const pack = (key: string, rejection: string[]) => preplanPack({ specHash: HASH, principles: [], projectMd: docs['project.md'], stackMd: big, batch: [{ item: item(key, 1), spec: makeSpec({ specId: `k-001-${key}` }), first: false, previous: null, rejection }] }).feedback!;
+    const head = (text: string) => text.slice(0, text.indexOf('# Specs'));
+    expect(head(pack('opme', []))).toContain('The documents below are a digest');
+    expect(head(pack('opme', []))).toBe(head(pack('consumo', ['uma rejeição longa '.repeat(500)])));
+  });
 });
 
 describe('backlogPack previous backlog', () => {

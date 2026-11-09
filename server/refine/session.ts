@@ -1258,6 +1258,10 @@ export class RefineSession {
     if (backlog?.enabled && (this.docsChangedSinceEvaluation() || backlog.items.some((i) => !backlog.preplans?.[i.key]?.preplan))) {
       throw new ConflictError('Avalie o backlog com os documentos atuais antes de preparar os planos: cada item precisa do seu pré-plano.');
     }
+    // A blocking answer can change the backlog, so the plans wait for it.
+    if (backlog?.enabled && this.state.questions.some((q) => q.status === 'pending' && q.blocking)) {
+      throw new ConflictError('Responda as perguntas obrigatórias antes de preparar os planos: a resposta pode mudar o backlog.');
+    }
     if (!backlog?.enabled && !this.state.derived) throw new ConflictError('Avalie a spec antes de preparar os planos.');
     const ctl = (this.abortCtl = new AbortController());
     const run = this.timedPlans(ctl).finally(() => {
@@ -1434,13 +1438,17 @@ export class RefineSession {
       const docs = await this.docsNow();
       const { ids } = await this.proposeWithin(out.value.docPatch, docs, cycle, 200, q.file ? new Set([q.file]) : null);
       for (const id of ids) await this.applyPatchRow(id, true).catch((err) => { if (!(err instanceof ConflictError)) throw err; });
+      return ids;
     })().finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
-    this.running = run;
-    await run;
-    await this.answer(questionId, 'Decidido pelo time com base nos documentos: a decisão ficou registrada como suposição.');
+    this.running = run.then(() => undefined);
+    const ids = await run;
+    // Only what the PO wrote into the documents decides the question; with nothing written it stays for the owner.
+    const reasons = this.state.patches.filter((p) => ids.includes(p.patchId) && p.status === 'accepted').map((p) => p.reason);
+    if (reasons.length === 0) throw new ConflictError('O PO não achou nos documentos como decidir esta pergunta: ela fica para o dono.');
+    await this.answer(questionId, `Decidido pelo time com base nos documentos: ${reasons.join('; ')}.`);
   }
 
   /** The gate of the final review: specs.md is written from the current backlog and approved by PO and SM. */

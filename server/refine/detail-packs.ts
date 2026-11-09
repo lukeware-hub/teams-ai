@@ -4,7 +4,7 @@ import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
-import { buildWithDocs, DIGEST_NOTE, viewDocs } from './docs-view.js';
+import { DIGEST_NOTE, viewDocs } from './docs-view.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import type { BacklogDocs } from './details.js';
 import { sectionText } from './sections.js';
@@ -16,6 +16,8 @@ const SELF_CONTAINED = 'Everything you need is in this pack: do not read files, 
 
 /** project.md in a spec pack: whole up to this size, else a digest; a fixed size keeps the text the same for every batch. */
 const SPEC_PROJECT_TOKENS = 40_000;
+/** project.md and stack.md in a pre-plan pack, together: whole up to this size, else a digest of both, the same for every batch. */
+const PREPLAN_DOCS_TOKENS = 40_000;
 
 const SPEC_RULES = [
   LANGUAGE,
@@ -118,7 +120,9 @@ export function preplanPack(input: {
     ...(previous ? ['Previous pre-plan (keep what still holds):', JSON.stringify({ modules: previous.modules, tasks: previous.tasks, risks: previous.risks }, null, 2)] : []),
     ...(rejection.length ? ['Your last attempt for this spec was rejected; fix every point:', rejection.map((r) => `- ${r}`).join('\n')] : []),
   ].join('\n'));
-  const feedback = buildWithDocs({ project: input.projectMd, stack: input.stackMd }, (d, digested) => [PREPLAN_RULES, ...(digested ? [DIGEST_NOTE] : []), '### docs/project.md', d.project, '### stack.md', d.stack, '# Specs', ...specs].join('\n\n'));
+  // A fixed size, not what the batch leaves, keeps the docs the same for every batch, so the batches after the first read them from the prompt cache.
+  const view = viewDocs({ project: input.projectMd, stack: input.stackMd }, PREPLAN_DOCS_TOKENS);
+  const feedback = [PREPLAN_RULES, ...(view.digested ? [DIGEST_NOTE] : []), '### docs/project.md', view.docs.project ?? '', '### stack.md', view.docs.stack ?? '', '# Specs', ...specs].join('\n\n');
   return { kind: 'preplan', role: 'sm', specHash: input.specHash, principles: input.principles, outputContract: outputContract('preplan'), criteria: [], feedback, budgetTokens: 12_000 };
 }
 
