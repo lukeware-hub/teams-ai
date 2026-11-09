@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acceptAllPending, haltTeam, leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
+import { acceptAllPending, decideWhenDelegated, haltTeam, leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 import { autoAcceptable } from '../../server/refine/team-rule.js';
 
 /** A session stand-in: the state the test sets, and every call the autopilot makes is recorded. */
-function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: string; specsApproved?: () => boolean; plansDone?: boolean; specsMd?: unknown } = {}) {
+function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: string; specsApproved?: () => boolean; plansDone?: boolean; specsMd?: unknown; agentsDecide?: boolean } = {}) {
   const state: Record<string, unknown> = {
     status: over.status ?? 'answering',
     patches: over.patches ?? [],
@@ -33,6 +33,7 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     settleChecklist: vi.fn(async () => { state.status = 'ready'; }),
     reviewSpecsBeside: vi.fn(async () => {}),
     specsApproved: over.specsApproved ?? (() => true),
+    agentsDecide: vi.fn(async () => over.agentsDecide ?? false),
   };
   return s;
 }
@@ -196,6 +197,38 @@ describe('acceptAllPending: the owner takes every suggestion at once', () => {
   it('accepts nothing and says zero when no suggestion waits', async () => {
     const s = fake();
     expect(await acceptAllPending(s as unknown as RefineSession)).toBe(0);
+  });
+});
+
+describe('decideWhenDelegated: the Settings answer to "agents decide" also holds in the refinement', () => {
+  const pending = () => ({ patches: [{ patchId: 'p1', status: 'pending', scopeChange: true, reason: '', find: 'a', replace: 'b', file: 'stack.md' }], questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
+
+  it('with yes, the team decides what waits: it takes the suggestion and answers the question', async () => {
+    const s = fake({ ...pending(), agentsDecide: true });
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.accept).toHaveBeenCalledWith('p1', false);
+    expect(s.decideAnswer).toHaveBeenCalledWith('q1');
+  });
+
+  it('with no, everything waits for the owner', async () => {
+    const s = fake({ ...pending(), agentsDecide: false });
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.accept).not.toHaveBeenCalled();
+    expect(s.decideAnswer).not.toHaveBeenCalled();
+  });
+
+  it('with yes but nothing waiting, the team starts nothing', async () => {
+    const s = fake({ agentsDecide: true });
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.startSpecs).not.toHaveBeenCalled();
+  });
+
+  it('with yes on a follow-on request, the team runs it alone without a new evaluation', async () => {
+    const s = fake({ ...pending(), agentsDecide: true });
+    s.state.extension = { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' };
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.teamAutopilot).toHaveBeenCalledWith('started');
+    expect(s.evaluate).not.toHaveBeenCalled();
   });
 });
 

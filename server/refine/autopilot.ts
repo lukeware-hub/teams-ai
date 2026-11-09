@@ -27,6 +27,15 @@ export async function runExtension(s: RefineSession, { evaluate = true }: { eval
   }
 }
 
+/** The team works on what the owner decided: a follow-on request runs alone, a first draft goes through the owner's button for everything. */
+export const runTeam = (s: RefineSession, { evaluate = true }: { evaluate?: boolean } = {}): Promise<void> =>
+  s.state.extension === undefined ? resolveEverything(s) : runExtension(s, { evaluate });
+
+/** With yes to "agents decide" in Settings, what a review left waiting is decided by the team at once; with no, it waits for the owner. */
+export async function decideWhenDelegated(s: RefineSession): Promise<void> {
+  if (leftOpen(s) && (await s.agentsDecide())) await runTeam(s, { evaluate: false });
+}
+
 /** The owner's "accept all": every suggestion that waits is accepted, one another change already covered is skipped; returns how many were accepted. */
 export async function acceptAllPending(s: Pick<RefineSession, 'state' | 'accept'>): Promise<number> {
   let accepted = 0;

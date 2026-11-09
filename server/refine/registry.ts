@@ -6,7 +6,7 @@ import { ProgramService, programFile, type ProgramDecision, type ProgramView } f
 import type { Program } from '../program/controller.js';
 import { claimsSpec, listRuns, writePid } from '../api/run-index.js';
 import { HttpError } from '../api/server.js';
-import type { Config } from '../config/config.js';
+import { agentsDecideFor, type Config } from '../config/config.js';
 import { Spec } from '../contracts/spec.js';
 import { ID_PATTERNS } from '../core/ids.js';
 import type { Exec } from '../exec/command.js';
@@ -172,7 +172,7 @@ export class SessionRegistry {
       if (await exists(ws.repo)) (await openProjectKnowledge(file, ws.repo)).close();
       const retrieval = (await exists(file)) ? (q: string) => searchKnowledge(file, q) : () => [];
       const runAgent = inProject(this.deps.runAgent, draft.projectId);
-      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, mergeDocGraphs: this.deps.mergeDocGraphs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents, docsBind: this.deps.ghExec ? { exec: this.deps.ghExec, configuredOwner: async () => (await this.deps.cfg()).github.owner } : undefined };
+      const deps = { ws, draft, runAgent, frontAgent: runAgent, secretsDir: ws.secrets, retrieval, extractDocs: this.deps.extractDocs, mergeDocGraphs: this.deps.mergeDocGraphs, docGraphContext: this.deps.docGraphContext, validateDocs: this.deps.validateDocs, scoreDocs: this.deps.scoreDocs, decider: this.deps.decider, autoAnswerFloor: async () => answerFloor(await this.deps.cfg(), refineRoot(ws)), agentsDecide: async () => agentsDecideFor(await this.deps.cfg(), draft.projectId), limits: refineLimits(), exec: this.deps.exec, speckitAgents: async () => (await this.deps.cfg()).concurrency.planAgents, docsBind: this.deps.ghExec ? { exec: this.deps.ghExec, configuredOwner: async () => (await this.deps.cfg()).github.owner } : undefined };
       // A follow-on draft is a repository session when main holds the architecture its documents came from.
       const architecture = create !== undefined && create !== 'new-project' && (await exists(path.posix.join(draft.root, 'docs', 'architecture.json')));
       // A new project follows the rollout flags; a follow-on draft is stamped only when main holds its architecture.

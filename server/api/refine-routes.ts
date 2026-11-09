@@ -6,11 +6,11 @@ import type { SuggestFile } from '../refine/suggest.js';
 import { ALREADY_STARTED, ConflictError, EVALUATION_BUSY, NotFoundError } from '../refine/session.js';
 import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
-import { acceptAllPending, haltTeam, resolveEverything, runExtension } from '../refine/autopilot.js';
+import { acceptAllPending, decideWhenDelegated, haltTeam, runTeam } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
-import type { ClosingSummary } from '../refine/session.js';
+import type { ClosingSummary, RefineSession } from '../refine/session.js';
 
 const CLOSING_REPOSITORIES: TableSpec<ClosingSummary['repositories'][number]> = { text: (r) => [r.name] };
 import { HttpError, type Route, type RouteContext } from './server.js';
@@ -58,6 +58,8 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
   };
   const optionalBody = (ctx: RouteContext) => ctx.body().catch(() => ({}));
   const logRunFailure = (params: Record<string, string>) => (err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`);
+  /** Runs a review in the background; with yes to "agents decide", the team then decides what it left waiting. */
+  const review = (s: RefineSession, params: Record<string, string>, run: Promise<void>) => run.then(() => decideWhenDelegated(s)).catch(logRunFailure(params));
   const S = `${P}/refine/:projectId/:specId`;
   return [
     { method: 'GET', path: `${P}/refine`, handler: wrap(async ({ json }) => json(200, await registry.list())) },
@@ -163,7 +165,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         if (s.busy) throw new ConflictError(EVALUATION_BUSY);
         if (s.state.status === 'started') throw new ConflictError(ALREADY_STARTED);
         s.ensureCanEvaluate();
-        s.evaluate().catch(logRunFailure(params));
+        review(s, params, s.evaluate());
         json(202, { state: 'evaluating' });
       }),
     },
@@ -184,7 +186,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
         // A follow-on request is run again by the team alone, from its evaluation, and says why it stops: saving in the repositories stays with the owner.
-        (s.state.extension === undefined ? resolveEverything(s) : runExtension(s)).catch(logRunFailure(params));
+        runTeam(s).catch(logRunFailure(params));
         json(202, { ok: true });
       }),
     },
@@ -198,7 +200,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         // Nothing accepted while suggestions wait means the server was busy: the owner tries again, the agents do not start.
         if (waiting > 0 && accepted === 0) throw new ConflictError('O time está trabalhando: espere ele terminar para aceitar as sugestões.');
         // The agents run again on what the owner decided, with no new evaluation of the documents.
-        (s.state.extension === undefined ? resolveEverything(s) : runExtension(s, { evaluate: false })).catch(logRunFailure(params));
+        runTeam(s, { evaluate: false }).catch(logRunFailure(params));
         json(202, { ok: true, accepted });
       }),
     },
@@ -226,7 +228,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         const run = s.startSpecs();
         if (!run) return json(200, { started: false, reason: s.specsNotStartedReason() });
-        run.catch(logRunFailure(params));
+        review(s, params, run);
         json(202, { started: true });
       }),
     },
@@ -258,7 +260,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         const run = s.continueSpecsAfterAnswers();
         if (!run) throw new ConflictError('Ainda há perguntas de especificação sem resposta, ou o refinamento está ocupado.');
-        run.catch(logRunFailure(params));
+        review(s, params, run);
         json(202, { ok: true });
       }),
     },
@@ -379,7 +381,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       path: `${S}/resolve`,
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        resolveClosing(s).catch(logRunFailure(params));
+        review(s, params, resolveClosing(s));
         json(202, { ok: true });
       }),
     },
@@ -390,7 +392,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const file = params.file!;
         if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
         const s = await get(params);
-        s.evaluateStage(file as DocFile).catch(logRunFailure(params));
+        review(s, params, s.evaluateStage(file as DocFile));
         json(202, { ok: true });
       }),
     },
@@ -401,7 +403,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const file = params.file!;
         if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
         const s = await get(params);
-        s.reprocessStage(file as DocFile).catch(logRunFailure(params));
+        review(s, params, s.reprocessStage(file as DocFile));
         json(202, { ok: true });
       }),
     },

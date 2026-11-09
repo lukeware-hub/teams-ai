@@ -164,6 +164,8 @@ export interface SessionDeps {
   docGraphContext?: (outDir: string, question: string, budgetTokens: number) => Promise<string>;
   /** Binds the documentation repository at the Backlog step: the git and gh exec with the token, and the configured owner. */
   docsBind?: { exec: Exec; configuredOwner: () => Promise<string | undefined> };
+  /** The owner's answer to "agents decide" in Settings, read each time so a change reaches a draft already open. */
+  agentsDecide?: () => Promise<boolean>;
 }
 /** The external dependencies the specs declare: every backlog spec, or the single derived spec while the backlog has none yet. */
 export function declaredDependencies(state: RefineState): ExternalDependency[] {
@@ -1727,6 +1729,11 @@ export class RefineSession {
       this.running = null;
     });
     await this.running;
+  }
+
+  /** Whether the owner lets the agents decide in this project; no when the setting is not wired. */
+  async agentsDecide(): Promise<boolean> {
+    return (await this.deps.agentsDecide?.()) === true;
   }
 
   /** Resolves when the background work of the session (an evaluation, a plan preparation or a document extraction) has ended. */
