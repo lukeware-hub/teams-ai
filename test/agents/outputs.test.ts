@@ -116,6 +116,7 @@ describe('output contracts', () => {
     expect(RefineOutput.parse(base).moves).toBeUndefined();
     expect(RefineOutput.parse({ ...base, moves: [good, { ...good, quote: '' }, 'texto'] }).moves).toEqual([good]);
     expect(RefineOutput.parse({ ...base, moves: 'nope' }).moves).toEqual([]);
+    expect(RefineOutput.parse({ ...base, moves: [{ ...good, keep: 'A tela mostra o certificado.' }] }).moves?.[0]?.keep).toBe('A tela mostra o certificado.');
   });
 
   it('refine questions carry their choices: a malformed choice is dropped alone, and an open question has none', () => {

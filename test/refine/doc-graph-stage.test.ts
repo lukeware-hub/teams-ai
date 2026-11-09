@@ -7,6 +7,7 @@ import { createNewProject, draftPaths, readDoc, writeDoc, type DocFile } from '.
 import { DOC_STAGES } from '../../server/refine/doc-stages.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { RefineSession } from '../../server/refine/session.js';
+import { sha256 } from '../../server/contracts/hash.js';
 import { calls, makeFakeRunAgent, type Script } from '../fixtures/fake-run-agent.js';
 
 let root = '';
@@ -213,6 +214,40 @@ Editado.
     expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
     expect(s.state.graphed).toContain('flow.md');
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
+    await s.close();
+  });
+
+  /** Continues the flow stage while the owner saves the given texts during the extraction; returns the session and the text the stage began with. */
+  const extractWhileEditing = async (during: readonly string[]) => {
+    let s!: RefineSession;
+    const editing = async (dir: string, outDir: string) => {
+      for (const text of during) await s.saveDoc('flow.md', text);
+      await extractDocs(dir, outDir);
+    };
+    s = await RefineSession.create({ ...deps(), extractDocs: editing }, 'new-project', { repositories: true });
+    await writeDoc(draft(), 'flow.md', FLOW);
+    script['refine/po'] = [refineOut(green(PO))];
+    await s.evaluateStage('flow.md');
+    const read = await readDoc(draft(), 'flow.md');
+    await s.continueStage();
+    await s.settled();
+    return { s, read };
+  };
+  const EDITED = `${FLOW}
+Editado durante a extração.
+`;
+
+  it('keeps the document in the graph when it holds the text the extraction read again', async () => {
+    const { s, read } = await extractWhileEditing([EDITED, FLOW]);
+    expect(s.state.graphedHash?.['flow.md']).toBe(sha256(read));
+    expect(s.state.graphed).toEqual(['flow.md']);
+    await s.close();
+  });
+
+  it('records the hash of the text the extraction read, and marks the graph outdated when the document changed during it', async () => {
+    const { s, read } = await extractWhileEditing([EDITED]);
+    expect(s.state.graphedHash?.['flow.md']).toBe(sha256(read));
+    expect(s.state.graphed ?? []).not.toContain('flow.md');
     await s.close();
   });
 

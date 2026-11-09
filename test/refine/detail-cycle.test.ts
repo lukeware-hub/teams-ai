@@ -537,6 +537,23 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toMatchObject({ cycle: 1, reason: 'O backlog passou do tempo limite. Clique em Reavaliar.', detail: 'sem resposta' });
   });
 
+  it('keeps the last spec of an item whose call was interrupted, and fails the cycle with the interruption', async () => {
+    const { journal, events, run } = await setup();
+    let interrupt = false;
+    const agent = fakeAgent(() => OUTLINE, (req) => (interrupt && req.kind === 'spec' ? { ok: false, failure: 'aborted', errors: ['aborted'], summary: {}, sandboxDisabled: false } : undefined));
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    const before = journal.state.backlog?.specs?.caso;
+    await journal.fact(RefineEvent.SpecsFeedback, { specsHash: 'x', feedback: { caso: ['Detalhe o critério de cancelamento.'] } });
+    interrupt = true;
+    const from = events.length;
+    await run(agent, 3);
+    expect(journal.state.backlog?.specs?.caso).toEqual(before);
+    expect(events.slice(from).filter((e) => e.type === 'SPEC_DERIVED')).toEqual([]);
+    expect(String(events.find((e, n) => n >= from && e.type === 'REFINE_CYCLE_FAILED')?.data.reason)).toBe('O detalhamento foi interrompido. Clique em Reavaliar.');
+  });
+
   it('fails a timed-out spec batch once for each item, with no retry item by item', async () => {
     const { journal, events, run } = await setup();
     const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'spec' ? { ok: false, failure: 'timeout', errors: ['sem resposta'], summary: {}, sandboxDisabled: false } : undefined));

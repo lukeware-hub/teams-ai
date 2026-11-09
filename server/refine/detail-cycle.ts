@@ -33,7 +33,9 @@ import { impactPack, validateImpact } from './impact.js';
 
 /** Agent calls of one detailing run at a time; the account-wide governor still caps every session together. */
 const DETAIL_CONCURRENCY = 3;
-const STOPPING = new Set(['quota', 'auth']);
+/** Failures that stop the whole run; an interrupted call keeps each item's last result. */
+const STOPPING = new Set(['quota', 'auth', 'aborted']);
+const INTERRUPTED = { reason: 'O detalhamento foi interrompido. Clique em Reavaliar.' };
 
 type Item = BacklogState['items'][number];
 type Ctx = Parameters<CycleDeps['runAgent']>[1];
@@ -156,10 +158,10 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
   const call = async <T>(run: () => Promise<StepOutcome<T>>): Promise<StepOutcome<T> | null> => {
     const release = await governor.acquire();
     try {
-      if (deps.signal?.aborted) stopped ??= { reason: 'O detalhamento foi interrompido. Clique em Reavaliar.' };
+      if (deps.signal?.aborted) stopped ??= INTERRUPTED;
       if (stopped) return null;
       const out = await run();
-      if (!out.ok && STOPPING.has(out.failure)) stopped ??= failureMessage('O detalhamento dos itens', out.failure, out.errors);
+      if (!out.ok && STOPPING.has(out.failure)) stopped ??= out.failure === 'aborted' ? INTERRUPTED : failureMessage('O detalhamento dos itens', out.failure, out.errors);
       return out;
     } finally {
       release();

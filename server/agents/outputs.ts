@@ -55,6 +55,7 @@ export const DocMove = z.object({
   quote: z.string().min(1),
   text: z.string().min(1),
   after: z.string().optional().catch(undefined),
+  keep: z.string().optional().catch(undefined),
   reason: z.string().min(1),
 });
 export type DocMoveProposal = z.infer<typeof DocMove>;

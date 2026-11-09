@@ -624,8 +624,10 @@ export class RefineSession {
     const started = this.journal.fact(RefineEvent.DocGraphStarted, { file });
     this.indexing = true;
     this.running = started.then(() => this.indexStage(file, advance)).then(async () => {
-      // A document the owner changed while it was being extracted holds an older text in the graph: it is marked again.
-      for (const changed of this.changedWhileIndexing) await this.journal.fact(RefineEvent.DocGraphStale, { file: changed });
+      // A document changed while it was being extracted is marked again, unless it holds the text the graph read.
+      for (const changed of this.changedWhileIndexing) {
+        if (sha256(await readDoc(this.deps.draft, changed)) !== this.state.graphedHash?.[changed]) await this.journal.fact(RefineEvent.DocGraphStale, { file: changed });
+      }
     }).finally(() => {
       this.changedWhileIndexing.clear();
       this.running = null;
@@ -645,14 +647,15 @@ export class RefineSession {
       // One file per section: the graph extracts again only the sections that changed.
       const parts = path.posix.join(folder, file);
       await fs.mkdir(parts, { recursive: true });
-      for (const part of graphParts(await readDoc(this.deps.draft, file))) await fs.writeFile(path.posix.join(parts, part.name), part.text);
+      const text = await readDoc(this.deps.draft, file);
+      for (const part of graphParts(text)) await fs.writeFile(path.posix.join(parts, part.name), part.text);
       // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
       const previous = await documentCounts(fileDir, file).catch(() => null);
       await this.deps.extractDocs!(folder, fileDir, this.deps.draft.projectId);
       const counts = await documentCounts(fileDir, file);
       if (counts.nodes === 0) throw new Error('O Graphify não encontrou conteúdo neste documento.');
       await this.joinGraphs(staging, file);
-      await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(await readDoc(this.deps.draft, file)), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
+      await this.journal.fact(RefineEvent.DocGraphed, { file, hash: sha256(text), nodes: counts.nodes, previousNodes: previous?.nodes ?? null, links: counts.links, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens });
       if (advance) await this.journal.fact(RefineEvent.StageAdvanced, { doc: file, cycle: this.state.cycle });
     } catch (err) {
       await this.journal.fact(RefineEvent.DocGraphFailed, { file, reason: err instanceof Error ? err.message : String(err) });
