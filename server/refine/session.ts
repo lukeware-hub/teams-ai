@@ -612,10 +612,15 @@ export class RefineSession {
     if (this.state.stages === true && stale.length > 0) throw new ConflictError(`Revise de novo as etapas desatualizadas antes: ${stale.join(', ')}.`);
   }
 
+  /** The documents a repository session still needs in the Graphify graph; none in any other session. */
+  private offGraph(): DocFile[] {
+    if (this.state.repositories !== true || this.state.stages !== true) return [];
+    return DOC_STAGES.filter((file) => !(this.state.graphed ?? []).includes(file));
+  }
+
   /** In a repository session the backlog and the evaluation wait until all five documents are in the Graphify graph. */
   private guardGraphed(): void {
-    if (this.state.repositories !== true || this.state.stages !== true) return;
-    const missing = DOC_STAGES.filter((file) => !(this.state.graphed ?? []).includes(file));
+    const missing = this.offGraph();
     if (missing.length > 0) throw new ConflictError(`Adicione os cinco documentos ao Graphify antes: falta ${missing.join(', ')}.`);
   }
 
@@ -1351,7 +1356,7 @@ export class RefineSession {
 
   /** The owner's last answer about specs.md: the backlog is detailed again with the decisions, then the text is checked. Null while a question is still open. */
   continueSpecsAfterAnswers(): Promise<void> | null {
-    if (this.busy || this.state.questions.some((q) => q.origin === 'specs' && q.status === 'pending')) return null;
+    if (this.busy || this.state.questions.some((q) => q.origin === 'specs' && q.status === 'pending') || this.offGraph().length > 0) return null;
     const ctl = (this.abortCtl = new AbortController());
     const run = (async () => {
       await this.timedChain(ctl);
@@ -1467,6 +1472,8 @@ export class RefineSession {
     if (!b?.enabled || b.detail !== true || b.items.length === 0) return null;
     const now = this.specsOf();
     if (now && this.specsSettled(now.hash)) return null;
+    // The backlog is evaluated again only with all five documents in the graph, as an evaluation asks.
+    if (!now && this.offGraph().length > 0) return null;
     const ctl = (this.abortCtl = new AbortController());
     this.autonomous = opts.autonomous === true;
     this.leanRun = this.autonomous && leanRefine() && this.state.extension !== undefined;

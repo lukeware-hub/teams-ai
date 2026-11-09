@@ -123,4 +123,23 @@ describe('closing summary and the owner\'s authorization', () => {
     expect(events.find((e) => e.type === RefineEvent.DevelopmentAuthorized)?.data).toEqual({ summaryHash });
     await session.close();
   });
+
+  it('does not evaluate the backlog again for specs.md while a finished document is out of the graph', async () => {
+    let calls = 0;
+    const counting = (async (...args: Parameters<RunAgent>) => {
+      calls += 1;
+      return approving(...args);
+    }) as RunAgent;
+    const session = await readyWizard(counting);
+    await session.close();
+    const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
+    await journal.fact(RefineEvent.CycleFailed, { cycle: 2, reason: 'interrupted', kind: 'interrupted' });
+    await journal.fact(RefineEvent.DocGraphStale, { file: 'project.md' });
+    await journal.close();
+    const again = await RefineSession.open({ ...deps(), runAgent: counting });
+    expect(again.startSpecs({ autonomous: true })).toBeNull();
+    await again.settled();
+    expect(calls).toBe(0);
+    await again.close();
+  });
 });
