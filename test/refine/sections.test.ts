@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { docSections, flowIsMermaid, headingMatches, onlySubsections, resolveHeading, sectionText } from '../../server/refine/sections.js';
+import { docSections, flowIsMermaid, graphParts, headingMatches, onlySubsections, resolveHeading, sectionText } from '../../server/refine/sections.js';
 import { NUMBERED_MERMAID_FLOW } from '../fixtures/numbered-mermaid-flow.js';
 
 describe('flowIsMermaid (R11.11)', () => {
@@ -108,5 +108,41 @@ describe('onlySubsections', () => {
     expect(onlySubsections(briefing, 'Prazo de devolução')).toBeNull();
     expect(onlySubsections(briefing, 'Objetivos')).toBeNull();
     expect(onlySubsections(briefing, 'Pagamento')).toBeNull();
+  });
+});
+
+describe('graphParts', () => {
+  const section = (title: string, chars: number, level = '##') => `${level} ${title}\n\n${'texto '.repeat(chars / 6)}`;
+
+  it('keeps a small document whole', () => {
+    expect(graphParts('# Doc\n\n## Um\n\ntexto')).toEqual([{ name: 'documento.md', text: '# Doc\n\n## Um\n\ntexto' }]);
+  });
+
+  it('cuts a large document by its level-2 sections, named after their headings, covering the whole text', () => {
+    const doc = ['# Doc', section('Pagamentos e Cobrança', 12_000), section('Agenda', 12_000)].join('\n\n');
+    const parts = graphParts(doc);
+    expect(parts.map((p) => p.name)).toEqual(['inicio.md', 'pagamentos-e-cobranca.md', 'agenda.md']);
+    expect(parts.map((p) => p.text).join('\n')).toBe(doc);
+  });
+
+  it('keeps an unchanged section as it was when another one changes', () => {
+    const doc = (more: string) => ['# Doc', section('Pagamentos', 12_000), section('Agenda', 12_000) + more].join('\n\n');
+    expect(graphParts(doc(' mais')).find((p) => p.name === 'pagamentos.md')).toEqual(graphParts(doc('')).find((p) => p.name === 'pagamentos.md'));
+  });
+
+  it('cuts a large section by its subsections, each carrying the section heading', () => {
+    const doc = ['# Doc', '## Grande', section('Um', 12_000, '###'), section('Dois', 12_000, '###'), section('Fim', 100)].join('\n\n');
+    const parts = graphParts(doc);
+    expect(parts.map((p) => p.name)).toEqual(['inicio.md', 'grande--inicio.md', 'grande--um.md', 'grande--dois.md', 'fim.md']);
+    expect(parts.find((p) => p.name === 'grande--dois.md')!.text.startsWith('## Grande\n\n### Dois')).toBe(true);
+  });
+
+  it('cuts a large section with no subsections after each code block, each piece named after its first line', () => {
+    const fence = '```';
+    const block = (file: string) => `Arquivo: ${file}\n\n${fence}proto\n${'message X {}\n'.repeat(1_000)}${fence}`;
+    const doc = ['# Doc', '## Contratos', block('a.proto'), block('b.proto')].join('\n\n');
+    const parts = graphParts(doc);
+    expect(parts.map((p) => p.name)).toEqual(['inicio.md', 'contratos--contratos.md', 'contratos--arquivo-b-proto.md']);
+    expect(parts[2]!.text.startsWith('## Contratos\n\n')).toBe(true);
   });
 });

@@ -174,3 +174,62 @@ export function withoutApprovals(doc: string): string {
   }
   return out;
 }
+
+/** The longest part the graph reads before a section is cut again by its next heading level. */
+const PART_CHARS = 20_000;
+
+/**
+ * The document cut into parts for the graph: one per level-2 section, and a part past PART_CHARS cut again by the next level.
+ * Each part is named after its heading, so an unchanged section keeps its name and the graph reuses its extraction.
+ */
+export function graphParts(doc: string): Array<{ name: string; text: string }> {
+  const parts: Array<{ name: string; text: string }> = [];
+  const used = new Map<string, number>();
+  const add = (key: string, text: string) => {
+    const base = key || 'documento';
+    const n = (used.get(base) ?? 0) + 1;
+    used.set(base, n);
+    parts.push({ name: `${n > 1 ? `${base}-${n}` : base}.md`, text });
+  };
+  // A long section with no headings is cut after each code block, each piece named after its first line and carrying the section heading.
+  const blocks = (lines: readonly string[], key: string, context: string) => {
+    const heading = lines.find((l) => MARKDOWN.test(l));
+    const groups: string[][] = [[]];
+    let inCode = false;
+    for (const line of lines) {
+      groups.at(-1)!.push(line);
+      if (!FENCE.test(line)) continue;
+      inCode = !inCode;
+      if (!inCode) groups.push([]);
+    }
+    groups.forEach((g, i) => {
+      const first = g.find((l) => l.trim() !== '');
+      if (!first) return;
+      const name = `${key}--${normHeading(first).replace(/ /g, '-').slice(0, 60) || 'trecho'}`;
+      add(name, (i > 0 && heading ? `${context}${heading}\n\n` : context) + g.join('\n'));
+    });
+  };
+  const cut = (lines: readonly string[], level: number, key: string, context: string) => {
+    const text = lines.join('\n');
+    if (text.length <= PART_CHARS) return add(key, context + text);
+    if (level > 6) return blocks(lines, key, context);
+    const groups: Array<{ heading: string | null; lines: string[] }> = [{ heading: null, lines: [] }];
+    let inCode = false;
+    for (const line of lines) {
+      if (FENCE.test(line)) inCode = !inCode;
+      const m = inCode ? null : MARKDOWN.exec(line);
+      if (m && m[1]!.length === level) groups.push({ heading: m[2]!, lines: [] });
+      groups.at(-1)!.lines.push(line);
+    }
+    if (groups.length === 1) return cut(lines, level + 1, key, context);
+    // A subsection carries the heading of the section it belongs to.
+    const parent = lines.find((l) => MARKDOWN.test(l) && MARKDOWN.exec(l)![1]!.length < level);
+    for (const g of groups) {
+      if (g.lines.join('').trim() === '') continue;
+      const own = g.heading === null ? 'inicio' : normHeading(g.heading).replace(/ /g, '-').slice(0, 60) || 'secao';
+      cut(g.lines, level + 1, key === '' ? own : `${key}--${own}`, g.heading !== null && parent && level > 2 ? `${context}${parent}\n\n` : context);
+    }
+  };
+  cut(doc.split(/\r?\n/), 2, '', '');
+  return parts;
+}

@@ -93,6 +93,13 @@ describe('document graph extraction', () => {
     expect(await fs.readFile(`${host}/.claude/.credentials.json`, 'utf8')).toBe(before);
   });
 
+  it('counts the nodes of a document extracted as section files, and none of another document', async () => {
+    await fs.mkdir(path.join(out, 'graphify-out'), { recursive: true });
+    const nodes = [{ id: 'a', source_file: 'stack.md/runtime.md' }, { id: 'b', source_file: 'docs\\stack.md\\frameworks.md' }, { id: 'c', source_file: 'design.md/cores.md' }];
+    await fs.writeFile(path.join(out, 'graphify-out', 'graph.json'), JSON.stringify({ nodes, edges: [{ source: 'a', target: 'c' }] }));
+    await expect(documentCounts(out, 'stack.md')).resolves.toMatchObject({ nodes: 2, links: 1 });
+  });
+
   it('counts the nodes, links and tokens of one document in the graph it wrote', async () => {
     await extractDocs(deps(), dir, out, parent);
     await expect(documentCounts(out, 'pedido.md')).resolves.toEqual({ nodes: 1, links: 1, inputTokens: 2500, outputTokens: 90 });

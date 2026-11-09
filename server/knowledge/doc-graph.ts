@@ -91,7 +91,8 @@ export async function docGraphContext(graphify: Pick<Graphify, 'query'>, outDir:
 /** The nodes, links and tokens of one document in the graph an extraction wrote to `outDir`. */
 export async function documentCounts(outDir: string, file: string): Promise<DocGraphCount> {
   const graph = JSON.parse(await fs.readFile(path.join(outDir, 'graphify-out', 'graph.json'), 'utf8')) as GraphFile;
-  const nodes = (graph.nodes ?? []).filter((node) => path.basename(node.source_file ?? '') === file);
+  // A node comes from the document itself or from one of its section files, in the folder named after it.
+  const nodes = (graph.nodes ?? []).filter((node) => (node.source_file ?? '').split(/[\\/]/).includes(file));
   const ids = new Set(nodes.map((node) => node.id));
   const links = (graph.edges ?? graph.links ?? []).filter((edge) => ids.has(edge.source) || ids.has(edge.target)).length;
   return { nodes: nodes.length, links, inputTokens: graph.input_tokens ?? 0, outputTokens: graph.output_tokens ?? 0 };

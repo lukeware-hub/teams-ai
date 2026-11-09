@@ -1483,7 +1483,8 @@ export function RefinementView(p: ViewProps) {
     if (!st.backlog?.detail) startMissing.push('Detalhe o backlog antes de iniciar.');
     else if (st.status !== 'ready' && !evaluating && blockingOpen === 0) {
       const lacks = st.checklist.filter((c) => !c.passed).map((c) => c.detail || c.id);
-      startMissing.push(`O backlog ainda não está pronto: ${lacks.length > 0 ? lacks.join('; ') : 'avalie o backlog'}.`);
+      // A reason that already ends in a period gets no second one.
+      startMissing.push(`O backlog ainda não está pronto: ${(lacks.length > 0 ? lacks.join('; ') : 'avalie o backlog').replace(/\.$/, '')}.`);
     }
     if (speckitReason && !speckitAsked.some((q) => q.blocking)) startMissing.push(speckitReason);
     if (specsReason && st.status === 'ready' && specsAsked.length === 0) startMissing.push(`${specsReason}.`);

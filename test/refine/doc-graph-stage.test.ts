@@ -496,6 +496,10 @@ describe('the five documents of a request in the graph', () => {
     expect(extract).toHaveBeenCalledTimes(DOC_STAGES.length);
     // Each extraction reads one folder, which holds only its own document.
     expect(extract.mock.calls.map((call) => call[0] as string).every((dir, i) => dir.endsWith(`/files/${DOC_STAGES[i]}/docs`))).toBe(true);
+    // The document goes in as section files, in a folder named after it, so an unchanged section is not extracted again.
+    const first = extract.mock.calls[0]![0] as string;
+    const parts = await fs.readdir(path.join(first, DOC_STAGES[0]!));
+    expect(parts.length > 0 && parts.every((name) => name.endsWith('.md'))).toBe(true);
     expect([...(s.state.graphed ?? [])].sort()).toEqual([...DOC_STAGES].sort());
     await s.graphDocs();
     expect(extract).toHaveBeenCalledTimes(DOC_STAGES.length);

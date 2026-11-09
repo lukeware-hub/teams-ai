@@ -523,6 +523,13 @@ describe('what the start waits for', () => {
     expect(screen.getByTestId('start-missing').textContent).toContain('O backlog ainda não está pronto: o escopo não está explícito.');
   });
 
+  it('ends a lack that already ends in a period with one period only', () => {
+    const failing = [{ id: 'po.scope-explicit', role: 'po', passed: false, detail: 'o Jev duvidou da consistência (0,37).' }];
+    renderView(project({ stages: true, backlog: detailed as never, status: 'drafting', checklist: failing as never } as never));
+    expect(screen.getByTestId('start-missing').textContent).toContain('duvidou da consistência (0,37). ');
+    expect(screen.getByTestId('start-missing').textContent).not.toContain('..');
+  });
+
   it('says nothing once everything is ready and the button is open', () => {
     renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never);
     expect(screen.queryByTestId('start-missing')).toBeNull();

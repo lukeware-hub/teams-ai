@@ -686,7 +686,9 @@ describe('refine api', () => {
     script['suggest/po'] = [{ text: SHAPED_BRIEF }];
     script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/docs/briefing.md/evaluate')).status).toBe(202);
-    for (let i = 0; i < 200 && (await snapshot()).busy; i += 1) await new Promise((r) => setTimeout(r, 20));
+    // Waits for the reshape itself, then for the session to rest, so a slow machine does not end the wait early.
+    const settledReshape = async () => { const s = await snapshot(); return (s.state.reshapes ?? []).length > 0 && !s.busy; };
+    for (let i = 0; i < 1_000 && !(await settledReshape()); i += 1) await new Promise((r) => setTimeout(r, 20));
     expect((await snapshot()).state.reshapes).toMatchObject([{ reshapeId: 'reshape-c1-briefing', status: 'applied' }]);
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/reshapes/reshape-c1-briefing/undo')).status).toBe(200);
     expect((await snapshot()).docs['briefing.md']).toBe(LOOSE_BRIEF);

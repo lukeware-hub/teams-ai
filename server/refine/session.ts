@@ -55,7 +55,7 @@ import { idSourceOf, specIdOf } from './specs-index.js';
 import { preparePlans } from './plan-prepare.js';
 import { PREPARATION_STAGE, PreparationFailed, planInputHash, stopKindOf } from './plan-inputs.js';
 import { healRunsOf, type HealView } from './heal.js';
-import { flowIsMermaid } from './sections.js';
+import { flowIsMermaid, graphParts } from './sections.js';
 import { bindDocumentRepo, DocsBindRefused, styleRefusal } from './docs-bind.js';
 import { viewerLogin } from '../git/github.js';
 import { DocsStoreError, holdsConflictMarkers, openStore, readStoreText } from '../docs/store.js';
@@ -642,7 +642,10 @@ export class RefineSession {
       const folder = path.posix.join(fileDir, 'docs');
       await fs.rm(folder, { recursive: true, force: true });
       await fs.mkdir(folder, { recursive: true });
-      await fs.writeFile(path.posix.join(folder, file), await readDoc(this.deps.draft, file));
+      // One file per section: the graph extracts again only the sections that changed.
+      const parts = path.posix.join(folder, file);
+      await fs.mkdir(parts, { recursive: true });
+      for (const part of graphParts(await readDoc(this.deps.draft, file))) await fs.writeFile(path.posix.join(parts, part.name), part.text);
       // The count before this extraction: a document that loses nodes is recorded with both counts, not refused.
       const previous = await documentCounts(fileDir, file).catch(() => null);
       await this.deps.extractDocs!(folder, fileDir, this.deps.draft.projectId);
