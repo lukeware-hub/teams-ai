@@ -3,10 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { StepCard } from './StepCard.js';
 
 describe('StepCard', () => {
-  it('shows the title, who fills it, the state chip and the content', () => {
+  it('shows the title, the state chip and the content, with who fills it in the help', () => {
     render(<StepCard id="plans" icon="clipboard" title="Planos" info="O plano de cada item." owner="Feito pelo Dev" chip={{ label: 'Atual', tone: 'ok' }}><p>conteúdo</p></StepCard>);
     expect(screen.getByTestId('step-card-title-plans').textContent).toContain('Planos');
-    expect(screen.getByTestId('step-card-owner-plans').textContent).toBe('Feito pelo Dev');
+    expect(screen.getByTestId('info-tip-button').getAttribute('aria-label')).toBe('O plano de cada item. Feito pelo Dev.');
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Atual');
     expect(screen.getByText('conteúdo')).toBeTruthy();
   });
@@ -24,9 +24,13 @@ describe('StepCard', () => {
     expect(screen.getByTestId('step-card-b').getAttribute('data-focus')).toBe('true');
   });
 
-  it('leaves out the owner line and the chip when none is given', () => {
+  it('leaves out the chip when none is given', () => {
     render(<StepCard id="x" icon="file" title="X" info="i"><span /></StepCard>);
-    expect(screen.queryByTestId('step-card-owner-x')).toBeNull();
     expect(screen.queryByTestId('step-card-chip-x')).toBeNull();
+  });
+
+  it('drops its own card frame inside a shared card', () => {
+    render(<StepCard id="g" icon="file" title="G" info="i" grouped><span /></StepCard>);
+    expect(screen.getByTestId('step-card-g').className).not.toContain('card');
   });
 });

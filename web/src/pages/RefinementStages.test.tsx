@@ -60,29 +60,30 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
-  it('splits the step into four cards, each naming who fills it and explaining itself', () => {
+  it('groups the backlog, plans and checks as rows of one card, each explaining itself and who fills it', () => {
     renderView(wizard({}), handlersWithSpeckit());
-    for (const id of ['needs', 'backlog', 'plans', 'checks']) {
+    const group = screen.getByTestId('backlog-cards');
+    for (const id of ['backlog', 'plans', 'checks']) {
       const card = screen.getByTestId(`step-card-${id}`);
-      expect(card.querySelector('[data-testid="info-tip-button"]')).toBeTruthy();
-      expect(screen.getByTestId(`step-card-owner-${id}`).textContent).toBeTruthy();
+      expect(group.contains(card)).toBe(true);
+      expect(card.querySelector('[data-testid="info-tip-button"]')?.getAttribute('aria-label')).toMatch(/pel[oa] /);
     }
     expect(screen.getByTestId('step-card-plans').contains(screen.getByTestId('speckit-idle'))).toBe(true);
-    expect(screen.getByTestId('step-card-needs').contains(screen.getByTestId('start-missing'))).toBe(true);
+    expect(group.contains(screen.getByTestId('start-missing'))).toBe(false);
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Não preparados');
   });
 
-  it('opens only the card that still needs something, and rings it', () => {
+  it('opens only the card that still needs something, and hides the owner card while nothing waits for them', () => {
     renderView(wizard({}), handlersWithSpeckit());
-    const open = ['needs', 'backlog', 'plans', 'checks'].filter((id) => (screen.getByTestId(`step-card-${id}`) as HTMLDetailsElement).open);
-    expect(open).toEqual(['needs']);
-    expect(screen.getByTestId('step-card-needs').getAttribute('data-focus')).toBe('true');
-    expect(screen.getByTestId('step-card-backlog').getAttribute('data-focus')).toBeNull();
+    expect(screen.queryByTestId('step-card-needs')).toBeNull();
+    const open = ['backlog', 'plans', 'checks'].filter((id) => (screen.getByTestId(`step-card-${id}`) as HTMLDetailsElement).open);
+    expect(open).toHaveLength(1);
+    expect(screen.getByTestId(`step-card-${open[0]}`).getAttribute('data-focus')).toBe('true');
   });
 
   it('moves the focus to the plans once nothing waits for the owner', () => {
     renderView(wizard({ status: 'ready', checklist: [] as never }), handlersWithSpeckit());
-    const focused = ['needs', 'backlog', 'plans', 'checks'].filter((id) => screen.getByTestId(`step-card-${id}`).getAttribute('data-focus') === 'true');
+    const focused = ['needs', 'backlog', 'plans', 'checks'].filter((id) => screen.queryByTestId(`step-card-${id}`)?.getAttribute('data-focus') === 'true');
     expect(focused.length).toBe(1);
   });
 
@@ -533,13 +534,12 @@ describe('the button that lets the team resolve everything', () => {
     expect(h.onResolveAll).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the spinner from the click, and the yellow list sits at the top of the step in the notice pattern', async () => {
+  it('shows the spinner from the click, and the yellow list sits beside the buttons', async () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
     const missing = screen.getByTestId('start-missing');
-    expect(missing.className).toContain('bg-warn-soft');
-    expect(screen.getByTestId('refinement-backlog-heading').nextElementSibling).toBe(screen.getByTestId('step-card-needs'));
-    expect(screen.getByTestId('step-card-needs').querySelector('summary + div')?.firstElementChild).toBe(missing);
+    expect(missing.className).toContain('text-warn');
+    expect(missing.parentElement?.contains(screen.getByTestId('prepare-backlog'))).toBe(true);
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
     const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;

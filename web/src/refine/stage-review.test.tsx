@@ -22,7 +22,7 @@ describe('the stage review banner', () => {
     render(<ProcessingBanner backlog={null} cycle={3} stage="PO está revisando só project.md." jevDown={false} since={since} file="project.md" cost={cost} waiting={{ until: '2026-11-06T23:00:00Z' }} onStop={() => undefined} />);
     expect(screen.getByTestId('processing-banner-cost').textContent).toBe('Etapa project.md · 2 rodadas · 17 min 0 s · US$ 2,61 · 9 chamadas');
     expect(screen.getByTestId('processing-banner-waiting').textContent).toContain('Aguardando a cota do Claude até');
-    expect(screen.getByTestId('processing-banner-stop').textContent).toBe('Parar avaliação');
+    expect(screen.getByTestId('processing-banner-stop').textContent).toBe('Parar');
   });
 
   it('calls onStop when the owner stops the evaluation', () => {

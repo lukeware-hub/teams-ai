@@ -1596,7 +1596,7 @@ A stage review (§26.5) scores only its own document, and it scores nothing unti
 
 ### 30.7 Backlog step cards
 
-A etapa Backlog tem quatro cartões em largura total, na ordem: `Precisa de você`, `Itens do backlog`, `Planos de implementação` e `Verificação`. O cabeçalho de cada um cabe em uma linha: tile de ícone, título com `InfoTip`, quem preenche (PO, SM ou Dev), chip de estado e chevron.
+A etapa Backlog mostra `Precisa de você` só quando algo espera o dono (perguntas ou sugestões em aberto). Abaixo, um único cartão com três linhas separadas por um traço fino: `Itens do backlog`, `Planos de implementação` e `Verificação`. O cabeçalho de cada linha cabe em uma linha: tile de ícone, título em caixa normal com `InfoTip` (que também diz quem preenche: PO, SM ou Dev), chip de estado e chevron. O que falta para iniciar o desenvolvimento aparece em amarelo ao lado dos botões, não dentro de um cartão. A barra de avaliação em andamento usa o tom de destaque (não o verde de sucesso) e tem duas linhas: o título com o tempo e o botão `Parar` na mesma linha, e embaixo quem está trabalhando e o que faz; a rodada fica no `InfoTip`.
 
 Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda depende de algo, nesta ordem: o que espera o dono, backlog sem detalhe, planos não atuais, `specs.md` sem aprovação. Um cartão com pergunta aberta também abre. Os outros ficam recolhidos e o dono abre à mão.
 
