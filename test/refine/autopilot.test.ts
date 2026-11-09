@@ -49,6 +49,18 @@ describe('resolveEverything', () => {
     expect(s.approveSpecsAnyway).not.toHaveBeenCalled();
   });
 
+  it('prepares the plans only after it took the suggestions the evaluation left, so they are not thrown away', async () => {
+    const s = fake();
+    const late = { patchId: 'late', status: 'pending', scopeChange: false, reason: '', find: 'a', replace: 'b', file: 'flow.md' };
+    s.startSpecs.mockImplementationOnce(() => {
+      (s.state.patches as unknown[]).push(late);
+      return Promise.resolve();
+    });
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.runPlans).toHaveBeenCalledTimes(1);
+    expect(s.accept.mock.invocationCallOrder[0]).toBeLessThan(s.runPlans.mock.invocationCallOrder[0]!);
+  });
+
   it('does nothing when the start is already clear', async () => {
     const s = fake({ status: 'ready', plansDone: true });
     await resolveEverything(s as unknown as RefineSession);

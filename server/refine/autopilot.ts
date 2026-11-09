@@ -123,7 +123,11 @@ async function runRounds(s: RefineSession, teamAlone: boolean): Promise<void> {
     // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted.
     await tolerate(() => resolveStages(s, allowed, teamAlone, go));
     if (!go()) return;
-    for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
+    const tried = new Set<string>();
+    for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) {
+      tried.add(p.patchId);
+      await tolerate(() => s.accept(p.patchId, teamAlone));
+    }
     // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
     for (const q of s.state.questions.filter((x) => x.status === 'pending')) if (go()) await tolerate(() => s.decideAnswer(q.questionId));
     // Lean: the team evaluated once; with nothing left for the owner, what the reviewers found is applied, so their failed checks stand settled.
@@ -138,7 +142,9 @@ async function runRounds(s: RefineSession, teamAlone: boolean): Promise<void> {
     // Lean: the reviewers check the specs.md that was followed while the plans are written, so they add no minutes.
     const beside = lean ? tolerate(() => s.reviewSpecsBeside()) : undefined;
     if (!go()) return;
-    if (s.state.speckit?.status !== 'done' || s.state.speckit.stale) {
+    // A new suggestion the team takes next round changes the documents and would throw the plans away: the plans wait for it.
+    const fresh = s.state.patches.some((p) => p.status === 'pending' && allowed(p) && !tried.has(p.patchId));
+    if (!fresh && (s.state.speckit?.status !== 'done' || s.state.speckit.stale)) {
       await tolerate(() => s.runPlans());
       await tolerate(() => s.settled());
     }
