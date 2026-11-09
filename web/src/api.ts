@@ -679,6 +679,8 @@ export interface Snapshot {
   reviewing?: 'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md' | null;
   /** What each stage has cost so far. */
   stageCost?: Partial<Record<'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md', { rounds: number; steps: number; durationMs: number; costUsd: number }>>;
+  /** What the latest evaluation spent and redid, and whether it started on the same text as the one before. */
+  evaluationProgress?: { durationMs: number; costUsd: number; redone: number; repeated: boolean } | null;
   /** What the stage review of the current round has done so far. */
   stageSignals?: { reviewed: boolean; scored: boolean; jevDown: boolean };
   /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */

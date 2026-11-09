@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { criterionSentence } from '../criterion.js';
 import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type DroppedQuestionRow, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
 import { mdDownload } from '../download.js';
-import { StepCard } from '../refine/StepCard.js';
+import { StepCard, TILE } from '../refine/StepCard.js';
 import { applyBatch, type LiveSnapshot } from '../refine/reducer.js';
 import { useJournal } from '../useSse.js';
 import { visibleInterval } from '../visibleInterval.js';
@@ -158,6 +158,38 @@ function QueuedNote({ id, kind, onUndo }: { id: string; kind: keyof typeof QUEUE
       <span className="inline-flex items-center gap-1.5 rounded-full border border-warn-line bg-warn-soft px-2.5 py-1 text-[0.8125rem] font-semibold text-warn"><Icon name="clock" size={14} />{QUEUED_TEXT[kind]}</span>
       {onUndo && <ActionButton data-testid={`unqueue-${id}`} className="secondary h-9" onClick={() => onUndo(id)}>Desfazer</ActionButton>}
     </div>
+  );
+}
+
+/** One step between the backlog and the start: done, the one being worked on now, or still ahead. */
+type FinishStep = { id: string; label: string; detail: string; done: boolean };
+
+/** What still keeps the start closed, in order, with what the latest evaluation spent and redid. */
+function FinishPanel({ steps, last, total, repeated }: { steps: FinishStep[]; last: string | null; total: string; repeated: boolean }) {
+  const done = steps.filter((x) => x.done).length;
+  const current = steps.findIndex((x) => !x.done);
+  return (
+    <section data-testid="finish-panel" aria-labelledby="finish-panel-title" className="card grid min-w-0 gap-3 px-4 py-3">
+      <header className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2">
+        <span aria-hidden="true" className={`grid size-9 flex-none place-items-center rounded-tile ${TILE.violet}`}><Icon name="activity" size={18} /></span>
+        <h3 id="finish-panel-title" className="m-0 flex-1 text-[1rem] font-semibold tracking-[-0.01em] normal-case text-ink">Falta para terminar</h3>
+        <span data-testid="finish-panel-count" className={`status-dot tabular-nums ${done === steps.length ? 'tone-good' : 'tone-warn'}`}>{done} de {steps.length}</span>
+      </header>
+      <ol className="m-0 grid list-none gap-2.5 p-0 pl-12 max-sm:pl-0">
+        {steps.map((x, i) => (
+          <li key={x.id} data-testid={`finish-${x.id}`} data-state={x.done ? 'done' : i === current ? 'current' : 'ahead'} aria-current={i === current ? 'step' : undefined} className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[0.875rem] leading-[1.45]">
+            <span className={`inline-flex flex-none self-center ${x.done ? 'text-good' : i === current ? 'text-warn' : 'text-ink-soft'}`} aria-hidden="true"><Icon name={x.done ? 'check' : i === current ? 'clock' : 'chevron-right'} size={16} /></span>
+            <span className={x.done || i === current ? 'font-semibold text-ink' : 'text-ink-soft'}>{x.label}</span>
+            {x.detail && <span className="min-w-0 text-[0.8125rem] tabular-nums text-ink-soft">{x.detail}</span>}
+          </li>
+        ))}
+      </ol>
+      <div className="grid gap-1 border-t border-line pt-3 text-[0.8125rem] leading-[1.45] tabular-nums text-ink-soft">
+        {last && <p data-testid="finish-panel-last" className="m-0">{last}</p>}
+        <p data-testid="finish-panel-total" className="m-0">Total do refinamento: {total}</p>
+        {repeated && <p data-testid="finish-panel-repeated" role="status" className="m-0 flex items-center gap-1.5 text-warn"><Icon name="alert" size={14} />A última avaliação começou no mesmo texto da anterior: nada mudou nos documentos.</p>}
+      </div>
+    </section>
   );
 }
 
@@ -1039,10 +1071,10 @@ export function RefinementView(p: ViewProps) {
       {!newProject && <div className="mb-4 grid gap-3" data-testid="speckit-block">{speckitStatus}{prepareButton}</div>}
       {!newProject && !p.hideStart && startButton}
       {nextStep !== null && <p data-testid="refinement-review-next-step" className="m-0 mb-4 flex items-start gap-[0.6rem] rounded-lg border border-accent-line bg-accent-soft p-[0.85rem] text-[0.8125rem] leading-[1.45] text-ink [&_svg]:flex-none [&_svg]:text-accent-text"><Icon name="lightbulb" size={20} /><span data-testid="refinement-review-next-step-text"><b data-testid="refinement-review-next-step-label">Próximo passo:</b> {nextStep}{optional}</span></p>}
-      {evaluating ? null : current ? questionCard(current, pending.length) : (
+      {answerLocked ? null : current ? questionCard(current, pending.length) : (
         <p data-testid="refinement-review-no-questions" className={muted}>Nenhuma pergunta em aberto.</p>
       )}
-      {(evaluating ? [] : st.patches).filter((x) => x.status === 'pending').map(patchCard)}
+      {(answerLocked ? [] : st.patches).filter((x) => x.status === 'pending').map(patchCard)}
       <DiscardedNotices rows={st.discarded} testId="refinement-discarded-notice" named />
       <details data-testid="refinement-history" className="group mt-5" open>
       <summary data-testid="refinement-history-summary" className="mx-0 mb-[0.7rem] flex cursor-pointer list-none items-center gap-[0.55rem] text-[0.8rem] tracking-[0.06em] text-ink uppercase [&>svg]:text-ink-soft [&::-webkit-details-marker]:hidden"><Icon name="clock" size={20} /><span data-testid="refinement-history-count" className="flex-1">Histórico · {st.questions.filter((q) => q.status !== 'pending').length + st.patches.filter((x) => x.status !== 'pending').length}</span><span data-testid="refinement-history-chevron" className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={18} /></span></summary>
@@ -1348,8 +1380,8 @@ export function RefinementView(p: ViewProps) {
             </ol>
           )}
           {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
-          {(!locked || !answerLocked) && questions.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, questions.length - i)}</Fragment>)}
-          {!locked && patches.map(patchCard)}
+          {!answerLocked && questions.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, questions.length - i)}</Fragment>)}
+          {!answerLocked && patches.map(patchCard)}
           <DiscardedNotices rows={discarded} testId="refinement-stage-discarded" named={false} />
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
           {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
@@ -1460,9 +1492,27 @@ export function RefinementView(p: ViewProps) {
       </StepCard>
     </div>
   );
+  // The steps from the backlog to the start, and what the latest evaluation spent, so the owner sees the work move.
+  const verdictOf = (role: 'po' | 'sm') => {
+    const v = st.specsReview?.[role];
+    return !v ? null : v.verdict === 'approved' ? `${role.toUpperCase()} aprovou` : `${role.toUpperCase()} ${v.findings.length} ${v.findings.length === 1 ? 'ponto' : 'pontos'}`;
+  };
+  const verdicts = [verdictOf('po'), verdictOf('sm')].filter(Boolean).join(' · ');
+  const planSteps = speckit?.steps ?? [];
+  const items = st.backlog?.items.length ?? 0;
+  const finishSteps: FinishStep[] = [
+    { id: 'backlog', label: 'Backlog detalhado', detail: `${items} itens`, done: st.backlog?.detail === true },
+    { id: 'specs', label: 'specs.md aprovado', detail: snap.specsApproved === true ? 'aprovado' : verdicts ? `${(st.specsAttempts?.length ?? 0) + 1}ª revisão · ${verdicts}` : 'ainda não conferido', done: snap.specsApproved === true },
+    { id: 'plans', label: 'Planos preparados', detail: speckitReady ? 'prontos' : speckitRunning ? `${planSteps.filter((x) => x.endedAt).length} de ${speckit?.total ?? planSteps.length}` : speckit?.status === 'failed' ? 'falhou' : speckit?.stale ? 'desatualizados' : 'não preparados', done: speckitReady },
+    { id: 'start', label: 'Pronto para iniciar', detail: '', done: canStart && speckitReady },
+  ];
+  const progress = snap.evaluationProgress;
+  // While an evaluation runs its numbers are read at its end, so the line says so instead of showing a stale count.
+  const lastLine = evaluating ? 'Avaliação em andamento: o tempo e o custo dela aparecem quando terminar.' : progress ? `Última avaliação: ${Math.max(1, Math.round(progress.durationMs / 60_000))} min · ${money(progress.costUsd)} · ${progress.redone} ${progress.redone === 1 ? 'item refeito' : 'itens refeitos'}, ${Math.max(0, items - progress.redone)} ${items - progress.redone === 1 ? 'reaproveitado' : 'reaproveitados'}` : null;
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
+      {backlogOn && <FinishPanel steps={finishSteps} last={lastLine} total={money(snap.tokens.costUsd)} repeated={progress?.repeated === true} />}
       {openOwner > 0 && needsCard(false)}
       {backlogCards()}
     </div>

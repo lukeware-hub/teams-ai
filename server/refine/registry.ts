@@ -30,7 +30,7 @@ import { suggestRequest } from './request-suggest.js';
 import { ALREADY_STARTED, ConflictError, NotFoundError, REPOSITORY_FLOW, RefineSession } from './session.js';
 import { reduceRefineEvents, type RefineStatus } from './state.js';
 import { idSchemeOf, outlineOfIndex, type SpecsIndex } from './specs-index.js';
-import { runExtension } from './autopilot.js';
+import { decideWhenDelegated, runExtension } from './autopilot.js';
 import { refineLimits } from './limits.js';
 
 export interface RegistryDeps {
@@ -599,7 +599,11 @@ export class SessionRegistry {
       out.push({
         key: `${row.projectId}/${row.specId}`,
         view: () => session.healView(),
-        evaluate: () => session.healRetry('evaluate'),
+        // With yes to "agents decide", the team goes on after the retry in the background, so one draft never holds the tick.
+        evaluate: async () => {
+          await session.healRetry('evaluate');
+          void decideWhenDelegated(session).catch((err: unknown) => console.error(`heal ${row.projectId}/${row.specId}: ${err instanceof Error ? err.message : String(err)}`));
+        },
         prepare: () => session.healRetry('prepare'),
         pause: (reason) => session.pauseHeal(reason),
       });

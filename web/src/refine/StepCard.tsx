@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 
-const TILE = {
+export const TILE = {
   accent: 'text-[color:var(--tile-accent-ink)] [background:var(--tile-accent)]',
   violet: 'text-[color:var(--tile-violet-ink)] [background:var(--tile-violet)]',
   good: 'text-[color:var(--tile-good-ink)] [background:var(--tile-good)]',

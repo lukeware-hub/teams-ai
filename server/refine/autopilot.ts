@@ -31,9 +31,10 @@ export async function runExtension(s: RefineSession, { evaluate = true }: { eval
 export const runTeam = (s: RefineSession, { evaluate = true }: { evaluate?: boolean } = {}): Promise<void> =>
   s.state.extension === undefined ? resolveEverything(s) : runExtension(s, { evaluate });
 
-/** With yes to "agents decide" in Settings, what a review left waiting is decided by the team at once; with no, it waits for the owner. */
+/** With yes to "agents decide" in Settings, the team goes on alone with what still keeps the start closed; with no, it waits for the owner. */
 export async function decideWhenDelegated(s: RefineSession): Promise<void> {
-  if (leftOpen(s) && (await s.agentsDecide())) await runTeam(s, { evaluate: false });
+  const waiting = leftOpen(s) || (s.state.backlog?.detail === true && !(await startIsClear(s)));
+  if (waiting && (await s.agentsDecide())) await runTeam(s, { evaluate: false });
 }
 
 /** The owner's "accept all": every suggestion that waits is accepted, or queued while the team works; one another change already covered is skipped. */

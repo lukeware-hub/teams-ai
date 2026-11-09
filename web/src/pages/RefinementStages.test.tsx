@@ -593,3 +593,35 @@ describe('discarded suggestions', () => {
     expect(within(group).getAllByTestId('refinement-stage-discarded')).toHaveLength(2);
   });
 });
+
+describe('the finish panel: what still keeps the start closed', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
+  const item = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [], size: 'S', rank: 1 };
+  const backlog = { enabled: true, detail: true, epics: [], items: [item, { ...item, key: 'fat', rank: 2 }], specs: {}, preplans: {}, flowHeadings: [] };
+  const review = (verdict: string, findings: string[]) => ({ specsHash: 'h', verdict, findings, reason: null, at: null });
+
+  it('marks the backlog done, the specs.md review as the step now, and counts what the latest evaluation spent and reused', () => {
+    const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never, specsReview: { po: review('rejected', ['a', 'b', 'c']), sm: review('approved', []) } as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false } };
+    render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.getByTestId('finish-panel-count').textContent).toBe('1 de 4');
+    expect(screen.getByTestId('finish-backlog').dataset.state).toBe('done');
+    expect(screen.getByTestId('finish-specs').dataset.state).toBe('current');
+    expect(screen.getByTestId('finish-specs').textContent).toContain('1ª revisão · PO 3 pontos · SM aprovou');
+    expect(screen.getByTestId('finish-plans').textContent).toContain('não preparados');
+    expect(screen.getByTestId('finish-panel-last').textContent).toContain('4 min');
+    expect(screen.getByTestId('finish-panel-last').textContent).toContain('1 item refeito, 1 reaproveitado');
+    expect(screen.queryByTestId('finish-panel-repeated')).toBeNull();
+  });
+
+  it('says the numbers come at the end while an evaluation runs, instead of a stale count', () => {
+    const snap = { ...project({ stages: true, status: 'evaluating', backlog: backlog as never }), evaluationProgress: { durationMs: 60_000, costUsd: 0, redone: 0, repeated: false } };
+    render(<MemoryRouter><RefinementView snap={snap} busy events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.getByTestId('finish-panel-last').textContent).toBe('Avaliação em andamento: o tempo e o custo dela aparecem quando terminar.');
+  });
+
+  it('warns when the latest evaluation started on the same text as the one before', () => {
+    const snap = { ...project({ stages: true, backlog: backlog as never }), evaluationProgress: { durationMs: 60_000, costUsd: 0, redone: 0, repeated: true } };
+    render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
+    expect(screen.getByTestId('finish-panel-repeated').textContent).toContain('nada mudou nos documentos');
+  });
+});

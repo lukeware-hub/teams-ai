@@ -127,3 +127,31 @@ export function stageSignalsOf(events: ReadonlyArray<StoredEvent>): { reviewed: 
     jevDown: scores.some((e) => e.data.available === false),
   };
 }
+
+/** What the latest evaluation spent and redid, and whether it started on the same text as the one before it. */
+export interface EvaluationProgress {
+  durationMs: number;
+  costUsd: number;
+  /** The backlog items it detailed again. */
+  redone: number;
+  repeated: boolean;
+}
+
+/** The latest evaluation, from its start to its end or to the last event while it runs; null before the first one. */
+export function evaluationProgressOf(events: ReadonlyArray<StoredEvent>): EvaluationProgress | null {
+  const start = events.findLastIndex((e) => e.type === RefineEvent.EvaluationStarted);
+  if (start < 0) return null;
+  const tail = events.slice(start);
+  const end = tail.find((e) => e.type === RefineEvent.EvaluationEnded) ?? tail.at(-1)!;
+  let costUsd = 0;
+  const redone = new Set<string>();
+  for (const e of tail) {
+    if (e.type === 'STEP_FINISHED') costUsd += Number(e.data.costUsd ?? 0);
+    costUsd += jevCharge(e);
+    if (e.type === RefineEvent.SpecDerived) redone.add(str(e.data.key));
+  }
+  const hashes = events.filter((e) => e.type === RefineEvent.CycleStarted).map((e) => str(e.data.draftHash));
+  const cycleInTail = tail.some((e) => e.type === RefineEvent.CycleStarted);
+  const repeated = cycleInTail && hashes.length > 1 && hashes.at(-1) !== '' && hashes.at(-1) === hashes.at(-2);
+  return { durationMs: Date.parse(end.at ?? '') - Date.parse(tail[0]!.at ?? ''), costUsd, redone: redone.size, repeated };
+}

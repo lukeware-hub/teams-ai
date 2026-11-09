@@ -30,7 +30,7 @@ import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
 import { builtGraphNotes, fileGraphDir } from './stage-consult.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
-import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf, type RunningStep, type StageCost } from './progress.js';
+import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, evaluationProgressOf, stageSignalsOf, waitingOf, type EvaluationProgress, type RunningStep, type StageCost } from './progress.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
@@ -237,6 +237,8 @@ export interface Snapshot {
   reviewing: DocFile | null;
   /** What each stage has cost so far. */
   stageCost: Partial<Record<DocFile, StageCost>>;
+  /** What the latest evaluation spent and redid; null before the first one. */
+  evaluationProgress: EvaluationProgress | null;
   /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
   answersAwaiting: Partial<Record<DocFile, number>>;
   /** What the stage review of the current round has done so far. */
@@ -574,7 +576,7 @@ export class RefineSession {
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
     const events = this.journal.events;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), evaluationProgress: evaluationProgressOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */

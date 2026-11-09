@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredEvent } from '../../server/store/event-store.js';
-import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf } from '../../server/refine/progress.js';
+import { answersAwaitingOf, evaluationProgressOf, reviewingOf, runningStepsOf, stageCostOf, stageSignalsOf, waitingOf } from '../../server/refine/progress.js';
 
 const ev = (seq: number, type: string, data: Record<string, unknown> = {}): StoredEvent => ({ seq, at: `2026-11-06T22:0${seq}:00.000Z`, runId: 'r', specHash: 'h', type, kind: 'fact', data } as StoredEvent);
 
@@ -65,5 +65,31 @@ describe('progress of a refinement, read from its journal', () => {
     const until = '2026-11-06T23:00:00.000Z';
     expect(waitingOf([...journal, ev(5, 'REFINE_QUOTA_WAITING', { waitMs: 60_000, until })])).toEqual({ until });
     expect(waitingOf([...journal, ev(5, 'REFINE_QUOTA_WAITING', { waitMs: 60_000, until }), ev(6, 'STEP_STARTED', { stepId: 's3' })])).toBeNull();
+  });
+});
+
+describe('evaluationProgressOf: what the latest evaluation spent and redid', () => {
+  it('is null before any evaluation', () => {
+    expect(evaluationProgressOf([])).toBeNull();
+  });
+
+  it('counts the cost, the time and the items detailed again since the latest start, and sees a cycle on the same text', () => {
+    const journal = [
+      ev(1, 'REFINE_EVALUATION_STARTED'),
+      ev(2, 'REFINE_CYCLE_STARTED', { cycle: 1, draftHash: 'a' }),
+      ev(3, 'STEP_FINISHED', { costUsd: 9 }),
+      ev(4, 'REFINE_EVALUATION_ENDED'),
+      ev(5, 'REFINE_EVALUATION_STARTED'),
+      ev(6, 'REFINE_CYCLE_STARTED', { cycle: 2, draftHash: 'a' }),
+      ev(7, 'STEP_FINISHED', { costUsd: 0.5 }),
+      ev(8, 'SPEC_DERIVED', { key: 'caso' }),
+      ev(9, 'SPEC_DERIVED', { key: 'caso' }),
+    ];
+    expect(evaluationProgressOf(journal)).toEqual({ durationMs: 4 * 60_000, costUsd: 0.5, redone: 1, repeated: true });
+  });
+
+  it('does not call a cycle on new text a repeat', () => {
+    const journal = [ev(1, 'REFINE_CYCLE_STARTED', { draftHash: 'a' }), ev(2, 'REFINE_EVALUATION_STARTED'), ev(3, 'REFINE_CYCLE_STARTED', { draftHash: 'b' })];
+    expect(evaluationProgressOf(journal)?.repeated).toBe(false);
   });
 });

@@ -463,16 +463,15 @@ describe('RefinementView', () => {
     expect(screen.queryByText(/spec.objectives: too small/)).toBeNull();
   });
 
-  it('shows no question and no patch decision while an evaluation runs: the server refuses them, and they show up once it ends', () => {
+  it('shows the questions and the patch decisions while an evaluation runs, so the owner decides and the server queues it', () => {
     const { rerender } = render(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'evaluating' })} busy={true} {...on()} />
       </MemoryRouter>,
     );
-    expect(screen.queryByTestId('answer')).toBeNull();
-    expect(screen.queryByTestId('accept-sm-c1-0')).toBeNull();
-    expect(screen.queryByTestId('reject-sm-c1-0')).toBeNull();
-    expect(screen.queryByText(/Nenhuma pergunta em aberto/)).toBeNull();
+    expect(screen.getByTestId('answer')).toBeTruthy();
+    expect(screen.getByTestId('accept-sm-c1-0').getAttribute('aria-disabled')).toBe('false');
+    expect(screen.getByTestId('reject-sm-c1-0')).toBeTruthy();
     rerender(
       <MemoryRouter>
         <RefinementView snap={base({ status: 'answering' })} busy={false} {...on()} />

@@ -391,6 +391,14 @@ describe('RefinementPage while the server holds a process', () => {
     expect(screen.queryByTestId('busy-dialog-ok')).toBeNull();
   });
 
+  it('keeps the suggestion card on screen while the team evaluates, so the owner decides during the work', async () => {
+    journal.events = [];
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageWithPatch({ status: 'evaluating' }), busy: true });
+    renderIt();
+    expect(await screen.findByTestId('accept-sm-c1-0')).toBeTruthy();
+    expect(screen.getByTestId('reject-sm-c1-0')).toBeTruthy();
+  });
+
   it('shows a queued decision in place of the buttons, and Desfazer takes it back', async () => {
     journal.events = [];
     const unqueue = vi.spyOn(refineApi, 'unqueue').mockResolvedValue({ ok: true });

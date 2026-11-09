@@ -226,8 +226,21 @@ describe('decideWhenDelegated: the Settings answer to "agents decide" also holds
     expect(s.decideAnswer).not.toHaveBeenCalled();
   });
 
-  it('with yes but nothing waiting, the team starts nothing', async () => {
-    const s = fake({ agentsDecide: true });
+  it('with yes and the start already clear, the team starts nothing', async () => {
+    const s = fake({ agentsDecide: true, status: 'ready', plansDone: true });
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.startSpecs).not.toHaveBeenCalled();
+  });
+
+  it('with yes, nothing waiting but specs.md rejected and no plans, the team goes on to settle specs.md and prepare the plans', async () => {
+    const s = fake({ agentsDecide: true, status: 'ready', specsApproved: () => false });
+    await decideWhenDelegated(s as unknown as RefineSession);
+    expect(s.startSpecs).toHaveBeenCalled();
+    expect(s.runPlans).toHaveBeenCalled();
+  });
+
+  it('with no, a rejected specs.md waits for the owner', async () => {
+    const s = fake({ agentsDecide: false, status: 'ready', specsApproved: () => false });
     await decideWhenDelegated(s as unknown as RefineSession);
     expect(s.startSpecs).not.toHaveBeenCalled();
   });

@@ -1439,6 +1439,19 @@ O dono decide uma sugestão ou responde uma pergunta a qualquer momento. Se o ti
 | Descarte | Uma decisão que não cabe mais no texto é descartada; o motivo aparece num aviso da sugestão, nunca em silêncio. |
 | Ordem | As decisões do dono entram antes da decisão automática dos agentes (Settings, `Autorizo os agentes a tomar decisões?`). |
 
+### 26.15 Falta para terminar (etapa Backlog)
+
+Um quadro no topo da etapa Backlog mostra os passos entre o backlog e o início do desenvolvimento, e quanto a última avaliação gastou, para o dono ver o trabalho andar.
+
+| Elemento | Especificação |
+|---|---|
+| Título | `Falta para terminar`, com o chip `N de 4` à direita. |
+| Passos | `Backlog detalhado`, `specs.md aprovado`, `Planos preparados`, `Pronto para iniciar`, nessa ordem. Feito: ícone `check` em `good`. O passo de agora: ícone `clock` em `warn`. Os seguintes: `chevron-right` em `ink-soft`. |
+| Detalhe | Ao lado de cada passo: itens do backlog; a revisão do specs.md com os pontos de PO e SM; os planos prontos de N; vazio no último. |
+| Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
+| Total | `Total do refinamento: US$ Z`. |
+| Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
+
 ## 27. Projects, Run, Status
 
 Not yet pinned by a reference. Until one exists, they inherit Part I and §25 without invention:
