@@ -71,14 +71,17 @@ async function ignoreConflict(run: () => Promise<unknown>): Promise<void> {
 }
 
 /** Reviews each outdated stage again with its own role, then accepts the safe patches the rule allows; returns how many were accepted. */
-export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true, auto = false): Promise<number> {
+export async function resolveStages(s: RefineSession, allowed: (p: PatchRow) => boolean = () => true, auto = false, go: () => boolean = () => true): Promise<number> {
   for (const file of Object.keys(s.state.staleBy ?? {}) as DocFile[]) {
+    // A stop by the owner ends the pass before the next document.
+    if (!go()) return 0;
     await s.evaluateStage(file);
     await s.settled();
   }
   // A finished document that left the graph goes back in, so the closing check on the graph passes without the owner.
   if (s.state.repositories === true) {
     for (const file of (s.state.doneStages ?? []).filter((f) => !(s.state.graphed ?? []).includes(f))) {
+      if (!go()) return 0;
       await s.addToGraph(file);
       await s.settled();
     }

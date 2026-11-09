@@ -266,6 +266,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   let criteria: readonly AcceptanceCriterion[] = [];
   let objectives: readonly string[] = [];
   let due: DueAdjustment[] = [];
+  let gapQuestions: Question[] = [];
   if (backlogMode) {
     const before = journal.state.backlog;
     if (before?.project && before.items.length > 0 && before.draftHash === hash) {
@@ -282,12 +283,16 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
       const started = (await Promise.all((last?.items ?? []).map(async (i) => (isStarted((await readMainSpec(draft, idOf(i.key)))?.status) ? [i] : [])))).flat();
       let rejection: string[] | undefined;
       let accepted: Extract<BacklogCheck, { ok: true }> | null = null;
+      // A kept outline that only misses flow.md sections: the retry builds on it, and it is kept when the retry does no better.
+      let partial: Extract<BacklogCheck, { ok: true }> | null = null;
+      // The retry starts from the last answer, so the agent adds what is missing instead of writing a new outline.
+      let base = previous;
       for (let attempt = 1; attempt <= 2 && !accepted; attempt++) {
         const out = await deps.runAgent<'backlog'>(
           {
             kind: 'backlog',
             role: 'po',
-            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state), request })),
+            pack: fitPackBudget(backlogPack({ specHash: hash, principles: deps.principles(), projectMd: docs['project.md'], briefMd: docs['briefing.md'], stackMd: docs['stack.md'], flowMd: docs['flow.md'], designMd: docs['design.md'], previous: base, jevValidation, rejection, started: started.map((i) => i.key), repositories: repositoryNamesOf(journal.state), request })),
             cwd: draft.root,
             phase: 'refine',
             taskId: null,
@@ -300,9 +305,17 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
           return;
         }
         const checked = postProcessBacklog(out.value as BacklogOutput, previous, backlogDocs, approvedAdjustments(docs['briefing.md']), started, repositoryNamesOf(journal.state), journal.state.docsRepo === true, request);
-        if (checked.ok) accepted = checked;
-        else rejection = checked.issues;
+        if (checked.ok && checked.gaps.length === 0) accepted = checked;
+        else {
+          if (checked.ok && (!partial || checked.gaps.length <= partial.gaps.length)) partial = checked;
+          rejection = checked.ok ? checked.gaps : checked.issues;
+          const outline = checked.ok ? checked.value.backlog : checked.candidate;
+          if (outline) base = { ...(previous ?? { cycle, project: null, epics: [], items: [] }), epics: outline.epics, items: outline.items } as BacklogState;
+        }
       }
+      accepted ??= partial;
+      // The flow.md sections the kept outline still misses: one question each for the owner, and the next derivation adds them.
+      gapQuestions = accepted ? outlineQuestions(accepted.gaps, cycle, journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.rule ?? q.text)) : [];
       if (!accepted) {
         // Each rule the outline breaks is a question for the owner: the refinement answers it, and the next evaluation derives again.
         const asked = journal.state.questions.filter((q) => q.status === 'pending').map((q) => q.rule ?? q.text);
@@ -655,6 +668,7 @@ async function runCycleSteps(deps: CycleDeps, cycle: number): Promise<void> {
   const stuck = nextStuck(journal.state.stuck, checklist);
   const ask = stuck.ask ? stuckQuestion(stuck.failing, cycle) : null;
   if (ask && !journal.state.questions.some((q) => q.status === 'pending' && q.rule === ask.rule)) merged.push(ask);
+  merged.push(...gapQuestions);
   if (deps.scoreDocs && scoresDocs(journal.state.mode)) await recordScore({ draft, journal, scoreDocs: deps.scoreDocs }, cycle, await isConfidential(draft, journal.state));
   await journal.fact(RefineEvent.Evaluated, { cycle, checklist, questions: merged, discardedPatches, questionRouting, autoAnswerFloor: floor ?? null, unverifiedContradictions: dropped });
   for (const a of answers) if (a) await journal.fact(RefineEvent.QuestionAnswered, a);

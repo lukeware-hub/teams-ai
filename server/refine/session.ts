@@ -205,7 +205,7 @@ export interface Snapshot {
   /** The sha256 of each document as it is on disk: a save states the one its text was typed over. */
   hashes: Record<DocFile, string>;
   secrets: SecretRow[];
-  tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
+  tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number; graph: { inputTokens: number; outputTokens: number; extractions: number } };
   /** True from the evaluate call on, even before the cycle journals that it started. */
   busy: boolean;
   /** True when the architecture was decided on documents that have changed since. */
@@ -514,11 +514,16 @@ export class RefineSession {
       tokens.outputTokens += u?.outputTokens ?? 0;
       tokens.costUsd += Number(e.data.costUsd ?? 0);
     }
+    // The Graphify extractions: their tokens join the totals, and their cost stays out, since the Claude plan pays them.
+    const graph = { inputTokens: 0, outputTokens: 0, extractions: 0 };
     for (const e of this.journal.events) {
       if (e.type !== RefineEvent.DocGraphed) continue;
-      tokens.inputTokens += Number(e.data.inputTokens ?? 0);
-      tokens.outputTokens += Number(e.data.outputTokens ?? 0);
+      graph.extractions += 1;
+      graph.inputTokens += Number(e.data.inputTokens ?? 0);
+      graph.outputTokens += Number(e.data.outputTokens ?? 0);
     }
+    tokens.inputTokens += graph.inputTokens;
+    tokens.outputTokens += graph.outputTokens;
     for (const e of this.journal.events) {
       if (e.type !== RefineEvent.DocsScored) continue;
       // A score without usage was reused or not answered, so it adds nothing.
@@ -542,7 +547,7 @@ export class RefineSession {
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
     const events = this.journal.events;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */

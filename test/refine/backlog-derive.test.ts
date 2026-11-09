@@ -72,11 +72,26 @@ describe('backlogPack', () => {
 
 describe('postProcessBacklog', () => {
   // R11.10 (plan 87): the outline cites the narrowest sections, except a started item, whose sources stay as they were.
-  it('sends back a citation of a section made only of sub-sections, unless the item started', () => {
-    const docs = { 'briefing.md': '# Briefing\n\n## Decisões\n\n### Prazo\n\n15 dias.\n' };
+  it('cites each sub-section in place of a section made only of sub-sections, without another call, unless the item started', () => {
+    const docs = { 'briefing.md': '# Briefing\n\n## Decisões\n\n### Prazo\n\n15 dias.\n\n### Multa\n\nR$ 2.\n' };
     const broad = item('fat', { sources: [{ doc: 'briefing.md', heading: 'Decisões' }] });
-    expect(postProcessBacklog(raw([item('opme'), broad]), null, docs)).toEqual({ ok: false, issues: ['item fat cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo"'] });
-    expect(postProcessBacklog(raw([item('opme'), broad]), null, docs, [], [broad]).ok).toBe(true);
+    const out = postProcessBacklog(raw([item('opme'), broad]), null, docs);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.value.backlog.items.find((i) => i.key === 'fat')?.sources).toEqual([{ doc: 'briefing.md', heading: 'Prazo' }, { doc: 'briefing.md', heading: 'Multa' }]);
+    const frozen = postProcessBacklog(raw([item('opme'), broad]), null, docs, [], [broad]);
+    if (frozen.ok) expect(frozen.value.backlog.items.find((i) => i.key === 'fat')?.sources).toEqual([{ doc: 'briefing.md', heading: 'Decisões' }]);
+  });
+
+  it('keeps an outline that only misses flow.md sections, and names them as gaps', () => {
+    const docs = { 'flow.md': '## Entrar\n\n## Pagar\n' };
+    const entrar = item('entrar', { sources: [{ doc: 'flow.md', heading: 'Entrar' }] });
+    expect(postProcessBacklog(raw([entrar]), null, docs)).toMatchObject({ ok: true, gaps: ['seção do flow.md sem nenhum item: "Pagar"'] });
+  });
+
+  it('refuses an outline that breaks another rule, and hands it back as the base of the retry', () => {
+    const out = postProcessBacklog(raw([item('a', { dependsOn: ['nada'] })]), null, {});
+    expect(out).toMatchObject({ ok: false, issues: ['item a: dependência desconhecida nada'] });
+    if (!out.ok) expect(out.candidate?.items.map((i) => i.key)).toEqual(['a']);
   });
 
   it('returns the project and the items ranked by priority, dependencies first', () => {

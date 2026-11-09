@@ -81,7 +81,12 @@ describe('one stage per screen', () => {
 
   it('shows the usage of the whole refinement as one line in the footer', () => {
     show(base());
-    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens · US$ 0,0200 sem o Graphify');
+    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 15 tokens (0 do Graphify, pagos pelo plano) · US$ 0,0200 sem o Graphify');
+  });
+
+  it('counts the Graphify tokens inside the total, and leaves their cost out', () => {
+    show({ ...base(), tokens: { inputTokens: 110, outputTokens: 55, costUsd: 0.02, steps: 3, graph: { inputTokens: 100, outputTokens: 50, extractions: 2 } } });
+    expect(screen.getByTestId('wizard-meta').textContent).toBe('3 chamadas · 165 tokens (150 do Graphify, pagos pelo plano) · US$ 0,0200 sem o Graphify');
   });
 
   it('keeps the text the owner typed when moving to another screen', () => {

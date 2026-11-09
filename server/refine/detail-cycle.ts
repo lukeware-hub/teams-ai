@@ -23,7 +23,7 @@ import { leanRefine } from './limits.js';
 import { batches, preplanInputHash, sourceHashes, specInputHash, type BacklogDocs } from './details.js';
 import { readMainSpec, renderBriefMd, restoreFromBase, type Draft } from './draft.js';
 import { RefineEvent } from './events.js';
-import { fitPackBudget } from './fit-pack.js';
+import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import { postProcessItemSpec } from './item-spec.js';
 import { idSourceOf, specIdOf } from './specs-index.js';
 import { requestHeading, type BacklogState, type PreplanRow, type SpecRow } from './state.js';
@@ -182,9 +182,18 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
       const { reason, detail } = failureMessage('O agente deste item', out.failure, out.errors);
       return Promise.resolve({ issues: [reason], detail: [detail] });
     };
-    await Promise.all(batches(todo).map(async (batch) => {
+    // A pack past the cap splits its batch into items; an item too large alone fails with the reason, and the other items go on.
+    const tooLarge = async (batch: readonly Item[], err: unknown): Promise<void> => {
+      if (!(err instanceof PackTooLargeError)) throw err;
+      if (batch.length > 1) await Promise.all(batch.map((item) => handle([item])));
+      else await fail(batch[0]!, ['As seções que este item cita são grandes demais para uma avaliação: divida o item ou faça ele citar subseções.']);
+    };
+    const handle = async (batch: readonly Item[]): Promise<void> => {
       try {
-        const out = await run(batch, seed(batch));
+        const out = await run(batch, seed(batch)).catch(async (err: unknown) => {
+          await tooLarge(batch, err);
+          return null;
+        });
         if (!out) return;
         // A batch that gave no answer fails each item once: a retry alone would fail the same way, and a stop is reported by the cycle.
         if (!out.ok && out.failure !== 'schema') {
@@ -197,7 +206,10 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
           if (first.issues.length > 0) rejected.push([item, first]);
         }
         for (const [item, first] of rejected) {
-          const solo = await run([item], { [item.key]: first.detail ?? first.issues });
+          const solo = await run([item], { [item.key]: first.detail ?? first.issues }).catch(async (err: unknown) => {
+            await tooLarge([item], err);
+            return null;
+          });
           let again = solo && (await outcome(solo, item, false));
           if (first.flagged && (!again || again.issues.length > 0)) again = await outcome(out, item, false);
           if (!again) continue;
@@ -208,7 +220,8 @@ async function detail(deps: CycleDeps, input: { cycle: number; hash: string; doc
       } catch (err) {
         stopped ??= internalErrorMessage('O detalhamento dos itens', err);
       }
-    }));
+    };
+    await Promise.all(batches(todo).map(handle));
   };
 
   // Specs. Each item's last valid spec (its row, or the generated spec.json on disk) keeps its criterion ids stable.

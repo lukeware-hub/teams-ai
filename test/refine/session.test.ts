@@ -144,7 +144,16 @@ describe('RefineSession', () => {
     const journal = (s as unknown as { journal: RefineJournal }).journal;
     await journal.fact(RefineEvent.DocsScored, { cycle: 1, files: ['project.md'], available: true, usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.5 } });
     await journal.fact(RefineEvent.DocsScored, { cycle: 1, files: ['project.md'], available: true, usage: null, reused: true });
-    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 100, outputTokens: 10, costUsd: 0.5, steps: 1 });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 100, outputTokens: 10, costUsd: 0.5, steps: 1, graph: { inputTokens: 0, outputTokens: 0, extractions: 0 } });
+    await s.close();
+  });
+
+  it('counts the Graphify tokens in the totals and apart, with no cost', async () => {
+    const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
+    const journal = (s as unknown as { journal: RefineJournal }).journal;
+    await journal.fact(RefineEvent.DocGraphed, { file: 'flow.md', hash: 'h', nodes: 1, previousNodes: null, links: 0, inputTokens: 300, outputTokens: 40 });
+    await journal.fact(RefineEvent.DocsScored, { cycle: 1, files: ['project.md'], available: true, usage: { inputTokens: 100, outputTokens: 10, costUsd: 0.5 } });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 400, outputTokens: 50, costUsd: 0.5, steps: 1, graph: { inputTokens: 300, outputTokens: 40, extractions: 1 } });
     await s.close();
   });
 
@@ -152,7 +161,7 @@ describe('RefineSession', () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const journal = (s as unknown as { journal: RefineJournal }).journal;
     await journal.fact('DECISION_MADE', { record: { attempts: [{ backend: 'jev', usage: { inputTokens: 50, outputTokens: 5, costUsd: 0.25 } }, { backend: 'claude', usage: { inputTokens: 999, outputTokens: 9, costUsd: 9 } }] } });
-    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0.25, steps: 1 });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0.25, steps: 1, graph: { inputTokens: 0, outputTokens: 0, extractions: 0 } });
     await s.close();
   });
 
@@ -160,7 +169,7 @@ describe('RefineSession', () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const journal = (s as unknown as { journal: RefineJournal }).journal;
     await journal.fact(RefineEvent.DecisionMade, { record: { attempts: [{ backend: 'jev', usage: { inputTokens: 50, outputTokens: 5, costUsd: null } }] } });
-    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0, steps: 1 });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 50, outputTokens: 5, costUsd: 0, steps: 1, graph: { inputTokens: 0, outputTokens: 0, extractions: 0 } });
     await s.close();
   });
 
@@ -168,7 +177,7 @@ describe('RefineSession', () => {
     const s = await RefineSession.create(deps(), 'new-project', { repositories: false });
     const journal = (s as unknown as { journal: RefineJournal }).journal;
     await journal.fact(RefineEvent.DecisionMade, { record: { attempts: [{ backend: 'jev', usage: null }] } });
-    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 });
+    expect((await s.snapshot()).tokens).toEqual({ inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0, graph: { inputTokens: 0, outputTokens: 0, extractions: 0 } });
     await s.close();
   });
 

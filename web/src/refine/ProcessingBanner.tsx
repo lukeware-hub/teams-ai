@@ -81,6 +81,13 @@ export function stageCostText(file: string, cost: { rounds: number; steps: numbe
   return `Etapa ${file} · ${rounds} · ${formatDuration(cost.durationMs)} · US$ ${cost.costUsd.toFixed(2).replace('.', ',')} · ${calls}`;
 }
 
+/** Same labels shown once with their count, as in "2× PO · Haiku 5.5". */
+export function countedLabels(labels: string[]): string {
+  const counts = new Map<string, number>();
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...counts].map(([label, n]) => (n > 1 ? `${n}× ${label}` : label)).join('; ');
+}
+
 const SLOW_AFTER_MS = 60_000;
 
 /** Says a step has run past a minute, the time a stage review should take; empty while every step is within it. */
@@ -102,6 +109,8 @@ export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [],
   const items = backlog?.items ?? [];
   const specs = items.filter((i) => backlog?.specs?.[i.key]?.spec).length;
   const preplans = Object.values(backlog?.preplans ?? {}).filter((row) => row.preplan).length;
+  // A stage review shows its own progress, not the backlog's.
+  const onBacklog = backlog?.enabled === true && file === null;
   return (
     <ProcessBox
       title={<>{title} <InfoTip text={`${info} Rodada ${cycle}: ${stage}`} /></>}
@@ -111,14 +120,14 @@ export function ProcessingBanner({ backlog, cycle, stage, jevDown, running = [],
       action={onStop && <ActionButton className="secondary h-8 px-3 text-[0.8125rem]" aria-label="Parar avaliação" data-testid="processing-banner-stop" busy={stopping} onClick={onStop}>Parar</ActionButton>}
     >
       <span className="text-[0.8125rem] leading-[1.4]" data-testid="processing-banner-now">
-        {running.length > 0 && <span data-testid="running-models">{running.map(runningStepLabel).join('; ')}</span>}
+        {running.length > 0 && <span data-testid="running-models">{countedLabels(running.map(runningStepLabel))}</span>}
         {running.length > 0 && ' — '}
-        <span data-testid={backlog?.enabled ? 'processing-banner-backlog' : 'processing-banner-round'}>{backlog?.enabled ? processingText(backlog) : stage}</span>
+        <span data-testid={onBacklog ? 'processing-banner-backlog' : 'processing-banner-round'}>{onBacklog ? processingText(backlog) : stage}</span>
       </span>
       {waiting && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-waiting">Aguardando a cota do Claude até {untilText(waiting.until)}.</span>}
       <SlowStepNote running={running} />
       {cost && file && <span className="text-[0.75rem] leading-[1.35]" data-testid="processing-banner-cost">{stageCostText(file, cost)}</span>}
-      {backlog?.detail && items.length > 0 && (
+      {onBacklog && backlog.detail && items.length > 0 && (
         <span className="flex items-center gap-2 text-[0.75rem] leading-[1.35]" data-testid="detail-progress">
           <span className="button-spinner" aria-hidden="true" data-testid="processing-banner-detail-spinner" />Detalhando… {specs}/{items.length} specs · {preplans}/{items.length} pré-planos
         </span>

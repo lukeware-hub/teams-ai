@@ -1228,7 +1228,8 @@ export function RefinementView(p: ViewProps) {
   })();
   const confidentialProject = st.confidential === true || st.readiness?.skipped === 'confidential';
   // The tokens count the Graphify extraction too, the cost does not: the line says so.
-  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens · ${money(snap.tokens.costUsd)} sem o Graphify`;
+  const graphTokens = (snap.tokens.graph?.inputTokens ?? 0) + (snap.tokens.graph?.outputTokens ?? 0);
+  const usageLine = `${snap.tokens.steps} chamadas · ${snap.tokens.inputTokens + snap.tokens.outputTokens} tokens (${graphTokens} do Graphify, pagos pelo plano) · ${money(snap.tokens.costUsd)} sem o Graphify`;
   const stageScreen = (file: DocFile) => {
     const score = st.readiness?.docs?.[file];
     const scoreOutdated = outdatedDocs.includes(file);
@@ -1429,7 +1430,7 @@ export function RefinementView(p: ViewProps) {
   );
   const backlogCards = () => (
     <div className="card grid divide-y divide-line overflow-hidden p-0" data-testid="backlog-cards">
-      <StepCard grouped id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} specs · em preparo` : 'Em preparo' }}>
+      <StepCard grouped id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail && st.backlog.items.length > 0 && st.backlog.items.every((i) => st.backlog?.specs?.[i.key]?.spec) ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · em preparo` : 'Em preparo' }}>
         {backlogBlock(startLine)}
       </StepCard>
       <StepCard grouped id="plans" open={focusCard === 'plans' || speckitAsked.length > 0} focus={focusCard === 'plans'} icon="clipboard" tone="violet" title="Planos de implementação" info="Um agente escreve o plano de cada item do backlog, com os testes primeiro. O desenvolvimento só começa com todos os planos atuais." owner="Preparados pelo Dev" chip={speckitRunning ? { label: 'Preparando' } : speckitReady ? { label: 'Atuais', tone: 'ok' } : speckit?.stale ? { label: 'Desatualizados', tone: 'warn' } : { label: 'Não preparados' }}>

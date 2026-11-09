@@ -94,6 +94,16 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('refinement-final-pending-title')).toBeNull();
   });
 
+  it('never calls an empty backlog detailed', () => {
+    renderView(wizard({ backlog: { ...backlogDetailed, items: [] } as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('step-card-chip-backlog').textContent).toBe('Em preparo');
+  });
+
+  it('calls the backlog detailed only once every item has its spec', () => {
+    renderView(wizard({ backlog: backlogDetailed as never }), handlersWithSpeckit());
+    expect(screen.getByTestId('step-card-chip-backlog').textContent).toBe('1 spec · em preparo');
+  });
+
   it('says the plans are current once they are prepared', () => {
     renderView(wizard({ speckit: speckit() as never }), handlersWithSpeckit());
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Atuais');

@@ -40,6 +40,19 @@ describe('the stage review banner', () => {
     expect(screen.getByTestId('running-models').textContent).toContain('parte 3 de 4');
   });
 
+  it('shows the stage under review, not the backlog progress, while a document is reviewed again', () => {
+    const backlog = { enabled: true, detail: true, project: null, cycle: 3, epics: [], items: [{ key: 'a', title: 'A', epic: 'e' }], specs: {}, preplans: {} } as never;
+    render(<ProcessingBanner backlog={backlog} cycle={3} stage="Revisando stack.md." jevDown={false} since={since} file="stack.md" />);
+    expect(screen.getByTestId('processing-banner-round').textContent).toBe('Revisando stack.md.');
+    expect(screen.queryByTestId('detail-progress')).toBeNull();
+  });
+
+  it('names two parallel steps of the same agent once, with their count', () => {
+    const step = { kind: 'spec', role: 'po', model: 'claude-haiku-5-5', effort: 'high', part: null, limitMs: 120_000, startedAt: new Date().toISOString() } as const;
+    render(<ProcessingBanner backlog={null} cycle={3} stage="x" jevDown={false} since={since} running={[{ ...step, stepId: 's1' }, { ...step, stepId: 's2' }]} />);
+    expect(screen.getByTestId('running-models').textContent).toMatch(/^2× PO · /);
+  });
+
   it('formats the cost line in the singular for one round and one call', () => {
     expect(stageCostText('flow.md', { rounds: 1, steps: 1, durationMs: 5_000, costUsd: 0.5 })).toBe('Etapa flow.md · 1 rodada · 5 s · US$ 0,50 · 1 chamada');
   });

@@ -9,6 +9,7 @@ import type { BacklogDocs } from './details.js';
 import { jevHint, type JevValidationResult } from './jev-validation.js';
 import { itemLines } from './specs-md.js';
 import type { BacklogState } from './state.js';
+import { onlySubsections } from './sections.js';
 
 const RULES = [
   'LANGUAGE (mandatory): write every title, scope, rationale and epic title 100% in Brazilian Portuguese, even when the docs are in English. Keys stay short lowercase slugs; keep file names and technical identifiers unchanged.',
@@ -80,7 +81,23 @@ export function backlogPack(input: {
   return { kind: 'backlog', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('backlog'), criteria: [], feedback, budgetTokens: 20_000 };
 }
 
-export type BacklogCheck = { ok: true; value: { project: Project; backlog: { epics: Backlog['epics']; items: Array<BacklogItem & { rank: number }> } } } | { ok: false; issues: string[] };
+/** `gaps` lists the flow.md sections no item covers yet: the outline is kept and only they go back; `candidate` is a refused outline to build on. */
+export type BacklogCheck = { ok: true; value: { project: Project; backlog: { epics: Backlog['epics']; items: Array<BacklogItem & { rank: number }> } }; gaps: string[] } | { ok: false; issues: string[]; candidate?: Pick<BacklogState, 'epics' | 'items'> };
+
+/** The coverage rule: the only one an outline may still break and be kept, since its missing sections are added on the next derivation. */
+const isCoverageGap = (issue: string) => issue.startsWith('seção do flow.md sem nenhum item:');
+
+/** A citation of a section made only of sub-sections becomes a citation of each sub-section: the fix the rule asks for, made without another call. */
+function expandSubsectionCitations(items: readonly BacklogItem[], docs: Partial<BacklogDocs>, frozen: ReadonlySet<string>): BacklogItem[] {
+  return items.map((i) => {
+    if (frozen.has(i.key)) return i;
+    const sources = i.sources.flatMap((s) => {
+      const subs = s.doc === 'flow.md' ? null : onlySubsections(docs[s.doc] ?? '', s.heading);
+      return subs ? subs.map((heading) => ({ ...s, heading })) : [s];
+    });
+    return { ...i, sources: sources.filter((s, n) => sources.findIndex((o) => o.doc === s.doc && o.heading === s.heading) === n) };
+  });
+}
 
 const sameTitle = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -148,10 +165,12 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
     ...(backlog.success ? [] : backlog.error.issues.map((i) => plainIssue('backlog', i, valueAt(out.backlog, i.path)))),
   ];
   if (!project.success || !backlog.success) return { ok: false, issues };
-  const kept = keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous);
-  const items = request === undefined ? kept : citeRequest(kept, previous, request, new Set(started.map((s) => s.key)));
-  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen: new Set(started.map((s) => s.key)), repositories, docsRepo });
-  if (rules.length > 0) return { ok: false, issues: rules };
+  const frozen = new Set(started.map((s) => s.key));
+  const kept = expandSubsectionCitations(keepPreviousKeys(backlog.data.items.filter((i) => !isAdjustment(i.key)), previous), docs, frozen);
+  const items = request === undefined ? kept : citeRequest(kept, previous, request, frozen);
+  const rules = validateBacklog({ epics: backlog.data.epics, items }, { flowHeadings: flowHeadings(docs['flow.md'] ?? ''), docs, frozen, repositories, docsRepo });
+  const hard = rules.filter((r) => !isCoverageGap(r));
+  if (hard.length > 0) return { ok: false, issues: rules, candidate: { epics: backlog.data.epics, items: rankItems(items) } };
   if (request !== undefined) {
     const issues = requestIssues(items, previous, started);
     if (issues.length > 0) return { ok: false, issues };
@@ -163,7 +182,7 @@ export function postProcessBacklog(out: { project: unknown; backlog: unknown }, 
   const epics = [...backlog.data.epics, ...(previous?.epics ?? []).filter((e) => !backlog.data.epics.some((x) => x.key === e.key) && all.some((i) => i.epic === e.key))];
   // Adjustments first: rank breaks ties by position, so each runs right after its original, before what waits on it.
   const adjustments = adjustmentItems(all, approved).filter((a) => !all.some((i) => i.key === a.key));
-  return { ok: true, value: { project: project.data, backlog: { epics, items: rankItems([...adjustments, ...all]) } } };
+  return { ok: true, value: { project: project.data, backlog: { epics, items: rankItems([...adjustments, ...all]) } }, gaps: rules.filter(isCoverageGap) };
 }
 
 /** The rules that tie each item to one repository of the architecture; a feature across repositories is one item per repository. */

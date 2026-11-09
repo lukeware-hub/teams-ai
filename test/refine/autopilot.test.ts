@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { acceptAllPending, leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
+import { acceptAllPending, haltTeam, leftForOwner, resolveEverything, runExtension, startIsClear } from '../../server/refine/autopilot.js';
 import { ConflictError, type RefineSession } from '../../server/refine/session.js';
 import { autoAcceptable } from '../../server/refine/team-rule.js';
 
@@ -114,6 +114,54 @@ describe('resolveEverything', () => {
     await resolveEverything(s as unknown as RefineSession);
     expect(s.approveSpecsAnyway).toHaveBeenCalledTimes(1);
     expect(s.saveDocs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the team stops instead of looping', () => {
+  it('Parar ends the whole team: no new evaluation starts after it', async () => {
+    const s = fake({ questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
+    // Every evaluation leaves a new question, so the team would run all its rounds.
+    let n = 0;
+    s.evaluate.mockImplementation(async () => {
+      (s.state.questions as unknown[]).push({ questionId: `q${++n + 1}`, status: 'pending', blocking: true });
+      if (n === 1) haltTeam(s as unknown as RefineSession);
+    });
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.evaluate).toHaveBeenCalledTimes(1);
+    expect(s.runPlans).not.toHaveBeenCalled();
+  });
+
+  it('Parar during a stage review reviews no other document and starts no evaluation', async () => {
+    const s = fake({ questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
+    s.state.staleBy = { 'stack.md': 'briefing.md', 'design.md': 'briefing.md' };
+    s.evaluateStage.mockImplementation(async () => {
+      haltTeam(s as unknown as RefineSession);
+      return undefined;
+    });
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.evaluateStage).toHaveBeenCalledTimes(1);
+    expect(s.decideAnswer).not.toHaveBeenCalled();
+    expect(s.evaluate).not.toHaveBeenCalled();
+  });
+
+  it('leaves to the owner a rule that came back after the team answered it, and starts no other evaluation', async () => {
+    const rule = 'seção do flow.md sem nenhum item: "Pagar"';
+    const s = fake({ questions: [{ questionId: 'outline-c1-0', status: 'pending', blocking: true, rule }] });
+    s.evaluate.mockImplementation(async () => {
+      (s.state.questions as unknown[]).push({ questionId: 'outline-c2-0', status: 'pending', blocking: true, rule });
+    });
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.decideAnswer).toHaveBeenCalledTimes(1);
+    expect(s.decideAnswer).toHaveBeenCalledWith('outline-c1-0');
+    expect(s.evaluate).toHaveBeenCalledTimes(1);
+    expect((s.state.questions as Array<{ questionId: string; status: string }>).find((q) => q.questionId === 'outline-c2-0')?.status).toBe('pending');
+  });
+
+  it('a halt left from an earlier run does not stop the next one', async () => {
+    const s = fake({ questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
+    haltTeam(s as unknown as RefineSession);
+    await resolveEverything(s as unknown as RefineSession);
+    expect(s.evaluate).toHaveBeenCalledTimes(1);
   });
 });
 

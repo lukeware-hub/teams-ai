@@ -9,6 +9,13 @@ export interface PlainQuestion {
 const SUBSECTIONS_ONLY = /^item (\S+) cita (\S+) › "(.+?)", uma seção feita só de subseções; cite as de que o item precisa: (.+)$/;
 const EMPTY_FLOW_SECTION = /^seção do flow\.md sem nenhum item: "(.+)"$/;
 
+/** How many sub-sections a choice names before it only counts the rest, so a long section does not flood the card. */
+const NAMED = 4;
+
+/** The sub-sections a choice cites: the first few by name, then how many more. */
+const namesText = (names: readonly string[]): string =>
+  names.length <= NAMED ? names.join('; ') : `${names.slice(0, NAMED).join('; ')} e mais ${names.length - NAMED} subseções`;
+
 /** The outline rule an issue breaks, as a plain question; the mechanical rules keep the generic text, since no choice helps there. */
 export function plainOutlineQuestion(issue: string): PlainQuestion {
   const subsections = SUBSECTIONS_ONLY.exec(issue);
@@ -18,7 +25,7 @@ export function plainOutlineQuestion(issue: string): PlainQuestion {
     return {
       text: `O item ${key} usa a seção "${heading}" de ${doc}, mas ela só tem subseções. Quais subseções o item precisa?`,
       options: [
-        { label: 'Citar todas as subseções', detail: `O item usa: ${names.join('; ')}.`, recommended: true },
+        { label: 'Citar todas as subseções', detail: `O item usa: ${namesText(names)}.`, recommended: true },
         { label: 'Citar só algumas', detail: 'Escreva na resposta quais subseções o item precisa.' },
       ],
     };

@@ -15,6 +15,12 @@ describe('plainOutlineQuestion', () => {
     ]);
   });
 
+  it('names only the first four sub-sections of a long section and counts the rest', () => {
+    const many = Array.from({ length: 9 }, (_, n) => `"Decisão ${n + 1}"`).join(', ');
+    const q = plainOutlineQuestion(`item a cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: ${many}`);
+    expect(q.options[0]!.detail).toBe('O item usa: Decisão 1; Decisão 2; Decisão 3; Decisão 4 e mais 5 subseções.');
+  });
+
   it('asks what to do with a flow.md section that no item covers', () => {
     const q = plainOutlineQuestion(EMPTY_SECTION);
     expect(q.text).toBe('A seção "33.7 OPME (`opme`)" do flow.md não tem nenhum item no backlog. Ela deve virar um item próprio?');

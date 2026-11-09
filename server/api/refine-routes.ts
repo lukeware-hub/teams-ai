@@ -6,7 +6,7 @@ import type { SuggestFile } from '../refine/suggest.js';
 import { ALREADY_STARTED, ConflictError, EVALUATION_BUSY, NotFoundError } from '../refine/session.js';
 import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
-import { acceptAllPending, resolveEverything, runExtension } from '../refine/autopilot.js';
+import { acceptAllPending, haltTeam, resolveEverything, runExtension } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -173,6 +173,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       // The owner stops the running evaluation: its agent processes are killed, the review is journaled as stopped.
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
+        haltTeam(s);
         await s.abort();
         json(200, { ok: true });
       }),

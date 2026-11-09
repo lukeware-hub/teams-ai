@@ -22,8 +22,7 @@ function itemStatus(backlog: BacklogView, key: string): 'entregue' | 'em execuç
 export function processingText(backlog: BacklogView): string {
   if (backlog.items.length === 0) return 'Montando a lista de specs a partir dos documentos.';
   if (!backlog.detail) return 'Atualizando a lista de specs.';
-  const planned = backlog.items.filter((i) => itemStatus(backlog, i.key) !== 'em refinamento').length;
-  return `Gerando a spec e o pré-plano de cada item: ${planned} de ${backlog.items.length} prontos.`;
+  return 'Gerando a spec e o pré-plano de cada item.';
 }
 /** A small backlog chip and its tones, shared with the program panel. */
 export const bkChip = 'flex-none rounded-full px-2 py-[0.1rem] text-[0.6875rem] font-bold';

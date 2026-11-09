@@ -683,7 +683,7 @@ export interface Snapshot {
   /** The sha256 of each document on disk: a save sends the one its text was typed over. */
   hashes?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>;
   secrets: Array<{ name: string; present: boolean; hint: string | null; uses: Array<{ dependency: string; purpose: string }>; mentions: Array<{ doc: string; heading: string }> }>;
-  tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number };
+  tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number; graph?: { inputTokens: number; outputTokens: number; extractions: number } };
   /** The seq of the last journal event the state holds. */
   seq?: number;
   /** The server holds a process of its own: an evaluation, the plans, a check of specs.md or a graph extraction. */

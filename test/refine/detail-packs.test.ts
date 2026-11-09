@@ -34,6 +34,21 @@ describe('specPack', () => {
     expect(pack.feedback).toMatch(/do not read files/);
   });
 
+  it('opens every batch with the same rules and project.md, before the graph context of the batch, so the prompt cache is reused', () => {
+    const pack = (key: string) => specPack({ specHash: HASH, principles: [], docs, batch: [item(key, 1)], all: [item(key, 1)], previous: {}, rejection: {}, graphContext: `nodes of ${key}` }).feedback!;
+    const head = (text: string) => text.slice(0, text.indexOf('### Graph context'));
+    expect(head(pack('opme'))).toContain('- Médico auditor');
+    expect(head(pack('opme'))).toBe(head(pack('caso')));
+  });
+
+  it('carries a project.md past 40 thousand tokens as a digest with every heading, and the cited sections whole', () => {
+    const big = ['# Clínica', ...Array.from({ length: 400 }, (_, n) => `## Regra ${n}\n\n${'texto da regra '.repeat(200)}`)].join('\n\n');
+    const pack = specPack({ specHash: HASH, principles: [], docs: { ...docs, 'project.md': big }, batch: [item('opme', 1)], all: [item('opme', 1)], previous: {}, rejection: {} });
+    expect(pack.feedback).toContain('The documents below are a digest');
+    expect(pack.feedback).toContain('## Regra 399');
+    expect(pack.feedback!.length).toBeLessThan(big.length / 2);
+  });
+
   it('carries the previous criteria with their ids and the last rejection of the item', () => {
     const previous = { ...makeSpec({ specId: 'k-001-opme' }), acceptanceCriteria: [ac('AC-047', 'pedido registrado')] } as Spec;
     const pack = specPack({ specHash: HASH, principles: [], docs, batch: [item('opme', 1)], all: [item('opme', 1)], previous: { opme: previous }, rejection: { opme: ['spec opme.bug: bug details are required for bug specs'] } });

@@ -7,7 +7,6 @@ import { runCycle } from '../../server/refine/cycle.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { retireDropped } from '../../server/refine/detail-cycle.js';
 import { withQuotaWait } from '../../server/refine/quota-wait.js';
-import { PackTooLargeError } from '../../server/refine/fit-pack.js';
 import { briefTemplate, designTemplate, projectTemplate, restoreFromBase, stackTemplate } from '../../server/refine/draft.js';
 import { RefineEvent } from '../../server/refine/events.js';
 import { applyPatch } from '../../server/refine/patches.js';
@@ -172,16 +171,17 @@ describe('backlog detailing in the refinement cycle', () => {
   });
 
   // R11.10 (plan 87): the outline cites each decision an item needs, never the whole Decisões section.
-  it('sends an outline citing a section made only of sub-sections back to the PO with the ones to cite', async () => {
+  it('cites the sub-sections of a section made only of them itself, with one outline call', async () => {
     const { journal, events, run, draft } = await setup();
     await writeFile(draft.briefingMd, '# Briefing\n\n## Objectives\n\n- tudo\n\n## Decisões\n\n### Prazo\n\n15 dias.\n\n### Multa\n\nR$ 2 por dia.\n');
     const citing = (heading: string) => OUTLINE.map((i) => (i.key === 'caso' ? { ...i, sources: [...i.sources, { doc: 'briefing.md' as const, heading }] } : i));
     const agent = fakeAgent(() => OUTLINE, (req) => (req.kind === 'backlog' ? ok({ specHash: H, project: makeProject(), backlog: { epics, items: citing(String(req.pack.feedback).includes('Your last attempt was rejected') ? 'Prazo' : 'Decisões') } }) : undefined));
     await run(agent, 1);
     const outlines = agent.calls.filter((c) => c.kind === 'backlog');
-    expect(outlines).toHaveLength(2);
-    expect(outlines[1]!.feedback).toContain('item caso cita briefing.md › "Decisões", uma seção feita só de subseções; cite as de que o item precisa: "Prazo", "Multa"');
-    expect(journal.state.backlog?.items.find((i) => i.key === 'caso')?.sources).toContainEqual({ doc: 'briefing.md', heading: 'Prazo' });
+    expect(outlines).toHaveLength(1);
+    const sources = journal.state.backlog?.items.find((i) => i.key === 'caso')?.sources;
+    expect(sources).toContainEqual({ doc: 'briefing.md', heading: 'Prazo' });
+    expect(sources).toContainEqual({ doc: 'briefing.md', heading: 'Multa' });
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
   });
 
@@ -549,19 +549,6 @@ describe('backlog detailing in the refinement cycle', () => {
     expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
   });
 
-  it('fails the cycle with the oversized-pack message, which says what to do', async () => {
-    const { journal, events, run } = await setup();
-    const message = 'Reduza ou divida o conteúdo dos documentos.';
-    const agent = fakeAgent(() => OUTLINE, (req) => {
-      if (req.kind === 'spec') throw new PackTooLargeError(message);
-      return undefined;
-    });
-    await run(agent, 1);
-    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
-    await run(agent, 2);
-    expect(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data).toMatchObject({ cycle: 2, reason: message, detail: message });
-  });
-
   it('removes the files of an item the outline no longer has', async () => {
     const { journal, run, itemDir, draft } = await setup();
     let outline = OUTLINE;
@@ -612,6 +599,21 @@ describe('backlog detailing failure paths', () => {
     expect(callsAfterError).toBe(0);
     expect(agent.kinds(from).every((k) => k === 'spec')).toBe(true);
     expect(String(events.find((e) => e.type === 'REFINE_CYCLE_FAILED')?.data.detail)).toMatch(/disco cheio/);
+  });
+
+  it('fails only the item whose cited sections are too large for one pack, and details the others', async () => {
+    const { draft, journal, events, run } = await setup();
+    const huge = Array.from({ length: 12_000 }, (_, n) => `  C --> D${n} %% passo de OPME número ${n} com texto longo`).join('\n');
+    await writeFile(draft.flowMd, FLOW.replace('  C --> D', huge));
+    const agent = fakeAgent(() => OUTLINE);
+    await run(agent, 1);
+    await journal.fact(RefineEvent.BacklogDetailEnabled, {});
+    await run(agent, 2);
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+    const specs = journal.state.backlog!.specs!;
+    expect(specs.opme!.spec).toBeNull();
+    expect(specs.opme!.issues.join()).toMatch(/grandes demais/);
+    expect(['caso', 'triagem', 'fat'].every((k) => specs[k]?.spec)).toBe(true);
   });
 
   it('records the valid items of a batch before retrying the invalid one', async () => {
@@ -903,5 +905,87 @@ describe('the impact of a follow-on request on the backlog it follows', () => {
     expect(kinds).toContain('impact');
     // The impact starts with the specs, so it is asked before the conflicts, which need every pre-plan.
     expect(kinds.indexOf('impact')).toBeLessThan(kinds.indexOf('conflicts'));
+  });
+});
+
+// Step 8 end to end: an outline that misses flow.md sections converges instead of being thrown away round after round.
+describe('the backlog outline converges on the flow.md sections', () => {
+  const missingFat = () => OUTLINE.filter((i) => i.key !== 'fat');
+  const GAP = 'seção do flow.md sem nenhum item: "4. Faturamento"';
+
+  it('retries on its own last answer and keeps the outline once the gap closes', async () => {
+    const { journal, events, run } = await setup();
+    const agent = fakeAgent(() => OUTLINE, (req, n) => (req.kind === 'backlog' && n === 1 ? ok({ specHash: H, project: makeProject(), backlog: { epics, items: missingFat() } }) : undefined));
+    await run(agent, 1);
+    const outlines = agent.calls.filter((c) => c.kind === 'backlog');
+    expect(outlines).toHaveLength(2);
+    // The retry carries the first answer as the previous backlog, and only the missing section as the rejection.
+    expect(outlines[1]!.feedback).toContain('"key": "triagem"');
+    expect(outlines[1]!.feedback).toContain(GAP);
+    expect(journal.state.backlog?.items.map((i) => i.key).sort()).toEqual(['caso', 'fat', 'opme', 'triagem']);
+    expect(journal.state.questions.filter((q) => q.questionId.startsWith('outline-'))).toEqual([]);
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  it('keeps an outline that still misses a section after the retry, and asks only about that section', async () => {
+    const { journal, events, run } = await setup();
+    const agent = fakeAgent(missingFat);
+    await run(agent, 1);
+    expect(agent.calls.filter((c) => c.kind === 'backlog')).toHaveLength(2);
+    expect(journal.state.backlog?.items.map((i) => i.key).sort()).toEqual(['caso', 'opme', 'triagem']);
+    const asked = journal.state.questions.filter((q) => q.status === 'pending' && q.questionId.startsWith('outline-'));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ rule: GAP, blocking: true });
+    expect(asked[0]!.options?.map((o) => o.label)).toContain('Criar um item para a seção');
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  it('derives the next outline from the kept one, so the answer only adds the missing item', async () => {
+    const { journal, run, draft } = await setup();
+    await run(fakeAgent(missingFat), 1);
+    // The owner's answer lands in the briefing, which changes the documents the next derivation reads.
+    await writeFile(draft.briefingMd, `${await readFile(draft.briefingMd, 'utf8')}\n## Decisão\n\nFaturamento ganha um item.\n`);
+    const next = fakeAgent(() => OUTLINE);
+    await run(next, 2);
+    const outlines = next.calls.filter((c) => c.kind === 'backlog');
+    expect(outlines).toHaveLength(1);
+    expect(outlines[0]!.feedback).toContain('"key": "opme"');
+    expect(journal.state.backlog?.items.map((i) => i.key).sort()).toEqual(['caso', 'fat', 'opme', 'triagem']);
+  });
+});
+
+// Stress: a flow the size of the reference project, an agent that always forgets some sections, rounds in a row.
+describe('the backlog outline under stress', () => {
+  const SECTIONS = Array.from({ length: 40 }, (_, n) => `${n + 1}. Seção ${n + 1}`);
+  const BIG_FLOW = ['# Fluxo', '', '```mermaid', ...SECTIONS.flatMap((h) => [`%% ${h}`, '  A --> B']), '```', ''].join('\n');
+  const bigOutline = (skip: ReadonlySet<number>) => SECTIONS.flatMap((h, n) => (skip.has(n) ? [] : [item(`s${n + 1}`, 'atend', h)]));
+
+  it('keeps a 37-item outline, asks once per missing section, spends two outline calls per round and never repeats a question', async () => {
+    const { journal, events, run, draft } = await setup();
+    await writeFile(draft.flowMd, BIG_FLOW);
+    const forgotten = new Set([4, 17, 33]);
+    const agent = fakeAgent(() => bigOutline(forgotten));
+    for (let cycle = 1; cycle <= 3; cycle++) await run(agent, cycle);
+    expect(agent.calls.filter((c) => c.kind === 'backlog')).toHaveLength(2);
+    expect(journal.state.backlog?.items).toHaveLength(37);
+    const asked = journal.state.questions.filter((q) => q.questionId.startsWith('outline-'));
+    expect(asked.map((q) => q.rule).sort()).toEqual([4, 17, 33].map((n) => `seção do flow.md sem nenhum item: "${SECTIONS[n]}"`).sort());
+    expect(events.filter((e) => e.type === 'REFINE_CYCLE_FAILED')).toEqual([]);
+  });
+
+  it('closes every gap over the rounds when each answer brings its section in', async () => {
+    const { journal, run, draft } = await setup();
+    await writeFile(draft.flowMd, BIG_FLOW);
+    const forgotten = new Set([4, 17, 33]);
+    const agent = fakeAgent(() => bigOutline(forgotten));
+    await run(agent, 1);
+    for (const n of [...forgotten]) {
+      // The owner's answer reaches the briefing, and the next derivation brings the section in.
+      forgotten.delete(n);
+      await writeFile(draft.briefingMd, `${await readFile(draft.briefingMd, 'utf8')}\n## Decisão ${n}\n\nA seção ganha um item.\n`);
+      await run(agent, journal.state.cycle + 1);
+    }
+    expect(journal.state.backlog?.items).toHaveLength(40);
+    expect(new Set(journal.state.backlog?.items.map((i) => i.key)).size).toBe(40);
   });
 });

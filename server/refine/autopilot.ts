@@ -63,6 +63,17 @@ export function leftForOwner(s: Pick<RefineSession, 'state'>): string[] {
 const ROUNDS = 5;
 
 const resolving = new WeakSet<RefineSession>();
+/** The sessions whose owner pressed Parar: the team ends its rounds at the next step instead of starting another. */
+const halted = new WeakSet<RefineSession>();
+
+/** Parar stops the whole team, not only the step running now. */
+export function haltTeam(s: RefineSession): void {
+  if (resolving.has(s)) halted.add(s);
+}
+
+/** A question whose rule the team already answered once: it came back, so the owner decides it instead of another round. */
+const repeated = (s: Pick<RefineSession, 'state'>, q: { questionId: string; rule?: string }): boolean =>
+  q.rule !== undefined && s.state.questions.some((o) => o.questionId !== q.questionId && o.rule === q.rule && o.status === 'answered');
 
 /** Whether nothing keeps "Iniciar desenvolvimento" closed: the backlog ready, no open question, specs.md approved, the plans prepared. */
 export async function startIsClear(s: RefineSession): Promise<boolean> {
@@ -89,11 +100,13 @@ const tolerate = async (run: () => Promise<unknown> | null | undefined): Promise
 export async function resolveEverything(s: RefineSession, { byOwner = true }: { byOwner?: boolean } = {}): Promise<void> {
   if (resolving.has(s)) return;
   resolving.add(s);
+  halted.delete(s);
   const teamAlone = !byOwner && s.state.extension !== undefined;
   try {
     await asTeamAlone(teamAlone, () => runRounds(s, teamAlone));
   } finally {
     resolving.delete(s);
+    halted.delete(s);
   }
 }
 
@@ -103,27 +116,35 @@ const leftOpen = (s: Pick<RefineSession, 'state'>): boolean => s.state.questions
 async function runRounds(s: RefineSession, teamAlone: boolean): Promise<void> {
   const allowed = (p: PatchRow) => autoAcceptable(p, teamAlone);
   const lean = teamAlone && leanRefine();
-  for (let round = 0; round < ROUNDS && !(await startIsClear(s)); round++) {
+  const go = () => !halted.has(s);
+  for (let round = 0; round < ROUNDS && go() && !(await startIsClear(s)); round++) {
+    // A rule that comes back after the team answered it would only loop: the owner decides it.
+    if (s.state.questions.some((q) => q.status === 'pending' && repeated(s, q))) return;
     // The documents: stages outdated by an edit are reviewed again, and every suggestion is accepted.
-    await tolerate(() => resolveStages(s, allowed, teamAlone));
+    await tolerate(() => resolveStages(s, allowed, teamAlone, go));
+    if (!go()) return;
     for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
     // The questions: each one is answered by the team (the recommended choice, or the PO's decision written into the documents).
-    for (const q of s.state.questions.filter((x) => x.status === 'pending')) await tolerate(() => s.decideAnswer(q.questionId));
+    for (const q of s.state.questions.filter((x) => x.status === 'pending')) if (go()) await tolerate(() => s.decideAnswer(q.questionId));
     // Lean: the team evaluated once; with nothing left for the owner, what the reviewers found is applied, so their failed checks stand settled.
     if (lean && !leftOpen(s)) await tolerate(() => s.settleChecklist());
     // The backlog, then specs.md with the PO deciding what it would have asked, then the plans.
     const backlog = s.state.backlog;
+    if (!go()) return;
     if (!lean && backlog?.enabled && s.state.status !== 'ready') await tolerate(() => s.evaluate());
+    if (!go()) return;
     await tolerate(() => s.startSpecs({ autonomous: true }));
     await tolerate(() => s.settled());
     // Lean: the reviewers check the specs.md that was followed while the plans are written, so they add no minutes.
     const beside = lean ? tolerate(() => s.reviewSpecsBeside()) : undefined;
+    if (!go()) return;
     if (s.state.speckit?.status !== 'done' || s.state.speckit.stale) {
       await tolerate(() => s.runPlans());
       await tolerate(() => s.settled());
     }
     await beside;
   }
+  if (!go()) return;
   // A suggestion proposed after the last accept pass of a round is taken here, so none the team may accept is left behind.
   for (const p of s.state.patches.filter((x) => x.status === 'pending' && allowed(x))) await tolerate(() => s.accept(p.patchId, teamAlone));
   // What a reviewer still rejects after the rounds is followed, since the owner delegated the decision to the team.

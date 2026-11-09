@@ -4,7 +4,7 @@ import type { Preplan } from '../contracts/preplan.js';
 import type { Spec } from '../contracts/spec.js';
 import type { ContextPackInput } from '../knowledge/context-pack.js';
 import { outputContract } from '../orchestrator/steps.js';
-import { buildWithDocs, DIGEST_NOTE } from './docs-view.js';
+import { buildWithDocs, DIGEST_NOTE, viewDocs } from './docs-view.js';
 import { fitPackBudget, PackTooLargeError } from './fit-pack.js';
 import type { BacklogDocs } from './details.js';
 import { sectionText } from './sections.js';
@@ -13,6 +13,9 @@ type RankedItem = BacklogItem & { rank: number };
 
 const LANGUAGE = 'LANGUAGE (mandatory): write every objective, feature, criterion, out-of-scope line, module, task title, risk and mitigation 100% in Brazilian Portuguese, even when the docs are in English. Keep keys, ids, file names and technical identifiers unchanged.';
 const SELF_CONTAINED = 'Everything you need is in this pack: do not read files, run commands or use tools. Reply with the single JSON object and nothing else.';
+
+/** project.md in a spec pack: whole up to this size, else a digest; a fixed size keeps the text the same for every batch. */
+const SPEC_PROJECT_TOKENS = 40_000;
 
 const SPEC_RULES = [
   LANGUAGE,
@@ -92,7 +95,9 @@ export function specPack(input: {
       ...(input.rejection[i.key]?.length ? ['Your last attempt for this item was rejected; fix every point:', input.rejection[i.key]!.map((r) => `- ${r}`).join('\n')] : []),
     ].join('\n');
   });
-  const feedback = [SPEC_RULES, ...(input.graphContext ? ['### Graph context', input.graphContext] : []), '### docs/project.md', input.docs['project.md'], '# Items', ...items, '# Cited sections', ...[...cited].flatMap(([h, t]) => [h, t])].join('\n\n');
+  // The rules and project.md lead, the same for every batch, so the batches after the first read them from the prompt cache.
+  const project = viewDocs({ project: input.docs['project.md'] }, SPEC_PROJECT_TOKENS);
+  const feedback = [SPEC_RULES, ...(project.digested ? [DIGEST_NOTE] : []), '### docs/project.md', project.docs.project ?? '', ...(input.graphContext ? ['### Graph context', input.graphContext] : []), '# Items', ...items, '# Cited sections', ...[...cited].flatMap(([h, t]) => [h, t])].join('\n\n');
   return { kind: 'spec', role: 'po', specHash: input.specHash, principles: input.principles, outputContract: outputContract('spec'), criteria: [], feedback, budgetTokens: 16_000 };
 }
 
