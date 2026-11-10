@@ -5,43 +5,20 @@ const verdict = (specsHash: string, value: 'approved' | 'rejected' | 'failed') =
 
 describe('the specs.md gate', () => {
   it('names the step it waits for while the backlog is not ready', () => {
-    expect(specsBlockReason('answering', undefined, {})).toBe('Aguardando o backlog ficar pronto');
+    expect(specsBlockReason('answering', undefined)).toBe('Aguardando o backlog ficar pronto');
   });
 
-  it('says the file is being written before any hash exists', () => {
-    expect(specsBlockReason('ready', undefined, {})).toBe('Gerando o specs.md');
+  it('says the file is being written before any hash exists, or asks for it when nothing runs', () => {
+    expect(specsBlockReason('ready', undefined)).toBe('Gerando o specs.md');
+    expect(specsBlockReason('ready', undefined, false)).toBe('Gere o specs.md do backlog');
   });
 
-  it('asks for the approval of each owner still missing', () => {
-    expect(specsBlockReason('ready', 'h1', { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected') })).toBe('Falta a aprovação do SM');
-    expect(specsBlockReason('ready', 'h1', {})).toBe('Falta a aprovação do PO e do SM');
-  });
-
-  it('counts a verdict only for the text it read: an older one is owed again', () => {
-    expect(specsBlockReason('ready', 'h2', { po: verdict('h1', 'approved'), sm: verdict('h2', 'approved') })).toBe('Falta a aprovação do PO');
-  });
-
-  it('is null once both approve the current text', () => {
-    expect(specsBlockReason('ready', 'h1', { po: verdict('h1', 'approved'), sm: verdict('h1', 'approved') })).toBeNull();
+  it('is null once the file is written: what PO and SM say never holds the start', () => {
+    expect(specsBlockReason('ready', 'h1')).toBeNull();
   });
 
   it('finds the review of this text only', () => {
     expect(currentReview({ po: verdict('h1', 'failed') }, 'po', 'h1')?.verdict).toBe('failed');
     expect(currentReview({ po: verdict('h1', 'failed') }, 'po', 'h2')).toBeUndefined();
-  });
-});
-
-describe('the specs.md step says what is true', () => {
-  it('says it is being prepared when nothing runs yet, and that it failed when it did', () => {
-    expect(specsBlockReason('ready', undefined, {}, false)).toBe('Preparando o specs.md');
-    const failed = { po: { specsHash: 'h', verdict: 'failed' as const, findings: [], reason: 'x', at: null } };
-    expect(specsBlockReason('ready', undefined, failed, false)).toBe('A geração do specs.md falhou. Use Tentar de novo.');
-    expect(specsBlockReason('ready', undefined, failed, true)).toBe('Gerando o specs.md');
-  });
-});
-
-describe('the start reason while the team waits for the owner', () => {
-  it('says to answer the questions, whatever else is missing', () => {
-    expect(specsBlockReason('answering', 'h', {}, false, true)).toBe('Responda as perguntas sobre o specs.md');
   });
 });

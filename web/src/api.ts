@@ -1,4 +1,6 @@
 import type { Divergence } from '@server/refine/checklist';
+/** One of the five documents a stage refines. */
+type StageFile = 'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md';
 import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashboard.js';
 import type { GraphView } from '@server/api/repository-graph.js';
 export type { GraphView };
@@ -594,6 +596,8 @@ export interface RefineState {
   specsRepairs?: number;
   /** What the team tried on a rejected specs.md and what came of each try. */
   specsAttempts?: SpecsAttemptView[];
+  /** The specs.md text the owner went on with, without the PO and SM adjustments. */
+  specsOwnerApproved?: string;
   /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
   architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
@@ -701,7 +705,8 @@ export interface Snapshot {
   /** The architecture was decided on documents that have changed since. */
   architectureStale?: boolean;
   /** specs.md is written from the current backlog and PO and SM both approved it. */
-  specsApproved?: boolean;
+  /** specs.md is written from the current backlog: the start may go on; the reviewers only advise. */
+  specsReady?: boolean;
   /** Why each stage document cannot be continued as it is in format, in plain words; null when it can. */
   stageProblems?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string | null>>;
   /** True when the session has the documentation-repository stamp. */
@@ -763,9 +768,11 @@ export const refineApi = {
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   /** Accepts every suggestion that waits and has the agents run again on what was decided. */
   acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number; queued: number }>(r)),
+  applySpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/apply`).then((r) => json<{ ok: true }>(r)),
+  proceedSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/proceed`).then((r) => json<{ ok: true }>(r)),
+  applyStage: (p: string, s: string, file: StageFile) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/apply`).then((r) => json<{ ok: true; accepted: number; queued: number }>(r)),
+  proceedStage: (p: string, s: string, file: StageFile) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/proceed`).then((r) => json<{ ok: true }>(r)),
   autopilot: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/autopilot`).then((r) => json<{ ok: true }>(r)),
-  askSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/ask`).then((r) => json<{ asked: boolean }>(r)),
-  approveSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/approve`).then((r) => json<{ ok: true }>(r)),
   checkSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/check`).then((r) => json<{ started: boolean }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true; queued: boolean }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
@@ -786,7 +793,6 @@ export const refineApi = {
   reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),
   resolve: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/resolve`).then((r) => json<{ ok: true }>(r)),
-  reprocessSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/reprocess`).then((r) => json<{ ok: true }>(r)),
   stop: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stop`).then((r) => json<{ ok: true }>(r)),
   evaluateStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/evaluate`).then((r) => json<{ ok: true }>(r)),
   confidential: (p: string, s: string, confidential: boolean) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/confidential`, { confidential }).then((r) => json<{ ok: true }>(r)),

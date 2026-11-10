@@ -921,279 +921,149 @@ describe('refine api', () => {
     expect((await call('POST', '/api/refine/hello-app/hello-app-001/evaluate')).status).toBe(409);
   });
 
-  it('specs.md: written from the detailed backlog and read back; PO and SM check it, and only a rejected reviewer runs again', async () => {
+  /** A new project whose backlog will be detailed with one item, and the scripts its agents answer with. */
+  const readyBacklog = async () => {
     await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
     const url = '/api/refine/hello-app/hello-app-001';
     expect((await call('POST', `${url}/backlog`)).status).toBe(200);
     const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
-    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
+    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
+    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
+    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
+    const outline = { project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } };
+    const script1 = () => {
+      script['backlog/po'] = [outline];
+      script['refine/po'] = [review('po')];
+      script['refine/sm'] = [review('sm')];
+      script['spec/po'] = [spec];
+      script['preplan/sm'] = [preplan];
+    };
+    script1();
+    return { url, review, script1 };
+  };
+  const reviews = () => calls.filter((c) => c.kind === 'specs-review').length;
+
+  it('specs.md: written from the detailed backlog and reviewed once by PO and SM; a rejection holds nothing', async () => {
+    const { url } = await readyBacklog();
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     expect((await snapshot()).state.status).toBe('ready');
-
     const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs.md`;
-    const reviewsBefore = calls.filter((c) => c.kind === 'specs-review').length;
-    // PO rejects the first text; the agents detail the item again with that, the text comes out the same, and only the PO checks it again.
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }, { verdict: 'approved', findings: [] }];
+    const before = reviews();
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }];
     script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    script['spec/po'] = [{ specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] }];
-    script['preplan/sm'] = [{ preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] }];
     expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
     await settle();
     const written = await fs.readFile(file, 'utf8');
     expect(written).toContain('## base: Base');
     const done = await snapshot();
     expect(done.state.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
-    // The rejection went back to the agents on its own: the PO checked the text twice, the SM once.
-    const reviews = calls.filter((c) => c.kind === 'specs-review');
-    expect(reviews.length - reviewsBefore).toBe(3);
-    expect(reviews.at(-1)).toMatchObject({ role: 'po' });
-    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'approved' }, sm: { verdict: 'approved' } });
-    expect(done.specsApproved).toBe(true);
-    expect(done.state.specsRepairs).toBe(0);
-    // The file and the checks ran inside an open evaluation, which has ended now.
+    expect(reviews() - before).toBe(2);
+    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected' }, sm: { verdict: 'approved' } });
+    // The PO's rejection is advice: the start is open on this text, and nothing runs again on its own.
+    expect(done.specsReady).toBe(true);
     expect(done.state.evaluation?.endedAt).toBeTruthy();
-
-    // Both approved for this text: a visit starts nothing.
-    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false, reason: 'O specs.md já está aprovado.' });
-    expect(calls.filter((c) => c.kind === 'specs-review').length - reviewsBefore).toBe(3);
+    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false, reason: 'O specs.md já foi gerado e revisado.' });
+    expect(reviews() - before).toBe(2);
   });
 
-  it('a specs.md the reviewers keep rejecting has the item they name redone once by the agents, then is left to the owner with the findings', async () => {
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
+  it('the owner applies the reviewers adjustments once: the item they named is detailed again and specs.md written again, with no new review', async () => {
+    const { url, script1 } = await readyBacklog();
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
-    const before = calls.filter((c) => c.kind === 'specs-review').length;
-    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
-    script['specs-review/po'] = Array(5).fill(rejected);
-    script['specs-review/sm'] = Array(5).fill(rejected);
-    for (const role of ['po', 'sm']) script[`refine/${role}`] = Array.from({ length: 1 }, () => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] }));
-    // After the repair the PO is asked what to do: it asks the owner one question, as choices with a recommendation.
-    const ask = { id: 'q1', text: 'O item base precisa de uma origem. Qual seção dos documentos o justifica?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos do briefing', detail: 'A origem passa a ser a seção de objetivos.', recommended: true }, { label: 'Requisitos do projeto', detail: 'A origem passa a ser a seção de requisitos.' }] };
-    script['refine/po'].push({ checklist: [], questions: [ask], docPatch: [] });
-    script['spec/po'] = Array(4).fill(spec);
-    script['preplan/sm'] = Array(4).fill(preplan);
-    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
-    await settle();
-    const done = await snapshot();
-    // One check, one repair of the item named, and the check of the new text: the item already redone is not detailed again.
-    expect(calls.filter((c) => c.kind === 'specs-review').length - before).toBe(4);
-    expect(done.state.specsRepairs).toBe(1);
-    // The owner can read why: the attempt, with the item redone and what the reviewers said of the new text.
-    expect(done.state.specsAttempts).toHaveLength(1);
-    expect(done.state.specsAttempts[0]).toMatchObject({ n: 1, items: ['base'], redone: ['base'] });
-    expect(done.state.specsAttempts[0].after.po.verdict).toBe('rejected');
-    expect(done.specsApproved).toBe(false);
-    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }, sm: { verdict: 'rejected' } });
-    // The agents were told which item the reviewers named.
-    expect(calls.filter((c) => c.kind === 'spec').at(-1)?.prompt).toContain('O item base cita uma seção vazia');
-    // The repairs are spent, so the PO asked the owner, once, with a recommended choice, and the page can follow or ask again.
-    const question = done.state.questions.find((q: { origin?: string }) => q.origin === 'specs');
-    expect(question).toMatchObject({ status: 'pending', blocking: true, role: 'po', options: [{ label: 'Objetivos do briefing', recommended: true }, { label: 'Requisitos do projeto' }] });
-    expect(done.state.specsAsked).toBe(done.state.specsMd.hash);
-    // The owner may follow with the text although a reviewer rejected it.
-    expect((await call('POST', `${url}/specs/approve`)).status).toBe(200);
-    expect((await snapshot()).specsApproved).toBe(true);
-  });
-
-  it('the owner answers the question about specs.md: the agents detail the backlog again with the decision, and the new text is checked', async () => {
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    const outline = { project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } };
-    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
-    script['backlog/po'] = [outline, outline];
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
-    script['specs-review/po'] = Array(5).fill(rejected);
-    script['specs-review/sm'] = Array(5).fill({ verdict: 'approved', findings: [] });
-    script['refine/po'] = [review('po'), { checklist: [], questions: [{ id: 'q1', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] }], docPatch: [] }];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = Array(4).fill(spec);
-    script['preplan/sm'] = Array(4).fill(preplan);
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base não cobre o objetivo Saúde'] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
     await call('POST', `${url}/specs/check`);
     await settle();
-    const asked = (await snapshot()).state.questions.find((q: { origin?: string }) => q.origin === 'specs');
-    expect(asked.status).toBe('pending');
-    // The answer sends the backlog to the agents again; this time the PO approves the new text.
-    script['backlog/po'] = [outline];
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
-    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    expect((await call('POST', `${url}/answers`, { questionId: asked.questionId, text: 'Objetivos' })).status).toBe(200);
-    await settle();
-    // The answer only waits: the owner's Reprocessar on the specs sends the backlog to the agents again.
-    expect((await call('POST', `${url}/specs/reprocess`)).status).toBe(202);
+    const before = reviews();
+    const specsBefore = calls.filter((c) => c.kind === 'spec').length;
+    script1();
+    expect((await call('POST', `${url}/specs/apply`)).status).toBe(202);
     await settle();
     const after = await snapshot();
-    expect(after.state.questions.find((q: { questionId: string }) => q.questionId === asked.questionId).status).toBe('answered');
-    expect(after.state.specsRepairs).toBe(0);
-    expect(after.specsApproved).toBe(true);
+    expect(calls.filter((c) => c.kind === 'spec').length).toBeGreaterThan(specsBefore);
+    expect(calls.filter((c) => c.kind === 'spec').at(-1)?.prompt).toContain('O item base não cobre o objetivo Saúde');
+    expect(reviews()).toBe(before);
+    expect(after.specsReady).toBe(true);
   });
 
-  it('the check evaluates the backlog first when it is not ready, then checks specs.md, instead of doing nothing', async () => {
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    const failing = PO.map((c: { id: string; passed: boolean; detail: string }, i: number) => (i === 0 ? { ...c, passed: false, detail: 'objetivo sem critério' } : c));
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [{ checklist: failing, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
+  it('the owner goes on without the adjustments: specs.md stays as it is and the start is open', async () => {
+    const { url } = await readyBacklog();
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
-    // A check of the documents is open, so the backlog is not ready and specs.md could not be checked: the old button did nothing.
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base não cobre o objetivo Saúde'] }];
+    script['specs-review/sm'] = [{ verdict: 'rejected', findings: ['O item base não tem tarefa de teste'] }];
+    await call('POST', `${url}/specs/check`);
+    await settle();
+    const hash = (await snapshot()).state.specsMd.hash;
+    expect((await call('POST', `${url}/specs/proceed`)).status).toBe(200);
+    const after = await snapshot();
+    expect(after.state.specsOwnerApproved).toBe(hash);
+    expect(after.specsReady).toBe(true);
+  });
+
+  it('the check evaluates the backlog first when it is not ready, then writes and reviews specs.md, instead of doing nothing', async () => {
+    const { url, review } = await readyBacklog();
+    const failing = PO.map((c: { id: string; passed: boolean; detail: string }, i: number) => (i === 0 ? { ...c, passed: false, detail: 'objetivo sem critério' } : c));
+    script['refine/po'] = [{ checklist: failing, questions: [], docPatch: [] }];
+    await passStages();
+    await call('POST', `${url}/evaluate`);
+    await settle();
     expect((await snapshot()).state.status).not.toBe('ready');
-    script['refine/po'] = [{ checklist: PO, questions: [], docPatch: [] }];
-    script['refine/sm'] = [{ checklist: SM, questions: [], docPatch: [] }];
+    script['refine/po'] = [review('po')];
+    script['refine/sm'] = [review('sm')];
     script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
     script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    const click = await (await call('POST', `${url}/specs/check`)).json();
-    expect(click).toEqual({ started: true });
+    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: true });
     await settle();
     const after = await snapshot();
     expect(after.state.status).toBe('ready');
-    expect(after.specsApproved).toBe(true);
+    expect(after.specsReady).toBe(true);
   });
 
-  it('the owner autopilot of a new project keeps the full check: PO and SM both read specs.md before it is approved', async () => {
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
+  it('the owner autopilot writes specs.md, has PO and SM review it once and takes their adjustments once, with no second review', async () => {
+    const { url, script1 } = await readyBacklog();
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
-    const before = calls.filter((c) => c.kind === 'specs-review').length;
+    const before = reviews();
+    script1();
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
     expect((await call('POST', `${url}/autopilot`)).status).toBe(202);
-    for (let i = 0; i < 200 && !(await snapshot()).specsApproved; i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 200 && !(await snapshot()).specsReady; i++) await new Promise((r) => setTimeout(r, 50));
     await new Promise((r) => setTimeout(r, 300));
     await settle();
-    expect((await snapshot()).specsApproved).toBe(true);
-    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThan(before);
+    await new Promise((r) => setTimeout(r, 300));
+    await settle();
+    expect((await snapshot()).specsReady).toBe(true);
+    expect(reviews() - before).toBe(2);
   });
 
-  it('the autopilot answers the open questions, has the PO decide what the reviewers keep rejecting, and clears the start', async () => {
-    // The full path of the owner's button: the lean refinement follows specs.md at once, so this test turns it off.
-    vi.stubEnv('TEAMS_AI_REFINE_LEAN', '0');
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    // The reviewers reject the text twice: the item is redone once, then the PO decides alone and the new text is approved.
-    const rejected = { verdict: 'rejected', findings: ['O item base cita uma seção vazia'] };
-    script['specs-review/po'] = [rejected, rejected, { verdict: 'approved', findings: [] }];
-    script['specs-review/sm'] = Array(3).fill({ verdict: 'approved', findings: [] });
-    script['refine/po'] = Array.from({ length: 5 }, () => review('po'));
-    script['refine/sm'] = Array.from({ length: 5 }, () => review('sm'));
-    script['spec/po'] = Array(5).fill(spec);
-    script['preplan/sm'] = Array(5).fill(preplan);
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    const started = await call('POST', `${url}/autopilot`);
-    expect(started.status).toBe(202);
-    // The work runs in the background: wait until the specs.md is approved.
-    for (let i = 0; i < 200 && !(await snapshot()).specsApproved; i++) await new Promise((r) => setTimeout(r, 50));
-    // The autopilot goes on to the plans after that, which this test does not script: let it end before the next test.
-    await new Promise((r) => setTimeout(r, 300));
-    await settle();
-    await new Promise((r) => setTimeout(r, 300));
-    await settle();
-    const after = await snapshot();
-    expect(after.specsApproved).toBe(true);
-    expect(after.state.questions.filter((q: { status: string }) => q.status === 'pending')).toEqual([]);
-    // The PO was the one that decided: a refine call without a question came after the repairs.
-    expect(calls.filter((c) => c.kind === 'specs-review').length).toBeGreaterThanOrEqual(3);
-  });
-
-  it('a finding about a document is fixed in that document by the PO inside the automatic repair, not only in the items', async () => {
-    await call('POST', '/api/projects/new', { projectId: 'hello-app', name: 'Hello' });
-    const url = '/api/refine/hello-app/hello-app-001';
-    expect((await call('POST', `${url}/backlog`)).status).toBe(200);
-    const items = [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S' }];
-    const spec = { specs: [{ key: 'base', objectives: ['Base no ar'], features: ['Saúde'], acceptanceCriteria: [{ id: 'AC-001', given: 'o serviço no ar', when: 'GET /health', then: '200', smoke: true }], outOfScope: [], externalDependencies: [] }] };
-    const preplan = { preplans: [{ key: 'base', modules: [{ name: 'core', purpose: 'p' }], tasks: [{ id: 'P1', title: 'Esqueleto', module: 'core', owner: 'devops', criteriaRefs: ['AC-001'], dependsOn: [] }], risks: [] }] };
-    const review = (role: 'po' | 'sm') => ({ checklist: role === 'po' ? PO : SM, questions: [], docPatch: [] });
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
-    // A plain sentence in stack.md, so the PO's change adds no scope.
+  it('a finding about a document is fixed in that document by the PO when the owner applies the adjustments', async () => {
+    const { url, review, script1 } = await readyBacklog();
     const stackText = `${(await snapshot()).docs['stack.md'] as string}\nO contrato dos endpoints aparece em três seções.\n`;
     expect((await call('PUT', `${url}/docs/stack.md`, { text: stackText })).status).toBe(200);
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
     const find = 'O contrato dos endpoints aparece em três seções.';
-    // The PO rejects the text with a finding about stack.md; the PO then rewrites that line in stack.md, and the new text is approved.
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['stack.md › Contrato dos endpoints: a seção aparece três vezes com redações diferentes.'] }, { verdict: 'approved', findings: [] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }, { verdict: 'approved', findings: [] }];
+    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['stack.md › Contrato dos endpoints: a seção aparece três vezes com redações diferentes.'] }];
+    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
+    await call('POST', `${url}/specs/check`);
+    await settle();
+    script1();
     script['refine/po'] = [{ checklist: [], questions: [], docPatch: [{ file: 'docs/stack.md', find, replace: 'O contrato dos endpoints aparece em uma única seção.', reason: 'seção única' }] }, review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['spec/po'] = [spec];
-    script['preplan/sm'] = [preplan];
-    script['backlog/po'] = [{ project: HELLO_PROJECT, backlog: { epics: [{ key: 'core', title: 'Core' }], items } }];
-    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
+    expect((await call('POST', `${url}/specs/apply`)).status).toBe(202);
     await settle();
     await new Promise((r) => setTimeout(r, 300));
     await settle();
     const after = await snapshot();
     expect(after.docs['stack.md']).toContain('O contrato dos endpoints aparece em uma única seção.');
-    expect(after.specsApproved).toBe(true);
+    expect(after.specsReady).toBe(true);
   });
 
   it('two concurrent start requests spawn exactly one run', async () => {

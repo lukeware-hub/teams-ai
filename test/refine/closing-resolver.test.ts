@@ -55,16 +55,16 @@ describe('resolveClosing', () => {
     expect(s.accept).toHaveBeenCalledWith('keep', false);
   });
 
-  it('reviews each outdated stage again before the other checks', async () => {
+  it('does not review an outdated stage again: the mark is only a notice', async () => {
     const s = fakeSession({
       summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }], 'h1'), summary([{ id: 'questions', ok: true, detail: '' }], 'h2')],
       staleBy: { 'stack.md': 'briefing.md', 'design.md': 'briefing.md' },
     });
     await resolveClosing(s as unknown as RefineSession);
-    expect(s.evaluateStage.mock.calls).toEqual([['stack.md'], ['design.md']]);
+    expect(s.evaluateStage).not.toHaveBeenCalled();
   });
 
-  it('before the review closes, resolves only the stages: outdated reviews and safe patches, no later step', async () => {
+  it('before the review closes, resolves only the stages: safe patches, no review and no later step', async () => {
     const s = fakeSession({
       summaries: [summary([{ id: 'questions', ok: false, detail: 'x' }])],
       staleBy: { 'stack.md': 'briefing.md' },
@@ -73,7 +73,7 @@ describe('resolveClosing', () => {
       architecture: null,
     });
     await resolveClosing(s as unknown as RefineSession);
-    expect(s.evaluateStage).toHaveBeenCalledWith('stack.md');
+    expect(s.evaluateStage).not.toHaveBeenCalled();
     expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.decideArchitecture).not.toHaveBeenCalled();
     expect(s.runPlans).not.toHaveBeenCalled();

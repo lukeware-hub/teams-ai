@@ -53,6 +53,12 @@ describe('backlogPack', () => {
     expect(pack.feedback).toContain('adding only the citation of each new decision that changes what it delivers');
   });
 
+  it('lists the dependencies of each previous item, so a new outline keeps them and the pre-plans stay current', () => {
+    const pack = backlogPack(input({ previous: previous([item('base'), { ...item('casos'), dependsOn: ['base'] }]) }));
+    const shown = JSON.parse(String(pack.feedback).split('### previous backlog (keep the keys)\n\n')[1]!.split('\n\n### ')[0]!) as { items: Array<{ key: string; dependsOn: string[] }> };
+    expect(shown.items.map((i) => [i.key, i.dependsOn])).toEqual([['base', []], ['casos', ['base']]]);
+  });
+
   it('lists the previous keys so they stay stable, and the last rejection when there is one', () => {
     const pack = backlogPack(input({ previous: previous([item('base'), item('casos')]), rejection: ['chave reservada: primary'] }));
     expect(pack.feedback).toContain('"base"');

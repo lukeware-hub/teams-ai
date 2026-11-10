@@ -254,7 +254,7 @@ describe('RefinementPage of a new project', () => {
     window.history.replaceState(null, '', '/?vista=backlog');
     const item = { key: 'a', title: 'A', epic: 'e', priority: 'P0', rank: 1, size: 'S', scope: 'x', rationale: 'r', dependsOn: [], sources: [] };
     const backlog = { enabled: true, detail: true, items: [item], epics: [], specs: {}, preplans: { a: { preplan: { tasks: [] } } }, flowHeadings: [] };
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState({ status: 'ready', backlog, speckit: { status: 'done', stale: false } }), specsApproved: true });
+    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState({ status: 'ready', backlog, speckit: { status: 'done', stale: false } }), specsReady: true });
     vi.spyOn(refineApi, 'start').mockRejectedValue(new Error('Já tem um processo em andamento. Aguarde ele terminar e tente de novo.'));
     renderPage();
     fireEvent.click(await screen.findByTestId('start'));
@@ -356,19 +356,23 @@ describe('RefinementPage live', () => {
     expect(await screen.findByText('Qual seção justifica o item base?')).toBeTruthy();
     window.history.replaceState(null, '', '/');
   });
-  it('offers Reprocessar on the specs once the owner has answered their question, and sends it', async () => {
+  it('applies the PO and SM adjustments to specs.md from Verificação, with no new review', async () => {
     journal.events = [];
     const s = snapshot(5);
     const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
-    const answered = { questionId: 'specs-1-0', role: 'po', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], cycle: 1, origin: 'specs', status: 'answered', answer: 'Objetivos' };
+    const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['O item base não cobre o objetivo.'], reason: null, at: null };
     window.history.replaceState(null, '', '/?etapa=backlog');
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, specsApproved: false, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 }, questions: [answered] } as never });
-    const reprocess = vi.spyOn(refineApi, 'reprocessSpecs').mockResolvedValue({ ok: true });
-    renderLive();
-    fireEvent.click(await screen.findByTestId('specs-reprocess-button'));
-    await waitFor(() => expect(reprocess).toHaveBeenCalledWith('hello-app', 'hello-001'));
-    window.history.replaceState(null, '', '/');
+    try {
+      vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, specsReady: true, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected } } as never });
+      const apply = vi.spyOn(refineApi, 'applySpecs').mockResolvedValue({ ok: true });
+      renderLive();
+      fireEvent.click(await screen.findByTestId('review-apply-specs'));
+      await waitFor(() => expect(apply).toHaveBeenCalledWith('hello-app', 'hello-001'));
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
   });
+
 });
 
 describe('RefinementPage while the server holds a process', () => {

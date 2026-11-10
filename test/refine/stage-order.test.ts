@@ -133,16 +133,12 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('refuses to continue a stage the owner edited after its review, and continues it once it is reviewed again', async () => {
+  it('continues a stage the owner edited after its review, with no new review', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.saveDoc('flow.md', `${FLOW}\nNova etapa editada pelo dono.\n`);
-    await expect(s.continueStage()).rejects.toThrow('Revise a etapa flow.md antes de continuar: o texto mudou depois da última revisão.');
-    expect(s.state.doneStages ?? []).toEqual([]);
-    expect(s.state.graphed ?? []).not.toContain('flow.md');
-    await s.evaluateStage('flow.md');
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
@@ -150,7 +146,7 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('refuses to continue a stage that a later edit of an earlier document made stale, until it is processed again', async () => {
+  it('marks a later stage outdated by an edit of an earlier document as a notice, and keeps it done', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
     script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
@@ -162,7 +158,7 @@ describe('stage order, stamped sessions', () => {
     await s.settled();
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois das etapas.\n`);
     expect(s.state.staleBy).toEqual({ 'project.md': 'flow.md' });
-    await expect(s.continueStage('project.md')).rejects.toThrow('Processe a etapa project.md de novo antes de continuar.');
+    expect(s.state.doneStages).toEqual(['flow.md', 'project.md']);
     await s.close();
   });
 
@@ -233,32 +229,29 @@ describe('stage order, stamped sessions', () => {
     await s.close();
   });
 
-  it('keeps the review valid when the owner accepts a patch of the review itself', async () => {
+  it('moves on with a suggestion still open: going on sets it aside, with the reason', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> B[Fim]\n  - passo novo', reason: 'novo passo' }])];
+    script['refine/po'] = [refineOut(green(PO), [], [{ file: 'docs/flow.md', find: 'A[Início] --> B[Fim]', replace: 'A[Início] --> C[Fim]', reason: 'nome do passo' }])];
     await s.evaluateStage('flow.md');
     const patch = s.state.patches.find((p) => p.file === 'flow.md' && p.status === 'pending');
     expect(patch).toBeDefined();
-    await expect(s.continueStage()).rejects.toThrow(/Aceite ou rejeite as sugestões da etapa flow\.md/);
-    await s.accept(patch!.patchId);
-    await s.settled();
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
+    expect(s.state.patches.find((p) => p.patchId === patch!.patchId)).toMatchObject({ status: 'rejected', decision: 'O dono seguiu sem alterações.' });
     expect(s.state.doneStages).toEqual(['flow.md']);
     await s.close();
   });
 
-  it('holds the continuation while a blocking question of the stage is open, and frees it once answered', async () => {
+  it('moves on with a blocking question open: the PO answers it with the recommended choice', async () => {
     const s = await stamped();
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO), [{ id: 'q1', text: 'Qual é o primeiro passo?', blocking: true, relatedAcIds: [], options: [] }])];
+    script['refine/po'] = [refineOut(green(PO), [{ id: 'q1', text: 'Qual é o primeiro passo?', blocking: true, relatedAcIds: [], options: [{ label: 'O cliente', detail: 'Começa pelo cliente.', recommended: true }, { label: 'A clínica', detail: 'Começa pela clínica.' }] }])];
     await s.evaluateStage('flow.md');
-    await expect(s.continueStage()).rejects.toThrow(/Responda as perguntas obrigatórias da etapa flow\.md/);
     const question = s.state.questions.find((q) => q.file === 'flow.md' && q.status === 'pending');
-    await s.answer(question!.questionId, 'O cliente.');
     await expect(s.continueStage()).resolves.toBeUndefined();
     await s.settled();
+    expect(s.state.questions.find((q) => q.questionId === question!.questionId)).toMatchObject({ status: 'answered', answer: 'O cliente' });
     await s.close();
   });
 

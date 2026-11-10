@@ -1446,11 +1446,35 @@ Um quadro no topo da etapa Backlog mostra os passos entre o backlog e o início 
 | Elemento | Especificação |
 |---|---|
 | Título | `Falta para terminar`, com o chip `N de 4` à direita. |
-| Passos | `Backlog detalhado`, `specs.md aprovado`, `Planos preparados`, `Pronto para iniciar`, nessa ordem. Feito: ícone `check` em `good`. O passo de agora: ícone `clock` em `warn`. Os seguintes: `chevron-right` em `ink-soft`. |
+| Passos | `Backlog detalhado`, `specs.md gerado`, `Planos preparados`, `Pronto para iniciar`, nessa ordem. Feito: ícone `check` em `good`. O passo de agora: ícone `clock` em `warn`. Os seguintes: `chevron-right` em `ink-soft`. |
 | Detalhe | Ao lado de cada passo: itens do backlog; a revisão do specs.md com os pontos de PO e SM; os planos prontos de N; vazio no último. |
 | Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
 | Total | `Total do refinamento: US$ Z`. |
 | Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
+
+### 26.16 Revisão opcional (todas as etapas)
+
+As revisões de PO, SM e Front não travam o fluxo. Elas rodam uma vez por clique e deixam sugestões e perguntas; o dono escolhe o que fazer com elas.
+
+```
+┌ Revisão da etapa · project.md ─────────────────── 3 sugestões · 1 pergunta ┐
+│ (cards de sugestão e pergunta, cada um com Aceitar/Rejeitar ou Responder)   │
+│─────────────────────────────────────────────────────────────────────────────│
+│ [ Aplicar os ajustes sugeridos (3) ]   [ Seguir sem alterações ]            │
+│ Seguir sem alterações: o PO responde as perguntas abertas com a opção        │
+│ recomendada e registra a premissa no documento.          Revisar de novo     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Elemento | Especificação |
+|---|---|
+| Barra de decisão | Aparece abaixo dos cards quando a revisão deixou sugestões ou perguntas. `Aplicar os ajustes sugeridos (N)` é `primary` e só aparece com sugestões; `Seguir sem alterações` é `secondary`. |
+| Texto de apoio | Uma linha em `ink-soft`: o que acontece ao seguir sem alterações. |
+| Revisar de novo | Botão `secondary` pequeno à direita: roda a revisão da etapa outra vez. Aplicar ajustes nunca dispara outra revisão sozinho. |
+| Continuar | Só depende de a etapa ter sido processada uma vez, do formato do modelo e do Graphify. Sugestão ou pergunta aberta não trava: continuar é seguir sem alterações. |
+| Etapa anterior alterada | Aviso em `warn`, sem travar: "project.md mudou depois desta revisão; revise de novo se quiser." |
+| Etapa 8, Verificação | A mesma barra para os apontamentos de PO e SM no `specs.md`. Aplicar refaz uma vez os itens citados e grava o `specs.md` de novo, sem nova revisão. Depois de seguir sem alterações: "Você seguiu sem os ajustes do PO e do SM." |
+| Iniciar | Abre com o `specs.md` gerado do backlog atual e os planos prontos. A opinião de PO e SM nunca trava. |
 
 ## 27. Projects, Run, Status
 

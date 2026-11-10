@@ -28,44 +28,30 @@ describe('the specs.md card', () => {
   });
 });
 
-describe('the specs.md card while the agents repair it', () => {
-  const rejected = { specsHash: 'h', verdict: 'rejected' as const, findings: ['x'], reason: null, at: null };
+describe('the specs.md card when PO or SM suggest adjustments', () => {
+  const rejected = { specsHash: 'h', verdict: 'rejected' as const, findings: ['x', 'y'], reason: null, at: null };
 
-  it('says the agents are correcting it, with the attempt', () => {
-    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy repairs={1} />);
-    expect(screen.getByTestId('specs-check-repairing').textContent).toContain('tentativa 1 de 4');
+  it('offers to apply the adjustments or to go on without them, and calls each', () => {
+    const onApply = vi.fn();
+    const onProceed = vi.fn();
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} onApply={onApply} onProceed={onProceed} />);
+    expect(screen.getByTestId('review-apply-specs').textContent).toContain('Aplicar os ajustes sugeridos (2)');
+    fireEvent.click(screen.getByTestId('review-apply-specs'));
+    fireEvent.click(screen.getByTestId('review-proceed-specs'));
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onProceed).toHaveBeenCalledTimes(1);
   });
 
-  it('says the agents gave up after the last attempt, and leaves the findings to the owner', () => {
-    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={4} />);
-    expect(screen.getByTestId('specs-check-gave-up').textContent).toContain('4 vezes');
+  it('says the owner went on without them, and offers nothing more', () => {
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} followed onApply={() => undefined} onProceed={() => undefined} />);
+    expect(screen.getByTestId('specs-check-followed').textContent).toContain('Você seguiu sem os ajustes');
+    expect(screen.queryByTestId('review-decision-specs')).toBeNull();
   });
 
-  it('says nothing about repairs when none ran', () => {
-    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} />);
-    expect(screen.queryByTestId('specs-check-gave-up')).toBeNull();
-    expect(screen.queryByTestId('specs-check-repairing')).toBeNull();
-  });
-});
-
-describe('the specs.md card when the repairs did not settle it', () => {
-  const rejected = { specsHash: 'h', verdict: 'rejected' as const, findings: ['x'], reason: null, at: null };
-
-  it('offers to ask the team and to follow anyway, and calls each', () => {
-    const onAsk = vi.fn();
-    const onApprove = vi.fn();
-    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={4} onAsk={onAsk} onApprove={onApprove} />);
-    fireEvent.click(screen.getByTestId('specs-check-ask'));
-    fireEvent.click(screen.getByTestId('specs-check-approve'));
-    expect(onAsk).toHaveBeenCalledTimes(1);
-    expect(onApprove).toHaveBeenCalledTimes(1);
-  });
-
-  it('once the team asked, points to the questions, and still offers to let the team resolve everything or to follow anyway', () => {
-    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: rejected }} busy={false} repairs={4} asked onAsk={() => undefined} onApprove={() => undefined} />);
-    expect(screen.getByTestId('specs-check-gave-up').textContent).toContain('Responda as perguntas abaixo');
-    expect(screen.getByTestId('specs-check-ask')).toBeTruthy();
-    expect(screen.getByTestId('specs-check-approve')).toBeTruthy();
+  it('offers no decision when both approved', () => {
+    const approved = { specsHash: 'h', verdict: 'approved' as const, findings: [], reason: null, at: null };
+    render(<SpecsCheck specsMd={{ hash: 'h' }} reviews={{ po: approved, sm: approved }} busy={false} onApply={() => undefined} onProceed={() => undefined} />);
+    expect(screen.queryByTestId('review-decision-specs')).toBeNull();
   });
 });
 

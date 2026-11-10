@@ -175,14 +175,8 @@ describe('architecture decision of a repository session', () => {
     await s.continueStage('flow.md');
     await s.settled();
     expect(s.state.graphed).toContain('flow.md');
-    // The later stages are outdated by the edit, so the backlog waits for their reviews.
-    await expect(s.enableBacklog()).rejects.toThrow(/etapas desatualizadas/);
-    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
-    script['refine/sm'] = [refineOut(green(['sm.constraints-clear', 'sm.tasks-feasible', 'sm.no-open-questions', 'sm.flow-is-mermaid']))];
-    for (const file of Object.keys(s.state.staleBy ?? {}) as DocFile[]) {
-      await s.evaluateStage(file);
-      await s.settled();
-    }
+    // The later stages outdated by the edit are only a notice: the backlog does not wait for their reviews.
+    expect(Object.keys(s.state.staleBy ?? {}).length).toBeGreaterThan(0);
     script['architecture/sm'] = [MONOLITH];
     await s.enableBacklog();
     expect((await s.snapshot()).architectureStale).toBe(false);

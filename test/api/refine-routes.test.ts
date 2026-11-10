@@ -122,26 +122,41 @@ describe('refine routes', () => {
   });
 });
 
-describe('specs answers wait for Reprocessar on the specs', () => {
-  it('an answer to a specs question starts no continuation, and Reprocessar on the specs starts it once', async () => {
-    const continueSpecsAfterAnswers = vi.fn(() => Promise.resolve());
+describe('the owner applies or goes on without what a review left', () => {
+  const params = { projectId: 'shop', specId: 'shop-002', file: 'project.md' };
+  const route = (routes: ReturnType<typeof refineRoutes>, end: string) => routes.find((r) => r.method === 'POST' && r.path.endsWith(end))!;
+
+  it('an answer is only kept: it starts nothing', async () => {
     const decide = vi.fn(async () => false);
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ decide, continueSpecsAfterAnswers })) } as never, log: vi.fn() });
-    const answers = routes.find((r) => r.method === 'POST' && r.path.endsWith('/answers'))!;
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ decide })) } as never, log: vi.fn() });
     const json = vi.fn();
-    await answers.handler({ params: { projectId: 'shop', specId: 'shop-002' }, body: async () => ({ questionId: 'specs-1', text: 'Sim' }), json } as never);
-    expect(decide).toHaveBeenCalledWith({ kind: 'answer', id: 'specs-1', text: 'Sim', docsAnswered: false });
-    expect(continueSpecsAfterAnswers).not.toHaveBeenCalled();
-    const reprocess = routes.find((r) => r.method === 'POST' && r.path.endsWith('/specs/reprocess'))!;
-    await reprocess.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json } as never);
-    expect(continueSpecsAfterAnswers).toHaveBeenCalledTimes(1);
-    expect(json).toHaveBeenLastCalledWith(202, { ok: true });
+    await route(routes, '/answers').handler({ params, body: async () => ({ questionId: 'q-1', text: 'Sim' }), json } as never);
+    expect(decide).toHaveBeenCalledWith({ kind: 'answer', id: 'q-1', text: 'Sim', docsAnswered: false });
+    expect(json).toHaveBeenLastCalledWith(200, { ok: true, queued: false });
   });
 
-  it('Reprocessar on the specs is refused while a specs question has no answer', async () => {
-    const continueSpecsAfterAnswers = vi.fn(() => null);
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueSpecsAfterAnswers })) } as never, log: vi.fn() });
-    const reprocess = routes.find((r) => r.method === 'POST' && r.path.endsWith('/specs/reprocess'))!;
-    await expect(reprocess.handler({ params: { projectId: 'shop', specId: 'shop-002' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 409 });
+  it('applies the suggestions of one stage, and goes on without them', async () => {
+    const state = { patches: [{ patchId: 'a', status: 'pending', file: 'project.md' }, { patchId: 'b', status: 'pending', file: 'stack.md' }], questions: [] };
+    const decide = vi.fn(async () => false);
+    const proceedWithout = vi.fn(async () => undefined);
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ state, decide, proceedWithout })) } as never, log: vi.fn() });
+    const json = vi.fn();
+    await route(routes, '/docs/:file/apply').handler({ params, json } as never);
+    expect(decide.mock.calls).toEqual([[{ kind: 'accept', id: 'a' }]]);
+    expect(json).toHaveBeenLastCalledWith(200, { ok: true, accepted: 1, queued: 0 });
+    await route(routes, '/docs/:file/proceed').handler({ params, json } as never);
+    expect(proceedWithout).toHaveBeenCalledWith('project.md');
+  });
+
+  it('applies the reviewers adjustments to specs.md once, and refuses when there is none', async () => {
+    const applySpecsSuggestions = vi.fn(() => Promise.resolve());
+    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ applySpecsSuggestions, agentsDecide: async () => false, state: { questions: [], patches: [] } })) } as never, log: vi.fn() });
+    const json = vi.fn();
+    await route(routes, '/specs/apply').handler({ params, json } as never);
+    expect(applySpecsSuggestions).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenLastCalledWith(202, { ok: true });
+    applySpecsSuggestions.mockReturnValueOnce(null as never);
+    await expect(route(routes, '/specs/apply').handler({ params, json } as never)).rejects.toMatchObject({ status: 409 });
   });
 });
+

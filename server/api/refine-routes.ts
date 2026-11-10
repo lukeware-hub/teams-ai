@@ -6,7 +6,7 @@ import type { SuggestFile } from '../refine/suggest.js';
 import { ALREADY_STARTED, ConflictError, EVALUATION_BUSY, NotFoundError } from '../refine/session.js';
 import { PackTooLargeError } from '../refine/fit-pack.js';
 import { resolveClosing } from '../refine/closing-resolver.js';
-import { acceptAllPending, decideWhenDelegated, haltTeam, runTeam } from '../refine/autopilot.js';
+import { acceptAllPending, decideWhenDelegated, haltTeam, ownerResumed, runTeam } from '../refine/autopilot.js';
 import type { StoredEvent } from '../store/event-store.js';
 import { tailJournal } from './journal-tail.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -59,7 +59,10 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
   const optionalBody = (ctx: RouteContext) => ctx.body().catch(() => ({}));
   const logRunFailure = (params: Record<string, string>) => (err: Error) => deps.log?.(`refine ${params.projectId}/${params.specId}: ${err.message}`);
   /** Runs a review in the background; with yes to "agents decide", the team then decides what it left waiting. */
-  const review = (s: RefineSession, params: Record<string, string>, run: Promise<void>) => run.then(() => decideWhenDelegated(s)).catch(logRunFailure(params));
+  const review = (s: RefineSession, params: Record<string, string>, run: Promise<void>) => {
+    ownerResumed(s);
+    return run.then(() => decideWhenDelegated(s)).catch(logRunFailure(params));
+  };
   const S = `${P}/refine/:projectId/:specId`;
   return [
     { method: 'GET', path: `${P}/refine`, handler: wrap(async ({ json }) => json(200, await registry.list())) },
@@ -186,6 +189,7 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
         // A follow-on request is run again by the team alone, from its evaluation, and says why it stops: saving in the repositories stays with the owner.
+        ownerResumed(s);
         runTeam(s).catch(logRunFailure(params));
         json(202, { ok: true });
       }),
@@ -197,25 +201,32 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
         const s = await get(params);
         const { accepted, queued } = await acceptAllPending(s);
         // Queued while the team works: they apply when it ends, so the agents are not started again now.
+        ownerResumed(s);
         if (queued === 0) runTeam(s, { evaluate: false }).catch(logRunFailure(params));
         json(202, { ok: true, accepted, queued });
       }),
     },
     {
       method: 'POST',
-      path: `${S}/specs/approve`,
+      path: `${S}/specs/proceed`,
+      // The owner goes on with specs.md without the reviewers' adjustments.
       handler: wrap(async ({ params, json }) => {
-        await (await get(params)).approveSpecsAnyway();
+        const s = await get(params);
+        ownerResumed(s);
+        await s.proceedWithSpecs();
         json(200, { ok: true });
       }),
     },
     {
       method: 'POST',
-      path: `${S}/specs/ask`,
+      path: `${S}/specs/apply`,
+      // The owner takes the reviewers' adjustments to specs.md: the items they named are detailed once more, with no new review.
       handler: wrap(async ({ params, json }) => {
         const s = await get(params);
-        const asked = await s.askAboutSpecs();
-        json(200, { asked });
+        const run = s.applySpecsSuggestions();
+        if (!run) throw new ConflictError('Não há ajuste do PO ou do SM para aplicar agora, ou o time está trabalhando.');
+        review(s, params, run);
+        json(202, { ok: true });
       }),
     },
     {
@@ -251,14 +262,27 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
-      path: `${S}/specs/reprocess`,
-      // The specs are reviewed again with the owner's answers, and only when the owner clicks Reprocessar on them.
+      path: `${S}/docs/:file/apply`,
+      // The owner takes every suggestion the review of this stage left, with no new review.
       handler: wrap(async ({ params, json }) => {
+        const file = params.file!;
+        if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
         const s = await get(params);
-        const run = s.continueSpecsAfterAnswers();
-        if (!run) throw new ConflictError('Ainda há perguntas de especificação sem resposta, ou o refinamento está ocupado.');
-        review(s, params, run);
-        json(202, { ok: true });
+        ownerResumed(s);
+        json(200, { ok: true, ...(await acceptAllPending(s, file as DocFile)) });
+      }),
+    },
+    {
+      method: 'POST',
+      path: `${S}/docs/:file/proceed`,
+      // The owner goes on without what the review of this stage left: suggestions set aside, questions answered by the PO.
+      handler: wrap(async ({ params, json }) => {
+        const file = params.file!;
+        if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
+        const s = await get(params);
+        ownerResumed(s);
+        await s.proceedWithout(file as DocFile);
+        json(200, { ok: true });
       }),
     },
     {

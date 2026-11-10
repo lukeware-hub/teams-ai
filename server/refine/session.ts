@@ -45,10 +45,10 @@ import { requestTrace, type RequestTrace } from './trace.js';
 import { fitPackBudget } from './fit-pack.js';
 import { ownerFailure, TRY_AGAIN } from './agent-failure.js';
 import { DOC_FILES, designFromImagesPack, SUGGEST_ROLE, suggestPack, type SuggestFile } from './suggest.js';
-import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type OwnerDecision, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState, type SpecsVerdict } from './state.js';
+import { allGreen, applyRefineEvent, canStart, closingChecks, emptyRefineState, newestReshape, requestHeading, safePatches, speckitPending, type BacklogState, type OwnerDecision, type ExtensionRequest, type ClosingCheck, type RefineLimits, type RefineState } from './state.js';
 import { renderSpecsMd } from './specs-md.js';
 import { specsIssues } from './specs-check.js';
-import { aboutADocument, decideQuestionPack, docNamedBy, SPECS_REVIEWERS, specsAskPack, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
+import { aboutADocument, decideQuestionPack, docNamedBy, SPECS_REVIEWERS, specsDocsPack, specsReviewPack, type SpecsReviewer } from './specs-review.js';
 import { leanRefine, refineLimits } from './limits.js';
 import { isStarted } from './coverage.js';
 import { idSourceOf, specIdOf } from './specs-index.js';
@@ -225,8 +225,8 @@ export interface Snapshot {
   /** The seq of the last event the state holds; the page applies only the events after it. */
   seq: number;
   limits: RefineLimits;
-  /** specs.md is written from the current backlog and PO and SM both approved it: the final review may go on. */
-  specsApproved: boolean;
+  /** specs.md is written from the current backlog and passes the plain checks: the start may go on. */
+  specsReady: boolean;
   /** The trail of a follow-on request: its specs and what each has; absent for other sessions. */
   trace?: RequestTrace | null;
   /** The steps running now, from the journal, so a reloaded page shows them too. */
@@ -291,15 +291,11 @@ export function namesItem(text: string, key: string): boolean {
 
 /** The automatic repairs of a rejected specs.md before the owner is asked. */
 /** A stage review that took longer than this is not repeated automatically, even when its score is below the pass line. */
-const AUTO_REVIEW_MAX_MS = 120_000;
 /** The documents the findings name; null when none names one, so the patches are not restricted. */
 const namedDocs = (findings: ReadonlyArray<{ text: string }>): ReadonlySet<DocFile> | null => {
   const named = new Set(findings.map((f) => docNamedBy(f.text)).filter((d): d is DocFile => d !== undefined));
   return named.size > 0 ? named : null;
 };
-const MAX_SPECS_REPAIRS = 4;
-/** The rounds in which the PO decides alone, with the owner's autonomy, before the text is followed anyway. */
-const MAX_SPECS_DECIDES = 3;
 const MAX_CHAIN_CYCLES = 4;
 
 /** What the architecture pack asks the graph for: the system's repositories and the links between them. */
@@ -315,8 +311,6 @@ export interface ClosingSummary {
   summaryHash: string;
 }
 
-/** The verdict approves the text with this hash. */
-const approvedAt = (v: SpecsVerdict | undefined, hash: string): boolean => v?.specsHash === hash && v.verdict === 'approved';
 
 export class RefineSession {
   private work: Promise<void> | null = null;
@@ -331,10 +325,6 @@ export class RefineSession {
     if (run === null && (this.state.queued?.length ?? 0) > 0) queueMicrotask(() => void this.applyQueued().catch(() => undefined));
   }
   private abortCtl: AbortController | null = null;
-  /** The owner handed the team full autonomy for this run: what would be asked is decided instead. */
-  private autonomous = false;
-  /** A follow-on request the team runs alone, in the lean way: one pass, no repeated evaluations. A text that fails the plain checks leaves it. */
-  private leanRun = false;
   /** A graph extraction is the only thing running: the owner's answers and rejections do not wait for it, since they edit no document. */
   private indexing = false;
   /** A suggestion is being written: the owner's saves go through, while an evaluation waits for it. */
@@ -344,8 +334,6 @@ export class RefineSession {
   private readonly changedWhileIndexing = new Set<DocFile>();
   /** The last save queued for each document: a save of a document starts only after the one before it has settled. */
   private readonly docSaves = new Map<DocFile, Promise<unknown>>();
-  /** The documents whose low score already got its one extra review. */
-  private readonly improved = new Set<DocFile>();
   /** Set by `beginStart()` before any await, and cleared by `markStarted()` or `failStart()`. */
   private starting = false;
   /** Set while `syncWithMain` brings main's changes in: no start or evaluation reads the docs meanwhile. */
@@ -479,13 +467,6 @@ export class RefineSession {
     };
   }
 
-  /** The team applied what the reviewers found: the checks they failed stand settled with no new evaluation, except the ones the plain checks still see broken. Nothing is journaled when none is left. */
-  async settleChecklist(): Promise<void> {
-    const broken = new Set<string>(this.state.backlog ? specsIssues(this.state.backlog).map((i) => i.check) : []);
-    const ids = this.state.checklist.filter((i) => !i.passed && !broken.has(i.id)).map((i) => i.id);
-    if (ids.length > 0) await this.journal.fact(RefineEvent.ChecklistSettled, { ids });
-  }
-
   /** The team resolving a follow-on request on its own started or stopped; a stop lists in plain words what is left for the owner. */
   async teamAutopilot(status: 'queued' | 'started' | 'stopped', reasons: string[] = []): Promise<void> {
     if (status === 'queued') await this.journal.fact(RefineEvent.TeamAutopilotQueued, { reason: reasons[0] ?? '' });
@@ -576,7 +557,7 @@ export class RefineSession {
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
     const events = this.journal.events;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), evaluationProgress: evaluationProgressOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsApproved: this.specsApproved(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), evaluationProgress: evaluationProgressOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsReady: this.specsReady(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
@@ -636,11 +617,6 @@ export class RefineSession {
   }
 
   /** The steps after the documents wait while a document is outdated: its stage is reviewed again first. */
-  private guardNoStale(): void {
-    const stale = Object.keys(this.state.staleBy ?? {});
-    if (this.state.stages === true && stale.length > 0) throw new ConflictError(`Revise de novo as etapas desatualizadas antes: ${stale.join(', ')}.`);
-  }
-
   /** The documents a repository session still needs in the Graphify graph; none in any other session. */
   private offGraph(): DocFile[] {
     if (this.state.repositories !== true || this.state.stages !== true) return [];
@@ -813,16 +789,8 @@ export class RefineSession {
     try {
       await this.keepPassedText(file, restore);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f), graphNotes: this.deps.docGraphContext ? builtGraphNotes(this.deps.docGraphContext) : undefined };
-      const started = Date.now();
+      // One review per click: what it finds is the owner's to apply or leave.
       await this.reviewAndScore(deps, file);
-      // A document scored below the pass line is reviewed once more, now with its new score in front of the agents.
-      // A review that took longer than two minutes is not repeated: the owner decides, and the journal says why.
-      if (this.state.status !== 'error' && this.lowScore(file) !== null && !this.improved.has(file)) {
-        this.improved.add(file);
-        const ms = Date.now() - started;
-        if (ms > AUTO_REVIEW_MAX_MS) await this.journal.fact(RefineEvent.AutoReviewSkipped, { file, ms });
-        else await this.reviewAndScore(deps, file);
-      }
     } finally {
       await this.journal.fact(RefineEvent.EvaluationEnded, {});
     }
@@ -836,6 +804,8 @@ export class RefineSession {
     if (!target) throw new ConflictError('todas as etapas já foram concluídas');
     if (!DOC_STAGES.includes(target)) throw new ConflictError(`${target} não é uma etapa do refinamento`);
     const low = this.checkAdvance(target, confirmLowScore);
+    // Moving on is going on without what the review left open.
+    await this.proceedWithout(target);
     if (this.state.repositories === true) {
       const problem = this.stageProblem(target, await readDoc(this.deps.draft, target));
       if (problem) throw new ConflictError(problem);
@@ -848,7 +818,6 @@ export class RefineSession {
 
   /** Refuses a stage that cannot move on before anything is written, and returns the confirmed low Jev score or null; a not-applicable mark counts as processed and reviewed. */
   private checkAdvance(target: DocFile, confirmLowScore: boolean, marked = false): number | null {
-    if (this.state.staleBy?.[target]) throw new ConflictError(`Processe a etapa ${target} de novo antes de continuar.`);
     const finished = (this.state.doneStages ?? []).includes(target);
     // A mark is the owner's own choice, so the score of the text it replaces does not gate it.
     const low = finished || marked ? null : this.lowScore(target);
@@ -888,6 +857,9 @@ export class RefineSession {
     const repositories = this.state.stages === true && this.state.repositories === true;
     // The stage is checked before the mark is written, so a refused mark leaves the document as it was.
     if (repositories) this.checkAdvance('design.md', false, true);
+    // With no design, what its review left open no longer applies.
+    for (const p of this.state.patches.filter((x) => x.file === 'design.md' && x.status === 'pending')) await this.reject(p.patchId, 'O design não se aplica a este projeto.');
+    for (const q of this.state.questions.filter((x) => x.file === 'design.md' && x.status === 'pending')) await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
     await writeDoc(this.deps.draft, 'design.md', NOT_APPLICABLE_DESIGN);
     await this.journal.fact(RefineEvent.DocEdited, { file: 'design.md', hash: sha256(NOT_APPLICABLE_DESIGN), source: 'human' });
     await this.keepPassed('design.md', NOT_APPLICABLE_DESIGN);
@@ -908,14 +880,7 @@ export class RefineSession {
     const problem = this.stageProblem(file, await readDoc(this.deps.draft, file));
     if (problem) throw new ConflictError(problem);
     if (!this.deps.extractDocs) throw new ConflictError('O Graphify não está disponível para adicionar o documento.');
-    // A document edited since its review is reviewed again first, by its own role; the graph takes it once that review has ended.
-    if (!(this.state.reviewedStages ?? []).includes(file)) {
-      void this.startStage(file, false).then(async () => {
-        if (this.state.status !== 'error') await this.startIndexing(file, false);
-      });
-      return;
-    }
-    // The stage does not move: it is already done.
+    // The stage does not move: it is already done; an edit since its review goes in as it is, with no new review.
     await this.startIndexing(file, false);
   }
 
@@ -924,7 +889,6 @@ export class RefineSession {
     this.guard();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardStagesDone();
-    this.guardNoStale();
     if (this.state.reviewClosed) throw new ConflictError('a revisão já foi concluída');
     await this.journal.fact(RefineEvent.ReviewClosed, {});
   }
@@ -1167,7 +1131,6 @@ export class RefineSession {
     this.guard();
     if (this.state.repositories !== true) throw new ConflictError('só um refinamento com repositórios decide a arquitetura');
     this.guardStagesDone();
-    this.guardNoStale();
     this.guardGraphed();
     const ctl = (this.abortCtl = new AbortController());
     const started = this.docsNow().then(async (docs) => {
@@ -1229,7 +1192,6 @@ export class RefineSession {
   private async enableBacklogStep(bindRepo = false): Promise<void> {
     if (this.state.backlog?.enabled) return;
     this.guardStagesDone();
-    this.guardNoStale();
     this.guardGraphed();
     // Plan 90: the owner's answers reach the brief first, so the architecture is decided on the documents the backlog is made of.
     await this.recordOwnerAnswers();
@@ -1286,7 +1248,6 @@ export class RefineSession {
   runPlans(): Promise<void> {
     this.guard();
     this.guardStagesDone();
-    this.guardNoStale();
     const backlog = this.state.backlog;
     if (backlog?.enabled && (!backlog.detail || backlog.items.length === 0 || backlog.items.some((i) => !backlog.specs?.[i.key]?.spec))) {
       throw new ConflictError('Detalhe o backlog antes de preparar os planos: cada item precisa da sua spec.');
@@ -1367,31 +1328,34 @@ export class RefineSession {
     return { text, hash: sha256(text) };
   }
 
-  /** specs.md is written for this text and both PO and SM approved it. */
-  private specsSettled(hash: string): boolean {
-    return this.state.specsMd?.hash === hash && (this.state.specsOwnerApproved === hash || SPECS_REVIEWERS.every((role) => approvedAt(this.state.specsReview?.[role], hash)));
+  /** specs.md is written for this text and PO and SM gave their view of it, or the owner went on without their review. */
+  private specsReviewed(hash: string): boolean {
+    if (this.state.specsMd?.hash !== hash) return false;
+    return this.state.specsOwnerApproved === hash || SPECS_REVIEWERS.every((role) => this.state.specsReview?.[role]?.specsHash === hash && this.state.specsReview[role]!.verdict !== 'failed');
   }
 
-  /** The owner follows with this specs.md although a reviewer rejected it: the decision is theirs, and it stands for this text only. */
-  async approveSpecsAnyway(): Promise<void> {
+  /** The owner goes on with this specs.md without the reviewers' adjustments; it stands for this text only. */
+  async proceedWithSpecs(): Promise<void> {
     this.guard();
     const hash = this.state.specsMd?.hash;
     if (hash === undefined) throw new ConflictError('O specs.md ainda não foi gerado para este backlog.');
-    if (this.specsSettled(hash)) throw new ConflictError('O specs.md já está aprovado.');
-    // The owner decides: the questions the team asked about this text are closed with it.
-    for (const q of this.state.questions.filter((x) => x.origin === 'specs' && x.status === 'pending')) await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
+    await this.proceedWithout();
     await this.journal.fact(RefineEvent.SpecsOwnerApproved, { specsHash: hash });
   }
 
-  /** The owner's last answer about specs.md: the backlog is detailed again with the decisions, then the text is checked. Null while a question is still open. */
-  continueSpecsAfterAnswers(): Promise<void> | null {
-    if (this.busy || this.state.questions.some((q) => q.origin === 'specs' && q.status === 'pending') || this.offGraph().length > 0) return null;
+  /** The owner takes the reviewers' adjustments to specs.md: the documents they named are fixed, the items they named are detailed once more and specs.md is written again, with no new review. Null when nothing is to apply. */
+  applySpecsSuggestions(): Promise<void> | null {
+    if (this.busy || this.offGraph().length > 0) return null;
+    const specs = this.specsOf();
+    if (!specs || this.state.specsMd?.hash !== specs.hash || this.specsRejections(specs.hash).length === 0) return null;
     const ctl = (this.abortCtl = new AbortController());
     const run = (async () => {
+      const feedback = this.specsFeedbackOf(specs.hash);
+      if (feedback) await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
+      await this.repairDocuments(ctl, specs);
       await this.timedChain(ctl);
       const next = this.specsOf();
-      // The text after the owner's decision is checked first, even when it came out the same as the one rejected.
-      if (next && !this.specsSettled(next.hash)) await this.specsRounds(ctl, next, true);
+      if (next && !ctl.signal.aborted) await this.writeSpecs(next);
     })().finally(() => {
       this.running = null;
       this.abortCtl = null;
@@ -1400,60 +1364,16 @@ export class RefineSession {
     return run;
   }
 
-  /** The PO's turn when the repairs did not settle specs.md: it fixes in the documents what they already settle, and asks the owner the rest, as choices with a recommendation. False when the agent gave no answer. */
-  async askAboutSpecs(): Promise<boolean> {
-    this.guard();
-    const specs = this.specsOf();
-    if (!specs || this.state.specsMd?.hash !== specs.hash) throw new ConflictError('O specs.md ainda não foi gerado para este backlog.');
-    const ctl = (this.abortCtl = new AbortController());
-    const run = this.askRound(ctl, specs).finally(() => {
-      this.running = null;
-      this.abortCtl = null;
-    });
-    this.running = run.then(() => undefined);
-    return run;
-  }
-
-  private async askRound(ctl: AbortController, specs: { text: string; hash: string }, mode: 'ask' | 'decide' = 'ask'): Promise<boolean> {
-    const findings = SPECS_REVIEWERS.flatMap((role) => {
-      const review = this.state.specsReview?.[role];
-      return review?.specsHash === specs.hash && review.verdict === 'rejected' ? review.findings.map((text) => ({ role, text })) : [];
-    });
-    if (findings.length === 0) return false;
-    await this.journal.fact(RefineEvent.EvaluationStarted, {});
-    try {
-      const cycle = this.state.cycle;
-      const out = (await this.deps.runAgent<'refine'>(
-        { kind: 'refine', role: 'po', pack: fitPackBudget(specsAskPack({ specHash: specs.hash, specsMd: specs.text, findings, decide: mode === 'decide' })), cwd: this.deps.draft.root, phase: 'refine', taskId: null, attempt: cycle },
-        { journal: this.journal, stepDir: this.deps.draft.steps, specHash: specs.hash, signal: ctl.signal },
-      )) as StepOutcome<z.infer<typeof RefineOutput>>;
-      if (!out.ok) return false;
-      // What the documents settle is fixed in them: the patches that change no scope are accepted at once, the others wait for the owner.
-      const docs = await this.docsNow();
-      const { files } = await this.proposeWithin(out.value.docPatch, docs, cycle, 100, namedDocs(findings));
-      for (const file of files) await this.acceptSafePatches(file);
-      // With the owner's autonomy the team accepts every change it proposed and asks nothing.
-      if (mode === 'decide') {
-        for (const p of this.state.patches.filter((x) => x.status === 'pending' && files.has(x.file))) await this.applyPatchRow(p.patchId, true).catch((err) => { if (!(err instanceof ConflictError)) throw err; });
-        return true;
-      }
-      const questions: Question[] = out.value.questions.map((q, i) => ({
-        questionId: `specs-${specs.hash.slice(7, 15)}-${i}`,
-        role: 'po',
-        text: q.text,
-        blocking: true,
-        relatedAcIds: [],
-        cycle,
-        origin: 'specs',
-        ...(q.options.length ? { options: q.options } : {}),
-        ...(q.subject ? { subject: q.subject } : {}),
-      }));
-      await this.journal.fact(RefineEvent.SpecsQuestionsAsked, { specsHash: specs.hash, questions });
-      return true;
-    } catch {
-      return false;
-    } finally {
-      await this.journal.fact(RefineEvent.EvaluationEnded, {});
+  /** The owner goes on without what a review left open, in one stage or, with no file, in all of them: the suggestions are set aside and the PO answers each question as an assumption written into the documents. */
+  async proceedWithout(file?: DocFile): Promise<void> {
+    const mine = (f?: string) => file === undefined || f === file;
+    for (const p of this.state.patches.filter((x) => x.status === 'pending' && mine(x.file))) await this.reject(p.patchId, 'O dono seguiu sem alterações.');
+    for (const q of this.state.questions.filter((x) => x.status === 'pending' && mine(x.file))) {
+      // A question the PO cannot settle from the documents is set aside, so it never holds the owner back.
+      await this.decideAnswer(q.questionId).catch(async (err: unknown) => {
+        if (!(err instanceof ConflictError) || err instanceof BusyError) throw err;
+        await this.journal.fact(RefineEvent.QuestionSkipped, { questionId: q.questionId });
+      });
     }
   }
 
@@ -1488,33 +1408,28 @@ export class RefineSession {
     await this.answer(questionId, `Decidido pelo time com base nos documentos: ${reasons.join('; ')}.`);
   }
 
-  /** The gate of the final review: specs.md is written from the current backlog and approved by PO and SM. */
-  specsApproved(): boolean {
+  /** The gate of the start: specs.md is written from the current backlog, which its evaluation found ready; the reviewers' view never holds it. */
+  specsReady(): boolean {
     const specs = this.specsOf();
-    return specs !== null && this.specsSettled(specs.hash);
+    return specs !== null && this.state.specsMd?.hash === specs.hash;
   }
 
-  /** Opens the specs check when the backlog is ready and a reviewer still owes its approval of this text; null when nothing is due. */
-  startSpecs(opts: { autonomous?: boolean } = {}): Promise<void> | null {
+  /** Writes specs.md when the backlog is ready and has PO and SM review it once; null when nothing is due. */
+  startSpecs(): Promise<void> | null {
     if (this.busy || this.starting || this.syncing || this.discarding || this.state.status === 'started') return null;
     const b = this.state.backlog;
     if (!b?.enabled || b.detail !== true || b.items.length === 0) return null;
     const now = this.specsOf();
-    if (now && this.specsSettled(now.hash)) return null;
+    if (now && this.specsReviewed(now.hash)) return null;
     // The backlog is evaluated again only with all five documents in the graph, as an evaluation asks.
     if (!now && this.offGraph().length > 0) return null;
     const ctl = (this.abortCtl = new AbortController());
-    this.autonomous = opts.autonomous === true;
-    this.leanRun = this.autonomous && leanRefine() && this.state.extension !== undefined;
     const run = (async () => {
-      // The backlog is not ready yet (a check of the documents is open, or they changed): the agents evaluate it first, then specs.md is checked.
-      // Lean: an autonomous run does not start another full evaluation here; what blocks the backlog is left to the owner.
-      if (!now && !this.leanRun) await this.timedChain(ctl);
+      // The backlog is not ready yet (a check of the documents is open, or they changed): the agents evaluate it first.
+      if (!now) await this.timedChain(ctl);
       const specs = this.specsOf();
-      if (specs && !this.specsSettled(specs.hash)) await this.specsRounds(ctl, specs);
+      if (specs && !this.specsReviewed(specs.hash)) await this.timedSpecs(ctl, specs);
     })().finally(() => {
-      this.autonomous = false;
-      this.leanRun = false;
       this.running = null;
       this.abortCtl = null;
     });
@@ -1528,69 +1443,7 @@ export class RefineSession {
     if (this.state.status === 'started') return 'O desenvolvimento já começou.';
     const b = this.state.backlog;
     if (!b?.enabled || b.detail !== true || b.items.length === 0) return 'O backlog ainda não está pronto: quebre e detalhe o backlog antes de gerar o specs.md.';
-    return 'O specs.md já está aprovado.';
-  }
-
-  /** Lean: an autonomous run reviews specs.md once. A rejection is not repaired by detailing the items again (a full evaluation each time): the team follows the text on the owner's behalf and the findings stay recorded. */
-  private get specsRepairLimit(): number {
-    return this.leanRun ? 0 : MAX_SPECS_REPAIRS;
-  }
-
-  private get specsDecideLimit(): number {
-    return this.leanRun ? 0 : MAX_SPECS_DECIDES;
-  }
-
-  /** The check of specs.md, and when a reviewer rejects it, up to the repair limit of rounds in which the agents detail the named items again with what was wrong; the owner is asked only after that. */
-  private async specsRounds(ctl: AbortController, first: { text: string; hash: string }, checkFirst = false): Promise<void> {
-    // Lean: specs.md is a plain rendering of the backlog the PO and the SM reviewed in the evaluation. When the plain checks find nothing wrong,
-    // it is followed at once and the two reviewers check it beside the plans (reviewSpecsBeside); otherwise the full check below runs.
-    if (this.leanRun && this.state.backlog && specsIssues(this.state.backlog).length === 0) {
-      await this.writeSpecs(first);
-      await this.journal.fact(RefineEvent.SpecsOwnerApproved, { specsHash: first.hash });
-      return;
-    }
-    this.leanRun = false;
-    let specs = first;
-    let repaired = checkFirst;
-    let decides = 0;
-    for (;;) {
-      const repairable = () => ((this.state.specsRepairs ?? 0) < this.specsRepairLimit ? this.specsFeedbackOf(specs.hash) : null);
-      // A text a reviewer already rejected goes straight back to the agents; any other is checked first, and so is the one a repair just made.
-      let feedback = repaired ? null : repairable();
-      if (!feedback) {
-        await this.timedSpecs(ctl, specs);
-        feedback = repairable();
-      }
-      if (!feedback || ctl.signal.aborted) {
-        // The repairs are spent, or every item named was already redone, and a reviewer still rejects this text: the PO fixes the obvious in the documents and asks the owner the rest.
-        if (!ctl.signal.aborted && this.specsRejections(specs.hash).length > 0) {
-          if (this.autonomous && decides < this.specsDecideLimit) {
-            decides += 1;
-            // The PO settles every open point in the documents, the backlog is detailed again on them, and the new text is checked.
-            if (await this.askRound(ctl, specs, 'decide')) {
-              await this.timedChain(ctl);
-              const next = this.specsOf();
-              if (next && !this.specsSettled(next.hash)) {
-                specs = next;
-                repaired = true;
-                continue;
-              }
-            }
-            return;
-          }
-          if (!this.autonomous && this.state.specsAsked !== specs.hash) await this.askRound(ctl, specs);
-        }
-        return;
-      }
-      await this.journal.fact(RefineEvent.SpecsFeedback, { specsHash: specs.hash, feedback });
-      // What the reviewers said about the documents themselves is fixed there first: redoing an item cannot fix a document.
-      await this.repairDocuments(ctl, specs);
-      await this.timedChain(ctl);
-      const next = this.specsOf();
-      if (!next || this.specsSettled(next.hash)) return;
-      specs = next;
-      repaired = true;
-    }
+    return 'O specs.md já foi gerado e revisado.';
   }
 
   /** The PO fixes, in the documents, the findings that are about them: merged repeats, open points closed as assumptions, wrong citations. Only changes that add no scope are accepted; the others wait as suggestions. */
@@ -1644,25 +1497,13 @@ export class RefineSession {
     await this.journal.fact(RefineEvent.SpecsMdWritten, { hash: specs.hash, bytes: Buffer.byteLength(specs.text) });
   }
 
-  /** Lean: PO and SM check the specs.md already followed, while the plans are written; their verdicts are journaled and never hold the start. */
-  async reviewSpecsBeside(): Promise<void> {
-    const specs = this.specsOf();
-    if (!specs || this.state.specsMd?.hash !== specs.hash) return;
-    if (this.state.specsOwnerApproved !== specs.hash) return;
-    const pending = SPECS_REVIEWERS.filter((role) => this.state.specsReview?.[role]?.specsHash !== specs.hash);
-    if (pending.length === 0) return;
-    const docs = await this.docsNow();
-    const ctl = new AbortController();
-    await Promise.all(pending.map((role) => this.reviewSpecs(role, specs, docs, ctl).catch(() => undefined)));
-  }
-
   private async timedSpecs(ctl: AbortController, specs: { text: string; hash: string }): Promise<void> {
     // An open evaluation spans the file and both checks, so the page shows the work, its timer and its end like any other.
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
       await this.writeSpecs(specs);
       const docs = await this.docsNow();
-      const pending = SPECS_REVIEWERS.filter((role) => !approvedAt(this.state.specsReview?.[role], specs.hash));
+      const pending = SPECS_REVIEWERS.filter((role) => this.state.specsReview?.[role]?.specsHash !== specs.hash || this.state.specsReview[role]!.verdict === 'failed');
       await Promise.all(pending.map((role) => this.reviewSpecs(role, specs, docs, ctl)));
     } catch (err) {
       const reason = `O specs.md não pôde ser gravado: ${err instanceof Error ? err.message : String(err)}. ${TRY_AGAIN}`;
@@ -2089,8 +1930,8 @@ export class RefineSession {
       if (summaryHash === undefined) throw new ConflictError('Abra o resumo do refinamento e confirme antes de iniciar.');
       const summary = await this.closingSummary();
       if (summary.summaryHash !== summaryHash) throw new ConflictError('O resumo mudou desde que você o abriu: revise-o antes de iniciar.');
-      // The specs.md is made and checked in the backlog step, so the development starts only once PO and SM approved it.
-      if (!this.specsApproved()) throw new ConflictError('O specs.md precisa estar gerado e aprovado por PO e SM antes de iniciar o desenvolvimento.');
+      // The specs.md is made from the current backlog before the start; the reviewers' view only advises.
+      if (!this.specsReady()) throw new ConflictError('O specs.md precisa estar gerado do backlog atual antes de iniciar o desenvolvimento.');
       await this.journal.fact(RefineEvent.DevelopmentAuthorized, { summaryHash });
     }
     if (!canStart(this.state)) throw cannotStart(this.state.status);

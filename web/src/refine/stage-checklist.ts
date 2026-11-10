@@ -1,6 +1,6 @@
 /** One line of the document validation checklist: whether it passes, and the text the owner reads. */
 export interface StageCheck {
-  id: 'reviewed' | 'no-question' | 'no-suggestion' | 'format' | 'graphed';
+  id: 'processed' | 'format' | 'graphed';
   label: string;
   ok: boolean;
   /** Plain words for a failure: what the owner does about it. */
@@ -8,12 +8,8 @@ export interface StageCheck {
 }
 
 export interface StageChecklistInput {
-  /** The stage review came after the last edit of the document. */
-  reviewed: boolean;
-  /** Mandatory questions of the stage still open. */
-  openQuestions: number;
-  /** Suggestions of the stage still waiting for accept or reject. */
-  pendingSuggestions: number;
+  /** The agents processed the stage at least once; what their review left open never holds the owner. */
+  processed: boolean;
   /** Why the document is not in the template format, or null when it is. */
   formatProblem: string | null;
   /** The document is in the Graphify graph after its last edit. */
@@ -24,12 +20,10 @@ export interface StageChecklistInput {
   graphError: string | null;
 }
 
-/** The five checks of a stage, in the order the page shows them. */
+/** The checks of a stage, in the order the page shows them. */
 export function stageChecklist(input: StageChecklistInput): StageCheck[] {
   return [
-    { id: 'reviewed', label: 'Revisado depois da última edição', ok: input.reviewed, hint: 'Avalie esta etapa de novo.' },
-    { id: 'no-question', label: 'Sem pergunta obrigatória aberta', ok: input.openQuestions === 0, hint: 'Responda a pergunta obrigatória desta etapa.' },
-    { id: 'no-suggestion', label: 'Sem sugestão pendente', ok: input.pendingSuggestions === 0, hint: 'Aceite ou rejeite as sugestões desta etapa.' },
+    { id: 'processed', label: 'Revisado pelo time', ok: input.processed, hint: 'Processe esta etapa com os agentes.' },
     { id: 'format', label: 'Formato do modelo', ok: input.formatProblem === null, hint: input.formatProblem },
     // While the extraction runs it is the line that says so; a failure of an earlier run waits until the run ends.
     { id: 'graphed', label: 'No Graphify', ok: input.graphed, hint: input.graphing ? null : (input.graphError ?? 'Adicione o documento ao Graphify para avançar.') },

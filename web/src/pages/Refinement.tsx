@@ -32,7 +32,7 @@ import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.j
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner, stageInfo } from '../refine/ProcessingBanner.js';
 import { currentReview, reviewChip, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
-import { SpecsAttempts } from '../refine/SpecsAttempts.js';
+import { ReviewDecision } from '../refine/ReviewDecision.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
 import { allStagesCurrent, currentStage, previousStage, stageOutdated, stageViews } from '../refine/stage-view.js';
@@ -316,14 +316,18 @@ export interface ViewProps {
   onEvaluate(): void | Promise<unknown>;
   /** Opening the final review: PO and SM check specs.md when something is still owed. */
   onCheckSpecs?(): void | Promise<unknown>;
-  /** The owner asks the team for help with a specs.md the repairs did not settle. */
-  onAskSpecs?(): void | Promise<unknown>;
   /** The owner's button for everything: the team answers, decides, repairs and prepares until the start is clear. */
   onResolveAll?(): void | Promise<unknown>;
   /** The owner accepts every suggestion at once; the agents run again on what was decided. */
   onAcceptAll?(): void | Promise<unknown>;
-  /** The owner follows with the specs.md although a reviewer rejected it. */
-  onApproveSpecs?(): void | Promise<unknown>;
+  /** The owner takes the PO and SM adjustments to specs.md once, with no new review. */
+  onApplySpecs?(): void | Promise<unknown>;
+  /** The owner goes on with specs.md without the PO and SM adjustments. */
+  onProceedSpecs?(): void | Promise<unknown>;
+  /** The owner takes every suggestion the review of a stage left, with no new review. */
+  onApplyStage?(file: DocFile): void | Promise<unknown>;
+  /** The owner goes on without what the review of a stage left: the PO answers its questions. */
+  onProceedStage?(file: DocFile): void | Promise<unknown>;
   onEnableBacklog?(): void | Promise<unknown>;
   /** Decides the architecture of the five documents, in a repository session. */
   onDecideArchitecture?(): void | Promise<unknown>;
@@ -340,8 +344,6 @@ export interface ViewProps {
   onCloseReview?(): void | boolean | Promise<unknown>;
   /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
-  /** Reprocessar on the specs: the team reviews specs.md again with the answers the owner gave. */
-  onReprocessSpecs?(): void | Promise<unknown>;
   /** The owner asks for the review of a stage again, from the text that was passed to it. */
   onReprocessStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks the Jev for the score of one document. */
@@ -570,7 +572,6 @@ export function RefinementView(p: ViewProps) {
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
   const specsAsked = specsQuestions(st);
-  const specsAnswered = (st.questions ?? []).filter((q) => q.origin === 'specs' && q.status === 'answered').length;
   const canStart = canStartRun(snap.state, busy);
   // Past the lock round, another evaluation is refused by the server: the button says so instead of failing.
   const atMax = snap.limits !== undefined && st.cycle - (st.stageStartCycle ?? 0) >= snap.limits.max;
@@ -787,13 +788,11 @@ export function RefinementView(p: ViewProps) {
     </div>
   ) : null;
   const docsTitle = existing ? (st.mode === 'continue' ? 'Continuação da spec' : 'Spec nova') : 'Documentos do projeto';
-  /** The five checks of a stage, from the state and the snapshot's format problem. */
+  /** The checks of a stage, from the state and the snapshot's format problem. */
   const stageLines = (file: DocFile) => {
     const graphError = st.graphError?.file === file ? st.graphError.reason : null;
     return stageChecklist({
-      reviewed: st.reviewedStages?.includes(file) ?? false,
-      openQuestions: (st.reprocessedStages ?? []).includes(file) ? 0 : docQuestions(st, file).filter((q) => q.blocking).length,
-      pendingSuggestions: docPatches(st, file).length,
+      processed: st.passedStages?.includes(file) ?? false,
       formatProblem: snap.stageProblems?.[file] ?? null,
       graphed: st.graphed?.includes(file) ?? false,
       graphing: st.graphing === file,
@@ -1109,18 +1108,11 @@ export function RefinementView(p: ViewProps) {
   };
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} repairs={st.specsRepairs ?? 0} asked={specsAsked.length > 0} />}
-      {step === 'backlog' && backlogOn && <SpecsAttempts attempts={st.specsAttempts ?? []} />}
+      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} followed={st.specsMd !== undefined && st.specsMd !== null && st.specsOwnerApproved === st.specsMd.hash} onApply={p.onApplySpecs} onProceed={p.onProceedSpecs} />}
       {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
         <div data-testid="specs-questions" className="grid gap-3">
           <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>
           {specsAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, specsAsked.length - i)}</Fragment>)}
-        </div>
-      )}
-      {step === 'backlog' && backlogOn && specsAsked.length === 0 && specsAnswered > 0 && !snap.specsApproved && (
-        <div data-testid="specs-reprocess" className="flex flex-wrap items-center gap-3">
-          <p className="m-0 text-[0.875rem] text-ink-soft">Respostas guardadas para o specs.md. Clique em Reprocessar para o time revisar com elas.</p>
-          <ActionButton data-testid="specs-reprocess-button" className="secondary" busy={busy} onClick={() => p.onReprocessSpecs?.()}>Reprocessar com as respostas</ActionButton>
         </div>
       )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
@@ -1379,9 +1371,10 @@ export function RefinementView(p: ViewProps) {
               ))}
             </ol>
           )}
-          {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: processe esta etapa de novo.</p>}
+          {cause && <p data-testid="doc-stale" className={notice}>{docLabel[cause]} mudou depois desta revisão: revise esta etapa de novo, se quiser.</p>}
           {!answerLocked && questions.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, questions.length - i)}</Fragment>)}
           {!answerLocked && patches.map(patchCard)}
+          {!answerLocked && count > 0 && p.onProceedStage && <ReviewDecision id={file} suggestions={patches.length} questions={questions.length} locked={locked} onApply={() => p.onApplyStage?.(file)} onProceed={() => p.onProceedStage?.(file)} onReview={p.onEvaluateStage ? () => p.onEvaluateStage?.(file) : undefined} />}
           <DiscardedNotices rows={discarded} testId="refinement-stage-discarded" named={false} />
           {count === 0 && !locked && <p data-testid="refinement-stage-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência neste documento.</p>}
           {(st.droppedQuestions ?? []).some((d) => d.file === file) && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.file === file)} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
@@ -1447,9 +1440,8 @@ export function RefinementView(p: ViewProps) {
   const reviewBlock = ((): string | null => {
     if (!stageSession) return null;
     const open = DOC_STAGES.filter((file) => !doneStages.includes(file));
-    if (st.repositories === true && open.length > 0) return `Conclua as etapas dos documentos antes: falta ${open.join(', ')}.`;
-    const stale = Object.keys(st.staleBy ?? {});
-    return stale.length > 0 ? `Revise de novo as etapas desatualizadas antes: ${stale.join(', ')}.` : null;
+    // An outdated stage is only a notice: it never holds the move to the backlog.
+    return st.repositories === true && open.length > 0 ? `Conclua as etapas dos documentos antes: falta ${open.join(', ')}.` : null;
   })();
   // Breaking the backlog down also waits for every document in Graphify, in a repository session.
   const breakdownBlock = ((): string | null => {
@@ -1487,7 +1479,7 @@ export function RefinementView(p: ViewProps) {
         {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
         {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
       </StepCard>
-      <StepCard grouped id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e conferido pelo PO e pelo SM. O desenvolvimento só começa quando os dois aprovam." owner="Conferida pelo PO e pelo SM" chip={snap.specsApproved === true ? { label: 'Aprovada', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
+      <StepCard grouped id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e revisado uma vez pelo PO e pelo SM. Os ajustes que eles sugerem são opcionais: você aplica ou segue sem eles." owner="Revisada pelo PO e pelo SM" chip={snap.specsReady === true ? { label: 'Gerado', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
         {verificationDetails}
       </StepCard>
     </div>
@@ -1502,7 +1494,7 @@ export function RefinementView(p: ViewProps) {
   const items = st.backlog?.items.length ?? 0;
   const finishSteps: FinishStep[] = [
     { id: 'backlog', label: 'Backlog detalhado', detail: `${items} itens`, done: st.backlog?.detail === true },
-    { id: 'specs', label: 'specs.md aprovado', detail: snap.specsApproved === true ? 'aprovado' : verdicts ? `${(st.specsAttempts?.length ?? 0) + 1}ª revisão · ${verdicts}` : 'ainda não conferido', done: snap.specsApproved === true },
+    { id: 'specs', label: 'specs.md gerado', detail: evaluating ? 'o time está refazendo o backlog' : st.status !== 'ready' ? 'espera a avaliação do backlog' : snap.specsReady !== true ? 'ainda não gerado' : verdicts ? `${verdicts} (ajustes opcionais)` : 'gerado', done: snap.specsReady === true },
     { id: 'plans', label: 'Planos preparados', detail: speckitReady ? 'prontos' : speckitRunning ? `${planSteps.filter((x) => x.endedAt).length} de ${speckit?.total ?? planSteps.length}` : speckit?.status === 'failed' ? 'falhou' : speckit?.stale ? 'desatualizados' : 'não preparados', done: speckitReady },
     { id: 'start', label: 'Pronto para iniciar', detail: '', done: canStart && speckitReady },
   ];
@@ -1518,8 +1510,8 @@ export function RefinementView(p: ViewProps) {
     </div>
   );
   // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
-  const specsGate = st.stages === true && backlogOn && snap.specsApproved !== true;
-  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, st.specsReview ?? {}, evaluating, specsAsked.length > 0) : null;
+  const specsGate = st.stages === true && backlogOn && snap.specsReady !== true;
+  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, evaluating) : null;
   const developButton = (
     <ActionButton data-testid="start" className={speckitReady && canStart && !specsGate ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady || specsGate} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
@@ -1564,7 +1556,7 @@ export function RefinementView(p: ViewProps) {
   const queuedIn = (file: DocFile) => (st.queued ?? []).filter((d) => st.patches.some((x) => x.patchId === d.id && x.file === file) || st.questions.some((q) => q.questionId === d.id && q.file === file)).length;
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
-            {acceptable > 0 && p.onAcceptAll && <p data-testid="accept-all-note" className="m-0 max-w-[72ch] text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e os agentes revisam de novo.</p>}
+            {acceptable > 0 && p.onAcceptAll && <p data-testid="accept-all-note" className="m-0 max-w-[72ch] text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e o time segue, sem revisar de novo.</p>}
             {(byDoc.length > 0 || (acceptable > 0 && p.onAcceptAll)) && (
               <div className="flex flex-wrap items-center gap-2">
                 {acceptable > 0 && p.onAcceptAll && (
@@ -1604,7 +1596,7 @@ export function RefinementView(p: ViewProps) {
   // What waits for the owner in the first card of the backlog step.
   const openOwner = unfiled.length + pendingTotal;
   // The one card the owner should look at now: what waits for them, else the first part of the step still unfinished.
-  const focusCard = openOwner > 0 ? 'needs' : !st.backlog?.detail ? 'backlog' : !speckitReady ? 'plans' : snap.specsApproved !== true ? 'checks' : 'needs';
+  const focusCard = openOwner > 0 ? 'needs' : !st.backlog?.detail ? 'backlog' : !speckitReady ? 'plans' : snap.specsReady !== true ? 'checks' : 'needs';
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
@@ -1779,7 +1771,7 @@ export function RefinementView(p: ViewProps) {
           actions={null}
         >
           <div className="grid gap-4">
-          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsApproved === true, snap.trace)} trail={requestTrail(snap.trace)} action={teamBlocked ? <ActionButton data-testid="team-retry" className="primary" busy={serverBusy} disabled={locked || serverBusy || !p.onResolveAll} onClick={() => void p.onResolveAll?.()} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton> : developButton} />
+          <ReadyBar status={requestStatus} checks={readyChecks(st, snap.specsReady === true, snap.trace)} trail={requestTrail(snap.trace)} action={teamBlocked ? <ActionButton data-testid="team-retry" className="primary" busy={serverBusy} disabled={locked || serverBusy || !p.onResolveAll} onClick={() => void p.onResolveAll?.()} icon={<Icon name="refresh" size={16} />}>Tentar de novo</ActionButton> : developButton} />
           {needsFirst && needsCard()}
           <RequestCard text={st.extension.text} heading={requestHeading(st.extension.requestId)} interpreted={st.impact?.impact != null} concluded={st.status === 'ready'} understood={st.impact?.impact != null ? understoodCounts(st, added) : null} />
           <details data-testid="request-details" className="group min-w-0">
@@ -2054,10 +2046,12 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
             return undefined;
           }
         }}
-        onAskSpecs={act(() => refineApi.askSpecs(projectId, specId))}
         onResolveAll={act(() => refineApi.autopilot(projectId, specId))}
         onAcceptAll={act(() => refineApi.acceptAll(projectId, specId))}
-        onApproveSpecs={act(() => refineApi.approveSpecs(projectId, specId))}
+        onApplySpecs={act(() => refineApi.applySpecs(projectId, specId))}
+        onProceedSpecs={act(() => refineApi.proceedSpecs(projectId, specId))}
+        onApplyStage={(f) => act(() => refineApi.applyStage(projectId, specId, f))()}
+        onProceedStage={(f) => act(() => refineApi.proceedStage(projectId, specId, f))()}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}
         onPreparePlans={act(() => refineApi.plans(projectId, specId))}
         onResolveClosing={act(() => refineApi.resolve(projectId, specId))}
@@ -2070,7 +2064,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}
         onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}
-        onReprocessSpecs={act(() => refineApi.reprocessSpecs(projectId, specId))}
         onConfidential={(v) => act(() => refineApi.confidential(projectId, specId, v))()}
         onAnswer={(id, t, d) => act(() => refineApi.answer(projectId, specId, id, t, d))()}
         onSkip={(id) => act(() => refineApi.skip(projectId, specId, id))()}

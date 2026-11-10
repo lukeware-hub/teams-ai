@@ -180,7 +180,7 @@ describe('stage 7 of a new project prepares the development', () => {
 
   it('opens "Iniciar desenvolvimento" once the preparation is done and current', () => {
     const h = handlersWithSpeckit();
-    renderView({ ...wizard({ speckit: speckit() as never }), specsApproved: true } as never, h);
+    renderView({ ...wizard({ speckit: speckit() as never }), specsReady: true } as never, h);
     expect(screen.getByTestId('speckit-done')).toBeTruthy();
     const start = screen.getByTestId('start') as HTMLButtonElement;
     expect(start.textContent).toContain('Iniciar desenvolvimento');
@@ -189,17 +189,17 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(h.onStart).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the start closed, with the reason beside it, until PO and SM approve the specs.md', () => {
+  it('keeps the start closed, with the reason beside it, until specs.md is written', () => {
     renderView(wizard({ speckit: speckit() as never, status: 'ready' }), handlersWithSpeckit());
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('start-missing').textContent).toContain('Preparando o specs.md');
+    expect(screen.getByTestId('start-missing').textContent).toContain('Gere o specs.md do backlog');
   });
 
   it('keeps the start open while a closing check fails, with no alert, and asks the agents to resolve the failing checks only on the click', () => {
     const closing = { ok: false, summaryHash: 'h', repositories: [], assumptions: [], checks: [{ id: 'questions', ok: false, detail: 'o checklist do documento não está verde: po.scope-explicit' }] };
     const checklist = green(ALL).map((c) => (c.id === 'po.scope-explicit' ? { ...c, passed: false, detail: 'o plano traz tarefa fora dos documentos' } : c));
     const h = { ...handlersWithSpeckit(), onResolveClosing: vi.fn() };
-    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing, specsApproved: true } as never, h);
+    renderView({ ...wizard({ repositories: true, speckit: speckit() as never, checklist: checklist as never }), closing, specsReady: true } as never, h);
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId('closing-alert')).toBeNull();
     expect(h.onResolveClosing).not.toHaveBeenCalled();
@@ -344,11 +344,17 @@ describe('the stepper opens the steps', () => {
 describe('the wizard Continuar names why it is closed', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=flow.md'));
 
-  it('is disabled with the reason beside it while a suggestion is open, in a repository session', () => {
+  it('stays open with a suggestion still open once the team processed the stage, in a repository session', () => {
     const patch = { patchId: 'p1', role: 'po', file: 'flow.md', find: 'a', replace: 'b', reason: 'r', diff: '', cycle: 1, status: 'pending', decision: null };
-    renderView(project({ stages: true, repositories: true, doneStages: [], reviewedStages: ['flow.md'], patches: [patch] } as never));
+    renderView(project({ stages: true, repositories: true, doneStages: [], passedStages: ['flow.md'], patches: [patch] } as never));
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('wizard-continue-reason')).toBeNull();
+  });
+
+  it('is disabled with the reason beside it before the team processed the stage, in a repository session', () => {
+    renderView(project({ stages: true, repositories: true, doneStages: [] } as never));
     expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('wizard-continue-reason').textContent).toContain('sugestões');
+    expect(screen.getByTestId('wizard-continue-reason').textContent).toContain('Processe esta etapa');
   });
 
   it('stays open in a session with no repository flow', () => {
@@ -530,7 +536,7 @@ describe('what the start waits for', () => {
   });
 
   it('says nothing once everything is ready and the button is open', () => {
-    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never);
+    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsReady: true } as never);
     expect(screen.queryByTestId('start-missing')).toBeNull();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(false);
   });
@@ -573,7 +579,7 @@ describe('the button that lets the team resolve everything', () => {
 
   it('is not offered when nothing keeps the start closed', () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
-    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsApproved: true } as never, h);
+    renderView({ ...project({ stages: true, backlog: detailed as never, status: 'ready', speckit: { status: 'done', steps: [], stale: false } as never } as never), specsReady: true } as never, h);
     expect(screen.queryByTestId('start-missing')).toBeNull();
   });
 });
@@ -600,13 +606,14 @@ describe('the finish panel: what still keeps the start closed', () => {
   const backlog = { enabled: true, detail: true, epics: [], items: [item, { ...item, key: 'fat', rank: 2 }], specs: {}, preplans: {}, flowHeadings: [] };
   const review = (verdict: string, findings: string[]) => ({ specsHash: 'h', verdict, findings, reason: null, at: null });
 
-  it('marks the backlog done, the specs.md review as the step now, and counts what the latest evaluation spent and reused', () => {
-    const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never, specsReview: { po: review('rejected', ['a', 'b', 'c']), sm: review('approved', []) } as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false } };
+  it('marks the backlog and specs.md done, with the reviewers view as optional adjustments, and counts what the latest evaluation spent and reused', () => {
+    const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never, specsReview: { po: review('rejected', ['a', 'b', 'c']), sm: review('approved', []) } as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false }, specsReady: true };
     render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
-    expect(screen.getByTestId('finish-panel-count').textContent).toBe('1 de 4');
+    expect(screen.getByTestId('finish-panel-count').textContent).toBe('2 de 4');
     expect(screen.getByTestId('finish-backlog').dataset.state).toBe('done');
-    expect(screen.getByTestId('finish-specs').dataset.state).toBe('current');
-    expect(screen.getByTestId('finish-specs').textContent).toContain('1ª revisão · PO 3 pontos · SM aprovou');
+    expect(screen.getByTestId('finish-specs').dataset.state).toBe('done');
+    expect(screen.getByTestId('finish-plans').dataset.state).toBe('current');
+    expect(screen.getByTestId('finish-specs').textContent).toContain('PO 3 pontos · SM aprovou (ajustes opcionais)');
     expect(screen.getByTestId('finish-plans').textContent).toContain('não preparados');
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('4 min');
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('1 item refeito, 1 reaproveitado');
@@ -617,6 +624,7 @@ describe('the finish panel: what still keeps the start closed', () => {
     const snap = { ...project({ stages: true, status: 'evaluating', backlog: backlog as never }), evaluationProgress: { durationMs: 60_000, costUsd: 0, redone: 0, repeated: false } };
     render(<MemoryRouter><RefinementView snap={snap} busy events={[]} {...handlers()} /></MemoryRouter>);
     expect(screen.getByTestId('finish-panel-last').textContent).toBe('Avaliação em andamento: o tempo e o custo dela aparecem quando terminar.');
+    expect(screen.getByTestId('finish-specs').textContent).toContain('o time está refazendo o backlog');
   });
 
   it('warns when the latest evaluation started on the same text as the one before', () => {

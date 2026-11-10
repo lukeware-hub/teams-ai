@@ -100,10 +100,10 @@ describe('closing summary and the owner\'s authorization', () => {
     await session.close();
   });
 
-  it('refuses to start until PO and SM approved the specs.md, and starts once they did', async () => {
+  it('refuses to start until specs.md is written from the current backlog, and starts once it is', async () => {
     const session = await readyWizard(approving);
     const { summaryHash } = await session.closingSummary();
-    await expect(session.freezeProgram(summaryHash)).rejects.toThrow('O specs.md precisa estar gerado e aprovado por PO e SM');
+    await expect(session.freezeProgram(summaryHash)).rejects.toThrow('O specs.md precisa estar gerado do backlog atual');
     await session.startSpecs();
     await session.settled();
     const entries = await session.freezeProgram((await session.closingSummary()).summaryHash);
@@ -137,7 +137,7 @@ describe('closing summary and the owner\'s authorization', () => {
     await journal.fact(RefineEvent.DocGraphStale, { file: 'project.md' });
     await journal.close();
     const again = await RefineSession.open({ ...deps(), runAgent: counting });
-    expect(again.startSpecs({ autonomous: true })).toBeNull();
+    expect(again.startSpecs()).toBeNull();
     await again.settled();
     expect(calls).toBe(0);
     await again.close();

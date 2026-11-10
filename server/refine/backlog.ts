@@ -58,7 +58,8 @@ export function backlogPack(input: {
   request?: string;
 }): ContextPackInput {
   const started = new Set(input.started);
-  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
+  // The dependencies go along, so a new outline keeps them unless the documents changed them: a changed one remakes the item's pre-plan.
+  const previous = input.previous?.items.length ? JSON.stringify({ epics: input.previous.epics, items: input.previous.items.map((i) => ({ key: i.key, title: i.title, epic: i.epic, priority: i.priority, scope: i.scope, sources: i.sources, dependsOn: i.dependsOn, ...(started.has(i.key) ? { started: true } : {}) })) }, null, 2) : '(none)';
   // The owner's request section is never cut: it is the one text the outline must follow word for word.
   const feedback = buildWithDocs({ project: input.projectMd, brief: input.briefMd, stack: input.stackMd, flow: input.flowMd, design: input.designMd }, (d, digested) => [
     rulesFor(input.repositories),

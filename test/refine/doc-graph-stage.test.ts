@@ -195,12 +195,12 @@ Editado.
     await finishStages(s);
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da etapa.\n`);
-    // The edit outdates the later stages first; their reviews also put the documents back in the graph.
-    await expect(s.enableBacklog()).rejects.toThrow(/etapas desatualizadas antes: project\.md, briefing\.md, stack\.md, design\.md/);
+    // The edit only marks the later stages as a notice; the edited document must go back in the graph first.
+    await expect(s.enableBacklog()).rejects.toThrow(/falta flow\.md/);
     await s.close();
   });
 
-  it('reviews an edited finished document again, and then puts it back in the graph', async () => {
+  it('puts an edited finished document back in the graph as it is, with no new review', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
     await finishStages(s);
@@ -209,9 +209,8 @@ Editado.
     calls.length = 0;
     script['refine/po'] = [refineOut(green(PO))];
     await s.addToGraph('flow.md');
-    // The graph takes the document once its review has ended, so the test waits for that.
-    for (let i = 0; i < 100 && !(s.state.graphed ?? []).includes('flow.md'); i++) await new Promise((r) => setTimeout(r, 10));
-    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
+    await s.settled();
+    expect(calls.filter((c) => c.kind === 'refine')).toHaveLength(0);
     expect(s.state.graphed).toContain('flow.md');
     expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.close();
@@ -329,18 +328,18 @@ Editado durante a extração.
     await s.close();
   });
 
-  it('refuses the not applicable mark while design.md waits on an answer, and writes nothing', async () => {
+  it('marks design.md not applicable with a question open: the question no longer applies and is set aside', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
     await finishStages(s, DOC_STAGES.slice(0, 4));
     script['refine/front'] = [refineOut([], [{ text: 'Há uma tela?', blocking: true, relatedAcIds: [], options: [] }])];
     await s.evaluateStage('design.md');
     await s.settled();
-    const before = await readDoc(draft(), 'design.md');
-    await expect(s.markNotApplicable()).rejects.toThrow('Responda as perguntas obrigatórias da etapa design.md.');
-    expect(await readDoc(draft(), 'design.md')).toBe(before);
-    expect(await fs.readFile(path.join(draft().root, 'passed', 'design.md'), 'utf8')).not.toMatch(/^Não se aplica/);
-    expect(s.state.doneStages).toEqual(DOC_STAGES.slice(0, 4));
+    await s.markNotApplicable();
+    await s.settled();
+    expect(await readDoc(draft(), 'design.md')).toMatch(/^Não se aplica/);
+    expect(s.state.questions.find((q) => q.text === 'Há uma tela?')).toMatchObject({ status: 'skipped' });
+    expect(s.state.doneStages).toEqual([...DOC_STAGES]);
     await s.close();
   });
 
@@ -374,22 +373,17 @@ Editado durante a extração.
     await s.close();
   });
 
-  it('a reprocessed stage moves on without its mandatory question: the question is skipped and the document goes to the graph', async () => {
+  it('moves on with a mandatory question the PO cannot settle from the documents: the question is set aside and the document goes to the graph', async () => {
     const mandatory = [{ text: 'Qual o fluxo de pagamento?', blocking: true, relatedAcIds: [], options: [] }];
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
-    script['refine/po'] = [refineOut(green(PO), mandatory)];
+    script['refine/po'] = [refineOut(green(PO), mandatory), refineOut([])];
     await s.evaluateStage('flow.md');
-    await s.settled();
-    await expect(s.continueStage()).rejects.toThrow('Responda as perguntas obrigatórias da etapa flow.md.');
-    script['refine/po'] = [refineOut(green(PO), mandatory)];
-    await s.reprocessStage('flow.md');
     await s.settled();
     await s.continueStage();
     await s.settled();
     expect(s.state.doneStages).toEqual(['flow.md']);
     expect(s.state.graphed).toContain('flow.md');
-    expect(s.state.reprocessedStages ?? []).toEqual([]);
     expect(s.state.questions.find((q) => q.text === 'Qual o fluxo de pagamento?')).toMatchObject({ status: 'skipped' });
     await s.close();
   });
@@ -405,33 +399,15 @@ describe('the Jev pass line', () => {
     return s;
   };
 
-  it('has the agents review a low-scored document once more, and not a third time', async () => {
+  it('reviews a low-scored document once per click: a second review is the owner choice', async () => {
     const s = await session(async () => low);
-    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO)), refineOut(green(PO))];
+    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
     calls.length = 0;
     await s.evaluateStage('flow.md');
-    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(2);
-    await s.evaluateStage('flow.md');
-    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(2);
+    expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
     await s.close();
   });
 
-  it('a review that ran past two minutes is not repeated, and the journal says why', async () => {
-    // Every clock read is three minutes after the one before, so the first review seems to have run for three minutes.
-    let clock = 0;
-    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 180_000));
-    try {
-      const s = await session(async () => low);
-      script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
-      calls.length = 0;
-      await s.evaluateStage('flow.md');
-      expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
-      expect(s.events.some((e) => e.type === RefineEvent.AutoReviewSkipped)).toBe(true);
-      await s.close();
-    } finally {
-      now.mockRestore();
-    }
-  });
 
   it('joins the graph of each document into one staging graph, in the order of the stages', async () => {
     const merge = vi.fn(async (_graphs: ReadonlyArray<{ dir: string; name: string }>, _outDir: string) => true);
@@ -478,27 +454,33 @@ describe('the Jev pass line', () => {
     await s.close();
   });
 
-  it('an outdated low score does not gate a continue: the stage is reviewed first', async () => {
+  it('an outdated low score does not gate a continue, and an edit after the review does not either', async () => {
     const s = await session(async () => low);
-    script['refine/po'] = [refineOut(green(PO)), refineOut(green(PO))];
+    script['refine/po'] = [refineOut(green(PO))];
     await s.evaluateStage('flow.md');
     await s.settled();
     await s.saveDoc('flow.md', `${FLOW}\nEditado depois da nota.\n`);
-    await expect(s.continueStage('flow.md')).rejects.toThrow('Revise a etapa flow.md antes de continuar: o texto mudou depois da última revisão.');
+    await s.continueStage('flow.md');
+    await s.settled();
+    expect(s.state.doneStages).toEqual(['flow.md']);
     await s.close();
   });
 });
 
 describe('the owner keeps working while the graph extraction runs', () => {
-  it('rejects a suggestion, skips a question and edits while a document goes to the graph', async () => {
+  it('rejects a suggestion, moves on past a question and edits while a document goes to the graph', async () => {
     let release!: () => void;
+    let arrive!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let calls = 0;
+    // The extraction has read its text once it reaches the extractor: an edit after that is one the graph did not read.
+    const arrived = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
     const slow = async (dir: string, outDir: string) => {
-      calls += 1;
-      if (calls >= 1) await gate;
+      arrive();
+      await gate;
       await extractDocs(dir, outDir);
     };
     const s = await RefineSession.create({ ...deps(), extractDocs: slow }, 'new-project', { repositories: true });
@@ -512,9 +494,10 @@ describe('the owner keeps working while the graph extraction runs', () => {
     await s.reject(patch.patchId, null);
     await s.continueStage();
     expect(s.state.graphing).toBe('flow.md');
-    await s.skip(question.questionId);
+    // Moving on set the open question aside, since the PO could not settle it from the documents.
     expect(s.state.questions.find((q) => q.questionId === question.questionId)?.status).toBe('skipped');
     // An edit during the extraction is allowed, and leaves the graph marked outdated once the extraction ends.
+    await arrived;
     await s.saveDoc('flow.md', `${FLOW}\nEditado.\n`);
     release();
     await s.settled();

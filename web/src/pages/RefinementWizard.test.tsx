@@ -123,7 +123,7 @@ describe('Voltar and Continuar', () => {
 
   it('keeps the owner on a repository session stage while its document goes into Graphify in the background', async () => {
     const done = ['flow.md', 'project.md', 'briefing.md'];
-    const handlers = show(base({ doneStages: done, graphed: done, repositories: true, reviewedStages: ['stack.md'] }));
+    const handlers = show(base({ doneStages: done, graphed: done, repositories: true, passedStages: ['stack.md'] }));
     expect(editor('stack.md').value).toBe('# Stack');
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md', false));
@@ -207,14 +207,13 @@ describe('processing a stage', () => {
     confirm.mockRestore();
   });
 
-  it('offers Avaliar esta etapa beside Reprocessar after a hand edit of a passed stage, and holds Continuar until the review', async () => {
+  it('offers Avaliar esta etapa beside Reprocessar after a hand edit of a passed stage, as an option: Continuar stays open', async () => {
     const handlers = on();
     const passed = (reviewed: string[]) => base({ doneStages: ['flow.md'], passedStages: ['project.md'], reviewedStages: reviewed, repositories: true });
     const { rerender } = render(<MemoryRouter><RefinementView snap={passed(['flow.md'])} busy={false} {...handlers} /></MemoryRouter>);
     fireEvent.change(editor('project.md'), { target: { value: '# Projeto editado à mão' } });
     expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
-    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('wizard-continue-reason').textContent).toContain('Avalie esta etapa de novo.');
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByTestId('wizard-evaluate'));
     await waitFor(() => expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md'));
     expect(handlers.onReprocessStage).not.toHaveBeenCalled();
@@ -505,7 +504,7 @@ describe('the final review', () => {
   it('calls no agent when the backlog stage opens: the specs.md is checked only on the click of the owner', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     open('?etapa=backlog');
-    const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsApproved: false });
+    const handlers = show({ ...reviewSnap({ backlog, status: 'ready' }), specsReady: false });
     expect(handlers.onCheckSpecs).not.toHaveBeenCalled();
     expect(screen.queryByTestId('specs-check-retry')).toBeNull();
     expect(screen.getByTestId('prepare-backlog')).toBeTruthy();
@@ -513,7 +512,7 @@ describe('the final review', () => {
 
   it('Continuar on the summary stays open while the specs.md is not approved, and the backlog step shows what it waits for', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
-    const snap = { ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }), specsApproved: false };
+    const snap = { ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }), specsReady: false };
     open('?etapa=revisao');
     show(snap);
     // The summary never waits for the specs.md: it is made and checked in the backlog step.
@@ -533,7 +532,7 @@ describe('the final review', () => {
     open('?etapa=revisao');
     show({
       ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'approved') } }),
-      specsApproved: true,
+      specsReady: true,
     });
     expect((screen.getByTestId('open-backlog') as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByTestId('start-missing')).toBeNull();
@@ -578,7 +577,7 @@ describe('the final review', () => {
 
   it('opens stage 7 when the backlog exists, and comes back to the review from it', async () => {
     open('?etapa=revisao');
-    show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
+    show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsReady: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(screen.getByTestId('stage-wizard')).toBeTruthy();
@@ -590,7 +589,7 @@ describe('the final review', () => {
 
   it('closes the review on the server when the owner opens the backlog', async () => {
     open('?etapa=revisao');
-    const handlers = show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
+    const handlers = show({ ...reviewSnap({ backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsReady: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     await waitFor(() => expect(screen.getByTestId('backlog-stage')).toBeTruthy());
     expect(handlers.onCloseReview).toHaveBeenCalledTimes(1);
@@ -608,7 +607,7 @@ describe('the final review', () => {
 
   it('shows the review done once closed, and does not close it again', () => {
     open('?etapa=revisao');
-    const handlers = show({ ...reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsApproved: true });
+    const handlers = show({ ...reviewSnap({ reviewClosed: true, backlog: { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} } }), specsReady: true });
     fireEvent.click(screen.getByTestId('open-backlog'));
     expect(screen.getByTestId('backlog-stage')).toBeTruthy();
     expect(handlers.onCloseReview).not.toHaveBeenCalled();
@@ -942,11 +941,11 @@ describe('the steps the owner can open, and the guards of the stage actions', ()
     expect(screen.getByTestId('wizard-action-reason').textContent).toBe('Adicione os cinco documentos ao Graphify antes: falta briefing.md, stack.md, design.md.');
   });
 
-  it('does not open the backlog while a finished stage is outdated, and names the stage', () => {
+  it('opens the backlog while a finished stage is outdated: the mark is only a notice', () => {
     open('?etapa=revisao');
     show(base({ doneStages: ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'], staleBy: { 'stack.md': 'briefing.md' } }));
-    expect((screen.getByTestId('enable-backlog') as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('wizard-action-reason').textContent).toBe('Revise de novo as etapas desatualizadas antes: stack.md.');
+    expect((screen.getByTestId('enable-backlog') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByTestId('wizard-action-reason')).toBeNull();
   });
 });
 

@@ -87,14 +87,14 @@ export interface ReadyCheck {
 }
 
 /** The checks the request's "Pronto" bar shows; "Iniciar" waits for the owner whatever they say. */
-export function readyChecks(st: RefineState, specsApproved: boolean, trace?: RequestTrace | null): ReadyCheck[] {
+export function readyChecks(st: RefineState, specsReady: boolean, trace?: RequestTrace | null): ReadyCheck[] {
   const planned = st.speckit?.status === 'done' && !st.speckit.stale;
   // The plans check counts the specs the request made that have a task list too, as "planos e tarefas N/M".
   const made = trace?.specs.filter((s) => s.citesRequest) ?? [];
   const tasked = made.filter((s) => s.tasked).length;
   return [
     { id: 'impacto', label: 'impacto', ok: st.impact?.impact != null && st.impact.issues.length === 0 },
-    { id: 'specs', label: 'specs validadas', ok: specsApproved },
+    { id: 'specs', label: 'specs geradas', ok: specsReady },
     { id: 'planos', label: made.length > 0 ? `planos e tarefas ${tasked}/${made.length}` : 'planos', ok: planned && tasked === made.length },
     { id: 'perguntas', label: 'sem pergunta aberta', ok: !st.questions.some((q) => q.status === 'pending' && q.blocking) },
   ];

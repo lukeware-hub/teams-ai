@@ -114,7 +114,7 @@ describe('the request screen keeps only what the owner needs in view', () => {
 
     it('says what accepting all does, so the owner knows the agents review again', () => {
       renderWith(request({ patches: [patch], autopilot: stopped }));
-      expect(screen.getByTestId('accept-all-note').textContent).toContain('os agentes revisam de novo');
+      expect(screen.getByTestId('accept-all-note').textContent).toContain('o time segue, sem revisar de novo');
     });
 
     it('offers nothing when no suggestion waits', () => {
