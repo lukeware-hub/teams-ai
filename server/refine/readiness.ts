@@ -1,7 +1,7 @@
 import type { DocFile } from './draft.js';
 
 /** The four checks the Jev answers for each document, each one a probability of yes. */
-export const SCORE_CHECKS = ['complete', 'concrete', 'consistent', 'scoped'] as const;
+export const SCORE_CHECKS = ['complete', 'concrete', 'consistent'] as const;
 export type ScoreCheck = (typeof SCORE_CHECKS)[number];
 
 /** A place the Jev doubts: `part` is the window's place in its document, or null for the whole document. */

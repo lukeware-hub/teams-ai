@@ -24,7 +24,7 @@ function stubJev(answer: (id: string) => Record<string, unknown>, usage: Record<
 
 describe('createJevScorer answers', () => {
   it('a check the Jev does not answer with a value leaves the whole scoring unscored', async () => {
-    stubJev((id) => (id === 'scoped' ? { type: 'skip' } : { type: 'noul', noul: 0.9 }), { input_tokens: 1, output_tokens: 1, cost: 0.001 });
+    stubJev((id) => (id === 'consistent' ? { type: 'skip' } : { type: 'noul', noul: 0.9 }), { input_tokens: 1, output_tokens: 1, cost: 0.001 });
     expect(await scorer()(TEXTS)).toEqual(UNSCORED);
   });
 

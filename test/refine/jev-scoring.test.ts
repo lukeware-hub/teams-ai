@@ -33,7 +33,7 @@ function stubJev(value: (state: string, check: string) => number): Sent[] {
 }
 
 describe('createJevScorer', () => {
-  it('asks once per document, with the four checks naming the document and its purpose', async () => {
+  it('asks once per document, with the three checks naming the document and its purpose', async () => {
     const sent = stubJev(() => 0.9);
     await scorer()(TEXTS);
     expect(sent).toHaveLength(5);
@@ -41,14 +41,6 @@ describe('createJevScorer', () => {
     expect(Object.keys(flow.questions)).toEqual([...SCORE_CHECKS]);
     for (const question of Object.values(flow.questions)) expect(question.instructions).toContain(DOCUMENT_PURPOSE['flow.md']);
     expect(flow.questions.complete!.criteria.true).toContain('flow.md');
-  });
-
-  it('sends the charter with the scope question only, so the Jev sees what does not belong in each document', async () => {
-    const sent = stubJev(() => 0.9);
-    await scorer()(TEXTS, ['briefing.md']);
-    const asked = sent[0]!.questions;
-    expect(asked.scoped!.instructions).toContain('Does not hold the vision and goals (docs/project.md)');
-    expect(asked.complete!.instructions).not.toContain('Does not hold');
   });
 
   it('scores only the documents asked for, and averages over them', async () => {
@@ -59,14 +51,14 @@ describe('createJevScorer', () => {
     expect(result.average).toBeCloseTo(0.9);
   });
 
-  it('scores a document as the mean of its four checks, and the average as the mean of the five documents', async () => {
-    const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1, scoped: 0.4 };
+  it('scores a document as the mean of its three checks, and the average as the mean of the five documents', async () => {
+    const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1 };
     stubJev((_state, check) => values[check]!);
     const result = await scorer()(TEXTS);
     expect(result).toMatchObject({ available: true, model: 'jev-1.13.0' });
     for (const id of SCORE_CHECKS) expect(result.docs!['flow.md']!.checks[id]).toBeCloseTo(values[id]!);
-    expect(result.docs!['flow.md']!.score).toBeCloseTo(0.7);
-    expect(result.average).toBeCloseTo(0.7);
+    expect(result.docs!['flow.md']!.score).toBeCloseTo(0.8);
+    expect(result.average).toBeCloseTo(0.8);
   });
 
   it('weights the windows of a long document by their length, for the share of concrete statements', async () => {
@@ -77,12 +69,11 @@ describe('createJevScorer', () => {
     expect(result.docs!['flow.md']!.checks.concrete).toBeCloseTo((0.9 * first! + 0.2 * second!) / (first! + second!));
   });
 
-  it('takes the worst window for contradictions and foreign content, since one window can show a fault', async () => {
+  it('takes the worst window for contradictions, since one window can show a fault', async () => {
     const long = 'x'.repeat(40_000);
     stubJev((state) => (state.includes('(continued)') ? 0.2 : 0.9));
     const result = await scorer()({ ...TEXTS, 'flow.md': long });
     expect(result.docs!['flow.md']!.checks.consistent).toBeCloseTo(0.2);
-    expect(result.docs!['flow.md']!.checks.scoped).toBeCloseTo(0.2);
   });
 
   it('judges the completeness of a long document once, on the outline of its headings, since no window sees the whole document', async () => {
@@ -94,13 +85,13 @@ describe('createJevScorer', () => {
     expect(outline[0]!.state).toBe('flow.md (outline):\n## Início\n## Fim\n');
     expect(Object.keys(outline[0]!.questions)).toEqual(['complete']);
     expect(outline[0]!.questions.complete!.instructions).toContain('outline of the whole flow.md');
-    for (const window of sent.filter((s) => s !== outline[0])) expect(Object.keys(window.questions)).toEqual(['concrete', 'consistent', 'scoped']);
+    for (const window of sent.filter((s) => s !== outline[0])) expect(Object.keys(window.questions)).toEqual(['concrete', 'consistent']);
     expect(result.docs!['flow.md']!.checks.complete).toBeCloseTo(0.7);
   });
 
   it('reports each answered window with its place, size, opening heading and answers, and changes no score', async () => {
     const long = `## Overview\n${'x'.repeat(40_000)}`;
-    const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1, scoped: 0.4 };
+    const values: Record<string, number> = { complete: 0.8, concrete: 0.6, consistent: 1 };
     stubJev((_state, check) => values[check]!);
     const plain = await scorer()({ ...TEXTS, 'flow.md': long });
     const reported: WindowAnswer[] = [];
@@ -114,7 +105,7 @@ describe('createJevScorer', () => {
     expect(flow.every((w) => w.parts === 2)).toBe(true);
     expect(flow[0]!.firstHeading).toBe('## Overview');
     expect(flow[1]!.firstHeading).toBeNull();
-    expect(flow[0]!.checks).toEqual({ concrete: 0.6, consistent: 1, scoped: 0.4 });
+    expect(flow[0]!.checks).toEqual({ concrete: 0.6, consistent: 1 });
     expect(reported.find((w) => w.file === 'flow.md' && w.outline)!.checks).toEqual({ complete: 0.8 });
     expect(reported.find((w) => w.file === 'stack.md')!.checks).toEqual(values);
     expect(flow.reduce((sum, w) => sum + w.size, 0)).toBeGreaterThan(40_000);
@@ -132,10 +123,10 @@ describe('createJevScorer', () => {
   });
 
   it('doubts a single window below the cut with no place, and lists no doubt above the cut', async () => {
-    stubJev((_state, check) => (check === 'scoped' ? 0.4 : 0.9));
+    stubJev((_state, check) => (check === 'consistent' ? 0.4 : 0.9));
     const result = await scorer()(TEXTS);
-    expect(result.docs!['flow.md']!.doubts).toEqual([{ check: 'scoped', value: 0.4, part: null }]);
-    expect(result.docs!['briefing.md']!.doubts).toEqual([{ check: 'scoped', value: 0.4, part: null }]);
+    expect(result.docs!['flow.md']!.doubts).toEqual([{ check: 'consistent', value: 0.4, part: null }]);
+    expect(result.docs!['briefing.md']!.doubts).toEqual([{ check: 'consistent', value: 0.4, part: null }]);
     stubJev(() => 0.9);
     expect((await scorer()(TEXTS)).docs!['flow.md']!.doubts).toEqual([]);
   });
@@ -151,7 +142,7 @@ describe('createJevScorer', () => {
     const sent = stubJev(() => 0.9);
     const result = await scorer()({ ...TEXTS, 'design.md': '' });
     expect(sent).toHaveLength(4);
-    expect(result.docs!['design.md']).toEqual({ score: 0, checks: { complete: 0, concrete: 0, consistent: 0, scoped: 0 } });
+    expect(result.docs!['design.md']).toEqual({ score: 0, checks: { complete: 0, concrete: 0, consistent: 0 } });
     expect(result.average).toBeCloseTo((4 * 0.9) / 5);
   });
 

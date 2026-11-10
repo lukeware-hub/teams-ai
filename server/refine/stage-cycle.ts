@@ -79,7 +79,6 @@ const LOOK_FOR: Record<ScoreCheck, string> = {
   complete: 'compare the document with the parts its purpose requires; add a missing part, or write that it does not apply',
   concrete: 'replace a vague word or placeholder with the exact value, name, limit or behavior the documents already give; when they do not give it, record it as an assumption and change no text; never reword a question mark, a label or a comment',
   consistent: 'find two statements that disagree, or something the text says it declares or lists that it does not declare',
-  scoped: 'find content the charter gives to another document; if an earlier document already holds it, remove it here; if not, propose a move to the earlier document that should hold it; content of a later document stays here',
 };
 
 /** A move the review proposes, as one suggestion: it takes the quote out of the stage document and adds the text to an earlier one, and nothing changes until the owner accepts it. */

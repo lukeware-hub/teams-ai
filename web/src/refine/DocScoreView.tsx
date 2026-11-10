@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react';
 import { DOUBT_BELOW, percentOf, SCORE_CHECKS, type DocScore, type ScoreCheck, type ScoreDoubt } from '@server/refine/readiness';
 
-export const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete: 'concreto', consistent: 'consistente', scoped: 'escopo' };
+export const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete: 'concreto', consistent: 'consistente' };
 
 /** Each check as the question the Jev answers, in plain words. */
 const CHECK_QUESTION: Record<ScoreCheck, string> = {
   complete: 'Tem tudo o que deveria ter?',
   concrete: 'Dá para conferir o que diz?',
   consistent: 'Está livre de contradições?',
-  scoped: 'Tem só o que é deste documento?',
 };
 
 const title = (heading: string): string => heading.replace(/^#+\s*/, '');
@@ -70,7 +69,7 @@ export function DocScoreInset({ label, doc, children }: { label: string; doc: Do
           <span data-testid="doc-score-label">Nota do Jev · {label}</span>
           {doc && <b className="text-[1.125rem] font-semibold tabular-nums text-ink" data-testid="doc-score-percent">{percentOf(doc.score)}%</b>}
         </p>
-        {doc && <p className="m-0 text-[0.75rem] leading-[1.4] text-ink-soft">Média das 4 perguntas. Cada valor é a chance de o Jev responder “sim”.</p>}
+        {doc && <p className="m-0 text-[0.75rem] leading-[1.4] text-ink-soft">Média das {SCORE_CHECKS.length} perguntas. Cada valor é a chance de o Jev responder “sim”.</p>}
       </div>
       {doc && (
         <ul className="m-0 grid list-none gap-3 p-0" data-testid="doc-score-questions">
@@ -80,7 +79,7 @@ export function DocScoreInset({ label, doc, children }: { label: string; doc: Do
       {doc && (
         <details className="text-[0.75rem] leading-[1.45] text-ink-soft" data-testid="doc-score-how">
           <summary className="cursor-pointer text-[0.8125rem] text-ink">Como a nota é calculada</summary>
-          <p className="mt-1.5 mb-0">Um documento longo é lido em partes de até 32 mil caracteres. “Tem tudo” é julgado uma vez, pelo sumário de títulos do documento inteiro. “Dá para conferir” é a média das partes, pesada pelo tamanho. Contradições e conteúdo de outro documento valem a pior parte. Abaixo de 60%, a pergunta fica em dúvida.</p>
+          <p className="mt-1.5 mb-0">Um documento longo é lido em partes de até 32 mil caracteres. “Tem tudo” é julgado uma vez, pelo sumário de títulos do documento inteiro. “Dá para conferir” é a média das partes, pesada pelo tamanho. Contradições valem a pior parte. Abaixo de 60%, a pergunta fica em dúvida.</p>
         </details>
       )}
       {children}

@@ -6,7 +6,7 @@ import { DOC_LABEL } from './doc-labels.js';
 
 type Tone = 'good' | 'warn' | 'bad' | 'neutral';
 
-const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete: 'concreto', consistent: 'consistente', scoped: 'escopo' };
+const CHECK_LABEL: Record<ScoreCheck, string> = { complete: 'completo', concrete: 'concreto', consistent: 'consistente' };
 
 const CHIP: Record<Tone, string> = {
   good: 'border-good-line bg-good-soft text-good',

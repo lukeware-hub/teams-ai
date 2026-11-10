@@ -1,4 +1,4 @@
-import { DOCUMENT_CHARTER, DOCUMENT_PURPOSE } from '../agents/document-charter.js';
+import { DOCUMENT_PURPOSE } from '../agents/document-charter.js';
 import type { Config } from '../config/config.js';
 import { redactSecrets } from '../core/redact.js';
 import { splitSections } from '../decide/windows.js';
@@ -12,7 +12,7 @@ interface Question {
   criteria: { true: string; false: string };
 }
 
-/** The four questions about one document; each one is a yes or no with explicit criteria. */
+/** The three questions about one document; each one is a yes or no with explicit criteria. */
 function questions(file: DocFile): Record<ScoreCheck, Question> {
   const about = `${file} must hold ${DOCUMENT_PURPOSE[file]}.`;
   return {
@@ -28,24 +28,19 @@ function questions(file: DocFile): Record<ScoreCheck, Question> {
       instructions: `${about} Is ${file} free of statements that contradict each other?`,
       criteria: { true: 'No two statements contradict each other.', false: 'Two statements contradict each other.' },
     },
-    scoped: {
-      instructions: `${about} Does ${file} hold only what it must hold? Content that belongs in another document makes this false. The charter says what each document holds and what does not belong in it:\n${DOCUMENT_CHARTER}`,
-      criteria: { true: `${file} holds only what belongs in it.`, false: `${file} holds content that belongs in another document.` },
-    },
   };
 }
 
-const NO_CHECKS: Record<ScoreCheck, number> = { complete: 0, concrete: 0, consistent: 0, scoped: 0 };
+const NO_CHECKS: Record<ScoreCheck, number> = { complete: 0, concrete: 0, consistent: 0 };
 const mean = (values: number[]): number => values.reduce((sum, v) => sum + v, 0) / values.length;
 const weightedMean = (rows: Array<{ value: number; size: number }>): number =>
   rows.reduce((sum, r) => sum + r.value * r.size, 0) / rows.reduce((sum, r) => sum + r.size, 0);
 
-/** How the answers of one document combine into one check: completeness has one answer, a contradiction or foreign part in any window counts, and concreteness is the share across the document. */
+/** How the answers of one document combine into one check: completeness has one answer, a contradiction in any window counts, and concreteness is the share across the document. */
 const COMBINE: Record<ScoreCheck, (rows: Array<{ value: number; size: number }>) => number> = {
   complete: (rows) => Math.max(...rows.map((r) => r.value)),
   concrete: weightedMean,
   consistent: (rows) => Math.min(...rows.map((r) => r.value)),
-  scoped: (rows) => Math.min(...rows.map((r) => r.value)),
 };
 
 /** One answered request, for diagnosis: its place, its size, the heading it opens with and the answers it was asked for; the outline request of a long document is marked. */

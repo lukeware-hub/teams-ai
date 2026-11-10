@@ -629,7 +629,7 @@ describe('runStageCycle', () => {
   it('the Jev scores set no goal for a stage: the review gets them only as an index', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, skipped: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, skipped: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
@@ -642,11 +642,11 @@ describe('runStageCycle', () => {
   it('gives the review the Jev scores of the document as an index, with no goal and no verdict', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
-    expect(review).toContain('### Jev index of this document (information only)\n\nScores of briefing.md, probability of yes: complete 0.50, concrete 0.90, consistent 0.90, scoped 0.90. They show where the Jev doubts the document; they are not a verdict and they can be wrong; a low score only means read the doubts below with care. Do not change the document only to raise a number.');
+    expect(review).toContain('### Jev index of this document (information only)\n\nScores of briefing.md, probability of yes: complete 0.50, concrete 0.90, consistent 0.90. They show where the Jev doubts the document; they are not a verdict and they can be wrong; a low score only means read the doubts below with care. Do not change the document only to raise a number.');
     expect(review).not.toContain('### Jev goals');
   });
 
@@ -654,7 +654,7 @@ describe('runStageCycle', () => {
     const draft = await newDraft();
     const journal = foldingJournal();
     journal.state.confidential = true;
-    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
@@ -664,7 +664,7 @@ describe('runStageCycle', () => {
     const draft = await newDraft();
     await writeDoc(draft, 'briefing.md', '');
     const journal = foldingJournal();
-    journal.state.readiness = { available: true, model: 'jev', average: 0, usage: null, outdated: false, docs: { 'briefing.md': { score: 0, checks: { complete: 0, concrete: 0, consistent: 0, scoped: 0 } } } } as never;
+    journal.state.readiness = { available: true, model: 'jev', average: 0, usage: null, outdated: false, docs: { 'briefing.md': { score: 0, checks: { complete: 0, concrete: 0, consistent: 0 } } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     expect((runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback).not.toContain('Jev index');
@@ -673,7 +673,7 @@ describe('runStageCycle', () => {
   it('gives the review no index when the score is older than the last edit of the document', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: true, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9, scoped: 0.9 } } } } as never;
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: true, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.9 } } } } as never;
     journal.state.outdatedDocs = ['briefing.md'];
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
@@ -683,20 +683,20 @@ describe('runStageCycle', () => {
   it('gives the review one line per doubt, naming the place in the document', async () => {
     const draft = await newDraft();
     const journal = foldingJournal();
-    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2, scoped: 0.4 }, doubts: [
+    journal.state.readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2 }, doubts: [
       { check: 'consistent', value: 0.2, part: { index: 2, of: 2, from: '## Escopo', to: null } },
-      { check: 'scoped', value: 0.4, part: null },
+      { check: 'complete', value: 0.5, part: null },
     ] } } } as never;
     const runAgent = vi.fn(async (_req: unknown, _opts: unknown) => answer([]));
     await runStageCycle({ draft, journal, runAgent: runAgent as never, principles: () => [] }, 1, 'briefing.md');
     const review = (runAgent.mock.calls[0]![0] as { pack: { feedback: string } }).pack.feedback;
     expect(review).toContain('### Where the Jev doubts this document (information only)');
     expect(review).toContain('- consistent 0.20 in part 2 of 2, from "## Escopo": find two statements that disagree');
-    expect(review).toContain('- scoped 0.40 in the whole document: find content the charter gives to another document');
+    expect(review).toContain('- complete 0.50 in the whole document: compare the document with the parts its purpose requires');
   });
 
   it('gives the review no doubt line for a confidential or an outdated score', async () => {
-    const readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2, scoped: 0.4 }, doubts: [{ check: 'scoped', value: 0.4, part: null }] } } };
+    const readiness = { available: true, model: 'jev', average: 0.5, usage: null, outdated: false, docs: { 'briefing.md': { score: 0.5, checks: { complete: 0.5, concrete: 0.9, consistent: 0.2 }, doubts: [{ check: 'consistent', value: 0.2, part: null }] } } };
     const confidential = foldingJournal();
     confidential.state.confidential = true;
     confidential.state.readiness = readiness as never;
