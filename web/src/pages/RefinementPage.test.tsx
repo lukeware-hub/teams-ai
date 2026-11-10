@@ -144,15 +144,6 @@ describe('RefinementPage of a new project', () => {
     }
   });
 
-  it('sends the reprocess of the stage document to the API', async () => {
-    vi.spyOn(refineApi, 'snapshot').mockResolvedValue(stageState({ passedStages: ['flow.md'] }));
-    const again = vi.spyOn(refineApi, 'reprocessStage').mockResolvedValue({ ok: true });
-    renderPage();
-    fireEvent.click(await screen.findByTestId('wizard-process'));
-    fireEvent.click(await screen.findByTestId('stage-confirm'));
-    await waitFor(() => expect(again).toHaveBeenCalledWith('hello-app', 'hello-001', 'flow.md'));
-  });
-
   it('keeps the owner text on screen when a save conflicts, and shows the conflict beside the editor, not at the top', async () => {
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...stageState(), hashes: { 'flow.md': 'hash-of-flow' } });
     vi.spyOn(refineApi, 'saveDoc').mockRejectedValue(new Error('O documento mudou desde que você o abriu, então seu texto não foi salvo. Copie o seu texto antes de atualizar a página.'));

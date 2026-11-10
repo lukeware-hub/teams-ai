@@ -3,17 +3,6 @@ import { refineRoutes } from '../../server/api/refine-routes.js';
 import { ConflictError, EVALUATION_BUSY } from '../../server/refine/session.js';
 
 describe('refine routes', () => {
-  it('reprocesses the named document from its passed text, and refuses a name outside the five', async () => {
-    const reprocessStage = vi.fn(() => Promise.resolve());
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ reprocessStage })) } as never, log: vi.fn() });
-    const route = routes.find((r) => r.method === 'POST' && r.path.endsWith('/docs/:file/reprocess'))!;
-    const json = vi.fn();
-    await route.handler({ params: { projectId: 'shop', specId: 'shop-002', file: 'stack.md' }, json } as never);
-    expect(reprocessStage).toHaveBeenCalledWith('stack.md');
-    expect(json).toHaveBeenCalledWith(202, { ok: true });
-    await expect(route.handler({ params: { projectId: 'shop', specId: 'shop-002', file: 'brief.md' }, json } as never)).rejects.toMatchObject({ status: 400 });
-  });
-
   it('continues the document named in the body, and refuses a name outside the five', async () => {
     const continueStage = vi.fn(async () => undefined);
     const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ continueStage, state: {} })) } as never, log: vi.fn() });

@@ -68,27 +68,6 @@ export function reviewingOf(events: ReadonlyArray<StoredEvent>): DocFile | null 
   return reviewing;
 }
 
-/** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
-export function answersAwaitingOf(events: ReadonlyArray<StoredEvent>): Partial<Record<DocFile, number>> {
-  const fileOf = new Map<string, DocFile>();
-  const awaiting: Partial<Record<DocFile, Set<string>>> = {};
-  for (const e of events) {
-    if (e.type === RefineEvent.StageReviewed) {
-      const file = e.data.file as DocFile;
-      for (const q of (e.data.questions as Array<{ questionId: string }> | undefined) ?? []) fileOf.set(q.questionId, file);
-      // A review uses every answer given before it.
-      awaiting[file] = new Set();
-    } else if (e.type === RefineEvent.QuestionAnswered) {
-      const id = str(e.data.questionId);
-      const file = fileOf.get(id);
-      if (file) (awaiting[file] ??= new Set()).add(id);
-    }
-  }
-  const counts: Partial<Record<DocFile, number>> = {};
-  for (const [file, ids] of Object.entries(awaiting) as Array<[DocFile, Set<string>]>) if (ids.size > 0) counts[file] = ids.size;
-  return counts;
-}
-
 /** Each stage's cost: its rounds, the steps finished while it was the stage under review, and what the Jev charged for it. */
 export function stageCostOf(events: ReadonlyArray<StoredEvent>): Partial<Record<DocFile, StageCost>> {
   const costs: Partial<Record<DocFile, StageCost>> = {};

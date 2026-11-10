@@ -28,18 +28,17 @@ beforeEach(async () => {
 });
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
-describe('answers wait for Reprocessar', () => {
-  it('an answer runs no agent, and Reprocessar runs one review with every answer kept so far', async () => {
+describe('answers go into the stage on their own', () => {
+  it('an answer with questions still open runs no agent; the last answer starts one review of the stage', async () => {
     const s = await RefineSession.create({ ws, draft: draft(), runAgent: makeFakeRunAgent(script), secretsDir: `${root}/secrets`, retrieval: () => [] }, 'new-project');
     script['refine/po'] = [out([ask('Quem usa?'), ask('Qual o prazo?')]), out(), out()];
     await s.evaluateStage('flow.md');
     calls.length = 0;
     const [q1, q2] = s.state.questions.filter((q) => q.status === 'pending');
     await s.answer(q1!.questionId, 'Clientes');
-    await s.answer(q2!.questionId, '30 dias');
     expect(calls).toHaveLength(0);
-    expect(s.state.questions.filter((q) => q.status === 'answered')).toHaveLength(2);
-    await s.reprocessStage('flow.md');
+    await s.answer(q2!.questionId, '30 dias');
+    await s.settled();
     expect(calls.filter((c) => c.kind === 'refine' && c.role === 'po')).toHaveLength(1);
     expect(s.state.questions.filter((q) => q.status === 'answered')).toHaveLength(2);
     await s.close();

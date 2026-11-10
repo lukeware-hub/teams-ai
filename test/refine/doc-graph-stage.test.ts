@@ -343,7 +343,7 @@ Editado durante a extração.
     await s.close();
   });
 
-  it('reprocessing a not applicable design keeps the mark: the agents improve it and no reshape writes the template', async () => {
+  it('processing a not applicable design again keeps the mark: the agents improve it and no reshape writes the template', async () => {
     const s = await RefineSession.create({ ...deps(), extractDocs }, 'new-project', { repositories: true });
     await writeDoc(draft(), 'flow.md', FLOW);
     await finishStages(s, DOC_STAGES.slice(0, 4));
@@ -351,7 +351,7 @@ Editado durante a extração.
     await s.settled();
     calls.length = 0;
     script['refine/front'] = [refineOut([])];
-    await s.reprocessStage('design.md');
+    await s.evaluateStage('design.md');
     await s.settled();
     expect(calls.some((c) => c.kind === 'suggest')).toBe(false);
     expect(calls.some((c) => c.kind === 'refine')).toBe(true);

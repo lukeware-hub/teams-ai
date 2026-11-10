@@ -17,7 +17,7 @@ const scored = (docs: Record<string, number>) => ({ cycle: 1, available: true, m
 const question = (questionId: string, over: Record<string, unknown> = {}) => ({ questionId, role: 'po', text: `Pergunta ${questionId}?`, blocking: false, relatedAcIds: [], cycle: 1, status: 'pending', answer: null, ...over });
 const patch = (patchId: string, file: string) => ({ patchId, role: 'po', file, find: 'a', replace: 'b', reason: 'mais claro', diff: '--- x\n-a\n+b\n', cycle: 1, status: 'pending', decision: null });
 const verdict = (specsHash: string, value: 'approved' | 'rejected', findings: string[] = []) => ({ specsHash, verdict: value, findings, reason: null, at: '2026-11-03T14:02:00.000Z' });
-const on = () => ({ onSaveDoc: vi.fn(), onReadDoc: vi.fn(), onEvaluate: vi.fn(), onCheckSpecs: vi.fn(),onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onReprocessStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn(), onNotApplicable: vi.fn(() => true) });
+const on = () => ({ onSaveDoc: vi.fn(), onReadDoc: vi.fn(), onEvaluate: vi.fn(), onCheckSpecs: vi.fn(),onAnswer: vi.fn(), onSkip: vi.fn(), onAccept: vi.fn(), onReject: vi.fn(), onSecret: vi.fn(), onStart: vi.fn(), onContinueStage: vi.fn(() => true), onAddToGraph: vi.fn(() => true), onCloseReview: vi.fn(() => true), onEvaluateStage: vi.fn(), onScoreDoc: vi.fn(), onScoreAll: vi.fn(), onConfidential: vi.fn(), onEnableBacklog: vi.fn(), onNotApplicable: vi.fn(() => true) });
 const show = (snap: Snapshot, handlers = on(), busy = false) => {
   render(<MemoryRouter><RefinementView snap={snap} busy={busy} {...handlers} /></MemoryRouter>);
   return handlers;
@@ -121,15 +121,13 @@ describe('Voltar and Continuar', () => {
     expect(handlers.onContinueStage).toHaveBeenCalledWith('project.md', false);
   });
 
-  it('keeps the owner on a repository session stage while its document goes into Graphify in the background', async () => {
+  it('moves a repository session to the next stage while its document goes into Graphify in the background', async () => {
     const done = ['flow.md', 'project.md', 'briefing.md'];
     const handlers = show(base({ doneStages: done, graphed: done, repositories: true, passedStages: ['stack.md'] }));
     expect(editor('stack.md').value).toBe('# Stack');
     fireEvent.click(screen.getByTestId('wizard-continue'));
     await waitFor(() => expect(handlers.onContinueStage).toHaveBeenCalledWith('stack.md', false));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(editor('stack.md').value).toBe('# Stack');
-    expect(screen.queryByTestId('doc-design.md')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('doc-design.md')).toBeTruthy());
   });
 
   it('only moves the view with Continuar on a stage that is already done', async () => {
@@ -173,53 +171,32 @@ describe('Voltar and Continuar', () => {
 });
 
 describe('processing a stage', () => {
-  it('processes the document on screen with the agents of its stage', () => {
+  it('processes the document on screen with the agents of its stage', async () => {
     const handlers = show(base({ doneStages: ['flow.md'] }));
     fireEvent.click(screen.getByTestId('wizard-process'));
-    expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md');
+    await waitFor(() => expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md'));
   });
 
-  it('runs the full round in a project that records no stages', () => {
+  it('runs the full round in a project that records no stages', async () => {
     const handlers = show(base({ stages: undefined }));
     fireEvent.click(screen.getByTestId('wizard-process'));
-    expect(handlers.onEvaluate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(handlers.onEvaluate).toHaveBeenCalledTimes(1));
   });
 
-  it('has one button that processes the first time and reprocesses once the passed text is kept', () => {
+  it('has one process button that evaluates the text as it is, with no confirm and no second button', async () => {
     const first = show(base({ doneStages: ['flow.md'] }));
     expect(screen.getByTestId('wizard-process').textContent).toContain('Processar com agentes');
-    expect(screen.queryByText('Reprocessar')).toBeNull();
     fireEvent.click(screen.getByTestId('wizard-process'));
-    expect(first.onEvaluateStage).toHaveBeenCalledWith('project.md');
+    await waitFor(() => expect(first.onEvaluateStage).toHaveBeenCalledWith('project.md'));
     cleanup();
-    const confirm = vi.spyOn(window, 'confirm');
-    const again = show(base({ doneStages: ['flow.md'], passedStages: ['project.md'] }));
-    expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
-    fireEvent.click(screen.getByTestId('wizard-process'));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(again.onReprocessStage).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('wizard-process'));
-    fireEvent.click(screen.getByTestId('stage-confirm'));
-    expect(again.onReprocessStage).toHaveBeenCalledWith('project.md');
-    expect(again.onEvaluateStage).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('stage-confirm')).toBeNull();
-    expect(confirm).not.toHaveBeenCalled();
-    confirm.mockRestore();
-  });
-
-  it('offers Avaliar esta etapa beside Reprocessar after a hand edit of a passed stage, as an option: Continuar stays open', async () => {
-    const handlers = on();
-    const passed = (reviewed: string[]) => base({ doneStages: ['flow.md'], passedStages: ['project.md'], reviewedStages: reviewed, repositories: true });
-    const { rerender } = render(<MemoryRouter><RefinementView snap={passed(['flow.md'])} busy={false} {...handlers} /></MemoryRouter>);
+    const again = show(base({ doneStages: ['flow.md'], passedStages: ['project.md'], repositories: true }));
     fireEvent.change(editor('project.md'), { target: { value: '# Projeto editado à mão' } });
-    expect(screen.getByTestId('wizard-process').textContent).toContain('Reprocessar');
-    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByTestId('wizard-evaluate'));
-    await waitFor(() => expect(handlers.onEvaluateStage).toHaveBeenCalledWith('project.md'));
-    expect(handlers.onReprocessStage).not.toHaveBeenCalled();
-    rerender(<MemoryRouter><RefinementView snap={passed(['flow.md', 'project.md'])} busy={false} {...handlers} /></MemoryRouter>);
-    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByTestId('wizard-process').textContent).toContain('Processar de novo');
     expect(screen.queryByTestId('wizard-evaluate')).toBeNull();
+    expect((screen.getByTestId('wizard-continue') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId('wizard-process'));
+    await waitFor(() => expect(again.onEvaluateStage).toHaveBeenCalledWith('project.md'));
+    expect(screen.queryByTestId('stage-confirm')).toBeNull();
   });
 
   it('waits while a run is on, and says why when the rounds of the stage are used up', () => {
@@ -952,12 +929,6 @@ describe('the steps the owner can open, and the guards of the stage actions', ()
 describe('the copy and the figures the stage screen shows', () => {
   const ALL5 = ['flow.md', 'project.md', 'briefing.md', 'stack.md', 'design.md'];
   const reviewed = (over: Record<string, unknown>) => base({ doneStages: ALL5, graphed: ALL5, ...over });
-
-  it('says in the reprocess dialog that accepted suggestions stay, except those built on a text edited after the pass', () => {
-    show(base({ passedStages: ['flow.md'] }));
-    fireEvent.click(screen.getByTestId('wizard-process'));
-    expect(screen.getByRole('alertdialog').textContent).toContain('As sugestões aceitas continuam, exceto as que dependem de um texto editado depois da entrega.');
-  });
 
   it('counts only the suggestions the agents applied and kept, not those a Reprocessar reverted', () => {
     open('?etapa=revisao');

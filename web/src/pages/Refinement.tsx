@@ -336,7 +336,6 @@ export interface ViewProps {
   /** The owner asks the agents to review the document of a stage. */
   onEvaluateStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks for the review of a stage again, from the text that was passed to it. */
-  onReprocessStage?(file: DocFile): void | Promise<unknown>;
   /** The owner asks the Jev for the score of one document. */
   onScoreDoc?(file: DocFile): void | Promise<unknown>;
   /** The owner asks the Jev for the score of all five documents. */
@@ -1426,12 +1425,8 @@ export function RefinementView(p: ViewProps) {
     if (reviewBlock) return reviewBlock;
     return st.repositories === true && stageSession && missing.length > 0 ? `Adicione os cinco documentos ao Graphify antes: falta ${missing.join(', ')}.` : null;
   })();
-  // After the first processing the text passed is kept, so the one button of the stage reprocesses from it.
-  const reprocess = isDocStep(step) && (st.passedStages ?? []).includes(step);
-  // A hand edit of a passed stage takes it out of the reviewed set: the owner evaluates it again and keeps the edit.
-  const reviewOwed = isDocStep(step) && reprocess && st.repositories === true && !(st.reviewedStages ?? []).includes(step);
-  // The answers given since the stage's last review wait for Reprocessar.
-  const awaiting = isDocStep(step) ? (p.snap.answersAwaiting?.[step] ?? 0) : 0;
+  // A stage the agents already processed once shows the button as a new run.
+  const processedBefore = isDocStep(step) && (st.passedStages ?? []).includes(step);
   const failingChecks = st.checklist.filter((c) => !c.passed).length;
   const needsCard = (withStart = true) => (
       <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
@@ -1656,19 +1651,13 @@ export function RefinementView(p: ViewProps) {
     </>
   ) : (
     <>
-      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={runLocked || atMax} title={limitTitle} onClick={() => {
-          if (!reprocess) return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
-          // Going back to the passed text drops the edits made since; the suggestions accepted since stay.
-          setAsk({ title: 'Reprocessar a etapa', text: 'Reprocessar volta ao texto que você entregou e descarta as edições feitas depois. As sugestões aceitas continuam, exceto as que dependem de um texto editado depois da entrega.', confirmLabel: 'Reprocessar', tone: 'accent', icon: 'refresh', onConfirm: () => void p.onReprocessStage?.(step) });
-        }} icon={<Icon name={reprocess ? 'refresh' : 'check'} size={16} />}>
-        {reprocess ? (awaiting > 0 ? `Reprocessar · ${awaiting} ${awaiting === 1 ? 'resposta' : 'respostas'}` : 'Reprocessar') : 'Processar com agentes'}
+      <ActionButton data-testid="wizard-process" className="secondary" busy={evaluating} disabled={runLocked || atMax} title={limitTitle} onClick={async () => {
+          // The agents review the text as it is now: a hand edit is saved first and kept.
+          if (!(await saveTyped())) return;
+          return stageSession ? p.onEvaluateStage?.(step) : p.onEvaluate();
+        }} icon={<Icon name={processedBefore ? 'refresh' : 'check'} size={16} />}>
+        {processedBefore ? 'Processar de novo' : 'Processar com agentes'}
       </ActionButton>
-      {reviewOwed && (
-        <ActionButton data-testid="wizard-evaluate" className="secondary" disabled={runLocked || atMax} title={limitTitle} onClick={async () => { if (await saveTyped()) p.onEvaluateStage?.(step); }} icon={<Icon name="check" size={16} />}>
-          Avaliar esta etapa
-        </ActionButton>
-      )}
-      {awaiting > 0 &&<p data-testid="wizard-answers-awaiting" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{awaiting === 1 ? 'Uma resposta guardada' : `${awaiting} respostas guardadas`}: clique em Reprocessar para aplicar.</p>}
       {graphingNow && <p data-testid="wizard-graph-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{graphReason}</p>}
       {continueBlock && <p data-testid="wizard-continue-reason" className="m-0 basis-full text-[0.8125rem] text-ink-soft @3xl:order-first @3xl:text-right">{continueBlock}</p>}
       {!continueBlock && lowScore !== null && <p data-testid="wizard-low-score" className="m-0 basis-full text-[0.8125rem] text-warn @3xl:order-first">A nota do Jev está em {lowScore}%, abaixo de {percentOf(PASS_LINE)}%. Os agentes já tentaram melhorar o documento. Você decide se continua assim.</p>}
@@ -1683,9 +1672,8 @@ export function RefinementView(p: ViewProps) {
           const notGraphed = isDocStep(step) && !(st.graphed ?? []).includes(step);
           if (stageSession && (!doneStages.includes(step) || notGraphed)) {
             const result = await p.onContinueStage?.(step, lowScore !== null);
+            // The document goes into Graphify in the background while the owner moves on.
             if (result === false) return;
-            // In a repository session the document goes into Graphify in the background: the owner stays on it until it is in the graph.
-            if (st.repositories === true) return;
           }
           goTo(nextWizardStep(step, stepsOf(st)));
         }}
@@ -2024,7 +2012,6 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         onAddToGraph={(doc) => act(() => refineApi.addToGraph(projectId, specId, doc))()}
         onNotApplicable={act(() => refineApi.notApplicable(projectId, specId))}
         onCloseReview={act(() => refineApi.closeReview(projectId, specId))}
-        onReprocessStage={(f) => act(() => refineApi.reprocessStage(projectId, specId, f))()}
         onScoreDoc={(f) => act(() => refineApi.scoreDoc(projectId, specId, f))()}
         onScoreAll={act(() => refineApi.score(projectId, specId))}
         onEvaluateStage={(f) => act(() => refineApi.evaluateStage(projectId, specId, f))()}

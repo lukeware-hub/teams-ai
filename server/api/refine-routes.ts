@@ -394,17 +394,6 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
-      path: `${S}/docs/:file/reprocess`,
-      handler: wrap(async ({ params, json }) => {
-        const file = params.file!;
-        if (!DOC_STAGES.includes(file as DocFile)) throw new HttpError(400, `unknown doc ${file}`);
-        const s = await get(params);
-        review(s, params, s.reprocessStage(file as DocFile));
-        json(202, { ok: true });
-      }),
-    },
-    {
-      method: 'POST',
       path: `${S}/stage/continue`,
       handler: wrap(async (ctx) => {
         const body = await optionalBody(ctx);

@@ -674,8 +674,6 @@ export interface Snapshot {
   evaluationProgress?: { durationMs: number; costUsd: number; redone: number; repeated: boolean } | null;
   /** What the stage review of the current round has done so far. */
   stageSignals?: { reviewed: boolean; scored: boolean; jevDown: boolean };
-  /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
-  answersAwaiting?: Partial<Record<'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md', number>>;
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   /** The sha256 of each document on disk: a save sends the one its text was typed over. */
   hashes?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>;
@@ -774,7 +772,6 @@ export const refineApi = {
   addToGraph: (p: string, s: string, doc: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/graph/add`, { doc }).then((r) => json<{ ok: true }>(r)),
   notApplicable: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/not-applicable`).then((r) => json<{ ok: true }>(r)),
   closeReview: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/review/close`).then((r) => json<{ ok: true }>(r)),
-  reprocessStage: (p: string, s: string, file: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/reprocess`).then((r) => json<{ ok: true }>(r)),
   plans: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/plans`).then((r) => json<{ ok: true }>(r)),
   resolve: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/resolve`).then((r) => json<{ ok: true }>(r)),
   stop: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/stop`).then((r) => json<{ ok: true }>(r)),

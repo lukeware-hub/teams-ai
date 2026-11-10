@@ -30,13 +30,13 @@ import { NOT_APPLICABLE_DESIGN } from './not-applicable.js';
 import { lastReviewKeyOf, runStageCycle } from './stage-cycle.js';
 import { builtGraphNotes, fileGraphDir } from './stage-consult.js';
 import { PASS_LINE, percentOf, scoresDocs } from './readiness.js';
-import { answersAwaitingOf, reviewingOf, runningStepsOf, stageCostOf, evaluationProgressOf, stageSignalsOf, waitingOf, type EvaluationProgress, type RunningStep, type StageCost } from './progress.js';
+import { reviewingOf, runningStepsOf, stageCostOf, evaluationProgressOf, stageSignalsOf, waitingOf, type EvaluationProgress, type RunningStep, type StageCost } from './progress.js';
 import { decisionsSpan, recordDecision, withDecisions } from './decisions.js';
 import { maxCriterionInDraft } from './detail-cycle.js';
 import { designTemplate, flowTemplate, MainConflict, moveBriefingToProject, readBase, readDerived, readDoc, readMainSpec, readSpecsMd, stackTemplate, writeDerived, writeDoc, writeSpecsMd, type DocFile, type Draft } from './draft.js';
 import { currentEvent, DRAFT_HASH, RefineEvent, type Question } from './events.js';
 import { architecturePack, checkDecision, docsHashOf, RulesOpenError, writeArchitectureFiles } from './architecture-step.js';
-import { applyPatch, checkPatch, COVERED_REASON, NOT_IN_PASSED_TEXT, patchId as patchIdOf, unifiedDiff } from './patches.js';
+import { applyPatch, checkPatch, COVERED_REASON, patchId as patchIdOf, unifiedDiff } from './patches.js';
 import { additiveOnly, patchChangesScope } from './scope-guard.js';
 import { autoAcceptable, inTeamAlone } from './team-rule.js';
 import { restoreMove } from './moves.js';
@@ -239,8 +239,6 @@ export interface Snapshot {
   stageCost: Partial<Record<DocFile, StageCost>>;
   /** What the latest evaluation spent and redid; null before the first one. */
   evaluationProgress: EvaluationProgress | null;
-  /** How many answers each stage holds that no review has used yet: they wait for Reprocessar. */
-  answersAwaiting: Partial<Record<DocFile, number>>;
   /** What the stage review of the current round has done so far. */
   stageSignals: { reviewed: boolean; scored: boolean; jevDown: boolean };
 }
@@ -527,7 +525,7 @@ export class RefineSession {
     const architectureStale = this.state.architecture ? this.state.architecture.docsHash !== docsHashOf(docs) : false;
     const target = await this.docsTargetOf(docs);
     const events = this.journal.events;
-    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), evaluationProgress: evaluationProgressOf(events), answersAwaiting: answersAwaitingOf(events), stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsReady: this.specsReady(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
+    return { projectId: this.deps.draft.projectId, specId: this.deps.draft.specId, state: this.state, docs, hashes, secrets, tokens: { ...tokens, graph }, busy: this.busy, architectureStale, running: runningStepsOf(events), waiting: waitingOf(events), reviewing: reviewingOf(events), stageCost: stageCostOf(events), evaluationProgress: evaluationProgressOf(events),  stageSignals: stageSignalsOf(events), closing: this.state.repositories === true ? { ...(await this.closingSummary()), repositories: [] } : undefined, stageProblems: Object.fromEntries(DOC_STAGES.map((file) => [file, this.stageProblem(file, docs[file])])) as Record<DocFile, string | null>, seq: this.journal.events.at(-1)?.seq ?? 0, limits: this.limits(), specsReady: this.specsReady(), ...(this.state.extension ? { trace: requestTrace(this.state) } : {}), ...(this.state.docsRepo === true ? { docsRepo: true } : {}), ...(target ? { docsTarget: target } : {}), ...(this.docs ? { docsSync: this.docs.view } : {}) };
   }
 
   /** The repository the backlog step creates: the owner of the project document or the default one, and the name of the style. */
@@ -669,22 +667,12 @@ export class RefineSession {
 
   /** One review of a stage's document, the current one or any other: only that document changes. */
   evaluateStage(file: DocFile): Promise<void> {
-    return this.startStage(file, false);
-  }
-
-  /** The review of a stage again, from the text the owner passed: the document goes back to it first. */
-  reprocessStage(file: DocFile): Promise<void> {
-    if (!(this.state.passedStages ?? []).includes(file)) throw new ConflictError(`não há texto entregue de ${file} para reprocessar`);
-    return this.startStage(file, true);
-  }
-
-  private startStage(file: DocFile, restore: boolean): Promise<void> {
     this.ensureCanEvaluate();
     if (this.state.stages !== true) throw new ConflictError('só um refinamento de projeto novo tem etapas');
     this.guardRounds(file);
     this.guardStage(file);
     const ctl = (this.abortCtl = new AbortController());
-    const run = this.timedStage(ctl, file, restore).finally(() => {
+    const run = this.timedStage(ctl, file).finally(() => {
       this.running = null;
       this.abortCtl = null;
     });
@@ -692,41 +680,13 @@ export class RefineSession {
     return run;
   }
 
-  /** Keeps the text passed to a stage the first time it is processed; a reprocess puts that text back in the document. */
-  private async keepPassedText(file: DocFile, restore: boolean): Promise<void> {
-    const kept = path.posix.join(this.deps.draft.root, 'passed', file);
-    if (restore) {
-      await this.restorePassed(file, await fs.readFile(kept, 'utf8'));
-      return;
-    }
+  /** Keeps the text passed to a stage the first time it is processed. */
+  private async keepPassedText(file: DocFile): Promise<void> {
     if ((this.state.passedStages ?? []).includes(file)) return;
     await this.keepPassed(file, await readDoc(this.deps.draft, file));
   }
 
-  /** The reprocess puts the passed text back and applies again the suggestions accepted after it, so they stay in the document. */
-  private async restorePassed(file: DocFile, passed: string): Promise<void> {
-    const passedIds = new Set(this.state.passedPatchIds?.[file] ?? []);
-    const carried = this.state.patches.filter((p) => p.file === file && p.status === 'accepted' && !passedIds.has(p.patchId));
-    let text = passed;
-    const reapplied: string[] = [];
-    const lost: string[] = [];
-    for (const p of carried) {
-      const next = applyPatch(text, p);
-      if (next === null) lost.push(p.patchId);
-      else {
-        text = next;
-        reapplied.push(p.patchId);
-      }
-    }
-    await writeDoc(this.deps.draft, file, text);
-    await this.journal.fact(RefineEvent.DocEdited, { file, hash: sha256(text), source: 'reprocess' });
-    await this.journal.fact(RefineEvent.StageReprocessed, { file });
-    // The reprocess drops the suggestions accepted after the pass: the ones that still apply are accepted again, the others stay dropped.
-    for (const patchId of reapplied) await this.journal.fact(RefineEvent.PatchAccepted, { patchId });
-    for (const patchId of lost) await this.journal.fact(RefineEvent.PatchDropped, { patchId, reason: NOT_IN_PASSED_TEXT });
-  }
-
-  /** Writes `text` as the text passed to a stage: the reprocess goes back to it. */
+  /** Writes `text` as the text passed to a stage. */
   private async keepPassed(file: DocFile, text: string): Promise<void> {
     const kept = path.posix.join(this.deps.draft.root, 'passed', file);
     await fs.mkdir(path.posix.dirname(kept), { recursive: true });
@@ -754,10 +714,10 @@ export class RefineSession {
     return percent < percentOf(PASS_LINE) ? percent : null;
   }
 
-  private async timedStage(ctl: AbortController, file: DocFile, restore: boolean): Promise<void> {
+  private async timedStage(ctl: AbortController, file: DocFile): Promise<void> {
     await this.journal.fact(RefineEvent.EvaluationStarted, {});
     try {
-      await this.keepPassedText(file, restore);
+      await this.keepPassedText(file);
       const deps = { draft: this.deps.draft, journal: this.journal, runAgent: this.deps.runAgent, frontAgent: this.deps.frontAgent, principles: () => this.state.derived?.project.principles ?? [], signal: ctl.signal, lastReviewKey: (f: DocFile) => lastReviewKeyOf(this.journal.events, f), graphNotes: this.deps.docGraphContext ? builtGraphNotes(this.deps.docGraphContext) : undefined };
       // One review per click: what it finds is the owner's to apply or leave.
       await this.reviewAndScore(deps, file);
@@ -1484,6 +1444,18 @@ export class RefineSession {
     }
     await this.journal.fact(RefineEvent.QuestionAnswered, { questionId, text, ...(docsAnswered ? { docsAnswered: true } : {}) });
     if (q.origin === 'architecture') await this.redecideOnAnswers();
+    else if (q.file) this.reviewOnAnswers(q.file);
+  }
+
+  /** The last open question of a stage answered starts its review in the background, so the answers go into the document. */
+  private reviewOnAnswers(file: DocFile): void {
+    const open = this.state.questions.some((x) => x.file === file && x.status === 'pending');
+    if (open || this.busy || this.state.stages !== true || this.state.backlog?.enabled) return;
+    try {
+      this.evaluateStage(file).catch(() => undefined);
+    } catch (err) {
+      if (!(err instanceof ConflictError)) throw err;
+    }
   }
 
   /** The last architecture question answered decides the architecture again with the answers; a session that cannot decide now leaves it to Redefinir. */
