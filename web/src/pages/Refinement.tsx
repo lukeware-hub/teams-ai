@@ -163,7 +163,7 @@ function QueuedNote({ id, kind, onUndo }: { id: string; kind: keyof typeof QUEUE
 /** One step between the backlog and the start: done, the one being worked on now, or still ahead. */
 type FinishStep = { id: string; label: string; detail: string; done: boolean };
 
-/** What still keeps the start closed, in order, with what the latest evaluation spent and redid. */
+/** What still keeps the start closed, with what the latest evaluation spent and redid; it closes the backlog step. */
 function FinishPanel({ steps, last, total, repeated }: { steps: FinishStep[]; last: string | null; total: string; repeated: boolean }) {
   const current = steps.findIndex((x) => !x.done);
   return (
@@ -1477,9 +1477,9 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {backlogOn && <FinishPanel steps={finishSteps} last={lastLine} total={money(snap.tokens.costUsd)} repeated={progress?.repeated === true} />}
       {openOwner > 0 && needsCard(false)}
       {backlogCards()}
+      {backlogOn && <FinishPanel steps={finishSteps} last={lastLine} total={money(snap.tokens.costUsd)} repeated={progress?.repeated === true} />}
     </div>
   );
   // The development starts only once specs.md is written from the current backlog, with the reason beside the button.

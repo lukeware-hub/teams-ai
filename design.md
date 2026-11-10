@@ -1417,12 +1417,6 @@ A etapa Backlog só cria os itens do backlog. PO e SM já fizeram o trabalho del
 Preparar o desenvolvimento
 Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua spec.
 
-┌ Falta para terminar ──────────────────────────────────┐
-│ ✓ Backlog detalhado   88 itens                        │
-│ ───────────────────────────────────────────────────── │
-│ Última avaliação: 4 min · US$ 0,40 · 1 item refeito…  │
-│ Total do refinamento: US$ 12,30                       │
-└───────────────────────────────────────────────────────┘
 ┌ Precisa de você ─── só quando algo espera o dono ─────┐
 └───────────────────────────────────────────────────────┘
 ┌ Itens do backlog ───────────── 88 specs · detalhado ──┐
@@ -1431,13 +1425,21 @@ Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua sp
 │ ▸ Contratos e eventos                              3  │
 │ ▸ Identidade e tenancy                             1  │
 └───────────────────────────────────────────────────────┘
+┌ Falta para terminar ──────────────────────────────────┐
+│ ✓ Backlog detalhado   88 itens                        │
+│ ───────────────────────────────────────────────────── │
+│ Última avaliação: 4 min · US$ 0,40 · 1 item refeito…  │
+│ Total do refinamento: US$ 12,30                       │
+└───────────────────────────────────────────────────────┘
+───────────────────────────────────────────────────────── (rodapé)
+7577 chamadas · 77507562 tokens …
         Falta para iniciar o desenvolvimento: …
         [ Preparar backlog ]  [ Iniciar desenvolvimento ]
 ```
 
 | Elemento | Especificação |
 |---|---|
-| Falta para terminar | Um quadro no topo, com um único passo: `Backlog detalhado` e o número de itens. Feito: ícone `check` em `good`. Ainda não: ícone `clock` em `warn`. Sem chip de contagem. |
+| Falta para terminar | Um quadro no fim da etapa, logo antes do rodapé com as chamadas e os tokens, com um único passo: `Backlog detalhado` e o número de itens. Feito: ícone `check` em `good`. Ainda não: ícone `clock` em `warn`. Sem chip de contagem. |
 | Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
 | Total | `Total do refinamento: US$ Z`. |
 | Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
