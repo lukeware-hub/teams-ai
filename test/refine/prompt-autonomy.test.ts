@@ -35,34 +35,6 @@ describe('stage review context of the other documents', () => {
   });
 });
 
-describe('namesItem', () => {
-  it('finds an item key written whole, and not one that is part of a longer key', async () => {
-    const { namesItem } = await import('../../server/refine/session.js');
-    expect(namesItem('Item hello-world-greet-user, AC-006: o critério', 'hello-world-greet-user')).toBe(true);
-    expect(namesItem('Itens a e b: hello-world-swagger-docs', 'hello-world')).toBe(false);
-    expect(namesItem('specs.md › base: ok', 'base')).toBe(true);
-    expect(namesItem('baseline sem item', 'base')).toBe(false);
-  });
-});
-
-describe('feedbackByItem: the reviewers send back only the items not yet redone', () => {
-  const findings = [{ role: 'sm', text: 'Item caso: falta o critério de cancelamento.' }, { role: 'po', text: 'Os critérios estão vagos.' }];
-
-  it('sends a finding to the item it names, and one that names none to every item', async () => {
-    const { feedbackByItem } = await import('../../server/refine/session.js');
-    expect(feedbackByItem(findings, ['caso', 'fat'], new Set())).toEqual({
-      caso: ['SM (review of specs.md): Item caso: falta o critério de cancelamento.', 'PO (review of specs.md): Os critérios estão vagos.'],
-      fat: ['PO (review of specs.md): Os critérios estão vagos.'],
-    });
-  });
-
-  it('leaves out an item already redone on feedback, so a repeated point goes to the owner instead of another detail', async () => {
-    const { feedbackByItem } = await import('../../server/refine/session.js');
-    expect(Object.keys(feedbackByItem(findings, ['caso', 'fat'], new Set(['caso'])))).toEqual(['fat']);
-    expect(feedbackByItem(findings, ['caso', 'fat'], new Set(['caso', 'fat']))).toEqual({});
-  });
-});
-
 describe('criterionIdsInDocs', () => {
   it('collects every criterion id the documents already use, whole ids only', async () => {
     const { criterionIdsInDocs } = await import('../../server/refine/detail-cycle.js');

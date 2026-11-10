@@ -350,27 +350,11 @@ describe('RefinementPage live', () => {
     window.history.replaceState(null, '', '/?etapa=backlog');
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 } } as never });
     renderLive();
-    await screen.findByTestId('specs-check');
+    await screen.findByTestId('backlog-cards');
     const question = { questionId: 'specs-1-0', role: 'po', text: 'Qual seção justifica o item base?', blocking: true, relatedAcIds: [], cycle: 1, origin: 'specs', options: [{ label: 'Objetivos', detail: 'Usa os objetivos.', recommended: true }] };
     await arrive(event(6, 'REFINE_SPECS_QUESTIONS_ASKED', { specsHash: 'h', questions: [question] }));
     expect(await screen.findByText('Qual seção justifica o item base?')).toBeTruthy();
     window.history.replaceState(null, '', '/');
-  });
-  it('applies the PO and SM adjustments to specs.md from Verificação, with no new review', async () => {
-    journal.events = [];
-    const s = snapshot(5);
-    const backlog = { enabled: true, detail: true, epics: [], items: [], specs: {}, preplans: {}, flowHeadings: [] };
-    const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['O item base não cobre o objetivo.'], reason: null, at: null };
-    window.history.replaceState(null, '', '/?etapa=backlog');
-    try {
-      vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ ...s, specsReady: true, state: { ...s.state, status: 'ready', error: null, patches: [], mode: 'new-project', stages: true, backlog, specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected } } as never });
-      const apply = vi.spyOn(refineApi, 'applySpecs').mockResolvedValue({ ok: true });
-      renderLive();
-      fireEvent.click(await screen.findByTestId('review-apply-specs'));
-      await waitFor(() => expect(apply).toHaveBeenCalledWith('hello-app', 'hello-001'));
-    } finally {
-      window.history.replaceState(null, '', '/');
-    }
   });
 
 });

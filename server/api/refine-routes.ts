@@ -208,40 +208,6 @@ export function refineRoutes(deps: { registry: SessionRegistry; log?: (line: str
     },
     {
       method: 'POST',
-      path: `${S}/specs/proceed`,
-      // The owner goes on with specs.md without the reviewers' adjustments.
-      handler: wrap(async ({ params, json }) => {
-        const s = await get(params);
-        ownerResumed(s);
-        await s.proceedWithSpecs();
-        json(200, { ok: true });
-      }),
-    },
-    {
-      method: 'POST',
-      path: `${S}/specs/apply`,
-      // The owner takes the reviewers' adjustments to specs.md: the items they named are detailed once more, with no new review.
-      handler: wrap(async ({ params, json }) => {
-        const s = await get(params);
-        const run = s.applySpecsSuggestions();
-        if (!run) throw new ConflictError('Não há ajuste do PO ou do SM para aplicar agora, ou o time está trabalhando.');
-        review(s, params, run);
-        json(202, { ok: true });
-      }),
-    },
-    {
-      method: 'POST',
-      path: `${S}/specs/check`,
-      handler: wrap(async ({ params, json }) => {
-        const s = await get(params);
-        const run = s.startSpecs();
-        if (!run) return json(200, { started: false, reason: s.specsNotStartedReason() });
-        review(s, params, run);
-        json(202, { started: true });
-      }),
-    },
-    {
-      method: 'POST',
       path: `${S}/backlog`,
       handler: wrap(async ({ params, json }) => {
         await (await get(params)).enableBacklog();

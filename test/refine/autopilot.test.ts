@@ -35,30 +35,27 @@ function fake(over: { patches?: unknown[]; questions?: unknown[]; status?: strin
     reviewSpecsBeside: vi.fn(async () => {}),
     specsReady: over.specsReady ?? (() => true),
     proceedWithout: vi.fn(async () => { for (const p of state.patches as Array<{ status: string }>) if (p.status === 'pending') p.status = 'rejected'; for (const q of state.questions as Array<{ status: string }>) if (q.status === 'pending') q.status = 'answered'; }),
-    applySpecsSuggestions: vi.fn(() => null),
     agentsDecide: vi.fn(async () => over.agentsDecide ?? false),
   };
   return s;
 }
 
 describe('resolveEverything: one pass, no review runs twice', () => {
-  it('takes the suggestions, has the PO answer the rest, evaluates, writes specs.md, takes its adjustments once and prepares the plans', async () => {
+  it('takes the suggestions, has the PO answer the rest, evaluates, writes specs.md and prepares the plans', async () => {
     const s = fake({ patches: [{ patchId: 'p1', status: 'pending', scopeChange: true, reason: '', find: 'a', replace: 'b', file: 'flow.md' }], questions: [{ questionId: 'q1', status: 'pending', blocking: true }] });
     await resolveEverything(s as unknown as RefineSession);
     expect(s.accept).toHaveBeenCalledWith('p1', false);
     expect(s.proceedWithout).toHaveBeenCalled();
     expect(s.evaluate).toHaveBeenCalledTimes(1);
     expect(s.startSpecs).toHaveBeenCalledTimes(1);
-    expect(s.applySpecsSuggestions).toHaveBeenCalledTimes(1);
     expect(s.runPlans).toHaveBeenCalledTimes(1);
   });
 
-  it('does not review specs.md again when the reviewers reject it: their adjustments are taken once and the plans go on', async () => {
+  it('with a ready backlog, writes specs.md once and goes on to the plans', async () => {
     const s = fake({ status: 'ready', specsReady: () => false });
     await resolveEverything(s as unknown as RefineSession);
     expect(s.evaluate).not.toHaveBeenCalled();
     expect(s.startSpecs).toHaveBeenCalledTimes(1);
-    expect(s.applySpecsSuggestions).toHaveBeenCalledTimes(1);
     expect(s.runPlans).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +207,7 @@ describe('decideWhenDelegated: the Settings answer to "agents decide" also holds
     expect(s.startSpecs).not.toHaveBeenCalled();
   });
 
-  it('with yes, nothing waiting but specs.md rejected and no plans, the team goes on to settle specs.md and prepare the plans', async () => {
+  it('with yes, nothing waiting but specs.md not written and no plans, the team writes specs.md and prepares the plans', async () => {
     const s = fake({ agentsDecide: true, status: 'ready', specsReady: () => false });
     await decideWhenDelegated(s as unknown as RefineSession);
     expect(s.startSpecs).toHaveBeenCalled();
@@ -227,7 +224,7 @@ describe('decideWhenDelegated: the Settings answer to "agents decide" also holds
     expect(s.startSpecs).toHaveBeenCalled();
   });
 
-  it('with no, a rejected specs.md waits for the owner', async () => {
+  it('with no, an unwritten specs.md waits for the owner', async () => {
     const s = fake({ agentsDecide: false, status: 'ready', specsReady: () => false });
     await decideWhenDelegated(s as unknown as RefineSession);
     expect(s.startSpecs).not.toHaveBeenCalled();
@@ -286,12 +283,10 @@ describe('runExtension: the team starts and stops are journaled, so the screen a
 });
 
 describe('leftForOwner when the team stops', () => {
-  it('says why the team stopped when a cycle failed or a reviewer rejected specs.md, without blocking the start', () => {
+  it('says why the team stopped when a cycle failed', () => {
     const s = fake({ status: 'ready', plansDone: true });
     s.state.error = 'A sessão do Claude expirou.';
-    s.state.specsMd = { hash: 'h1' } as never;
-    s.state.specsReview = { po: { specsHash: 'h1', verdict: 'rejected', findings: ['x'] }, sm: { specsHash: 'h1', verdict: 'approved', findings: [] } } as never;
-    expect(leftForOwner(s as unknown as RefineSession)).toEqual(['A sessão do Claude expirou.', expect.stringContaining('PO apontaram problemas no specs.md')]);
+    expect(leftForOwner(s as unknown as RefineSession)).toEqual(['A sessão do Claude expirou.']);
   });
 });
 
@@ -304,7 +299,7 @@ describe('leftForOwner', () => {
 });
 
 describe('startIsClear', () => {
-  it('needs the backlog ready, no blocking question, specs.md approved and the plans prepared', async () => {
+  it('needs the backlog ready, no blocking question, specs.md written and the plans prepared', async () => {
     const ready = fake({ status: 'ready', plansDone: true });
     expect(await startIsClear(ready as unknown as RefineSession)).toBe(true);
     expect(await startIsClear(fake({ status: 'ready' }) as unknown as RefineSession)).toBe(false);

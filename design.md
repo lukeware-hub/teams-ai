@@ -1365,39 +1365,9 @@ Escolhas do dono:
 - Perguntas sem documento continuam respondíveis no resumo.
 - Só o nome muda; o endereço `?etapa=revisao` fica, para os links salvos e os testes.
 
-### 26.11.1 Validação automática do specs.md (aprovado pelo dono)
+### 26.11.1 specs.md gerado do backlog, sem revisão
 
-Acontece na etapa `Backlog`, depois da `Arquitetura`, porque o `specs.md` sai do backlog e o backlog só existe depois da arquitetura. Ao abrir a etapa, o sistema grava `specs.md` a partir do backlog pronto, confirma a gravação lendo o arquivo de volta e pede a análise de PO e SM. Nenhum botão dispara isso. A `Lista de verificação` da etapa Backlog mostra o bloco `specs.md` acima de PO e SM. O `Resumo` não mostra PO, SM nem o `specs.md`. A análise roda de novo a cada abertura da etapa enquanto PO ou SM estiver reprovado ou com falha.
-
-| Elemento | Estados |
-|---|---|
-| Arquivo `specs.md` | `Gerando` · `Gerado` · `Falhou` |
-| PO e SM | `Pendente` · `Analisando` · `Aprovado` · `Reprovado` · `Falhou` |
-| Reprovado | cada motivo em uma linha, abaixo do nome do revisor |
-| Falhou | uma frase com o motivo; roda de novo na próxima abertura |
-| Última validação | `Última validação: dd/mm hh:mm`, uma linha |
-| Ação `Continuar` | habilitada só com o arquivo gerado e PO e SM aprovados; desabilitada até lá, com a razão ao lado: `Falta a aprovação do SM` ou `Aguardando a análise do PO` |
-
-Não há botão `Gerar specs.md`.
-
-Wireframe proposto:
-
-```
-┌ Lista de verificação ──────────────────────────┐
-│ Consumo de IA   20 chamadas · US$ 0,05         │
-│ ┌ specs.md ────────────────────────────────┐   │
-│ │ Gerado · 14 itens                        │   │
-│ │ Produto (PO)   Aprovado     dd/mm hh:mm  │   │
-│ │ Técnico (SM)   Reprovado    dd/mm hh:mm  │   │
-│ │   · AC-003 não cobre o objetivo Saúde    │   │
-│ └──────────────────────────────────────────┘   │
-│ Produto (PO) ▸    Técnico (SM) ▸               │
-│ Arquivos gerados  ·  Segredos                  │
-└────────────────────────────────────────────────┘
-          [ Voltar ]  [ Continuar ]  Falta a aprovação do SM
-```
-
-Escolhas do dono: o botão `Gerar specs.md` sai de vez; `Continuar` fica visível e desabilitado com a razão, em vez de sumir.
+O `specs.md` é gerado na etapa `Backlog`, depois da `Arquitetura`, porque ele sai do backlog e o backlog só existe depois da arquitetura. O botão `Preparar backlog` grava o `specs.md` a partir do backlog pronto e confirma a gravação lendo o arquivo de volta. PO e SM não revisam o `specs.md`: eles já revisaram os documentos nas etapas anteriores. A tela da etapa não mostra o `specs.md`. Enquanto ele não estiver gravado, o texto ao lado de `Iniciar desenvolvimento` diz o motivo: `Gere o specs.md do backlog` ou `Aguardando o backlog ficar pronto`.
 
 ### 26.12 Revisão de documento grande por partes
 
@@ -1439,18 +1409,42 @@ O dono decide uma sugestão ou responde uma pergunta a qualquer momento. Se o ti
 | Descarte | Uma decisão que não cabe mais no texto é descartada; o motivo aparece num aviso da sugestão, nunca em silêncio. |
 | Ordem | As decisões do dono entram antes da decisão automática dos agentes (Settings, `Autorizo os agentes a tomar decisões?`). |
 
-### 26.15 Falta para terminar (etapa Backlog)
+### 26.15 Etapa Backlog: só os itens do backlog
 
-Um quadro no topo da etapa Backlog mostra os passos entre o backlog e o início do desenvolvimento, e quanto a última avaliação gastou, para o dono ver o trabalho andar.
+A etapa Backlog só cria os itens do backlog. PO e SM já fizeram o trabalho deles nas etapas anteriores, então a etapa não traz validação deles. Os planos de implementação continuam sendo preparados pelo botão `Preparar backlog`, mas não aparecem na tela.
+
+```
+Preparar o desenvolvimento
+Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua spec.
+
+┌ Falta para terminar ──────────────────────────────────┐
+│ ✓ Backlog detalhado   88 itens                        │
+│ ───────────────────────────────────────────────────── │
+│ Última avaliação: 4 min · US$ 0,40 · 1 item refeito…  │
+│ Total do refinamento: US$ 12,30                       │
+└───────────────────────────────────────────────────────┘
+┌ Precisa de você ─── só quando algo espera o dono ─────┐
+└───────────────────────────────────────────────────────┘
+┌ Itens do backlog ───────────── 88 specs · detalhado ──┐
+│ [72 seções] [88 itens] [88 specs] [1025 critérios]    │
+│ [567 tarefas] [3 lacunas]                             │
+│ ▸ Contratos e eventos                              3  │
+│ ▸ Identidade e tenancy                             1  │
+└───────────────────────────────────────────────────────┘
+        Falta para iniciar o desenvolvimento: …
+        [ Preparar backlog ]  [ Iniciar desenvolvimento ]
+```
 
 | Elemento | Especificação |
 |---|---|
-| Título | `Falta para terminar`, com o chip `N de 4` à direita. |
-| Passos | `Backlog detalhado`, `specs.md gerado`, `Planos preparados`, `Pronto para iniciar`, nessa ordem. Feito: ícone `check` em `good`. O passo de agora: ícone `clock` em `warn`. Os seguintes: `chevron-right` em `ink-soft`. |
-| Detalhe | Ao lado de cada passo: itens do backlog; a revisão do specs.md com os pontos de PO e SM; os planos prontos de N; vazio no último. |
+| Falta para terminar | Um quadro no topo, com um único passo: `Backlog detalhado` e o número de itens. Feito: ícone `check` em `good`. Ainda não: ícone `clock` em `warn`. Sem chip de contagem. |
 | Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
 | Total | `Total do refinamento: US$ Z`. |
 | Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
+| Precisa de você | Só aparece quando algo espera o dono. Junta as perguntas do PO e do SM, as perguntas dos planos (escondidas enquanto os planos estão sendo preparados) e as perguntas repetidas que não foram feitas de novo. |
+| Itens do backlog | O único card da etapa, sempre aberto: a cobertura (§26.8.1) e a lista de itens por épico. |
+| Falta para iniciar | O texto em `warn` ao lado dos botões diz tudo o que ainda fecha `Iniciar desenvolvimento`: backlog, perguntas obrigatórias, `specs.md` e planos. |
+| Pedido de continuação | A tela de um pedido (`Detalhes do time`) continua com os cards `Planos de implementação` e `Verificação` abaixo dos itens. |
 
 ### 26.16 Revisão opcional (todas as etapas)
 
@@ -1473,8 +1467,7 @@ As revisões de PO, SM e Front não travam o fluxo. Elas rodam uma vez por cliqu
 | Revisar de novo | Botão `secondary` pequeno à direita: roda a revisão da etapa outra vez. Aplicar ajustes nunca dispara outra revisão sozinho. |
 | Continuar | Só depende de a etapa ter sido processada uma vez, do formato do modelo e do Graphify. Sugestão ou pergunta aberta não trava: continuar é seguir sem alterações. |
 | Etapa anterior alterada | Aviso em `warn`, sem travar: "project.md mudou depois desta revisão; revise de novo se quiser." |
-| Etapa 8, Verificação | A mesma barra para os apontamentos de PO e SM no `specs.md`. Aplicar refaz uma vez os itens citados e grava o `specs.md` de novo, sem nova revisão. Depois de seguir sem alterações: "Você seguiu sem os ajustes do PO e do SM." |
-| Iniciar | Abre com o `specs.md` gerado do backlog atual e os planos prontos. A opinião de PO e SM nunca trava. |
+| Iniciar | Abre com o `specs.md` gerado do backlog atual e os planos prontos. |
 
 ## 27. Projects, Run, Status
 
@@ -1647,7 +1640,7 @@ A stage review (§26.5) scores only its own document, and it scores nothing unti
 
 ### 30.7 Backlog step cards
 
-A etapa Backlog mostra `Precisa de você` só quando algo espera o dono (perguntas ou sugestões em aberto). Abaixo, um único cartão com três linhas separadas por um traço fino: `Itens do backlog`, `Planos de implementação` e `Verificação`. O cabeçalho de cada linha cabe em uma linha: tile de ícone, título em caixa normal com `InfoTip` (que também diz quem preenche: PO, SM ou Dev), chip de estado e chevron. O que falta para iniciar o desenvolvimento aparece em amarelo ao lado dos botões, não dentro de um cartão. A barra de avaliação em andamento usa o tom de destaque (não o verde de sucesso) e tem duas linhas: o título com o tempo e o botão `Parar` na mesma linha, e embaixo quem está trabalhando e o que faz; a rodada fica no `InfoTip`.
+A etapa Backlog mostra `Precisa de você` só quando algo espera o dono (perguntas ou sugestões em aberto). Abaixo, um único cartão com a linha `Itens do backlog` (um pedido de continuação junta `Planos de implementação` e `Verificação`, separadas por um traço fino). O cabeçalho de cada linha cabe em uma linha: tile de ícone, título em caixa normal com `InfoTip` (que também diz quem preenche: PO, SM ou Dev), chip de estado e chevron. O que falta para iniciar o desenvolvimento aparece em amarelo ao lado dos botões, não dentro de um cartão. A barra de avaliação em andamento usa o tom de destaque (não o verde de sucesso) e tem duas linhas: o título com o tempo e o botão `Parar` na mesma linha, e embaixo quem está trabalhando e o que faz; a rodada fica no `InfoTip`.
 
 Só o cartão em foco abre sozinho e ganha borda de acento: o primeiro que ainda depende de algo, nesta ordem: o que espera o dono, backlog sem detalhe, planos não atuais, `specs.md` sem aprovação. Um cartão com pergunta aberta também abre. Os outros ficam recolhidos e o dono abre à mão.
 
@@ -1716,7 +1709,7 @@ Objetivo: os agentes refinam sozinhos e deixam tudo pronto; o dono só clica em 
 - O selo da Verificação mostra quantos itens falharam ("2 itens falharam"), não só "Pendente".
 - "Precisa de você" só aparece na frente depois que o time parou com algo que não conseguiu decidir (o servidor registra a parada e os motivos). Enquanto o time trabalha, ou quando nada sobrou, o cartão fica dentro de "Detalhes do time" e o motivo aparece no estado do topo.
 - O refinamento é enxuto só no pedido de continuação que o time faz sozinho: ele avalia uma vez, aplica as correções dos revisores e dá as verificações por resolvidas, sem reavaliar, a menos que sobre uma falha que uma conferência simples, sem agente, ainda aponte. Só os itens ainda não iniciados recebem plano e o impacto roda junto com as specs. A meta é deixar o pedido pronto para desenvolver em até 5 minutos, com teto de 10.
-- O specs.md é conferido por uma checagem simples, sem agente (critério repetido, tarefa que cita critério inexistente, critério sem tarefa). O PO e o SM o revisam em paralelo com o preparo dos planos; se apontarem problemas, o motivo aparece em "Verificação" e o desenvolvimento não fica bloqueado.
+- O specs.md é conferido por uma checagem simples, sem agente (critério repetido, tarefa que cita critério inexistente, critério sem tarefa). O PO e o SM não o revisam: eles já revisaram os documentos nas etapas anteriores.
 - Um item já iniciado ou entregue nunca recebe o pedido novo como fonte: por isso o pedido novo não gera ajustes falsos nas specs que ele não toca.
 - Quando sugestões esperam o dono, "Precisa de você" oferece duas saídas: decidir uma por uma (o botão "Mostrar pendências" leva a cada documento, onde cada sugestão tem Aceitar e Rejeitar) ou "Aceitar todas (N)" de uma vez. Aceitar todas põe as sugestões nos documentos e chama os agentes de novo, que conferem e preparam só o que mudou, sem reavaliar tudo. O botão fica desativado enquanto o time trabalha.
 - Se o time parou sem nada para o dono decidir (a sessão do Claude expirou, a preparação dos planos falhou, um passo deu erro), o topo diz o motivo e o botão "Tentar de novo" ocupa o lugar de "Iniciar desenvolvimento".

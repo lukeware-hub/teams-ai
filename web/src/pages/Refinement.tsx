@@ -31,7 +31,6 @@ import { jevVerdict, scoresDocs } from '@server/refine/readiness';
 import { canStartRun, ProgramStatus, useProgram } from '../refine/ProgramPanel.js';
 import { PlansStatus } from '../refine/PlansStatus.js';
 import { Elapsed, lastEvaluationText, ProcessBox, ProcessingBanner, stageInfo } from '../refine/ProcessingBanner.js';
-import { currentReview, reviewChip, SpecsCheck, specsBlockReason } from '../refine/SpecsCheck.js';
 import { ReviewDecision } from '../refine/ReviewDecision.js';
 import { runningSteps, type RunningStep } from '../refine/running-steps.js';
 import { StageSteps } from '../refine/StageSteps.js';
@@ -166,14 +165,12 @@ type FinishStep = { id: string; label: string; detail: string; done: boolean };
 
 /** What still keeps the start closed, in order, with what the latest evaluation spent and redid. */
 function FinishPanel({ steps, last, total, repeated }: { steps: FinishStep[]; last: string | null; total: string; repeated: boolean }) {
-  const done = steps.filter((x) => x.done).length;
   const current = steps.findIndex((x) => !x.done);
   return (
     <section data-testid="finish-panel" aria-labelledby="finish-panel-title" className="card grid min-w-0 gap-3 px-4 py-3">
       <header className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2">
         <span aria-hidden="true" className={`grid size-9 flex-none place-items-center rounded-tile ${TILE.violet}`}><Icon name="activity" size={18} /></span>
         <h3 id="finish-panel-title" className="m-0 flex-1 text-[1rem] font-semibold tracking-[-0.01em] normal-case text-ink">Falta para terminar</h3>
-        <span data-testid="finish-panel-count" className={`status-dot tabular-nums ${done === steps.length ? 'tone-good' : 'tone-warn'}`}>{done} de {steps.length}</span>
       </header>
       <ol className="m-0 grid list-none gap-2.5 p-0 pl-12 max-sm:pl-0">
         {steps.map((x, i) => (
@@ -314,16 +311,10 @@ export interface ViewProps {
   /** "Anexar imagem": the agent's design.md adjusted from template images (base64), or null when it failed. */
   onDesignFromImages?(images: { data: string }[]): Promise<string | null>;
   onEvaluate(): void | Promise<unknown>;
-  /** Opening the final review: PO and SM check specs.md when something is still owed. */
-  onCheckSpecs?(): void | Promise<unknown>;
   /** The owner's button for everything: the team answers, decides, repairs and prepares until the start is clear. */
   onResolveAll?(): void | Promise<unknown>;
   /** The owner accepts every suggestion at once; the agents run again on what was decided. */
   onAcceptAll?(): void | Promise<unknown>;
-  /** The owner takes the PO and SM adjustments to specs.md once, with no new review. */
-  onApplySpecs?(): void | Promise<unknown>;
-  /** The owner goes on with specs.md without the PO and SM adjustments. */
-  onProceedSpecs?(): void | Promise<unknown>;
   /** The owner takes every suggestion the review of a stage left, with no new review. */
   onApplyStage?(file: DocFile): void | Promise<unknown>;
   /** The owner goes on without what the review of a stage left: the PO answers its questions. */
@@ -625,7 +616,7 @@ export function RefinementView(p: ViewProps) {
   const backlogStageHeading = (
     <header data-testid="refinement-backlog-heading" className="grid gap-1">
       <h2 data-testid="refinement-backlog-title" ref={stepHeading} tabIndex={-1} className="m-0 text-[1.25rem] font-semibold text-ink outline-none">Preparar o desenvolvimento</h2>
-      <p data-testid="refinement-backlog-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em specs, e outro agente monta o plano de implementação de cada uma, com testes primeiro. Quando tudo estiver pronto, o desenvolvimento começa já com isso feito.</p>
+      <p data-testid="refinement-backlog-intro" className="m-0 text-[0.9375rem] leading-[1.55] text-ink-soft">Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua spec. Quando o backlog estiver detalhado, o desenvolvimento pode começar.</p>
     </header>
   );
   // A wizard project and a backlog list markdown files only: specs.md, written by the evaluation, and the five documents.
@@ -1099,29 +1090,15 @@ export function RefinementView(p: ViewProps) {
       </details>
     </section>
   );
-  /** The specs.md check and the PO and SM checklists: they belong to the backlog stage, and the final review keeps only the rest. */
-  // In the backlog step the verdict of PO and SM on specs.md sits at the end of their checklist rows.
-  const specsChip = (role: 'po' | 'sm') => {
-    if (step !== 'backlog' || !backlogOn) return null;
-    const chip = reviewChip(currentReview(st.specsReview ?? {}, role, st.specsMd?.hash), busy);
-    return <span data-testid={`refinement-checklist-${role}-status`} className={`status-dot ${chip.tone}`}>{chip.label}</span>;
-  };
   const verificationDetails = (
     <>
-      {step === 'backlog' && backlogOn && <SpecsCheck specsMd={st.specsMd} reviews={st.specsReview ?? {}} busy={busy} followed={st.specsMd !== undefined && st.specsMd !== null && st.specsOwnerApproved === st.specsMd.hash} onApply={p.onApplySpecs} onProceed={p.onProceedSpecs} />}
-      {step === 'backlog' && backlogOn && specsAsked.length > 0 && (
-        <div data-testid="specs-questions" className="grid gap-3">
-          <p data-testid="specs-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">O time corrigiu o que os documentos já resolvem e não conseguiu decidir o resto sozinho. Em cada pergunta, a opção recomendada já vem marcada: confirme com um clique ou escolha outra.</p>
-          {specsAsked.map((q, i) => <Fragment key={q.questionId}>{questionCard(q, specsAsked.length - i)}</Fragment>)}
-        </div>
-      )}
       <div data-testid="refinement-quality-checklists" className={`grid gap-[0.3rem] ${evaluating ? 'opacity-60' : ''}`} aria-busy={evaluating || undefined}>
         <details data-testid="refinement-checklist-po" className="group">
-          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span>{specsChip('po')}</summary>
+          <summary data-testid="refinement-checklist-po-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-po-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-po-label" className="flex-1">Produto (PO)</span></summary>
           <Checklist items={st.checklist} role="po" />
         </details>
         <details data-testid="refinement-checklist-sm" className="group">
-          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span>{specsChip('sm')}</summary>
+          <summary data-testid="refinement-checklist-sm-summary" className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[0.8125rem] font-semibold text-ink-soft [&::-webkit-details-marker]:hidden"><span data-testid="refinement-checklist-sm-chevron" className="flex-none transition-transform duration-[140ms] ease-out group-open:rotate-90"><Icon name="chevron-right" size={16} /></span><span data-testid="refinement-checklist-sm-label" className="flex-1">Técnico (SM)</span></summary>
           <Checklist items={st.checklist} role="sm" />
         </details>
       </div>
@@ -1460,43 +1437,39 @@ export function RefinementView(p: ViewProps) {
       <StepCard id="needs" open={focusCard === 'needs'} focus={focusCard === 'needs'} icon="alert" tone="violet" title="Precisa de você" info="O que espera uma decisão sua antes de o desenvolvimento começar: perguntas do PO e do SM, pendências e o que ainda falta para iniciar." owner="Perguntas do PO e do SM" chip={openOwner > 0 ? { label: `${openOwner} em aberto`, tone: 'warn' } : { label: 'Nada em aberto', tone: 'ok' }}>
         {withStart && startMissing.length > 0 && <p data-testid="start-missing" role="status" className={notice}><b>Falta para iniciar o desenvolvimento:</b> {startMissing.join(' ')}</p>}
         {pendingSummary}
-        {!locked && unfiledQuestions(st).length > 0 && (
+        {st.status !== 'started' && unfiled.length > 0 && (
           <div data-testid="round-questions" className="grid gap-3">
             <p data-testid="round-questions-intro" className="m-0 text-[0.875rem] leading-normal text-ink-soft">Todas as perguntas do PO e do SM que esperam você ficam aqui, nesta etapa.</p>
-            {unfiledQuestions(st).map((q, i, all) => <Fragment key={q.questionId}>{questionCard(q, all.length - i)}</Fragment>)}
+            {unfiled.map((q, i, all) => <Fragment key={q.questionId}>{questionCard(q, all.length - i)}</Fragment>)}
           </div>
         )}
       </StepCard>
   );
-  const backlogCards = () => (
+  /** The backlog items; a follow-on request also shows its plans and checks. */
+  const backlogCards = (withPlans = false) => (
     <div className="card grid divide-y divide-line overflow-hidden p-0" data-testid="backlog-cards">
       <StepCard grouped id="backlog" open={focusCard === 'backlog'} focus={focusCard === 'backlog'} icon="list" tone="accent" title="Itens do backlog" info="Os cinco documentos quebrados em specs por épico, de P0 (base) a P3 (depois). Para mudar prioridades ou cortes, escreva no briefing.md e reavalie." owner="Montado pelo PO e pelo SM" chip={st.backlog?.detail && st.backlog.items.length > 0 && st.backlog.items.every((i) => st.backlog?.specs?.[i.key]?.spec) ? { label: `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · detalhado`, tone: 'ok' } : { label: st.backlog?.items.length ? `${st.backlog.items.length} ${st.backlog.items.length === 1 ? 'spec' : 'specs'} · em preparo` : 'Em preparo' }}>
         {backlogBlock(startLine)}
       </StepCard>
-      <StepCard grouped id="plans" open={focusCard === 'plans' || speckitAsked.length > 0} focus={focusCard === 'plans'} icon="clipboard" tone="violet" title="Planos de implementação" info="Um agente escreve o plano de cada item do backlog, com os testes primeiro. O desenvolvimento só começa com todos os planos atuais." owner="Preparados pelo Dev" chip={speckitRunning ? { label: 'Preparando' } : speckitReady ? { label: 'Atuais', tone: 'ok' } : speckit?.stale ? { label: 'Desatualizados', tone: 'warn' } : { label: 'Não preparados' }}>
-        {backlogOn && speckitStatus}
-        {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
-        {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
-        {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
-      </StepCard>
-      <StepCard grouped id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog e revisado uma vez pelo PO e pelo SM. Os ajustes que eles sugerem são opcionais: você aplica ou segue sem eles." owner="Revisada pelo PO e pelo SM" chip={snap.specsReady === true ? { label: 'Gerado', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
-        {verificationDetails}
-      </StepCard>
+      {withPlans && (
+        <>
+          <StepCard grouped id="plans" open={focusCard === 'plans' || speckitAsked.length > 0} focus={focusCard === 'plans'} icon="clipboard" tone="violet" title="Planos de implementação" info="Um agente escreve o plano de cada item do backlog, com os testes primeiro. O desenvolvimento só começa com todos os planos atuais." owner="Preparados pelo Dev" chip={speckitRunning ? { label: 'Preparando' } : speckitReady ? { label: 'Atuais', tone: 'ok' } : speckit?.stale ? { label: 'Desatualizados', tone: 'warn' } : { label: 'Não preparados' }}>
+            {backlogOn && speckitStatus}
+            {preparedUnchanged && <p role="status" data-testid="speckit-unchanged" className="m-0 text-[0.8125rem] text-ink-soft">Os planos já estavam atuais; nada foi refeito.</p>}
+            {!locked && !speckitRunning && speckitAsked[0] && questionCard(speckitAsked[0], speckitAsked.length)}
+            {(st.droppedQuestions ?? []).some((d) => d.origin === 'speckit') && <DroppedRepeats rows={(st.droppedQuestions ?? []).filter((d) => d.origin === 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
+          </StepCard>
+          <StepCard grouped id="checks" open={focusCard === 'checks' || specsAsked.length > 0} focus={focusCard === 'checks'} icon="shield" tone="good" title="Verificação" info="O specs.md é gerado a partir do backlog, sem nova revisão. As listas do PO e do SM mostram o que eles verificaram nos documentos." owner="Gerada do backlog" chip={snap.specsReady === true ? { label: 'Gerado', tone: 'ok' } : failingChecks > 0 ? { label: `${failingChecks} ${failingChecks === 1 ? 'item falhou' : 'itens falharam'}`, tone: 'warn' } : { label: 'Pendente' }}>
+            {verificationDetails}
+          </StepCard>
+        </>
+      )}
     </div>
   );
   // The steps from the backlog to the start, and what the latest evaluation spent, so the owner sees the work move.
-  const verdictOf = (role: 'po' | 'sm') => {
-    const v = st.specsReview?.[role];
-    return !v ? null : v.verdict === 'approved' ? `${role.toUpperCase()} aprovou` : `${role.toUpperCase()} ${v.findings.length} ${v.findings.length === 1 ? 'ponto' : 'pontos'}`;
-  };
-  const verdicts = [verdictOf('po'), verdictOf('sm')].filter(Boolean).join(' · ');
-  const planSteps = speckit?.steps ?? [];
   const items = st.backlog?.items.length ?? 0;
   const finishSteps: FinishStep[] = [
     { id: 'backlog', label: 'Backlog detalhado', detail: `${items} itens`, done: st.backlog?.detail === true },
-    { id: 'specs', label: 'specs.md gerado', detail: evaluating ? 'o time está refazendo o backlog' : st.status !== 'ready' ? 'espera a avaliação do backlog' : snap.specsReady !== true ? 'ainda não gerado' : verdicts ? `${verdicts} (ajustes opcionais)` : 'gerado', done: snap.specsReady === true },
-    { id: 'plans', label: 'Planos preparados', detail: speckitReady ? 'prontos' : speckitRunning ? `${planSteps.filter((x) => x.endedAt).length} de ${speckit?.total ?? planSteps.length}` : speckit?.status === 'failed' ? 'falhou' : speckit?.stale ? 'desatualizados' : 'não preparados', done: speckitReady },
-    { id: 'start', label: 'Pronto para iniciar', detail: '', done: canStart && speckitReady },
   ];
   const progress = snap.evaluationProgress;
   // While an evaluation runs its numbers are read at its end, so the line says so instead of showing a stale count.
@@ -1509,9 +1482,9 @@ export function RefinementView(p: ViewProps) {
       {backlogCards()}
     </div>
   );
-  // The specs.md is made and checked in the backlog step: the development starts only once it is written and approved by PO and SM, with the reason beside the button.
+  // The development starts only once specs.md is written from the current backlog, with the reason beside the button.
   const specsGate = st.stages === true && backlogOn && snap.specsReady !== true;
-  const specsReason = specsGate ? specsBlockReason(st.status, st.specsMd?.hash, evaluating) : null;
+  const specsReason = !specsGate ? null : st.status !== 'ready' ? 'Aguardando o backlog ficar pronto' : evaluating ? 'Gerando o specs.md' : 'Gere o specs.md do backlog';
   const developButton = (
     <ActionButton data-testid="start" className={speckitReady && canStart && !specsGate ? 'primary' : 'secondary'} busy={p.startState?.busy ?? false} disabled={!canStart || !speckitReady || specsGate} onClick={p.onStart} icon={<Icon name="play" size={16} />}>
       {p.startState?.busy ? p.startState.label : 'Iniciar desenvolvimento'}
@@ -1545,10 +1518,12 @@ export function RefinementView(p: ViewProps) {
       startMissing.push(`O backlog ainda não está pronto: ${(lacks.length > 0 ? lacks.join('; ') : 'avalie o backlog').replace(/\.$/, '')}.`);
     }
     if (speckitReason && !speckitAsked.some((q) => q.blocking)) startMissing.push(speckitReason);
-    if (specsReason && st.status === 'ready' && specsAsked.length === 0) startMissing.push(`${specsReason}.`);
+    if (specsReason && st.status === 'ready') startMissing.push(`${specsReason}.`);
   }
   // The summary of everything that waits for the owner, shown in the backlog step: each document's open items, the questions and the repeats the guard dropped.
-  const unfiled = unfiledQuestions(st);
+  // The backlog step shows no plans card, so its plan and specs.md questions wait for the owner here.
+  // A plan question waits while the preparation runs, since the server refuses the answer then.
+  const unfiled = st.extension === undefined ? [...unfiledQuestions(st), ...(speckitRunning ? [] : speckitAsked), ...specsAsked] : unfiledQuestions(st);
   const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
   /** The suggestions the owner can take at once: the pending ones not already queued. */
@@ -1588,15 +1563,15 @@ export function RefinementView(p: ViewProps) {
                 ))}
               </ul>
             )}
-            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && d.origin !== 'speckit') && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && d.origin !== 'speckit')} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
-            {byDoc.length === 0 && unfiled.length === 0 && specsAsked.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
+            {(st.droppedQuestions ?? []).some((d) => d.file === undefined && (st.extension === undefined || d.origin !== 'speckit')) && <DroppedRepeats compact rows={(st.droppedQuestions ?? []).filter((d) => d.file === undefined && (st.extension === undefined || d.origin !== 'speckit'))} locked={runLocked} onReask={(id) => p.onReask?.(id)} />}
+            {byDoc.length === 0 && unfiled.length === 0 && <p data-testid="refinement-final-no-pending" className={`m-0 ${muted}`}>Nenhuma pendência.</p>}
           </div>
   );
   const startLine = null;
   // What waits for the owner in the first card of the backlog step.
   const openOwner = unfiled.length + pendingTotal;
-  // The one card the owner should look at now: what waits for them, else the first part of the step still unfinished.
-  const focusCard = openOwner > 0 ? 'needs' : !st.backlog?.detail ? 'backlog' : !speckitReady ? 'plans' : snap.specsReady !== true ? 'checks' : 'needs';
+  // The one card the owner should look at now: what waits for them, else the first part still unfinished; the backlog step shows only its items.
+  const focusCard = openOwner > 0 ? 'needs' : !st.backlog?.detail || st.extension === undefined ? 'backlog' : !speckitReady ? 'plans' : snap.specsReady !== true ? 'checks' : 'needs';
   // A documentation-repository session without its backlog: the notice names the repository, and the button creates the backlog.
   const docsRepoNoBacklog = snap.docsRepo === true && !backlogOn;
   const docsNoticeTarget = docsRepoNoBacklog ? snap.docsTarget : undefined;
@@ -1785,7 +1760,7 @@ export function RefinementView(p: ViewProps) {
               <ReplanCard rows={replanRows(st)} />
               {backlogStageHeading}
               {!needsFirst && needsCard()}
-              {backlogCards()}
+              {backlogCards(true)}
             </div>
           </details>
           </div>
@@ -2037,19 +2012,8 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
           return refineApi.suggestDesignFromImages(projectId, specId, images).then((r) => r.text, (e: Error) => (refused(e), null));
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
-        onCheckSpecs={async () => {
-          setError(null);
-          try {
-            return await refineApi.checkSpecs(projectId, specId);
-          } catch (e) {
-            refused(e as Error);
-            return undefined;
-          }
-        }}
         onResolveAll={act(() => refineApi.autopilot(projectId, specId))}
         onAcceptAll={act(() => refineApi.acceptAll(projectId, specId))}
-        onApplySpecs={act(() => refineApi.applySpecs(projectId, specId))}
-        onProceedSpecs={act(() => refineApi.proceedSpecs(projectId, specId))}
         onApplyStage={(f) => act(() => refineApi.applyStage(projectId, specId, f))()}
         onProceedStage={(f) => act(() => refineApi.proceedStage(projectId, specId, f))()}
         onEnableBacklog={act(() => refineApi.enableBacklog(projectId, specId))}

@@ -590,14 +590,10 @@ export interface RefineState {
   architectureError?: string | null;
   /** specs.md as last written from the detailed backlog: the hash of its text and its size. */
   specsMd?: { hash: string; bytes: number } | null;
-  /** The PO's and the SM's last verdict on specs.md; each names the hash of the text it read. */
-  specsReview?: Partial<Record<'po' | 'sm', SpecsVerdictView>>;
   /** The automatic repairs of specs.md since it was last approved. */
   specsRepairs?: number;
   /** What the team tried on a rejected specs.md and what came of each try. */
   specsAttempts?: SpecsAttemptView[];
-  /** The specs.md text the owner went on with, without the PO and SM adjustments. */
-  specsOwnerApproved?: string;
   /** The rules the last decision broke on its second answer, each in plain words; empty when none. */
   architectureIssues?: string[];
   /** The documents reviewed since their last human edit, in a repository session. */
@@ -642,15 +638,6 @@ export interface ClosingSummary {
   repositories: Array<{ name: string; specs: number; plans: number; tasks: number }>;
   assumptions: string[];
   summaryHash: string;
-}
-
-/** A reviewer's verdict on specs.md; `failed` when its analysis did not finish. */
-export interface SpecsVerdictView {
-  specsHash: string;
-  verdict: 'approved' | 'rejected' | 'failed';
-  findings: string[];
-  reason: string | null;
-  at: string | null;
 }
 
 /** What a request does to the backlog it follows, as the SM measured it. */
@@ -768,12 +755,9 @@ export const refineApi = {
   evaluate: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/evaluate`).then((r) => json<{ state: string }>(r)),
   /** Accepts every suggestion that waits and has the agents run again on what was decided. */
   acceptAll: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/suggestions/accept-all`).then((r) => json<{ ok: true; accepted: number; queued: number }>(r)),
-  applySpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/apply`).then((r) => json<{ ok: true }>(r)),
-  proceedSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/proceed`).then((r) => json<{ ok: true }>(r)),
   applyStage: (p: string, s: string, file: StageFile) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/apply`).then((r) => json<{ ok: true; accepted: number; queued: number }>(r)),
   proceedStage: (p: string, s: string, file: StageFile) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/docs/${encodeURIComponent(file)}/proceed`).then((r) => json<{ ok: true }>(r)),
   autopilot: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/autopilot`).then((r) => json<{ ok: true }>(r)),
-  checkSpecs: (p: string, s: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/specs/check`).then((r) => json<{ started: boolean }>(r)),
   answer: (p: string, s: string, questionId: string, text: string, docsAnswered = false) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/answers`, { questionId, text, docsAnswered }).then((r) => json<{ ok: true; queued: boolean }>(r)),
   skip: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/skip`).then((r) => json<{ ok: true }>(r)),
   reask: (p: string, s: string, questionId: string) => send('POST', `/refine/${encodeURIComponent(p)}/${encodeURIComponent(s)}/questions/${encodeURIComponent(questionId)}/reask`).then((r) => json<{ ok: true }>(r)),

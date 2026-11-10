@@ -49,6 +49,8 @@ const renderView = (snap: Snapshot, h = handlers()) => {
 describe('stage 7 of a new project prepares the development', () => {
   const speckit = (over: Record<string, unknown> = {}) => ({ status: 'done', steps: [], stale: false, ...over });
   const wizard = (over: Partial<Snapshot['state']>) => project({ stages: true, backlog: backlogDetailed as never, ...over });
+  // A follow-on request still shows the plans and checks cards, inside its team details.
+  const request = (over: Partial<Snapshot['state']>) => wizard({ extension: { requestId: 'pedido-1', title: 'Exportar', text: 'Exportar', at: '2026-11-04T00:00:00.000Z' } as never, ...over });
   const handlersWithSpeckit = () => ({ ...handlers(), onEnableBacklog: vi.fn(), onPreparePlans: vi.fn(), onResolveAll: vi.fn() });
 
   it('offers to break the backlog until it exists, with no start', () => {
@@ -60,31 +62,32 @@ describe('stage 7 of a new project prepares the development', () => {
     expect(screen.queryByTestId('evaluate')).toBeNull();
   });
 
-  it('groups the backlog, plans and checks as rows of one card, each explaining itself and who fills it', () => {
+  it('shows only the backlog items, with no plans or checks card', () => {
     renderView(wizard({}), handlersWithSpeckit());
+    const group = screen.getByTestId('backlog-cards');
+    expect(group.contains(screen.getByTestId('step-card-backlog'))).toBe(true);
+    expect(screen.queryByTestId('step-card-plans')).toBeNull();
+    expect(screen.queryByTestId('step-card-checks')).toBeNull();
+    expect(group.contains(screen.getByTestId('start-missing'))).toBe(false);
+  });
+
+  it('opens the backlog card, and hides the owner card while nothing waits for them', () => {
+    renderView(wizard({}), handlersWithSpeckit());
+    expect(screen.queryByTestId('step-card-needs')).toBeNull();
+    expect((screen.getByTestId('step-card-backlog') as HTMLDetailsElement).open).toBe(true);
+    expect(screen.getByTestId('step-card-backlog').getAttribute('data-focus')).toBe('true');
+  });
+
+  it('groups the backlog, plans and checks of a follow-on request as rows of one card, each explaining itself and who fills it', () => {
+    renderView(request({}), handlersWithSpeckit());
     const group = screen.getByTestId('backlog-cards');
     for (const id of ['backlog', 'plans', 'checks']) {
       const card = screen.getByTestId(`step-card-${id}`);
       expect(group.contains(card)).toBe(true);
-      expect(card.querySelector('[data-testid="info-tip-button"]')?.getAttribute('aria-label')).toMatch(/pel[oa] /);
+      expect(card.querySelector('[data-testid="info-tip-button"]')?.getAttribute('aria-label')).toMatch(/pel[oa] |backlog/);
     }
     expect(screen.getByTestId('step-card-plans').contains(screen.getByTestId('speckit-idle'))).toBe(true);
-    expect(group.contains(screen.getByTestId('start-missing'))).toBe(false);
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Não preparados');
-  });
-
-  it('opens only the card that still needs something, and hides the owner card while nothing waits for them', () => {
-    renderView(wizard({}), handlersWithSpeckit());
-    expect(screen.queryByTestId('step-card-needs')).toBeNull();
-    const open = ['backlog', 'plans', 'checks'].filter((id) => (screen.getByTestId(`step-card-${id}`) as HTMLDetailsElement).open);
-    expect(open).toHaveLength(1);
-    expect(screen.getByTestId(`step-card-${open[0]}`).getAttribute('data-focus')).toBe('true');
-  });
-
-  it('moves the focus to the plans once nothing waits for the owner', () => {
-    renderView(wizard({ status: 'ready', checklist: [] as never }), handlersWithSpeckit());
-    const focused = ['needs', 'backlog', 'plans', 'checks'].filter((id) => screen.queryByTestId(`step-card-${id}`)?.getAttribute('data-focus') === 'true');
-    expect(focused.length).toBe(1);
   });
 
   it('puts the spec count in the backlog card chip and repeats no title inside it', () => {
@@ -105,7 +108,7 @@ describe('stage 7 of a new project prepares the development', () => {
   });
 
   it('says the plans are current once they are prepared', () => {
-    renderView(wizard({ speckit: speckit() as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit() as never }), handlersWithSpeckit());
     expect(screen.getByTestId('step-card-chip-plans').textContent).toBe('Atuais');
   });
 
@@ -115,9 +118,8 @@ describe('stage 7 of a new project prepares the development', () => {
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows the plan box and its button to a project from before the document stages too', () => {
+  it('says the plans are missing to a project from before the document stages too', () => {
     renderView(project({ backlog: backlogDetailed as never }), handlersWithSpeckit());
-    expect(screen.getByTestId('speckit-idle')).toBeTruthy();
     expect(screen.queryByTestId('speckit-prepare')).toBeNull();
     expect(screen.getByTestId('start-missing').textContent).toContain('Prepare os planos antes de iniciar.');
   });
@@ -125,7 +127,6 @@ describe('stage 7 of a new project prepares the development', () => {
   it('asks for the preparation first, and keeps the start locked until it is done', () => {
     const h = handlersWithSpeckit();
     renderView(wizard({}), h);
-    expect(screen.getByTestId('speckit-idle')).toBeTruthy();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
@@ -133,7 +134,7 @@ describe('stage 7 of a new project prepares the development', () => {
   });
 
   it('shows the progress while the plan prepares', () => {
-    renderView(wizard({ speckit: speckit({ status: 'running', total: 4, steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'running', total: 4, steps: [{ command: 'constitution' }, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('2');
     expect(screen.getByTestId('speckit-running').textContent).toContain('2 de 4 etapas concluídas · 0 em andamento');
     expect(screen.queryByTestId('speckit-prepare')).toBeNull();
@@ -143,20 +144,20 @@ describe('stage 7 of a new project prepares the development', () => {
 
 
   it('says why a failed preparation stopped, and lets the owner try again', () => {
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan não está instalado neste ambiente.' }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'failed', error: 'O plan não está instalado neste ambiente.' }) as never }), handlersWithSpeckit());
     expect(screen.getByRole('alert').textContent).toContain('não está instalado');
     expect(screen.queryByTestId('speckit-prepare')).toBeNull();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('shows the technical detail of a failed preparation under its reason', () => {
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan parou.', detail: 'specs/001-base/plan.md: AC-002' }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'failed', error: 'O plan parou.', detail: 'specs/001-base/plan.md: AC-002' }) as never }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-failed-detail').textContent).toContain('specs/001-base/plan.md: AC-002');
   });
 
   it('marks the steps a resumed preparation reused from the run that failed', () => {
     const reused = { command: 'constitution', startedAt: '2026-10-25T10:00:00Z', endedAt: '2026-10-25T10:01:05Z', reused: true };
-    renderView(wizard({ speckit: speckit({ status: 'running', total: 5, steps: [reused, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'running', total: 5, steps: [reused, { command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     const rows = [...screen.getByTestId('speckit-steps').querySelectorAll('li')];
     expect(rows[0]!.textContent).toContain('Reaproveitada');
     expect(rows[1]!.textContent).not.toContain('Reaproveitada');
@@ -165,7 +166,7 @@ describe('stage 7 of a new project prepares the development', () => {
 
   it('shows the technical detail of a failed preparation under its reason, such as the stderr of a failed init', () => {
     const stderr = '╭─ Error ─╮\n│ No such option: --integration │\n╰─────────╯';
-    renderView(wizard({ speckit: speckit({ status: 'failed', error: 'O plan não conseguiu preparar a pasta do projeto. Tente de novo.', detail: stderr }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'failed', error: 'O plan não conseguiu preparar a pasta do projeto. Tente de novo.', detail: stderr }) as never }), handlersWithSpeckit());
     const alert = screen.getByRole('alert');
     expect(within(alert).getByText('Detalhe técnico')).toBeTruthy();
     expect(alert.querySelector('pre')!.textContent).toBe(stderr);
@@ -181,7 +182,6 @@ describe('stage 7 of a new project prepares the development', () => {
   it('opens "Iniciar desenvolvimento" once the preparation is done and current', () => {
     const h = handlersWithSpeckit();
     renderView({ ...wizard({ speckit: speckit() as never }), specsReady: true } as never, h);
-    expect(screen.getByTestId('speckit-done')).toBeTruthy();
     const start = screen.getByTestId('start') as HTMLButtonElement;
     expect(start.textContent).toContain('Iniciar desenvolvimento');
     expect(start.disabled).toBe(false);
@@ -228,7 +228,7 @@ describe('stage 7 of a new project prepares the development', () => {
   it('the dropped repeats are listed, and the owner can ask for one again', () => {
     const dropped = { questionId: 'speckit-b', role: 'po', text: 'Até quando o link vale?', cycle: 2, blocking: false, relatedAcIds: [], origin: 'speckit', command: 'specify', itemKey: 'base', matchedQuestionId: 'speckit-old', matchedText: 'Qual o prazo do link?', matchedAnswer: '90 dias' };
     const h = { ...handlersWithSpeckit(), onReask: vi.fn() };
-    renderView(wizard({ speckit: speckit() as never, droppedQuestions: [dropped] as never }), h);
+    renderView(request({ speckit: speckit() as never, droppedQuestions: [dropped] as never }), h);
     expect((screen.getByTestId('dropped-repeats') as HTMLDetailsElement).textContent).toContain('Perguntas repetidas que não foram feitas de novo (1)');
     fireEvent.click(screen.getByTestId('reask-speckit-b'));
     expect(h.onReask).toHaveBeenCalledWith('speckit-b');
@@ -251,7 +251,7 @@ describe('stage 7 of a new project prepares the development', () => {
   });
 
   it('the steps of a running preparation sit behind a closed list, and a finished step says Feito', () => {
-    renderView(wizard({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit({ status: 'running', total: 3, steps: [{ command: 'constitution' }], running: [{ command: 'specify', itemKey: 'base' }] }) as never }), handlersWithSpeckit());
     expect((screen.getByTestId('speckit-log') as HTMLDetailsElement).open).toBe(false);
     expect(screen.getByTestId('speckit-steps').textContent).toContain('Feito');
     expect(screen.getByTestId('start-missing').textContent).toContain('em andamento');
@@ -262,7 +262,7 @@ describe('stage 7 of a new project prepares the development', () => {
 
   it('says the start waits for a blocking plan question, even when the preparation is done', () => {
     const asked = { ...question(true), questionId: 'speckit-xyz', origin: 'speckit', text: 'Qual banco de dados?' };
-    renderView(wizard({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
+    renderView(request({ speckit: speckit() as never, questions: [asked as never] }), handlersWithSpeckit());
     expect(screen.getByTestId('speckit-waiting')).toBeTruthy();
     expect(screen.queryByTestId('speckit-done')).toBeNull();
     expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
@@ -444,38 +444,29 @@ describe('several questions of a stage on screen', () => {
   });
 });
 
-describe('specs.md starts only when the owner clicks', () => {
+describe('the backlog step starts no agent on its own', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
   const snapOf = (over: Record<string, unknown>) => project({ stages: true, backlog: detailed as never, status: 'ready', ...over } as never);
 
   it('calls no agent when the step opens, and only Preparar backlog starts the work', () => {
-    const h = { ...handlers(), onCheckSpecs: vi.fn() };
+    const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView(snapOf({}), h);
-    expect(h.onCheckSpecs).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('specs-check-retry')).toBeNull();
+    expect(h.onResolveAll).not.toHaveBeenCalled();
     expect(screen.getByTestId('prepare-backlog').textContent).toContain('Preparar backlog');
   });
 
-  it('calls no agent for a text a reviewer rejected either', () => {
-    const h = { ...handlers(), onCheckSpecs: vi.fn() };
-    const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null };
-    renderView(snapOf({ specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected } }), h);
-    expect(h.onCheckSpecs).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('specs-check-retry')).toBeNull();
-  });
 });
 describe('the questions the team asked about specs.md', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
   const asked = { ...question(true), questionId: 'specs-1-0', origin: 'specs', text: 'Qual seção justifica o item base?', options: [{ label: 'Objetivos', detail: 'Usa os objetivos do briefing.', recommended: true }, { label: 'Requisitos', detail: 'Usa os requisitos do projeto.' }] };
-  const rejected = { specsHash: 'h', verdict: 'rejected', findings: ['x'], reason: null, at: null };
-  const snap = () => project({ stages: true, status: 'answering', backlog: detailed as never, specsMd: { hash: 'h', bytes: 1 }, specsReview: { po: rejected }, specsRepairs: 2, specsAsked: 'h', questions: [asked as never] } as never);
+  const snap = () => project({ stages: true, status: 'answering', backlog: detailed as never, specsMd: { hash: 'h', bytes: 1 }, specsAsked: 'h', questions: [asked as never] } as never);
 
-  it('shows the question on the backlog step, with the recommended choice already marked, and sends it with one click', () => {
-    const h = { ...handlers(), onCheckSpecs: vi.fn() };
+  it('shows the question in the owner card of the backlog step, with the recommended choice already marked, and sends it with one click', () => {
+    const h = handlers();
     renderView(snap(), h);
-    expect(screen.getByTestId('specs-questions-intro')).toBeTruthy();
+    expect(screen.getByTestId('step-card-needs').contains(screen.getByTestId('round-questions'))).toBe(true);
     expect(screen.getByText('Qual seção justifica o item base?')).toBeTruthy();
     expect(screen.getByTestId('option-group-option-objetivos').getAttribute('aria-checked')).toBe('true');
     fireEvent.click(screen.getByTestId('answer-specs-1-0'));
@@ -604,17 +595,13 @@ describe('the finish panel: what still keeps the start closed', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const item = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [], size: 'S', rank: 1 };
   const backlog = { enabled: true, detail: true, epics: [], items: [item, { ...item, key: 'fat', rank: 2 }], specs: {}, preplans: {}, flowHeadings: [] };
-  const review = (verdict: string, findings: string[]) => ({ specsHash: 'h', verdict, findings, reason: null, at: null });
-
-  it('marks the backlog and specs.md done, with the reviewers view as optional adjustments, and counts what the latest evaluation spent and reused', () => {
-    const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never, specsReview: { po: review('rejected', ['a', 'b', 'c']), sm: review('approved', []) } as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false }, specsReady: true };
+  it('shows only the detailed backlog step, and counts what the latest evaluation spent and reused', () => {
+    const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false }, specsReady: true };
     render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
-    expect(screen.getByTestId('finish-panel-count').textContent).toBe('2 de 4');
     expect(screen.getByTestId('finish-backlog').dataset.state).toBe('done');
-    expect(screen.getByTestId('finish-specs').dataset.state).toBe('done');
-    expect(screen.getByTestId('finish-plans').dataset.state).toBe('current');
-    expect(screen.getByTestId('finish-specs').textContent).toContain('PO 3 pontos · SM aprovou (ajustes opcionais)');
-    expect(screen.getByTestId('finish-plans').textContent).toContain('não preparados');
+    expect(screen.getByTestId('finish-backlog').textContent).toContain('2 itens');
+    for (const id of ['specs', 'plans', 'start']) expect(screen.queryByTestId(`finish-${id}`)).toBeNull();
+    expect(screen.queryByTestId('finish-panel-count')).toBeNull();
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('4 min');
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('1 item refeito, 1 reaproveitado');
     expect(screen.queryByTestId('finish-panel-repeated')).toBeNull();
@@ -624,7 +611,6 @@ describe('the finish panel: what still keeps the start closed', () => {
     const snap = { ...project({ stages: true, status: 'evaluating', backlog: backlog as never }), evaluationProgress: { durationMs: 60_000, costUsd: 0, redone: 0, repeated: false } };
     render(<MemoryRouter><RefinementView snap={snap} busy events={[]} {...handlers()} /></MemoryRouter>);
     expect(screen.getByTestId('finish-panel-last').textContent).toBe('Avaliação em andamento: o tempo e o custo dela aparecem quando terminar.');
-    expect(screen.getByTestId('finish-specs').textContent).toContain('o time está refazendo o backlog');
   });
 
   it('warns when the latest evaluation started on the same text as the one before', () => {

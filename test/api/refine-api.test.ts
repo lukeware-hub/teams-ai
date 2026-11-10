@@ -38,14 +38,8 @@ const base = () => `http://127.0.0.1:${api.port}`;
 const call = (method: string, p: string, body?: unknown) =>
   fetch(`${base()}${p}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
 const snapshot = async () => (await fetch(`${base()}/api/refine/hello-app/hello-app-001`)).json();
-/** Starts the run the way the page does: the specs.md is checked and approved in the backlog step first. */
-const startRun = async (url: string) => {
-  script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
-  script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-  await call('POST', `${url}/specs/check`);
-  await settle();
-  return call('POST', `${url}/start`);
-};
+/** Starts the run the way the page does. */
+const startRun = (url: string) => call('POST', `${url}/start`);
 const settle = async () => {
   for (let i = 0; i < 100; i++) {
     const snap = await snapshot();
@@ -943,127 +937,21 @@ describe('refine api', () => {
   };
   const reviews = () => calls.filter((c) => c.kind === 'specs-review').length;
 
-  it('specs.md: written from the detailed backlog and reviewed once by PO and SM; a rejection holds nothing', async () => {
-    const { url } = await readyBacklog();
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    expect((await snapshot()).state.status).toBe('ready');
-    const file = `${home}/ws/hello-app/refine/hello-app-001/docs/specs.md`;
-    const before = reviews();
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['AC-001 não cobre o objetivo Saúde'] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    expect((await call('POST', `${url}/specs/check`)).status).toBe(202);
-    await settle();
-    const written = await fs.readFile(file, 'utf8');
-    expect(written).toContain('## base: Base');
-    const done = await snapshot();
-    expect(done.state.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
-    expect(reviews() - before).toBe(2);
-    expect(done.state.specsReview).toMatchObject({ po: { verdict: 'rejected' }, sm: { verdict: 'approved' } });
-    // The PO's rejection is advice: the start is open on this text, and nothing runs again on its own.
-    expect(done.specsReady).toBe(true);
-    expect(done.state.evaluation?.endedAt).toBeTruthy();
-    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: false, reason: 'O specs.md já foi gerado e revisado.' });
-    expect(reviews() - before).toBe(2);
-  });
-
-  it('the owner applies the reviewers adjustments once: the item they named is detailed again and specs.md written again, with no new review', async () => {
+  it('the owner autopilot writes specs.md from the detailed backlog, with no PO or SM review', async () => {
     const { url, script1 } = await readyBacklog();
     await passStages();
     await call('POST', `${url}/evaluate`);
     await settle();
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base não cobre o objetivo Saúde'] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    await call('POST', `${url}/specs/check`);
-    await settle();
-    const before = reviews();
-    const specsBefore = calls.filter((c) => c.kind === 'spec').length;
     script1();
-    expect((await call('POST', `${url}/specs/apply`)).status).toBe(202);
-    await settle();
-    const after = await snapshot();
-    expect(calls.filter((c) => c.kind === 'spec').length).toBeGreaterThan(specsBefore);
-    expect(calls.filter((c) => c.kind === 'spec').at(-1)?.prompt).toContain('O item base não cobre o objetivo Saúde');
-    expect(reviews()).toBe(before);
-    expect(after.specsReady).toBe(true);
-  });
-
-  it('the owner goes on without the adjustments: specs.md stays as it is and the start is open', async () => {
-    const { url } = await readyBacklog();
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base não cobre o objetivo Saúde'] }];
-    script['specs-review/sm'] = [{ verdict: 'rejected', findings: ['O item base não tem tarefa de teste'] }];
-    await call('POST', `${url}/specs/check`);
-    await settle();
-    const hash = (await snapshot()).state.specsMd.hash;
-    expect((await call('POST', `${url}/specs/proceed`)).status).toBe(200);
-    const after = await snapshot();
-    expect(after.state.specsOwnerApproved).toBe(hash);
-    expect(after.specsReady).toBe(true);
-  });
-
-  it('the check evaluates the backlog first when it is not ready, then writes and reviews specs.md, instead of doing nothing', async () => {
-    const { url, review } = await readyBacklog();
-    const failing = PO.map((c: { id: string; passed: boolean; detail: string }, i: number) => (i === 0 ? { ...c, passed: false, detail: 'objetivo sem critério' } : c));
-    script['refine/po'] = [{ checklist: failing, questions: [], docPatch: [] }];
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    expect((await snapshot()).state.status).not.toBe('ready');
-    script['refine/po'] = [review('po')];
-    script['refine/sm'] = [review('sm')];
-    script['specs-review/po'] = [{ verdict: 'approved', findings: [] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    expect(await (await call('POST', `${url}/specs/check`)).json()).toEqual({ started: true });
-    await settle();
-    const after = await snapshot();
-    expect(after.state.status).toBe('ready');
-    expect(after.specsReady).toBe(true);
-  });
-
-  it('the owner autopilot writes specs.md, has PO and SM review it once and takes their adjustments once, with no second review', async () => {
-    const { url, script1 } = await readyBacklog();
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    const before = reviews();
-    script1();
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['O item base cita uma seção vazia'] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
     expect((await call('POST', `${url}/autopilot`)).status).toBe(202);
     for (let i = 0; i < 200 && !(await snapshot()).specsReady; i++) await new Promise((r) => setTimeout(r, 50));
-    await new Promise((r) => setTimeout(r, 300));
     await settle();
-    await new Promise((r) => setTimeout(r, 300));
-    await settle();
-    expect((await snapshot()).specsReady).toBe(true);
-    expect(reviews() - before).toBe(2);
-  });
-
-  it('a finding about a document is fixed in that document by the PO when the owner applies the adjustments', async () => {
-    const { url, review, script1 } = await readyBacklog();
-    const stackText = `${(await snapshot()).docs['stack.md'] as string}\nO contrato dos endpoints aparece em três seções.\n`;
-    expect((await call('PUT', `${url}/docs/stack.md`, { text: stackText })).status).toBe(200);
-    await passStages();
-    await call('POST', `${url}/evaluate`);
-    await settle();
-    const find = 'O contrato dos endpoints aparece em três seções.';
-    script['specs-review/po'] = [{ verdict: 'rejected', findings: ['stack.md › Contrato dos endpoints: a seção aparece três vezes com redações diferentes.'] }];
-    script['specs-review/sm'] = [{ verdict: 'approved', findings: [] }];
-    await call('POST', `${url}/specs/check`);
-    await settle();
-    script1();
-    script['refine/po'] = [{ checklist: [], questions: [], docPatch: [{ file: 'docs/stack.md', find, replace: 'O contrato dos endpoints aparece em uma única seção.', reason: 'seção única' }] }, review('po')];
-    expect((await call('POST', `${url}/specs/apply`)).status).toBe(202);
-    await settle();
-    await new Promise((r) => setTimeout(r, 300));
-    await settle();
-    const after = await snapshot();
-    expect(after.docs['stack.md']).toContain('O contrato dos endpoints aparece em uma única seção.');
-    expect(after.specsReady).toBe(true);
+    const written = await fs.readFile(`${home}/ws/hello-app/refine/hello-app-001/docs/specs.md`, 'utf8');
+    expect(written).toContain('## base: Base');
+    const done = await snapshot();
+    expect(done.specsReady).toBe(true);
+    expect(done.state.specsMd).toEqual({ hash: sha256(written), bytes: Buffer.byteLength(written) });
+    expect(reviews()).toBe(0);
   });
 
   it('two concurrent start requests spawn exactly one run', async () => {

@@ -148,15 +148,5 @@ describe('the owner applies or goes on without what a review left', () => {
     expect(proceedWithout).toHaveBeenCalledWith('project.md');
   });
 
-  it('applies the reviewers adjustments to specs.md once, and refuses when there is none', async () => {
-    const applySpecsSuggestions = vi.fn(() => Promise.resolve());
-    const routes = refineRoutes({ registry: { get: vi.fn(async () => ({ applySpecsSuggestions, agentsDecide: async () => false, state: { questions: [], patches: [] } })) } as never, log: vi.fn() });
-    const json = vi.fn();
-    await route(routes, '/specs/apply').handler({ params, json } as never);
-    expect(applySpecsSuggestions).toHaveBeenCalledTimes(1);
-    expect(json).toHaveBeenLastCalledWith(202, { ok: true });
-    applySpecsSuggestions.mockReturnValueOnce(null as never);
-    await expect(route(routes, '/specs/apply').handler({ params, json } as never)).rejects.toMatchObject({ status: 409 });
-  });
 });
 

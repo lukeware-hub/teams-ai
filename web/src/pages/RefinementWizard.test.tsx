@@ -510,7 +510,7 @@ describe('the final review', () => {
     expect(screen.getByTestId('prepare-backlog')).toBeTruthy();
   });
 
-  it('Continuar on the summary stays open while the specs.md is not approved, and the backlog step shows what it waits for', () => {
+  it('Continuar on the summary stays open while the specs.md is not written, and the backlog step shows no PO or SM verdict', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     const snap = { ...reviewSnap({ backlog, status: 'ready', specsMd: { hash: 'h1', bytes: 10 }, specsReview: { po: verdict('h1', 'approved'), sm: verdict('h1', 'rejected', ['AC-003 não cobre o objetivo']) } }), specsReady: false };
     open('?etapa=revisao');
@@ -521,13 +521,12 @@ describe('the final review', () => {
     cleanup();
     open('?etapa=backlog');
     show(snap);
-    expect(screen.getByTestId('refinement-checklist-po-status').textContent).toBe('Aprovado');
-    expect(screen.getByTestId('refinement-checklist-sm-status').textContent).toBe('Reprovado');
-    expect(screen.queryByTestId('specs-check-po-label')).toBeNull();
-    expect(screen.getByTestId('specs-check-sm-finding').textContent).toBe('SM: AC-003 não cobre o objetivo');
+    expect(screen.getByTestId('backlog-stage')).toBeTruthy();
+    expect(screen.queryByTestId('refinement-checklist-sm-status')).toBeNull();
+    expect(screen.queryByText('AC-003 não cobre o objetivo', { exact: false })).toBeNull();
   });
 
-  it('Continuar is enabled once specs.md is approved by both, with no reason shown', () => {
+  it('Continuar is enabled once specs.md is written, with no reason shown', () => {
     const backlog = { enabled: true, detail: true, items: [], epics: [], specs: {}, preplans: {} };
     open('?etapa=revisao');
     show({

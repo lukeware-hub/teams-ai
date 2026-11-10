@@ -3,7 +3,6 @@ import { resolveClosing, resolveStages } from './closing-resolver.js';
 import { DOC_STAGES } from './doc-stages.js';
 import { type PatchRow } from './state.js';
 import type { DocFile } from './draft.js';
-import { SPECS_REVIEWERS } from './specs-review.js';
 import { asTeamAlone, autoAcceptable } from './team-rule.js';
 
 /**
@@ -64,8 +63,6 @@ export function leftForOwner(s: Pick<RefineSession, 'state'>): string[] {
   if (st.speckit?.status === 'failed') reasons.push('A preparação dos planos falhou.');
   // A cycle that failed (the Claude login expired, a quota) says why, so the owner is not left with a silent stop.
   if (st.error) reasons.push(st.error);
-  const rejectedBy = SPECS_REVIEWERS.filter((role) => st.specsReview?.[role]?.specsHash === st.specsMd?.hash && st.specsReview?.[role]?.verdict === 'rejected');
-  if (rejectedBy.length > 0) reasons.push(`${rejectedBy.map((role) => role.toUpperCase()).join(' e ')} apontaram problemas no specs.md; veja em "Verificação". O desenvolvimento não fica bloqueado.`);
   return reasons;
 }
 
@@ -87,7 +84,7 @@ export function ownerResumed(s: RefineSession): void {
   stopped.delete(s);
 }
 
-/** Whether nothing keeps "Iniciar desenvolvimento" closed: the backlog ready, no open question, specs.md written and checked, the plans prepared. */
+/** Whether nothing keeps "Iniciar desenvolvimento" closed: the backlog ready, no open question, specs.md written, the plans prepared. */
 export async function startIsClear(s: RefineSession): Promise<boolean> {
   const st = s.state;
   const plans = st.speckit?.status === 'done' && !st.speckit.stale;
@@ -146,10 +143,8 @@ async function runPass(s: RefineSession, teamAlone: boolean): Promise<void> {
     await tolerate(() => s.evaluate());
     if (go()) await settleOpen();
   }
-  // specs.md is written and reviewed once; the reviewers' adjustments are taken once, with no new review.
+  // specs.md is written from the backlog, with no review: PO and SM did theirs in the document stages.
   if (go()) await tolerate(() => s.startSpecs());
-  await tolerate(() => s.settled());
-  if (go()) await tolerate(() => s.applySpecsSuggestions());
   await tolerate(() => s.settled());
   if (go() && (s.state.speckit?.status !== 'done' || s.state.speckit.stale)) {
     await tolerate(() => s.runPlans());
