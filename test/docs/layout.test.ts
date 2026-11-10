@@ -137,9 +137,10 @@ describe('GitHub owner of the project document', () => {
     expect(githubOwnerOf('## GitHub owner\n\nacme-co\n\n## Principles\n')).toBe('acme-co');
   });
 
-  it('refuses a value that is not a GitHub login', () => {
-    expect(() => githubOwnerOf('## GitHub owner\n\nbad owner!\n')).toThrow(RangeError);
-    expect(() => githubOwnerOf('## GitHub owner\n\n-acme\n')).toThrow(RangeError);
+  it('is null when the section holds prose instead of a GitHub login', () => {
+    expect(githubOwnerOf('## GitHub owner\n\nbad owner!\n')).toBeNull();
+    expect(githubOwnerOf('## GitHub owner\n\n-acme\n')).toBeNull();
+    expect(githubOwnerOf('## GitHub owner\n\n#### 10. Repo and owner\n\n- **Org:** prose\n')).toBeNull();
   });
 });
 

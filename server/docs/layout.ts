@@ -98,9 +98,7 @@ export function githubOwnerOf(projectMd: string): string | null {
     .slice(start + 1, end === -1 ? undefined : end)
     .map((line) => line.trim())
     .find((line) => line !== '');
-  if (value === undefined || /[<>]/.test(value) || NO_OWNER.test(value)) return null;
-  if (!GITHUB_LOGIN.test(value)) throw new RangeError(`the owner under "${OWNER_HEADING}" must be a GitHub login, got "${value}"`);
-  return value;
+  return value !== undefined && GITHUB_LOGIN.test(value) && !NO_OWNER.test(value) ? value : null;
 }
 
 /** The alias of a spec file of the documentation repository (under docs/specify or docs/<service>/specify), or null for any other path. */
