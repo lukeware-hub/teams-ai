@@ -1417,6 +1417,10 @@ A etapa Backlog só cria os itens do backlog. PO e SM já fizeram o trabalho del
 Preparar o desenvolvimento
 Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua spec.
 
+┌ ⚠ Falta para iniciar o desenvolvimento ───────────────┐
+│ • 1 divergência nos documentos: …                     │
+│ • A preparação dos planos está em andamento.          │
+└───────────────────────────────────────────────────────┘
 ┌ Precisa de você ─── só quando algo espera o dono ─────┐
 └───────────────────────────────────────────────────────┘
 ┌ Itens do backlog ───────────── 88 specs · detalhado ──┐
@@ -1425,27 +1429,37 @@ Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua sp
 │ ▸ Contratos e eventos                              3  │
 │ ▸ Identidade e tenancy                             1  │
 └───────────────────────────────────────────────────────┘
-┌ Falta para terminar ──────────────────────────────────┐
-│ ✓ Backlog detalhado   88 itens                        │
+┌ Progresso do backlog ─────────────────────────── 62% ─┐
+│ ███████████░░░░░░░░   Faltam 38%   Tempo 41:12        │
+│ ✓ Documentos                                          │
+│ ✓ Specs                                    23 de 23   │
+│ ◔ Planos                                   18 de 23   │
+│ ◔ Tarefas                                  14 de 23   │
+│ ○ Arquitetura                                         │
+│ ✓ Dependências                                        │
+│ ! Perguntas                          1 divergência    │
+│ ───────────────────────────────────────────────────── │
+│ Agora   Plano de denial-appeal-flow          4:02     │
 │ ───────────────────────────────────────────────────── │
 │ Última avaliação: 4 min · US$ 0,40 · 1 item refeito…  │
 │ Total do refinamento: US$ 12,30                       │
 └───────────────────────────────────────────────────────┘
 ───────────────────────────────────────────────────────── (rodapé)
 7577 chamadas · 77507562 tokens …
-        Falta para iniciar o desenvolvimento: …
         [ Preparar backlog ]  [ Iniciar desenvolvimento ]
 ```
 
 | Elemento | Especificação |
 |---|---|
-| Falta para terminar | Um quadro no fim da etapa, logo antes do rodapé com as chamadas e os tokens, com um único passo: `Backlog detalhado` e o número de itens. Feito: ícone `check` em `good`. Ainda não: ícone `clock` em `warn`. Sem chip de contagem. |
+| Progresso do backlog | Um quadro no fim da etapa, logo antes do rodapé com as chamadas e os tokens. O título leva o percentual feito; abaixo dele a barra (`progressbar`), `Faltam N%` e o tempo desde que a etapa começou a ser preparada. Uma linha por verificação do fechamento, na ordem: Documentos, Specs, Planos, Tarefas (só em sessão de repositórios), Arquitetura, Dependências, Perguntas. Feito: ícone `check` em `good`. Em andamento: `clock` em `warn`, com `X de Y` quando conta itens. Pendente: `chevron-right` em cinza. Com divergência ou erro: `alert` em `warn`, com o motivo curto. O estado nunca é só cor. |
+| Percentual | Só dados reais: unidades feitas ÷ unidades esperadas. Unidades: Documentos, Dependências, Arquitetura e Perguntas valem 1 cada; cada item vale 1 em Specs, 1 em Planos e 1 em Tarefas. Vai a 99% no máximo enquanto o fechamento não estiver completo. |
+| Agora | O que roda neste momento: o plano ou a lista de tarefas de cada item, a decisão da arquitetura ou os passos da avaliação, com o tempo de cada um. Até 4 linhas e `e mais N`. Sem nada rodando e com pendência: `Parado: falta …`. |
 | Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
 | Total | `Total do refinamento: US$ Z`. |
 | Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
 | Precisa de você | Só aparece quando algo espera o dono. Junta as perguntas do PO e do SM, as perguntas dos planos (escondidas enquanto os planos estão sendo preparados) e as perguntas repetidas que não foram feitas de novo. |
 | Itens do backlog | O único card da etapa, sempre aberto: a cobertura (§26.8.1) e a lista de itens por épico. |
-| Falta para iniciar | O texto em `warn` ao lado dos botões diz tudo o que ainda fecha `Iniciar desenvolvimento`: backlog, perguntas obrigatórias, `specs.md` e planos. |
+| Falta para iniciar | Um alerta no topo da etapa, logo abaixo do título e da introdução e antes dos cards. Borda e fundo `warn`, ícone `alert`, título `Falta para iniciar o desenvolvimento` e uma linha por pendência (backlog, perguntas obrigatórias, `specs.md` e planos), com o texto em `ink`. Some quando nada mais fecha `Iniciar desenvolvimento`. O rodapé fica só com os botões. |
 | Pedido de continuação | A tela de um pedido (`Detalhes do time`) continua com os cards `Planos de implementação` e `Verificação` abaixo dos itens. |
 
 ### 26.16 Revisão opcional (todas as etapas)

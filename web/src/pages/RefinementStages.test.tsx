@@ -501,7 +501,7 @@ describe('what the start waits for', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const detailed = { enabled: true, detail: true, epics: [], items: [{ key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [{ doc: 'briefing.md', heading: 'Objectives' }], size: 'S', rank: 1 }], specs: {}, preplans: { base: { preplan: { tasks: [] } } }, flowHeadings: [] };
 
-  it('lists every missing thing in yellow, in plain words, beside the closed button', () => {
+  it('lists every missing thing in an alert at the top, one line each, in plain words', () => {
     const failing = [{ id: 'sm.no-open-questions', role: 'sm', passed: false, detail: '1 pergunta obrigatória em aberto' }];
     const open = { ...question(true), questionId: 'po-c1-0' };
     renderView(project({ stages: true, backlog: detailed as never, status: 'answering', checklist: failing as never, questions: [open as never] } as never));
@@ -522,7 +522,7 @@ describe('what the start waits for', () => {
   it('ends a lack that already ends in a period with one period only', () => {
     const failing = [{ id: 'po.scope-explicit', role: 'po', passed: false, detail: 'o Jev duvidou da consistência (0,37).' }];
     renderView(project({ stages: true, backlog: detailed as never, status: 'drafting', checklist: failing as never } as never));
-    expect(screen.getByTestId('start-missing').textContent).toContain('duvidou da consistência (0,37). ');
+    expect(screen.getByTestId('start-missing').textContent).toContain('duvidou da consistência (0,37).');
     expect(screen.getByTestId('start-missing').textContent).not.toContain('..');
   });
 
@@ -547,12 +547,13 @@ describe('the button that lets the team resolve everything', () => {
     expect(h.onResolveAll).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the spinner from the click, and the yellow list sits beside the buttons', async () => {
+  it('shows the spinner from the click, and the alert sits above the cards', async () => {
     const h = { ...handlers(), onResolveAll: vi.fn() };
     renderView(project({ stages: true, backlog: detailed as never, status: 'drafting' } as never), h);
     const missing = screen.getByTestId('start-missing');
     expect(missing.className).toContain('text-warn');
-    expect(missing.parentElement?.contains(screen.getByTestId('prepare-backlog'))).toBe(true);
+    expect(missing.parentElement?.contains(screen.getByTestId('prepare-backlog'))).toBe(false);
+    expect(missing.nextElementSibling?.getAttribute('data-testid')).toBe('backlog-cards');
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
     const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;
@@ -595,13 +596,13 @@ describe('the finish panel: what still keeps the start closed', () => {
   beforeEach(() => window.history.replaceState(null, '', '/?etapa=backlog'));
   const item = { key: 'base', title: 'Base', epic: 'core', scope: 's', priority: 'P0', rationale: 'r', dependsOn: [], sources: [], size: 'S', rank: 1 };
   const backlog = { enabled: true, detail: true, epics: [], items: [item, { ...item, key: 'fat', rank: 2 }], specs: {}, preplans: {}, flowHeadings: [] };
-  it('shows only the detailed backlog step, and counts what the latest evaluation spent and reused', () => {
+  it('shows the percent and a row per check, and counts what the latest evaluation spent and reused', () => {
     const snap = { ...project({ stages: true, status: 'ready', backlog: backlog as never }), evaluationProgress: { durationMs: 4 * 60_000, costUsd: 0.4, redone: 1, repeated: false }, specsReady: true };
     render(<MemoryRouter><RefinementView snap={snap} busy={false} events={[]} {...handlers()} /></MemoryRouter>);
-    expect(screen.getByTestId('finish-backlog').dataset.state).toBe('done');
-    expect(screen.getByTestId('finish-backlog').textContent).toContain('2 itens');
-    for (const id of ['specs', 'plans', 'start']) expect(screen.queryByTestId(`finish-${id}`)).toBeNull();
-    expect(screen.queryByTestId('finish-panel-count')).toBeNull();
+    expect(screen.getByTestId('progress-percent').textContent).toMatch(/^\d+%$/);
+    expect(screen.getByTestId('progress-bar').getAttribute('role')).toBe('progressbar');
+    expect(screen.getByTestId('progress-specs').textContent).toContain('0 de 2');
+    expect(screen.getByTestId('progress-plans').dataset.state).toBe('ahead');
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('4 min');
     expect(screen.getByTestId('finish-panel-last').textContent).toContain('1 item refeito, 1 reaproveitado');
     expect(screen.queryByTestId('finish-panel-repeated')).toBeNull();

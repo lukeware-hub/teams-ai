@@ -586,6 +586,8 @@ export interface RefineState {
   repositories?: boolean;
   /** The architecture the five documents support, with the hash of the documents it was decided on. */
   architecture?: { docsHash: string; decision: ArchitectureView } | null;
+  /** An architecture decision is running now. */
+  architectureRunning?: boolean;
   /** The last architecture decision failed, with the reason in plain words. */
   architectureError?: string | null;
   /** specs.md as last written from the detailed backlog: the hash of its text and its size. */
