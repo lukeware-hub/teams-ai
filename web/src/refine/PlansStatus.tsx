@@ -3,6 +3,7 @@ import type { Snapshot } from '../api.js';
 import { Icon } from '../components/Icons.js';
 import { formatDuration } from '../run/selectors.js';
 import { ProcessBox } from './ProcessingBanner.js';
+import { ProgressBar } from './ProgressBar.js';
 
 type Speckit = Snapshot['state']['speckit'];
 type Command = { command: string; itemKey?: string; startedAt?: string; endedAt?: string; reused?: boolean };
@@ -89,9 +90,7 @@ function Status({ speckit, titles, plan = [], waiting = false, startable = false
     return (
       <ProcessBox title="Preparação dos planos em andamento" since={speckit.startedAt} testId="speckit-running">
         <span className="text-[0.75rem] leading-[1.35]" data-testid="plans-status-summary">{summary}</span>
-        <div role="progressbar" aria-label="Preparação dos planos" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1.5 overflow-hidden rounded-full bg-accent-line" data-testid="plans-status-progress">
-          <div className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out" data-testid="plans-status-progress-bar" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
-        </div>
+        <ProgressBar label="Preparação dos planos" done={done} total={total} testId="plans-status-progress" />
         <details className="group" data-testid="speckit-log">
           <summary className="flex cursor-pointer list-none items-center gap-[0.35rem] text-[0.75rem] font-semibold [&::-webkit-details-marker]:hidden" data-testid="plans-status-log-summary">
             <span className="transition-transform group-open:rotate-90" data-testid="plans-status-log-chevron"><Icon name="chevron-right" size={14} /></span>
