@@ -8,6 +8,7 @@ import { Accounting } from '../budget/accounting.js';
 import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
+import { codeQuestionOf } from '../knowledge/code-question.js';
 import { readRelationSpecs } from '../knowledge/relation-links.js';
 import { failureLines, failuresOf, readRunJournals } from '../knowledge/failure-memory.js';
 import { BRIEF_MAX_CHARS, specBrief } from '../knowledge/spec-brief.js';
@@ -640,7 +641,7 @@ export class Run {
         const tracked = await withRepoLock(ws.repo, () => g.trackedFiles(ws.repo)).catch(() => [] as string[]);
         const cov = await g.coverage(graphDir(ws, null), tracked).catch(() => null);
         if (cov && cov.ratio >= MIN_COVERAGE) {
-          const q = await g.query(graphDir(ws, null), `${task.title} ${task.description}`, 2000);
+          const q = await g.query(graphDir(ws, null), codeQuestionOf(task), 2000);
           // A graphify that failed answers nothing; the step reads the code with grep and the journal says it was grep.
           if (q.failed === undefined) return { source: 'graph', nodes: q.nodes, truncated: q.truncated, graphFile: graphFile(graphDir(ws, null)) };
         }
