@@ -215,9 +215,22 @@ export class Journal {
     return null;
   }
 
-  /** The SM answers to the Dev's spec-gap questions on one task, oldest first. */
+  /** The SM answers to the Dev's spec-gap questions on one task and on the tasks it replaced, oldest first. */
   specGapAnswers(taskId: string): Array<{ question: string; answer: string }> {
-    return this.log.filter((e) => e.type === OrchEvent.SpecGapAnswered && e.data.taskId === taskId).map((e) => ({ question: String(e.data.question), answer: String(e.data.answer) }));
+    const ids = new Set([taskId]);
+    const replans = this.log.filter((e) => e.type === RunEvent.TaskReplanned);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const e of replans) {
+        const replaced = e.data.taskId as string;
+        if (!ids.has(replaced) && (e.data.replacements as { id: string }[]).some((r) => ids.has(r.id))) {
+          ids.add(replaced);
+          grew = true;
+        }
+      }
+    }
+    return this.log.filter((e) => e.type === OrchEvent.SpecGapAnswered && ids.has(e.data.taskId as string)).map((e) => ({ question: String(e.data.question), answer: String(e.data.answer) }));
   }
 
   assumptions(): string[] {

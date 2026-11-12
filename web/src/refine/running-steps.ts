@@ -16,7 +16,7 @@ export interface RunningStep {
 }
 
 const MODEL_NAME: Record<string, string> = { 'claude-haiku-5-5': 'Haiku 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-opus-5-5': 'Opus 5.5' };
-const EFFORT_NAME: Record<string, string> = { low: 'baixo', medium: 'médio', high: 'alto', max: 'máximo' };
+export const EFFORT_NAME: Record<string, string> = { low: 'baixo', medium: 'médio', high: 'alto', max: 'máximo' };
 const ROLE_NAME: Record<string, string> = { po: 'PO', sm: 'SM', front: 'Front' };
 
 /** The steps of the round that started and have no finish event, oldest first. */

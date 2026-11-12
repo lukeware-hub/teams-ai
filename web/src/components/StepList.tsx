@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { EFFORT_NAME } from '../refine/running-steps.js';
 import { formatDuration, type StepRow } from '../run/selectors.js';
 
 type Artifact = { prompt: string; output: unknown };
@@ -31,7 +32,8 @@ export function StepList({ steps, loadStep }: { steps: StepRow[]; loadStep: (ste
             </button>{' '}
             {s.kind} · {s.role}
             {s.tier ? ` · ${s.tier}` : ''}
-            {s.model ? ` · ${s.model}` : ''} · {s.ok === null ? stateLabel('running') : s.ok ? stateLabel('ok') : `${stateLabel('failed')} (${s.failure})`}
+            {s.model ? ` · ${s.model}` : ''}
+            {s.effort ? ` · esforço ${EFFORT_NAME[s.effort] ?? s.effort}` : ''} · {s.ok === null ? stateLabel('running') : s.ok ? stateLabel('ok') : `${stateLabel('failed')} (${s.failure})`}
             {s.usage ? ` · ${s.usage.inputTokens + s.usage.outputTokens} tokens` : ''}
             {s.durationMs ? ` · ${formatDuration(s.durationMs)}` : ''}
             {art && art !== 'loading' ? (
