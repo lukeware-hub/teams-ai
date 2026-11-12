@@ -209,7 +209,7 @@ const fileEmpty = 'mx-0 mt-[0.65rem] mb-0 text-[0.78rem] text-ink-soft';
 const secretRow = 'grid gap-[0.45rem] rounded-lg border p-3';
 /** What a secret is for, which dependency needs it, and which document sections name it. */
 const secretTip = (s: Snapshot['secrets'][number]): string => {
-  const uses = s.uses.map((u) => `Usado por ${u.dependency}: ${u.purpose}.`);
+  const uses = s.uses.map((u) => [`Usado por ${u.dependency}: ${u.purpose}.`, u.what && `O que é: ${u.what}`, u.usage && `Onde é usado: ${u.usage}`].filter(Boolean).join(' '));
   const mentions = s.mentions.length > 0 ? [`Citado em: ${s.mentions.map((m) => `${m.doc} › ${m.heading}`).join('; ')}.`] : [];
   return [...uses, ...mentions].join(' ') || 'Nenhuma spec declara este segredo ainda.';
 };

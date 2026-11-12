@@ -1638,6 +1638,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - Keep the secrets and token summary at the bottom. `Iniciar análise` is the panel's primary action and occupies the full available width.
 - Surface the current analysis cost immediately below the quality-panel header in a highlighted summary: steps, tokens, and USD cost. Cost visibility is part of the primary workspace hierarchy, not a footer detail.
 - Render secrets as compact key/value rows with an `Adicionar segredo` action. Accept any valid uppercase environment-style key, support multiple rows, never echo stored values, and keep saving controls aligned with the panel grid.
+- On the repository dashboard, `Bloqueios` lists each missing secret as a collapsed row: the key name and the status `Não salvo`. Opening it shows what the secret is, what it is for, where it is used and the document sections that name it, then an optional password field with `Salvar` and the note `Opcional. O valor fica neste computador e não é mostrado de novo.` A fact the specs did not provide is left out, never invented. A failed save keeps the typed value and shows the error under the field; a saved secret leaves the list.
 
 ### 30.5 Interaction and accessibility
 

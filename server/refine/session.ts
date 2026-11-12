@@ -195,7 +195,7 @@ export interface SecretRow {
   present: boolean;
   hint: string | null;
   /** The dependencies that need this secret, with what each one is for. */
-  uses: Array<{ dependency: string; purpose: string }>;
+  uses: Array<{ dependency: string; purpose: string; what?: string; usage?: string }>;
   /** The document sections that name this secret. */
   mentions: Array<{ doc: string; heading: string }>;
 }
@@ -480,7 +480,7 @@ export class RefineSession {
       name,
       present: name in present,
       hint: name in present ? '****' : null,
-      uses: dependencies.filter((d) => d.secretNames.includes(name)).map((d) => ({ dependency: d.name, purpose: d.purpose })),
+      uses: dependencies.filter((d) => d.secretNames.includes(name)).map((d) => ({ dependency: d.name, purpose: d.purpose, ...(d.what ? { what: d.what } : {}), ...(d.usage ? { usage: d.usage } : {}) })),
       mentions: sectionsMentioning(docs, name),
     }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
