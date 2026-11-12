@@ -1028,7 +1028,8 @@ export class TaskRunner {
 
   /** Asks the SM for the owner's question and choices on a block and journals them for the run screen; a failed step leaves the block as it is. */
   private async askOwner(task: PlanTask, reason: string): Promise<BlockOptionsOutput | null> {
-    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    const autonomous = await this.autonomous();
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason, autonomous }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
     if (!outcome.ok) return null;
     const value = outcome.value as BlockOptionsOutput;
     await this.deps.journal.fact(OrchEvent.DecisionRequested, { taskId: this.taskId, specHash: this.deps.specHash, reason, question: value.question, options: value.options });
@@ -1054,7 +1055,8 @@ export class TaskRunner {
     await this.deps.journal.fact(OrchEvent.DecisionAnswered, { taskId: this.taskId, question: value.question, answer: choice.label, by: 'agents' });
     await this.feedback(`Decision taken by the agents, binding for this task:
 Q: ${value.question}
-A: ${choice.label}. ${choice.detail}`);
+A: ${choice.label}. ${choice.detail}
+Carry it out now and do not ask about it again. A file under docs/ is not yours to change: leave it as it is and name the difference in your handoff.`);
     await this.implement();
     return true;
   }

@@ -12,6 +12,7 @@ import { linkBrainFile } from './brain-links.js';
 import { brainNotes, type BrainLink, type RunJournal } from './brain-notes.js';
 import { failureLinks, failuresOf, linkFailuresFile, type FailureLink } from './failure-memory.js';
 import type { Graphify } from './graphify.js';
+import { flowOutline } from './flow-outline.js';
 import { projectInfoMarkdown } from './project-info.js';
 import { linkRelationsFile, readRelationSpecs } from './relation-links.js';
 
@@ -98,6 +99,8 @@ export async function mergeProjectGraph(graphify: Graphify, ws: Workspace, proje
     if (doc.text === null) continue;
     await fs.mkdir(path.dirname(path.join(info, doc.file)), { recursive: true });
     await fs.writeFile(path.join(info, doc.file), doc.text);
+    const outline = doc.file === 'flow.md' ? flowOutline(doc.text) : null;
+    if (outline) await fs.writeFile(path.join(info, 'flow-outline.md'), outline);
   }
   const infoGraph = path.posix.join(ws.graph, 'project-info-graph');
   await graphify.update(info, infoGraph);

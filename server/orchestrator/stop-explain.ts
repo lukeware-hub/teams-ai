@@ -66,6 +66,8 @@ const CREDENTIAL_HINT = (names: string[]) =>
   `${names.length > 0 ? `O deploy ou os testes pedem ${names.join(', ')}, que não existem no ambiente.` : 'O deploy ou os testes pedem uma variável de ambiente que não existe.'} Se for uma credencial interna do projeto, como um token de administração entre serviços, liste o nome em environment.generatedSecrets no config.json da plataforma: ela cria o valor sozinha. Se for um valor de terceiros, grave um arquivo com o nome dele em workspaces/<projeto>/secrets. Depois use "Tentar de novo".`;
 
 type StopRule = [RegExp, StopExplanation | ((match: RegExpMatchArray, text: string) => StopExplanation)];
+const SPEC_GAP_EXHAUSTED = /^spec-gap rounds exhausted/;
+
 const STOP_RULES: StopRule[] = [
   [/^gh repo view failed/, { title: 'Não foi possível consultar o repositório no GitHub', hint: 'Confira se o GitHub CLI está autenticado e tem acesso ao repositório, depois reprocesse a spec.', owner: 'Você' }],
   [/^(gh repo create|git push main|git ls-remote|git remote add origin) failed/, { title: 'O GitHub recusou criar ou preencher o repositório', hint: 'A plataforma tentou várias vezes e o GitHub continuou recusando; o repositório pode já existir, só que incompleto. Confira githubstatus.com e as permissões da conta na organização e nas regras de branch. Quando estiver normal, use "Tentar de novo": ela continua do repositório que já existe.', owner: 'Você' }],
@@ -85,7 +87,7 @@ const STOP_RULES: StopRule[] = [
   [/plan\.commands\.smoke missing/, { title: 'O plano não define commands.smoke', hint: 'Falta o comando dos testes de fumaça no plan.json. Nenhum agente edita o plano durante a run: adicione commands.smoke ao plano na main e tente de novo.', owner: 'Plano' }],
   [/produced no changes against origin\/main/, { title: 'O Dev disse que terminou, mas não alterou nada', hint: 'A tarefa não gerou diferença em relação à main. Costuma ser um problema que código não resolve (ex.: um campo faltando no plano); repetir a tarefa só gasta tokens.', owner: 'Sistema' }],
   [/^Scope violation:/, { title: 'O Dev mexeu em arquivos fora do escopo da tarefa', hint: 'A mudança foi rejeitada antes do merge. Revise os caminhos permitidos da tarefa no plano.', owner: 'Sistema' }],
-  [/^spec-gap rounds exhausted/, { title: 'O Dev continuou com dúvidas sobre a spec', hint: 'O Scrum Master respondeu três vezes e a dúvida persiste. Esclareça o ponto na spec e inicie uma nova execução.', owner: 'Você' }],
+  [SPEC_GAP_EXHAUSTED, { title: 'O Dev continuou com dúvidas sobre a spec', hint: 'O Scrum Master respondeu três vezes e a dúvida persiste. Esclareça o ponto na spec e inicie uma nova execução.', owner: 'Você' }],
   [/^Security review requested changes/, { title: 'A revisão de segurança pediu mudanças', hint: 'Faça os ajustes de segurança pedidos na tarefa e reprocesse a spec.', owner: 'Sistema' }],
   [/^Review requested changes/, { title: 'A revisão de código pediu mudanças', hint: 'Faça os ajustes pedidos na tarefa e reprocesse a spec.', owner: 'Sistema' }],
   [/^Review evidence rejected/, { title: 'A evidência da revisão foi rejeitada', hint: 'O revisor citou testes que não aparecem no relatório de testes. Veja o texto técnico e reprocesse a spec.', owner: 'Sistema' }],
@@ -136,7 +138,7 @@ export function firstSentence(text: string, max = 100): string {
 const NEXT_STEP = 'Veja o detalhe técnico. Quando a causa estiver resolvida, reprocesse a spec.';
 const DEPLOY_NEXT_STEP = 'O orquestrador esgotou as tentativas de deploy. Veja o detalhe técnico e os logs do container.';
 const AUTONOMOUS_NEXT_STEP = 'Os agentes já tentaram resolver sozinhos. Veja o detalhe técnico.';
-const AUTONOMOUS_BLOCKED_HINT = 'Os agentes já decidiram o que podiam e a tarefa não avançou. Veja o detalhe técnico.';
+const AUTONOMOUS_BLOCKED_HINT ='Os agentes já decidiram o que podiam e a tarefa não avançou. Veja o detalhe técnico.';
 
 /** With the owner letting the agents decide, no screen offers a reprocess, so a hint that asks for one is replaced. */
 export const ownHint = (hint: string, autonomous: boolean): string => (autonomous && /reprocess/i.test(hint) ? AUTONOMOUS_NEXT_STEP : hint);
@@ -194,7 +196,9 @@ export function blockExplanation(reason: string, autonomous = false): BlockExpla
     ...(!head && translated !== main ? [translated] : []),
     ...(tail ? [`As tentativas ${PROGRESS_LABEL[tail[1]!] ?? 'não avançaram'}. A tarefa já tinha sido refeita uma vez, então foi bloqueada para não gastar as tentativas que faltavam.`] : []),
   ];
-  return { title: why.title, owner: why.owner, problem, findings: head ? parseFindings(main.slice(head[0].length)) : [], next: ownHint(why.hint, autonomous), raw: reason };
+  // With the agents deciding, a doubt they could not settle is the system's failure, not a question for the owner.
+  const unsettled = autonomous && SPEC_GAP_EXHAUSTED.test(main);
+  return { title: why.title, owner: unsettled ? 'Sistema' : why.owner, problem, findings: head ? parseFindings(main.slice(head[0].length)) : [], next: unsettled ? AUTONOMOUS_BLOCKED_HINT : ownHint(why.hint, autonomous), raw: reason };
 }
 
 /** One sentence tying a failed run to the tasks that blocked on their own, or null when none did. */

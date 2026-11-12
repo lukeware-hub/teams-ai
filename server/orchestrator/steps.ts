@@ -420,10 +420,13 @@ export function planPack(
   };
 }
 
+/** A technical conflict (a version, a library, a flag) is the agents' to settle; a build task never edits docs/, so no answer may depend on it. */
+const TECHNICAL_CONFLICT_RULE = 'When a technical detail of stack.md (a pinned version with a known vulnerability, an incompatible library, a removed flag) fails, settle it yourself; the product, the flow, the requirements and the chosen technologies in the documents never change. Research the official documentation, the release notes and the code before you answer, and pick the choice that passes the gates. The code follows that choice; never tell the Dev to edit a file under docs/, because build tasks cannot change it. Name the document line that now differs in the assumption.';
+
 export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean; frozenPaths: readonly string[]; gates?: ReadonlyArray<{ name: string; command: string }> }): ContextPackInput {
   // The commands the gates run now, after every gateFix already applied: a fix that repeats one of them changes nothing.
   const gates = opts.gates && opts.gates.length > 0 ? `\n\nGate commands the orchestrator runs now (a gateFix equal to one of them is already applied):\n${opts.gates.map((g) => `- ${g.name}: ${g.command}`).join('\n')}` : '';
-  const overrule = opts.overrule ? '\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.' : '';
+  const overrule = opts.overrule ? `\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.\n\n${TECHNICAL_CONFLICT_RULE}` : '';
   const frozen = opts.frozenPaths.length > 0 ? `\n\nPaths in frozenPaths (${opts.frozenPaths.join(', ')}) are rejected by the orchestrator in every task after the scaffold; never tell the Dev to change one, and never overrule this.` : '';
   const gateFix = '\n\nWhen the question shows that a blocking gate command in the plan is wrong (the code is right, the command cannot pass, for example a sed that leaves a number empty), answer with gateFix: the gate name and the whole corrected command on one line, keeping the same check. The orchestrator applies it, journaled, and the Dev runs again with it. Leave gateFix out of every other answer, and never write a gate result file by hand.';
   const imageFix = opts.overrule ? '\n\nWhen your answer moves the toolchain to a newer version (a patched Go that a dependency scan asks for), also answer with imageFix: the whole new gate image reference, same repository and flavour, for example golang:1.27.2-bookworm to golang:1.27.3-bookworm. The orchestrator then runs the install and the gates in it; without it the Dev\'s new version cannot run there. In the answer, name the files the Dev moves to the same version.' : '';
@@ -431,13 +434,14 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
 }
 
 /** The owner's question for a block the agents cannot finish: one question and 2 to 4 choices the repository can carry out. */
-export function blockOptionsPack(base: PackBase, task: PlanTask, opts: { reason: string }): ContextPackInput {
+export function blockOptionsPack(base: PackBase, task: PlanTask, opts: { reason: string; autonomous?: boolean }): ContextPackInput {
+  const docs = opts.autonomous ? ' Because the agents take the recommended choice, no choice may need a file under docs/ to change: the Dev cannot edit it.' : '';
   return {
     ...common(base, 'block-options', 'sm'),
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
-    feedback: `The Dev cannot finish this task as written:\n${opts.reason}\n\nWrite one question for the owner in Brazilian Portuguese (pt-BR), in plain words, and 2 to 4 choices the agents can carry out inside this repository. Each choice has a short label, a detail in one sentence with its cost or risk, and at most one is recommended. Never ask for a credential or a value only the owner has.`,
+    feedback: `The Dev cannot finish this task as written:\n${opts.reason}\n\nWrite one question for the owner in Brazilian Portuguese (pt-BR), in plain words, and 2 to 4 choices the agents can carry out inside this repository. Each choice has a short label, a detail in one sentence with its cost or risk, and at most one is recommended. Never ask for a credential or a value only the owner has.${docs}`,
   };
 }
 
