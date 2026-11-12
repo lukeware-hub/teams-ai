@@ -242,14 +242,16 @@ export function resumedPack(text: string): ContextPack {
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }>; languageCheck?: string; answers?: ReadonlyArray<{ question: string; answer: string }> },
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }>; languageCheck?: string; answers?: ReadonlyArray<{ question: string; answer: string }>; deviations?: readonly string[] },
 ): ContextPackInput {
   const prior = (opts.priorFindings ?? []).slice(0, REVIEW_PRIOR_LINES).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} ${f.problem}`);
   if ((opts.priorFindings?.length ?? 0) > REVIEW_PRIOR_LINES) prior.push(`- ... ${(opts.priorFindings?.length ?? 0) - REVIEW_PRIOR_LINES} more`);
   const history = prior.length > 0 ? `\n\nYour earlier findings on this task (the Dev applied them; do not reverse one without saying which and why):\n${prior.join('\n')}` : '';
   const answered = (opts.answers ?? []).map((a) => `Q: ${a.question}\nA: ${a.answer}`);
   const answers = answered.length > 0 ? `\n\nThe SM answered these questions on this task; they bind the change, so never ask for what they rule out:\n${answered.join('\n\n')}` : '';
-  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".${history}${answers}`;
+  const declared = (opts.deviations ?? []).map((d) => `- ${d}`);
+  const deviations = declared.length > 0 ? `\n\nThe Dev declared these departures from the plan; they count as recorded, so never ask to record them in the plan or in any file under docs/, which the Dev cannot edit:\n${declared.join('\n')}` : '';
+  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".${history}${answers}${deviations}`;
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).

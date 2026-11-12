@@ -251,7 +251,16 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).feedback).not.toContain('earlier findings');
   });
 
-  it('the review carries the SM answers on the task, so it does not ask for what the SM ruled out', () => {
+  it('the review lists the Dev deviations as recorded and adds nothing without them', () => {
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const feedback = reviewPack(base, task, { ...review, deviations: ['Dockerfile uses Go 1.27.4 because of GO-2026-6859.'] }).feedback;
+    expect(feedback).toContain('they count as recorded, so never ask to record them in the plan or in any file under docs/');
+    expect(feedback).toContain('- Dockerfile uses Go 1.27.4 because of GO-2026-6859.');
+    expect(reviewPack(base, task, { ...review, deviations: [] }).feedback).toBe(reviewPack(base, task, review).feedback);
+    expect(reviewPack(base, task, review).feedback).not.toContain('departures');
+  });
+
+  it('the review carries the SM answers on the task,so it does not ask for what the SM ruled out', () => {
     const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
     const answered = reviewPack(base, task, { ...review, answers: [{ question: 'Which write route?', answer: 'Do not create AppendAuditEvent.' }] }).feedback;
     expect(answered).toContain('The SM answered these questions on this task; they bind the change, so never ask for what they rule out');
