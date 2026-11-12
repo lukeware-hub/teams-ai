@@ -354,6 +354,8 @@ export const runApi = {
   complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),
   reportProblem: (projectId: string, specId: string, report: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/continue`, { report }).then((r) => json<{ sessionId: string }>(r)),
   writeReadme: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/readme`).then((r) => json<{ runId: string }>(r)),
+  cancelRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/cancel`).then((r) => json<{ cancelled: boolean }>(r)),
+  restartRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/restart`).then((r) => json<{ runId?: string; queued?: boolean }>(r)),
   stopRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/stop`).then((r) => json<{ stopped: boolean }>(r)),
   acceptGap: (runId: string, gap: { doc: string; heading: string; note: string }) => jsonPost(`/runs/${encodeURIComponent(runId)}/gaps/accept`, gap).then((r) => json<{ accepted: boolean }>(r)),
   run: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}`).then((r) => json<RunDetail>(r)),

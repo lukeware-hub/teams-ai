@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { refineApi } from '../api.js';
+import { refineApi, runApi } from '../api.js';
 import { DecisionTimeline, useDecisions } from './DecisionTimeline.js';
 import { ProgramPanel, useBacklogTitles, useProgram } from './ProgramPanel.js';
 
@@ -19,10 +19,16 @@ export function BacklogExecution({ projectId, specId, onRunning }: { projectId: 
     setError(null);
     return refineApi.prioritize(projectId, specId, itemSpecId).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
   };
+  // The next poll shows the outcome; a refused action says why.
+  const onRun = (go: (runId: string) => Promise<unknown>) => (runId: string) => {
+    setError(null);
+    return go(runId).then(() => refineApi.program(projectId, specId)).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
+  };
+  const stoppedRun = { resume: onRun(runApi.resumeRun), restart: onRun(runApi.restartRun), cancel: onRun(runApi.cancelRun) };
   return (
     <div className="grid gap-5" data-testid={`backlog-execution-${specId}`}>
       {error && <p className="error" role="alert" data-testid="program-error">{error}</p>}
-      <ProgramPanel program={program} titles={titles} phases={phases} unanswered={unanswered} onPrioritize={prioritize} />
+      <ProgramPanel program={program} titles={titles} phases={phases} unanswered={unanswered} onPrioritize={prioritize} onStoppedRun={stoppedRun} />
       {decisions.length > 0 && <DecisionTimeline decisions={decisions} titles={titles} />}
     </div>
   );

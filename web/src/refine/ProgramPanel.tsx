@@ -6,6 +6,7 @@ import { ActionButton } from '../components/ActionButton.js';
 import { Pagination } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
+import { RunStoppedActions } from '../components/RunStoppedActions.js';
 import { Select } from '../components/Select.js';
 import { PAGE_SIZES } from '@server/api/paging.js';
 import { canStart, type StartInput } from '@server/refine/state';
@@ -171,7 +172,7 @@ export function ProgramStatus({ program, titles, phases, link }: { program: Prog
 }
 
 /** Every spec of the backlog in run order: its rank, title and run, where it stands, what it cost and what can be done. */
-export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onPrioritize }: { program: ProgramView; titles: Record<string, string>; phases?: Record<string, number>; unanswered?: number; onPrioritize?: (specId: string) => unknown }) {
+export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onPrioritize, onStoppedRun }: { program: ProgramView; titles: Record<string, string>; phases?: Record<string, number>; unanswered?: number; onPrioritize?: (specId: string) => unknown; /** What the owner can do with a run that stopped on its own; the row offers nothing without it. */ onStoppedRun?: { resume: (runId: string) => unknown; restart: (runId: string) => unknown; cancel: (runId: string) => unknown } }) {
   const done = program.items.filter((i) => i.status === 'done').length;
   const total = program.items.length;
   const totalCost = program.items.reduce((sum, i) => sum + (i.costUsd ?? 0), 0);
@@ -250,7 +251,8 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
             </div>
             <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
               <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
-              <span className="flex lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
+              <span className="flex flex-wrap gap-2 lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
+                {onStoppedRun && i.status === 'running' && i.runId && (i.pause?.reason === 'auth' || i.interrupted) && <RunStoppedActions runId={i.interrupted?.runId ?? i.runId} latest onResume={onStoppedRun.resume} onRestart={onStoppedRun.restart} onCancel={onStoppedRun.cancel} />}
                 {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
                 {i.status === 'failed' && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
               </span>

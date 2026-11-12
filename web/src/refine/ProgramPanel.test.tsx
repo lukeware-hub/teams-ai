@@ -57,6 +57,20 @@ describe('ProgramPanel', () => {
     expect(screen.queryByTestId('program-item-pause-c')).toBeNull();
   });
 
+  it('offers Retomar, Recomeçar and Cancelar on a row paused for login or interrupted, but not on one paused by quota', () => {
+    const stopped = { resume: vi.fn(), restart: vi.fn(), cancel: vi.fn() };
+    render(<MemoryRouter><ProgramPanel program={program([
+      item('a', { status: 'running', runId: 'd-a-r1', pause: { reason: 'auth' } }),
+      item('b', { rank: 2, status: 'running', runId: 'd-b-r1', pause: { reason: 'quota' } }),
+      item('c', { rank: 3, status: 'running', runId: 'd-c-r1', interrupted: { runId: 'd-c-r1' } }),
+    ])} titles={titles} onStoppedRun={stopped} /></MemoryRouter>);
+    expect(screen.getByTestId('cancel-d-a-r1')).toBeTruthy();
+    expect(screen.getByTestId('restart-d-a-r1')).toBeTruthy();
+    expect(screen.queryByTestId('cancel-d-b-r1')).toBeNull();
+    fireEvent.click(screen.getByTestId('resume-d-c-r1'));
+    expect(stopped.resume).toHaveBeenCalledWith('d-c-r1');
+  });
+
   it('counts what is done and says when the program finished with failures', () => {
     renderPanel(program([item('a', { status: 'done' }), item('b', { status: 'failed', reason: 'verification-failed: AC-004' }), item('c', { status: 'blocked' })], 'finished'));
     expect(screen.getByText(/1 de 3 concluídas/)).toBeTruthy();

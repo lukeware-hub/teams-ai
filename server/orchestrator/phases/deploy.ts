@@ -9,6 +9,7 @@ import { RunEvent } from '../../pipeline/run-state.js';
 import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
+import { scanRepository } from '../../environment/scan.js';
 import { MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, withMainSnapshot, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 import { listState, readState } from '../../docs/project-state.js';
@@ -241,6 +242,16 @@ export function deployStartAttempt(deps: PhaseDeps): 1 | 2 | 3 {
   return Math.min(1 + done, 3) as 1 | 2 | 3;
 }
 
+/** True when the compose file or a suite of any service names the variable: the same files the environment step reads. */
+async function anyServiceReads(repos: readonly ServiceRepo[], name: string): Promise<boolean> {
+  const word = new RegExp(`\\b${name}\\b`);
+  for (const repo of repos) {
+    const files = await scanRepository(repo.ws.repo, { compose: repo.plan.delivery?.compose, e2eSuite: repo.plan.delivery?.e2eSuite });
+    if (files.some((f) => word.test(f.text))) return true;
+  }
+  return false;
+}
+
 /** `fixTasks: false` (deploy-only runs): a failure is reported, never turned into agent work. */
 export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fixTasks?: boolean; envRerun?: number } = {}): Promise<Phase5Result> {
   if (!deps.plan || !deps.target || !deps.smoke) throw new Error('Phase 5 needs plan, target and smoke');
@@ -316,6 +327,8 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const tags: string[] = [];
   for (const repo of services.repos) tags.push(await checkoutMain({ ...deps, ws: repo.ws }));
   const intents = services.repos.map((repo, i) => serviceIntent(deps, repo, tags[i]!));
+  // Before the environment step, which keeps a value that already exists: the database URL must be the platform's by then.
+  const platformContainers = deps.provisionDatabase ? await deps.provisionDatabase(await anyServiceReads(services.repos, 'DATABASE_URL')) : deps.project.platform ?? [];
   for (const repo of services.repos) await deps.environment?.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, null);
   const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
   const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, own: { intent?: DeploymentIntent; rolledBack?: boolean; rollbackHealthy?: boolean | null; fixable?: boolean } = {}) => {
@@ -351,7 +364,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   // Without a compose file a service would take the project's single container: a plan gap, not code to fix.
   const bare = services.repos.find((_, i) => !intents[i]!.compose);
   if (bare) return failed('validate', `services.${bare.service}.delivery.compose is missing: each service deploys as its own compose project`, bare, { fixable: false });
-  const platform = await (target.startPlatform ? target.startPlatform(deps.project.projectId, deps.project.platform ?? []) : Promise.resolve({ ok: true, detail: '' })).catch((err: Error) => ({ ok: false, detail: err.message }));
+  const platform = await (target.startPlatform ? target.startPlatform(deps.project.projectId, platformContainers) : Promise.resolve({ ok: true, detail: '' })).catch((err: Error) => ({ ok: false, detail: err.message }));
   if (!platform.ok) return failed('platform', platform.detail, null);
   for (const [i, repo] of services.repos.entries()) {
     const intent = intents[i]!;

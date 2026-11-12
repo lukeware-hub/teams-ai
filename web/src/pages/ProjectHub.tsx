@@ -5,6 +5,7 @@ import { refineApi, runApi, type SpecPageRow, type DraftRow, type NameRequest, t
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
+import { RunStoppedActions } from '../components/RunStoppedActions.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Pagination, SortHeader, TableFilters, usePagedTable } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
@@ -118,6 +119,8 @@ export function ProjectHubView(p: {
   onStart: (specId: string) => void | Promise<void>;
   onResume: (runId: string) => void | Promise<void>;
   onStop: (runId: string) => void | Promise<void>;
+  onCancelRun: (runId: string) => void | Promise<void>;
+  onRestartRun: (runId: string) => void | Promise<void>;
   onContinue: (specId: string) => void | Promise<void>;
   onRestart: (specId: string) => void | Promise<void>;
   /** Brings up a spec delivered elsewhere (an import) that has no run here, then opens its validation. */
@@ -263,9 +266,7 @@ export function ProjectHubView(p: {
                               </ActionButton>
                             ) : null}
                             {!r.locked && r.kind === 'run' && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
-                              <ActionButton className={action.secondary} data-testid={`resume-${r.runId}`} aria-label={`Retomar ${r.runId}`} onClick={() => p.onResume(r.runId)} icon={<Icon name="play" size={14} />}>
-                                Retomar
-                              </ActionButton>
+                              <RunStoppedActions runId={r.runId} latest={!p.runs.some((o) => o.specId === r.specId && o.kind === 'run' && o.n > r.n)} onResume={p.onResume} onRestart={p.onRestartRun} onCancel={p.onCancelRun} />
                             ) : null}
                           </span>
                         </td>
@@ -662,6 +663,8 @@ export function ProjectHub() {
       })()}
       onResume={(runId) => void act(() => runApi.resumeRun(runId))()}
       onStop={(runId) => act(() => runApi.stopRun(runId))()}
+      onCancelRun={(runId) => act(() => runApi.cancelRun(runId))()}
+      onRestartRun={(runId) => act(() => runApi.restartRun(runId))()}
       onContinue={(specId) => void go(() => refineApi.continueSpec(projectId, specId))()}
       onRestart={(specId) => void go(() => refineApi.restartSpec(projectId, specId))()}
       onStartApp={() => void act(() => runApi.deployAgain(projectId, project!.specs.at(-1)!.specId))()}

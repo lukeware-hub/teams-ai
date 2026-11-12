@@ -93,6 +93,36 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
 
 const failure = () => journal.events.find((e) => e.type === OrchEvent.DeployFailed)!.data;
 
+describe('Phase 5 shared database', () => {
+  const postgres = { name: 'postgres', image: 'postgres:17-bookworm' };
+  const platformSeen = (deps: PhaseDeps) => {
+    const seen: Array<readonly unknown[]> = [];
+    (deps.target as unknown as { startPlatform: (project: string, platform: readonly unknown[]) => Promise<{ ok: boolean; detail: string }> }).startPlatform = async (_p, platform) => { seen.push(platform); return { ok: true, detail: 'platform up' }; };
+    return seen;
+  };
+
+  it('starts the shared PostgreSQL when the compose file of a service reads DATABASE_URL', async () => {
+    const { deps } = await setup([]);
+    await fs.writeFile(path.join(deps.services!.repos[0]!.ws.repo, 'docker-compose.yml'), 'services:\n  api:\n    environment:\n      DATABASE_URL: ${DATABASE_URL}\n');
+    const asked: boolean[] = [];
+    deps.provisionDatabase = async (needed) => { asked.push(needed); return needed ? [...deps.project.platform!, postgres] : deps.project.platform!; };
+    const seen = platformSeen(deps);
+    await runServicesPhase5(deps, 1);
+    expect(asked).toEqual([true]);
+    expect(seen[0]).toContainEqual(postgres);
+  });
+
+  it('asks for no database when no compose file or suite of a service reads DATABASE_URL', async () => {
+    const { deps } = await setup([]);
+    const asked: boolean[] = [];
+    deps.provisionDatabase = async (needed) => { asked.push(needed); return deps.project.platform!; };
+    const seen = platformSeen(deps);
+    await runServicesPhase5(deps, 1);
+    expect(asked).toEqual([false]);
+    expect(seen[0]).not.toContainEqual(postgres);
+  });
+});
+
 describe('Phase 5 with several services', () => {
   it('stops a repeat within the same service with no new fix task, and names the service', async () => {
     const log: string[] = [];

@@ -10,6 +10,7 @@ import { writeFileAtomic } from './core/atomic-write.js';
 import { redactSecrets } from './core/redact.js';
 import { ensureGeneratedSecrets, loadSecrets, writeSecret } from './core/secrets.js';
 import { sharedDatabase } from './orchestrator/shared-database.js';
+import { needsTestDatabase } from './orchestrator/test-database.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
@@ -392,7 +393,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   // A system whose specs name a DATABASE_URL gets one platform PostgreSQL; the URL replaces any older value, which may point at a host that does not exist.
   const specsDir = path.join(projectDir, 'docs', 'specs');
   const projectSpecs = await Promise.all((await fs.readdir(specsDir)).map((id) => readJson(path.join(specsDir, id, 'spec.json'), (v) => Spec.parse(v)).catch(() => null)));
-  const shared = sharedDatabase(project, projectSpecs.filter((s): s is Spec => s !== null), secrets.POSTGRES_PASSWORD);
+  const shared = sharedDatabase(project, projectSpecs.some((s) => s !== null && needsTestDatabase(s)), secrets.POSTGRES_PASSWORD);
   if (shared) {
     await writeSecret(path.posix.join(ws.root, 'secrets'), 'DATABASE_URL', shared.url);
     secrets.DATABASE_URL = shared.url;

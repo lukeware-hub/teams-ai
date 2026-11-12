@@ -5,7 +5,7 @@ import type { OutputOf, StepKind } from '../../agents/outputs.js';
 import type { EnvironmentRepo } from '../../environment/service.js';
 import { parseAnyPlan, Plan, type AnyPlan, type ServicesPlan, type ServiceView } from '../../contracts/plan.js';
 import { Preplan } from '../../contracts/preplan.js';
-import type { Project } from '../../contracts/project.js';
+import type { PlatformService, Project } from '../../contracts/project.js';
 import type { Spec } from '../../contracts/spec.js';
 import type { GateResult } from '../../exec/gate-runner.js';
 import type { Decider } from '../../decide/decider.js';
@@ -89,6 +89,8 @@ export interface PhaseDeps {
     prepare(repo: EnvironmentRepo, failure: string | null): Promise<boolean>;
     mint(urls: Record<string, string>): Promise<void>;
   };
+  /** The platform containers to start: the project's, plus one shared PostgreSQL when `needed` (a service reads DATABASE_URL) and the project declares none. */
+  provisionDatabase?: (needed: boolean) => Promise<readonly PlatformService[]>;
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */
   services?: { plan: ServicesPlan; repos: ServiceRepo[] };
   /** The service whose repository `ws` is; absent for the project repository. */

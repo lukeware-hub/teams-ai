@@ -27,6 +27,9 @@ import { prepareGateImage, runGate, runGates, type GateContext, type GateExecuto
 import { TEST_GATE, withTestServices } from '../exec/test-services.js';
 import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { INSTALLED_AT, needsInstall } from './install-state.js';
+import { writeSecret } from '../core/secrets.js';
+import type { PlatformService } from '../contracts/project.js';
+import { sharedDatabase } from './shared-database.js';
 import { freePort, needsTestDatabase, startTestDatabase, stopTestDatabase } from './test-database.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, GraphAccess, HandoffSummary } from '../knowledge/context-pack.js';
@@ -744,6 +747,7 @@ export class Run {
       runAgent: this.runAgent,
       generatedSecretNames: this.deps.cfg.environment.generatedSecrets,
       environment: this.environment(),
+      provisionDatabase: (needed) => this.provisionDatabase(needed),
       decider: this.decider(),
       mergeQueue: this.mergeQueue,
       mergeDeps: this.mergeDeps(null),
@@ -1191,6 +1195,15 @@ export class Run {
     const s = this.journal.state;
     const snapshot = { runId: this.runId, at: this.clock().toISOString(), status: s.status, tasks: [...s.tasks.values()].map((t) => ({ id: t.def.id, state: t.state, attempts: t.attempts })), tokens: this.accounting.total() };
     await fs.writeFile(stateFile(this.deps.ws, this.runId), JSON.stringify(snapshot, null, 2));
+  }
+
+  /** The platform containers of the deploy; a needed shared PostgreSQL also replaces any older DATABASE_URL, which may name a host that does not exist. */
+  private async provisionDatabase(needed: boolean): Promise<readonly PlatformService[]> {
+    const shared = sharedDatabase(this.deps.project, needed, this.deps.secrets.POSTGRES_PASSWORD);
+    if (!shared) return this.deps.project.platform ?? [];
+    await writeSecret(path.posix.join(this.deps.ws.root, 'secrets'), 'DATABASE_URL', shared.url);
+    this.deps.secrets.DATABASE_URL = shared.url;
+    return shared.project.platform!;
   }
 
   private testDatabaseUrl: string | null = null;

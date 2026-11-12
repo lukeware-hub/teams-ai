@@ -1541,6 +1541,18 @@ Diálogo `ConfirmDialog`, o mesmo da exclusão de rascunho, em dois passos. Aç�
 - **Carregando.** Enquanto a lista de repositórios chega, o passo 1 mostra "Carregando repositórios…" no lugar da lista; o botão "Continuar" fica desabilitado.
 - Sem visual novo: o diálogo, os botões e os tons são os de §11.3 e do `ConfirmDialog` atual.
 
+### 27.6a Execução parada: Retomar, Recomeçar e Cancelar
+
+Vale para a tabela de execuções do projeto (§27) e para a linha do programa na tela de execução do backlog. Uma execução "parada" é a que ficou aguardando login ou interrompida; a pausa por cota não entra, porque volta sozinha.
+
+- **A execução mais recente do spec** mostra três botões, nesta ordem: **Retomar** (continua a mesma execução), **Recomeçar** (encerra esta e abre uma nova) e **Cancelar** (encerra sem abrir outra).
+- **Uma execução com outra mais nova do mesmo spec** mostra só **Cancelar**, porque Retomar e Recomeçar seriam recusados.
+- **Recomeçar** e **Cancelar** pedem confirmação no `ConfirmDialog` de §27.5, com o id da execução em `confirm-subject`. Recomeçar usa o tom de ação ("Recomeçar do zero?"); Cancelar usa o tom de perigo ("Cancelar esta execução?"). O que já foi enviado ao repositório fica nos dois casos.
+- **Depois de cancelar**, o chip vira "cancelada" (tom neutro), os botões somem e a execução continua no histórico com custo e tokens. Ela não retoma mais e não prende o spec.
+- **Programa.** A linha acompanha sempre a execução mais nova do spec. Cancelar a execução da linha marca o item como falhou, e "Tentar de novo" já existente o reinicia.
+- **Erro.** A recusa do servidor aparece no aviso da página, como a do Retomar.
+- Sem visual novo: botões de linha de §11.3, diálogo e tons do `ConfirmDialog` atual.
+
 ### 27.7 Repositório — tabela de tarefas
 
 Um cartão `Tarefas (N)` logo abaixo dos indicadores e antes de "Entregas por spec". Ele lista todas as tarefas do repositório, uma linha por tarefa, sem agrupar por spec.
