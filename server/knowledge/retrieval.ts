@@ -40,6 +40,8 @@ export class KnowledgeIndex {
 
   static open(file: string | ':memory:'): KnowledgeIndex {
     const db = new DatabaseSync(file);
+    // Several processes of one project open this file together: wait for the writer instead of failing at once.
+    db.exec('PRAGMA busy_timeout = 30000');
     db.exec(`
       CREATE TABLE IF NOT EXISTS docs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, spec_id TEXT);
       CREATE TABLE IF NOT EXISTS chunks (chunk_id TEXT PRIMARY KEY, doc_id TEXT NOT NULL REFERENCES docs(id) ON DELETE CASCADE, ordinal INTEGER NOT NULL, heading TEXT, text TEXT NOT NULL);
@@ -63,7 +65,7 @@ export class KnowledgeIndex {
   /** Indexes or replaces a document; returns the number of chunks stored. */
   index(doc: KnowledgeDoc): number {
     const chunks = chunkMarkdown(doc.id, doc.text);
-    const tx = this.db.prepare('BEGIN');
+    const tx = this.db.prepare('BEGIN IMMEDIATE');
     tx.run();
     try {
       this.removeDocument(doc.id);

@@ -21,7 +21,7 @@ Rules you never break:
 
 - The tree: the pack lists every path. Create each one, with a heading for each topic it covers. A folder holds at least one file.
 - Earlier specs wrote the docs already in `docs/` of your working directory. Read them first. Keep what is still true, update what this spec changed, and never delete what is still true.
-- The headings the plan requires, and the standard ones: Executar, Testes, Variáveis de ambiente, Arquitetura and Pipeline in their files; Iniciar, Parar, Logs and Rollback in `docs/06-infra-e-deploy/runbooks/operacao.md`.
+- The headings the plan requires, and the standard ones, each in its own file: `Executar` in `docs/01-onboarding/setup-ambiente.md`, `Variáveis de ambiente` in `docs/01-onboarding/docker-local.md`, `Testes` in `docs/02-padroes/testes.md`, `Arquitetura` in `docs/00-visao-geral/arquitetura.md`, `Pipeline` in `docs/06-infra-e-deploy/ci-cd.md`; `Iniciar`, `Parar`, `Logs` and `Rollback` in `docs/06-infra-e-deploy/runbooks/operacao.md`. Each heading holds text of its own or of the sub-headings under it.
 - Every endpoint the spec features name, with its exact path, in `docs/03-api/`.
 - Write the documents in the language the global rules set.
 

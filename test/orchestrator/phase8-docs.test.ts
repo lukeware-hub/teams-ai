@@ -97,6 +97,16 @@ describe('phase 8: docs', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.PhaseFailed && e.data.phase === 8)).toBe(true);
   });
 
+  it('does not spend a try on a login failure that was paused and resumed', async () => {
+    const agent = async (req: AgentStepRequest<any>) => {
+      if (calls.length === 1) return { ok: false, failure: 'auth', errors: [], summary, sandboxDisabled: false } as StepOutcome<any>;
+      return calls.length === 2 ? ok({ specHash: HASH, files: [] }) : writesTree(req);
+    };
+    const outcome = await runDocsPhase({ ...deps(agent), pause: async () => 'resumed' }, view);
+    expect(outcome).toEqual({ ok: true });
+    expect(calls).toHaveLength(3);
+  });
+
   it('refuses a change to a main document', async () => {
     const agent = async (req: AgentStepRequest<any>) => {
       await writeTree(req.cwd, ['api']);

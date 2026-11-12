@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { documentedEndpoints, featureEndpoints, missingReadmeSections } from '../../server/validators/docs.js';
+import { checkSections, documentedEndpoints, featureEndpoints, missingReadmeSections, RUNBOOK_SECTIONS } from '../../server/validators/docs.js';
 
 const body = 'Some real explanatory text that is long enough to count.';
 const md = (...titles: string[]) => titles.map((t) => `## ${t}\n\n${body}\n`).join('\n');
@@ -24,5 +24,24 @@ describe('missingReadmeSections', () => {
   });
   it('names each planned section no heading carries; any other section is matched by its own word', () => {
     expect(missingReadmeSections(md('Run', 'Security notes'), ['Run', 'Test', 'Security', 'Monitoring'])).toEqual(['Test', 'Monitoring']);
+  });
+});
+
+describe('checkSections', () => {
+  const start = { start: RUNBOOK_SECTIONS.start! };
+
+  it('counts the text of the subsections under a heading as its content', () => {
+    const doc = `# Runbook\n\n## Iniciar\n\n### Com o contêiner\n\n${body}\n\n### Com o binário\n\n${body}\n`;
+    expect(checkSections(doc, 'operacao.md', start)).toEqual([]);
+  });
+
+  it('still reports a heading with no text of its own and none below it', () => {
+    const doc = `# Runbook\n\n## Iniciar\n\n## Parar\n\n${body}\n`;
+    expect(checkSections(doc, 'operacao.md', start)).toEqual(['operacao.md section "start" has no content (at least 40 characters of text)']);
+  });
+
+  it('does not borrow the text of the next heading of the same level', () => {
+    const doc = `## Iniciar\n\n### Passo\n\n## Parar\n\n${body}\n`;
+    expect(checkSections(doc, 'operacao.md', start)).toHaveLength(1);
   });
 });

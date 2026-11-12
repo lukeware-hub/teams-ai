@@ -354,7 +354,8 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
     await persist();
     dirty = false;
     try {
-      next.runId = (await fx.startRun(next.specId)).runId;
+      // A run of this spec that is live or waiting to be resumed owns its worktrees: follow it, never start a second one beside it.
+      next.runId = (await fx.findActiveRun(next.specId)) ?? (await fx.startRun(next.specId)).runId;
     } catch (err) {
       wait(next, message(err));
     }

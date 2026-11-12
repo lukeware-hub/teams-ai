@@ -44,14 +44,19 @@ export async function runDocsPhase(deps: PhaseDeps, view: ServiceView): Promise<
   const readmeSections = view.plan.delivery?.readmeSections;
   let docsErrors: string[] = [];
   let written = false;
-  for (let attempt = 1; attempt <= 2 && !written; attempt++) {
+  // A quota or login pause is not an answer: only an answer spends one of the two tries.
+  for (let attempt = 1, tries = 0; tries < 2 && !written; attempt++) {
     const out = (await deps.runAgent<'docs'>({ kind: 'docs', role: 'docs', pack: docsPack(deps.packBase(), { tasks: delivered.map((t) => `- ${t.id}: ${t.title}`), kinds, features: deps.spec.features, readmeSections, docsErrors }), cwd: wt, phase: 'phase8', taskId: null, attempt })) as StepOutcome<DocsTreeOutput>;
     if (!out.ok) {
       if (out.failure === 'quota' || out.failure === 'auth') {
         if (await pauseForFailure(deps, out.failure)) return { ok: false, reason: PAUSED_AUTH };
-      } else docsErrors = out.errors ?? ['docs step failed'];
+        continue;
+      }
+      docsErrors = out.errors ?? ['docs step failed'];
+      tries++;
       continue;
     }
+    tries++;
     const files = await docsFiles(wt);
     const changedMain = FIVE_DOC_PATHS.filter((p) => files.get(p) !== before.get(p)).map((p) => `${p} is a main document and must not change`);
     docsErrors = [...changedMain, ...validateDocsTree({ files, current: before, kinds, delivered: delivered.map((t) => t.id), covered: out.value.files.flatMap((f) => f.covers), features: deps.spec.features, readmeSections })];

@@ -19,14 +19,20 @@ export const RUNBOOK_SECTIONS: Record<string, RegExp> = {
 
 interface Section { title: string; body: string }
 
+/** A section's body holds its own text and the text of the deeper headings under it. */
 function sections(md: string): Section[] {
-  const out: Section[] = [];
-  let cur: Section | null = null;
+  const out: Array<Section & { level: number }> = [];
+  const open: Array<Section & { level: number }> = [];
   let fence = false;
   for (const line of md.split(/\r?\n/)) {
     if (/^\s*(```|~~~)/.test(line)) fence = !fence;
-    const h = fence ? null : /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
-    if (h) { cur = { title: h[1]!, body: '' }; out.push(cur); } else if (cur) cur.body += `${line}\n`;
+    const h = fence ? null : /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (h) {
+      const cur = { title: h[2]!, body: '', level: h[1]!.length };
+      while (open.length > 0 && open.at(-1)!.level >= cur.level) open.pop();
+      open.push(cur);
+      out.push(cur);
+    } else for (const s of open) s.body += `${line}\n`;
   }
   return out;
 }

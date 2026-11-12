@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refineRoutes } from '../../server/api/refine-routes.js';
 import { writeDocsMarker, writeState } from '../../server/docs/project-state.js';
 import type { RunControlDeps } from '../../server/api/run-control.js';
+import { appendEvents } from '../fixtures/runs/write-run.js';
 import { startApi } from '../../server/api/server.js';
 import { sha256 } from '../../server/contracts/hash.js';
 import { execCommand } from '../../server/exec/command.js';
@@ -407,6 +408,7 @@ describe('refine api', () => {
     failedProgram.status = 'finished';
     failedProgram.items[0] = { ...failedProgram.items[0], status: 'failed', reason: 'verification-failed: AC-002 missing', finishedAt: new Date().toISOString() };
     await fs.writeFile(programFile, JSON.stringify(failedProgram, null, 2));
+    await appendEvents(`${home}/runs`, body.runId, [{ type: 'RUN_FINISHED', data: { result: 'verification-failed' } }], 1); // a failed item's run is over: it no longer holds the spec, so a retry launches a new one
     const retried = await call('POST', `${url}/program/base/retry`);
     expect(retried.status).toBe(200);
     const retriedBody = await retried.json();
@@ -417,11 +419,15 @@ describe('refine api', () => {
 
     // From the project page, a spec the program still has pending is prioritized there, never launched loose.
     expect(await registry.queueInProgram('hello-app', 'base')).toBeNull(); // running: nothing to queue
+    await appendEvents(`${home}/runs`, retriedBody.program.items[0].runId, [{ type: 'RUN_FINISHED', data: { result: 'verification-failed' } }], 1);
     const pending = JSON.parse(await fs.readFile(programFile, 'utf8'));
     pending.items[0] = { ...pending.items[0], status: 'pending', runId: null };
     await fs.writeFile(programFile, JSON.stringify(pending, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
     expect(spawns).toHaveLength(3);
+    // Each step below resets the item by hand, which only happens once its last run is over.
+    const endLatestRun = () => appendEvents(`${home}/runs`, spawns.at(-1)!.args[spawns.at(-1)!.args.indexOf('--run-id') + 1]!, [{ type: 'RUN_FINISHED', data: { result: 'verification-failed' } }], 1);
+    await endLatestRun();
     // A failed item runs again through its program; a blocked one says why it waits.
     const again = JSON.parse(await fs.readFile(programFile, 'utf8'));
     again.status = 'finished';
@@ -429,12 +435,14 @@ describe('refine api', () => {
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
     expect(spawns).toHaveLength(4);
+    await endLatestRun();
     // A waiting item runs now through its program, never as a loose run beside it.
     again.status = 'running';
     again.items[0] = { ...again.items[0], status: 'waiting', reason: 'docker daemon down', retryAt: '2999-01-01T00:00:00.000Z', waits: 1 };
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ draftId: 'hello-app-001' });
     expect(spawns).toHaveLength(5);
+    await endLatestRun();
     again.items[0] = { ...again.items[0], status: 'blocked', reason: 'depends on x, which failed' };
     await fs.writeFile(programFile, JSON.stringify(again, null, 2));
     expect(await registry.queueInProgram('hello-app', 'base')).toEqual({ refused: 'A spec base está bloqueada no programa: depends on x, which failed. Rode antes a spec da qual ela depende.' });

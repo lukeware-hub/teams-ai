@@ -12,7 +12,13 @@ function world(outcomes: Record<string, RunOutcome | RunOutcome[]> = {}, repair?
   const finished = new Set(completed);
   const fx: ProgramEffects = {
     now: () => NOW,
-    findActiveRun: async (specId) => active.get(specId) ?? null,
+    // Like the real index: only a run that still runs or waits for a resume holds its spec.
+    findActiveRun: async (specId) => {
+      const runId = active.get(specId);
+      const o = runId === undefined ? undefined : outcomes[runId];
+      const kind = (Array.isArray(o) ? o[0] : o)?.kind ?? 'running';
+      return runId !== undefined && (kind === 'running' || kind === 'interrupted') ? runId : null;
+    },
     startRun: async (specId) => {
       calls.push(`start ${specId}`);
       const runId = `${specId}-r${++n}`;
@@ -250,6 +256,14 @@ describe('program controller', () => {
     const next = await tick(p, fx, save);
     expect(next.items[0]!.runId).toBe('d-a-r7');
     expect(calls).toEqual([]);
+  });
+
+  it('adopts the live or resumable run of a pending item instead of starting a duplicate beside it', async () => {
+    const { fx, calls, active } = world({ 'd-a-r7': { kind: 'interrupted' } });
+    active.set('d-a', 'd-a-r7'); // a restart interrupted it and the supervisor is about to resume it
+    const next = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
+    expect(calls).toEqual([]);
+    expect(next.items[0]).toMatchObject({ status: 'running', runId: 'd-a-r7' });
   });
 
   it('puts an item whose start failed to wait and goes on', async () => {
