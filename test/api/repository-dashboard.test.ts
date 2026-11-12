@@ -63,6 +63,15 @@ describe('task states across runs', () => {
     expect(page(inp, 'blockers').list.map((b) => b.text)).toEqual(['Run r2 pausada: limite de uso dos modelos']);
   });
 
+  it('a missing secret blocker carries what it is, what it is for and where it is used', () => {
+    const inp = input({ missingSecrets: ['A_KEY', 'B_KEY'], secretInfo: { A_KEY: { what: 'Chave', purpose: 'Cobrar', usage: 'Pagamentos', mentions: ['stack.md › Pagamentos'] } } });
+    const secrets = page(inp, 'blockers').list.filter((b) => b.kind === 'secret').map((b) => b.secret);
+    expect(secrets).toEqual([
+      { name: 'A_KEY', what: 'Chave', purpose: 'Cobrar', usage: 'Pagamentos', mentions: ['stack.md › Pagamentos'] },
+      { name: 'B_KEY', what: null, purpose: null, usage: null, mentions: [] },
+    ]);
+  });
+
   it('counts a superseded task nowhere and its replacements instead', () => {
     const events = [planned('r1', 'T1-route'), ev('r1', 'TASK_REPLANNED', { taskId: 'T1-route', replacements: [task('T1-a'), task('T1-b')] })];
     const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [run('r1', 'cart', 1, 'running', events)] });

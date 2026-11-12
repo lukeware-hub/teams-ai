@@ -64,7 +64,17 @@ export interface DashboardInput {
   /** The owner's pending blocking questions of the repository. */
   questions: string[];
   missingSecrets: string[];
+  /** What each missing secret is, what it is for and where it is used, by name. */
+  secretInfo?: Record<string, SecretInfo>;
   programStops: Array<{ specId: string; reason: string }>;
+}
+
+export interface SecretInfo {
+  what: string | null;
+  purpose: string | null;
+  usage: string | null;
+  /** The document sections that name the secret. */
+  mentions: string[];
 }
 
 export interface DashboardSpec {
@@ -106,6 +116,8 @@ export interface DashboardItem {
   runId: string | null;
   taskId: string | null;
   text: string;
+  /** Set on a secret blocker: the secret's name and what the owner needs to know to provide it. */
+  secret?: SecretInfo & { name: string };
 }
 
 export interface DashboardRunRow {
@@ -414,7 +426,7 @@ function analyze(input: DashboardInput): { dashboard: RepoDashboard; lists: Dash
     }
   }
   for (const text of input.questions) blockers.push({ kind: 'question', specId: null, runId: null, taskId: null, text });
-  for (const name of input.missingSecrets) blockers.push({ kind: 'secret', specId: null, runId: null, taskId: null, text: `Segredo ${name} não está no cofre` });
+  for (const name of input.missingSecrets) blockers.push({ kind: 'secret', specId: null, runId: null, taskId: null, text: `Segredo ${name} não está no cofre`, secret: { name, what: null, purpose: null, usage: null, mentions: [], ...input.secretInfo?.[name] } });
   for (const stop of input.programStops) blockers.push({ kind: 'stop', specId: stop.specId, runId: null, taskId: null, text: stop.reason });
 
   const agents = new Map<string, { steps: number; ok: number; failed: number; tokens: number; costUsd: number; durationMs: number; files: Set<string>; passed: number; testFailed: number; lastAt: string; lastDoing: string }>();

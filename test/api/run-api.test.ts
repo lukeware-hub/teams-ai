@@ -174,6 +174,12 @@ describe('projects', () => {
     expect(listed.find((p) => p.services)!.services).toEqual(registered.services);
   });
 
+  it('refuses to save a secret the project is not missing, and one with an invalid name', async () => {
+    const put = (name: string) => fetch(`${base()}/api/projects/hello-app/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: 'a-long-secret-value' }) });
+    expect((await put('lower')).status).toBe(400);
+    expect((await put('NOT_MISSING')).status).toBe(404);
+  });
+
   it('registers a project once and refuses a directory without a valid project.json', async () => {
     const other = path.join(home, '.teams-ai', 'workspaces', 'proj');
     await fs.mkdir(path.join(other, 'docs', 'specs'), { recursive: true });

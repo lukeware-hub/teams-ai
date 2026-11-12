@@ -251,6 +251,14 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).feedback).not.toContain('earlier findings');
   });
 
+  it('the review carries the SM answers on the task, so it does not ask for what the SM ruled out', () => {
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const answered = reviewPack(base, task, { ...review, answers: [{ question: 'Which write route?', answer: 'Do not create AppendAuditEvent.' }] }).feedback;
+    expect(answered).toContain('The SM answered these questions on this task; they bind the change, so never ask for what they rule out');
+    expect(answered).toContain('Q: Which write route?\nA: Do not create AppendAuditEvent.');
+    expect(reviewPack(base, task, { ...review, answers: [] }).feedback).toBe(reviewPack(base, task, review).feedback);
+  });
+
   // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.
   it("dev, tech-spec and review packs carry the spec's decisions, and a spec without them adds none", () => {
     const decided: PackBase = { ...base, spec: { ...spec, decisions: [{ question: 'O total inclui frete?', answer: 'Sim.' }] } };

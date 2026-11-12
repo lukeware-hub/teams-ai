@@ -215,6 +215,11 @@ export class Journal {
     return null;
   }
 
+  /** The SM answers to the Dev's spec-gap questions on one task, oldest first. */
+  specGapAnswers(taskId: string): Array<{ question: string; answer: string }> {
+    return this.log.filter((e) => e.type === OrchEvent.SpecGapAnswered && e.data.taskId === taskId).map((e) => ({ question: String(e.data.question), answer: String(e.data.answer) }));
+  }
+
   assumptions(): string[] {
     return this.log.filter((e) => e.type === OrchEvent.SpecGapAnswered).map((e) => String(e.data.assumption));
   }

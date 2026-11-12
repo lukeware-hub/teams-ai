@@ -53,6 +53,9 @@ describe('Journal', () => {
     expect(j.lastFeedback('T1')).toBe('review: findings');
     await j.fact(OrchEvent.SpecGapAnswered, { taskId: 'T1', question: 'q', answer: 'a', assumption: 'T1: q → a' });
     expect(j.assumptions()).toEqual(['T1: q → a']);
+    await j.fact(OrchEvent.SpecGapAnswered, { taskId: 'T2', question: 'q2', answer: 'a2', assumption: 'T2: q2 → a2' });
+    expect(j.specGapAnswers('T1')).toEqual([{ question: 'q', answer: 'a' }]);
+    expect(j.specGapAnswers('T3')).toEqual([]);
     await j.close();
   });
   it('refuses an event the reducer rejects and leaves the log untouched', async () => {

@@ -19,6 +19,10 @@ export type AcceptanceCriterion = z.infer<typeof AcceptanceCriterion>;
 export const ExternalDependency = z.object({
   name: z.string().min(1),
   purpose: z.string().min(1),
+  /** What the secret is, in one sentence. */
+  what: z.string().min(1).optional(),
+  /** Where the project uses it, in one sentence. */
+  usage: z.string().min(1).optional(),
   secretNames: z.array(z.string().regex(/^[A-Z][A-Z0-9_]*$/)),
   /** An internal credential of this project (one service accepts it, another sends it): the platform creates it, a person never types it. */
   generated: z.boolean().optional(),

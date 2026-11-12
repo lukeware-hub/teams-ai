@@ -728,7 +728,7 @@ export class TaskRunner {
     const languageDiff = await git(this.worktree, ['diff', '-U0', 'origin/main...HEAD'], this.deps.exec);
     // Only the latest message: the merge squashes, and the Dev cannot rewrite an earlier commit.
     const messages = await git(this.worktree, ['log', '-1', '--format=%B'], this.deps.exec);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages) });
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages), answers: this.deps.journal.specGapAnswers(this.taskId) });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
     const security = this.startSecurity(changed, diffStat, diff, code);
