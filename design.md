@@ -1985,3 +1985,14 @@ Um painel acima de `Uso pelos agentes` diz, em uma olhada, se o grafo está ajud
 - Abaixo, `Com grafo × sem grafo`: uma linha por tipo de passo do experimento (`dev`, `review`, `security`), com `Custo por passo`, `Leituras de arquivo por passo` e `Passos e specs` (quantos passos e quantas specs diferentes cada grupo tem), cada uma com o valor com grafo, o valor sem grafo e a diferença em porcentagem (`-18%` quer dizer que o grafo custou menos). O grupo é escolhido por spec, então poucas specs misturam o efeito do grafo com o tamanho delas: com menos de 10 passos ou menos de 5 specs em algum grupo, a linha diz `Poucos passos ou poucas specs: ainda não conclui`, por maior que seja a diferença. Sem nenhum passo, o bloco diz `O experimento acumula conforme as rodadas terminam.`
 - Celular: as quatro medidas empilham em duas colunas e a tabela vira uma lista, um bloco por tipo de passo.
 - Estados: carregando, erro de leitura (o painel some e fica a mensagem que a tela já tem), sem grafo.
+
+### 36.4 Primeira dobra e uso no celular (aprovada pelo dono)
+
+O mapa é o motivo da tela e aparece na primeira dobra, no desktop e no celular. Nada abre à frente dele.
+
+- Faixa de estado, logo abaixo do cabeçalho: uma linha com o chip do veredito, a idade do grafo e `Consultas úteis`, e o botão `Ver saúde do grafo`. É o painel de §36.3 fechado.
+- Painel de saúde: fechado por padrão. Ao abrir, mostra o conteúdo de §36.3 e, no fim, as linhas `Uso pelos agentes` e `Consultas feitas pelos agentes`. O botão leva `aria-expanded` e muda para `Ocultar saúde do grafo`.
+- Desktop: o mapa e a coluna de busca e comunidades ficam lado a lado logo abaixo da faixa. A lista de comunidades começa aberta.
+- Celular: a busca fica acima do mapa; o mapa vem em seguida; o nó escolhido e a lista de comunidades ficam embaixo. A lista de comunidades começa fechada, com o título `Comunidades (N)`.
+- Alvos de toque de pelo menos 44 px nos botões e nas caixas da lista de comunidades.
+- Estados: os de §36 e §36.3; a faixa de estado some junto com o painel quando o grafo não existe.

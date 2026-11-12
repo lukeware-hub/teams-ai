@@ -1,5 +1,6 @@
+import type { ReactNode } from 'react';
 import type { GraphView } from '../../api.js';
-import { panel, sectionHeading } from '../project-shared.js';
+import { sectionHeading } from '../project-shared.js';
 import { ageOf, armRows, graphHealth, MIN_ARM_SPECS, MIN_ARM_STEPS, relationsLine, usefulLine, type ArmRow, type Verdict } from './health-rules.js';
 
 const PILL: Record<Verdict, { label: string; tone: string }> = {
@@ -26,18 +27,21 @@ function Measure({ label, value, testId, wide }: { label: string; value: string;
 /** What one step of an arm cost and read, with the group size; the two groups side by side, graph first. */
 const pair = (a: string, b: string): string => `${a} · ${b}`;
 
-/** Whether the graph helps: the verdict with its reason, four measures, and the experiment of the steps that had the graph against the ones that did not. */
-export function GraphHealth({ view, now }: { view: GraphView; now: number }) {
+/** Whether the graph helps: a one-line status that opens into the reason, four measures, the experiment of the steps that had the graph against the ones that did not, and the extra lines it is given. */
+export function GraphHealth({ view, now, children }: { view: GraphView; now: number; children?: ReactNode }) {
   const health = graphHealth(view, now);
   const pill = PILL[health.verdict];
   const rows = armRows(view.usage.effect?.arms);
   const updatedAt = view.status?.updatedAt ?? null;
   return (
-    <section data-testid="graph-health" aria-labelledby="graph-health-title" className={`${panel} gap-4`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <details data-testid="graph-health" className="card group grid gap-4 px-5 py-1.5 open:pb-5 max-md:px-4">
+      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 [&::-webkit-details-marker]:hidden">
         <h2 id="graph-health-title" className={sectionHeading}>Saúde do grafo</h2>
         <span data-testid="graph-health-verdict" className={`status-pill ${pill.tone}`}>{pill.label}</span>
-      </div>
+        <span data-testid="graph-health-summary" className="min-w-0 text-[0.8125rem] text-ink-soft">{`${updatedAt === null ? 'sem data' : ageOf(updatedAt, now)} · ${usefulLine(view)}`}</span>
+        <span className="link-button ml-auto inline-flex items-center justify-center text-[0.8125rem] group-open:hidden">Ver saúde do grafo</span>
+        <span className="link-button ml-auto hidden items-center justify-center text-[0.8125rem] group-open:inline-flex">Ocultar saúde do grafo</span>
+      </summary>
       <p data-testid="graph-health-reason" className="m-0 max-w-[65ch] text-[0.875rem] leading-[1.5] text-ink-soft">{health.reason}</p>
       <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
         <Measure testId="graph-health-age" label="Idade" value={updatedAt === null ? '—' : ageOf(updatedAt, now)} />
@@ -78,7 +82,8 @@ export function GraphHealth({ view, now }: { view: GraphView; now: number }) {
           </>
         )}
       </div>
-    </section>
+      {children}
+    </details>
   );
 }
 
