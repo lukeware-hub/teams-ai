@@ -28,8 +28,9 @@ export function SecretBlocker({ projectId, secret, testId, onSaved }: { projectI
   };
   return (
     <li data-testid={id} className="border-t border-line py-2 first:border-t-0">
-      <details>
-        <summary data-testid={`${id}-summary`} className="flex min-w-0 cursor-pointer items-center gap-[0.45rem]">
+      <details className="group">
+        <summary data-testid={`${id}-summary`} className="flex min-w-0 cursor-pointer list-none items-center gap-[0.45rem] [&::-webkit-details-marker]:hidden">
+          <span className="text-ink-soft transition-transform group-open:rotate-90"><Icon name="chevron-right" size={16} /></span>
           <code className="mr-auto text-[0.78rem] font-bold text-ink wrap-anywhere">{secret.name}</code>
           <span className="status-dot warn">Não salvo</span>
         </summary>
