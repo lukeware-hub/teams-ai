@@ -19,3 +19,29 @@ describe('planBasis', () => {
     expect(planBasis(docs(BRIEF.replace('e-mail', 'telefone')), 'login')).not.toBe(planBasis(docs(BRIEF), 'login'));
   });
 });
+
+describe('planBasis of an item that cites sections', () => {
+  const STACK = '# Stack\n\n## Ambiente local\n\nUso diário com 34 serviços.\n\n## Banco\n\nPostgres 16.\n';
+  const withStack = (stack: string) => ({ ...(docs(BRIEF) as object), 'stack.md': stack }) as never;
+  const source = (sources: Array<{ doc: string; heading: string }>) => ({ backlog: { items: [{ key: 'login', sources }] } }) as never;
+
+  it('is unchanged when another section of a cited document changes', () => {
+    const cites = source([{ doc: 'stack.md', heading: 'Banco' }]);
+    expect(planBasis(withStack(STACK.replace('34', '39')), 'login', cites)).toBe(planBasis(withStack(STACK), 'login', cites));
+  });
+
+  it('changes when a cited section changes', () => {
+    const cites = source([{ doc: 'stack.md', heading: 'Ambiente local' }]);
+    expect(planBasis(withStack(STACK.replace('34', '39')), 'login', cites)).not.toBe(planBasis(withStack(STACK), 'login', cites));
+  });
+
+  it('takes a heading it cannot find as its whole document, so no change goes unseen', () => {
+    const cites = source([{ doc: 'docs/stack.md', heading: 'Seção que não existe' }]);
+    expect(planBasis(withStack(STACK.replace('34', '39')), 'login', cites)).not.toBe(planBasis(withStack(STACK), 'login', cites));
+  });
+
+  it('reads all five documents when the item cites a file that is not one of them', () => {
+    const cites = source([{ doc: 'notes.md', heading: 'Qualquer' }]);
+    expect(planBasis(docs(BRIEF), 'login', cites)).toBe(planBasis(docs(BRIEF), 'login'));
+  });
+});

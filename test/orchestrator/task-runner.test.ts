@@ -331,14 +331,57 @@ describe('TaskRunner: implementing', () => {
     expect(devCalls).toBe(2);
   });
 
-  it('caps spec-gap rounds at three per attempt', async () => {
-    const agent: Agent = async (req) =>
-      req.kind === 'spec-gap' ? ok({ specHash: HASH, answer: 'a', assumption: 'T1: q → a' }) : ok({ specHash: HASH, status: 'spec-gap', summary: 's', changedFiles: [], question: 'q' });
-    const r = new TaskRunner('T1', deps({ agent }));
+  const options = ok({ specHash: HASH, question: 'A operação de gravação não está no stack.md: isentar os critérios do e2e?', options: [{ label: 'Isentar do e2e', detail: 'Os critérios ficam em plan.e2eExemptions, provados nos testes de unidade.' }, { label: 'Documentar a operação', detail: 'Publicar a operação no stack.md antes da suíte.', recommended: true }] });
+  /** A Dev that asks the same question until the SM has answered it three times, then a Dev that finishes. */
+  const asking = (finishAfter: number): Agent => {
+    let devCalls = 0;
+    return async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'a', assumption: 'T1: q → a' });
+      if (req.kind === 'block-options') return options;
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls > finishAfter ? devDone()(req) : ok({ specHash: HASH, status: 'spec-gap', summary: 's', changedFiles: [], question: 'q' });
+    };
+  };
+
+  it('puts the doubt to the owner as a question with choices when the SM could not settle it in three rounds, and keeps the task blocked', async () => {
+    const r = new TaskRunner('T1', deps({ agent: asking(99) }));
     await r.advance();
     expect(agentCalls.filter((c) => c.kind === 'dev')).toHaveLength(4);
+    expect(state()).toMatchObject({ state: 'blocked' });
+    const asked = journal.events.filter((e) => e.type === OrchEvent.DecisionRequested);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.data).toMatchObject({ taskId: 'T1', question: expect.stringContaining('isentar'), reason: expect.stringContaining('spec-gap rounds exhausted') });
+    expect(journal.events.some((e) => e.type === OrchEvent.DecisionAnswered)).toBe(false);
+  });
+
+  it('lets the agents take the recommended choice when the owner lets them decide, and goes on with it', async () => {
+    const r = new TaskRunner('T1', deps({ agent: asking(4), autonomous: async () => true }));
+    await r.advance();
+    expect(journal.events.filter((e) => e.type === OrchEvent.DecisionRequested)).toHaveLength(1);
+    expect(journal.events.find((e) => e.type === OrchEvent.DecisionAnswered)!.data).toMatchObject({ taskId: 'T1', answer: 'Documentar a operação', by: 'agents' });
+    expect(journal.lastFeedback('T1')).toContain('Decision taken by the agents');
+    expect(journal.lastFeedback('T1')).toContain('Documentar a operação');
+    expect(agentCalls.filter((c) => c.kind === 'dev')).toHaveLength(5);
+    expect(state().state).not.toBe('blocked');
+  });
+
+  it('asks at most twice per task: after that the attempt fails as it did before the questions existed', async () => {
+    const r = new TaskRunner('T1', deps({ agent: asking(99), autonomous: async () => true }));
+    await r.advance();
+    expect(journal.events.filter((e) => e.type === OrchEvent.DecisionRequested).length).toBeLessThanOrEqual(2);
+    expect(state().state).not.toBe('blocked');
+    expect(journal.lastFeedback('T1')).toContain('spec-gap rounds exhausted');
+  });
+
+  it('fails the attempt as before when the SM cannot word the question', async () => {
+    const base = asking(99);
+    const agent: Agent = async (req) => (req.kind === 'block-options' ? ({ ok: false, failure: 'schema', errors: [], summary: summary(), sandboxDisabled: false } as never) : base(req));
+    const r = new TaskRunner('T1', deps({ agent }));
+    await r.advance();
     expect(state()).toMatchObject({ state: 'implementing', attempts: 1 });
     expect(journal.lastFeedback('T1')).toContain('spec-gap rounds exhausted');
+    expect(journal.events.some((e) => e.type === OrchEvent.DecisionRequested)).toBe(false);
   });
 
   it('treats a scope violation as a failed attempt with the offending files as feedback', async () => {

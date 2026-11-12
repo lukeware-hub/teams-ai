@@ -48,6 +48,8 @@ export const OrchEvent = {
   TaskBlocked: 'TASK_BLOCKED',
   /** The SM's question and choices for a block, asked of the owner on the run screen. */
   DecisionRequested: 'DECISION_REQUESTED',
+  /** The agents answered a question themselves, with the choice the SM recommended, because the owner lets them decide. */
+  DecisionAnswered: 'DECISION_ANSWERED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
   RunCostAlert: 'RUN_COST_ALERT',
   RunFinished: 'RUN_FINISHED',

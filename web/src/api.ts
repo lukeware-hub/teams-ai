@@ -227,7 +227,7 @@ export type GapsReport = { items: GapItem[] } | { unavailable: string };
 /** A doc section the user accepted as out of scope. */
 export interface GapDecision { doc: string; heading: string; note: string; at: string }
 /** A question a blocked run asked the owner, with its choices and the answer given to it, if any. */
-export interface RunDecision { taskId: string; question: string; options: Array<{ label: string; detail: string; recommended?: boolean }>; answer: string | null }
+export interface RunDecision { taskId: string; question: string; options: Array<{ label: string; detail: string; recommended?: boolean }>; answer: string | null; /** Set when the agents answered it themselves, since the owner lets them decide. */ answeredBy?: 'agents' }
 export interface Report {
   runId: string;
   specId: string;

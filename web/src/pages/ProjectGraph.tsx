@@ -5,6 +5,7 @@ import { Breadcrumb } from '../components/Breadcrumb.js';
 import { Loading } from '../components/Loading.js';
 import { projectPath } from '../routes.js';
 import { GraphCanvas } from './graph/GraphCanvas.js';
+import { GraphHealth } from './graph/GraphHealth.js';
 import { action, panel, plural, sectionHeading, when } from './project-shared.js';
 
 /** Communities listed one by one; the rest share a single "Outras" line. */
@@ -76,6 +77,8 @@ export function ProjectGraph() {
     void load();
   }, [load]);
 
+  // The age of the graph is read against the moment the view arrived, so it does not shift while the page is open.
+  const asOf = useMemo(() => Date.now(), [view]);
   const map = view?.map;
   const communities = map?.communities ?? [];
   const listed = communities.slice(0, LISTED);
@@ -168,6 +171,7 @@ export function ProjectGraph() {
       ) : null}
       {view?.available && map ? (
         <>
+          <GraphHealth view={view} now={asOf} />
           <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
             {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
           </p>

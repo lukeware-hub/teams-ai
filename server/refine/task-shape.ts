@@ -43,6 +43,8 @@ export function taskShapeIssues(text: string, plan: string, criteria: readonly s
   for (const number of planned.keys()) if (!numbers.includes(number)) issues.push(`plan task ${number} has no "## Task ${number}:" entry`);
   for (const number of numbers) if (!planned.has(number)) issues.push(`task.md has entry ${number}, which the plan does not have`);
 
+  // A criterion the plan task repeats is still one criterion.
+  const same = (a: string[], b: string[]) => [...new Set(a)].sort().join() === [...new Set(b)].sort().join();
   const cited: string[] = [];
   for (const entry of entries) {
     for (const label of LABELS) if (!entry.lines.some((line) => line.startsWith(label))) issues.push(`Task ${entry.number} has no ${label} line`);
@@ -51,7 +53,7 @@ export function taskShapeIssues(text: string, plan: string, criteria: readonly s
     const ids = idsIn(entry.lines.find((line) => line.startsWith('**Criteria:**')));
     cited.push(...ids);
     const delivered = planned.get(entry.number) ?? [];
-    if (delivered.length > 0 && [...delivered].sort().join() !== [...ids].sort().join()) issues.push(`Task ${entry.number} lists criteria ${ids.join(', ') || 'none'}, but its plan task delivers ${delivered.join(', ')}`);
+    if (delivered.length > 0 && !same(delivered, ids)) issues.push(`Task ${entry.number} lists criteria ${ids.join(', ') || 'none'}, but its plan task delivers ${delivered.join(', ')}`);
     for (const id of ids) if (!criteria.includes(id)) issues.push(`criterion ${id} is not in the spec`);
   }
   for (const id of criteria) if (!cited.includes(id)) issues.push(`criterion ${id} is in no task entry`);

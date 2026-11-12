@@ -7,9 +7,9 @@ import { loadConfig, type Config } from '../../server/config/config.js';
 import type { Project } from '../../server/contracts/project.js';
 import { readProject } from '../../server/api/run-index.js';
 import { docsStoreDir, writeDocsMarker } from '../../server/docs/project-state.js';
-import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, ensureProjectGraph, setBrainSource, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
+import { buildLocatedProjectGraph, buildLocatedProjectGraphOnce, rebuildProjectGraphOnce, refreshMergedGraph, ensureProjectGraph, setBrainSource, graphFailure, buildProjectGraph, locateProject, mergeProjectGraph, ownedServices, projectMainDocs, rebuildProjectGraph, refreshProjectGraph, type LocatedProject } from '../../server/knowledge/project-graph.js';
 import { Graphify } from '../../server/knowledge/graphify.js';
-import { workspacePaths } from '../../server/orchestrator/workspace.js';
+import { serviceWorkspace, workspacePaths } from '../../server/orchestrator/workspace.js';
 import type { StoredEvent } from '../../server/store/event-store.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 import { makeRemote } from '../fixtures/git-remote.js';
@@ -106,6 +106,49 @@ async function workspaceWithMain(files: Record<string, string>): Promise<{ ws: R
   git('update-ref', 'refs/remotes/origin/main', 'HEAD');
   return { ws, root };
 }
+
+describe('the owner the graph keeps to', () => {
+  /** A clone of a service whose origin is the given address, as a run left it. */
+  async function cloneOf(ws: ReturnType<typeof workspacePaths>, service: string, origin: string): Promise<void> {
+    const { repo } = serviceWorkspace(ws, service);
+    await fs.mkdir(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    execFileSync('git', ['remote', 'add', 'origin', origin], { cwd: repo });
+  }
+  const withServices = (ws: ReturnType<typeof workspacePaths>, owner: string | undefined): LocatedProject => ({ ws, project: { ...project, services: ['old-web', 'new-api', 'not-cloned'] } as Project, newestSpec: undefined, owner });
+
+  it('leaves out the clone made under another owner, keeps the ones under the owner in any letter case, and keeps a service with no clone', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'x' });
+    await cloneOf(ws, 'old-web', 'https://github.com/org-old/old-web');
+    await cloneOf(ws, 'new-api', 'https://github.com/Kayron-Hub/new-api.git');
+    expect(await ownedServices(withServices(ws, 'kayron-hub'))).toEqual(['new-api', 'not-cloned']);
+  });
+
+  it("keeps every service when no owner is known, and an origin that is not GitHub's", async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'x' });
+    await cloneOf(ws, 'old-web', 'https://github.com/org-old/old-web');
+    await cloneOf(ws, 'new-api', '/srv/git/new-api.git');
+    expect(await ownedServices(withServices(ws, undefined))).toEqual(['old-web', 'new-api', 'not-cloned']);
+    expect(await ownedServices(withServices(ws, 'kayron-hub'))).toEqual(['new-api', 'not-cloned']);
+  });
+
+  it('merges the graph without the clone of another owner', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'x' });
+    await cloneOf(ws, 'old-web', 'https://github.com/org-old/old-web');
+    await cloneOf(ws, 'new-api', 'https://github.com/kayron-hub/new-api');
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{"nodes":[{"id":"a","source_file":"src/a.ts"}],"links":[]}' : null) });
+    await rebuildProjectGraph(graphify, withServices(ws, 'kayron-hub'));
+    const merge = fake.lines('graphify').find((line) => line.startsWith('merge-graphs'))!;
+    expect(merge).toContain('/inputs/new-api/');
+    expect(merge).not.toContain('/inputs/old-web/');
+  });
+
+  it('is given to the located project from the settings, over nothing the project says', async () => {
+    const cfg = loadConfig({ paths: { workspaces: os.tmpdir(), runs: path.join(os.tmpdir(), 'runs') }, projects: [{ dir: HELLO }], github: { owner: 'settings-org' } });
+    expect((await locateProject(cfg, 'hello-app'))?.owner).toBe('settings-org');
+  });
+});
 
 describe('locateProject', () => {
   it('finds the configured project with its workspace and its newest spec', async () => {
@@ -224,6 +267,7 @@ describe('the brain notes in the project graph', () => {
   const mergingGraphify = (written: { out?: string }) =>
     ({
       update: async () => ({ ratio: 1 }),
+      cluster: async () => true,
       merge: async (_graphs: unknown, out: string) => {
         written.out = out;
         await fs.mkdir(path.join(out, 'graphify-out'), { recursive: true });
@@ -321,6 +365,37 @@ describe('refreshProjectGraph', () => {
     const logs: string[] = [];
     refreshProjectGraph(failing, { ws, project: project as Project, newestSpec: undefined }, (line) => logs.push(line));
     await vi.waitFor(() => expect(logs).toEqual(['project graph not refreshed: graphify caiu']), { timeout: 15_000 });
+  });
+});
+
+describe('refreshMergedGraph', () => {
+  it('merges the graphs the repositories already have, and extracts only the description of the project again', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    refreshMergedGraph(graphify, { ws, project: project as Project, newestSpec: undefined });
+    await vi.waitFor(() => expect(fake.lines('graphify').some((line) => line.startsWith('merge-graphs'))).toBe(true), { timeout: 15_000 });
+    // The repositories are not extracted again: the one update is the project description.
+    expect(fake.lines('graphify').filter((line) => line.startsWith('update'))).toHaveLength(1);
+  });
+
+  it('does nothing while a build of the project runs, and says so with false', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow = { update: () => gate, merge: async () => true, cluster: async () => true } as unknown as Graphify;
+    const running = buildLocatedProjectGraphOnce(slow, { ws, project: project as Project, newestSpec: undefined });
+    expect(await rebuildProjectGraphOnce(slow, { ws, project: project as Project, newestSpec: undefined })).toBe(false);
+    release();
+    expect(await running).toBe(true);
+  });
+
+  it('sends a failed merge to the log instead of failing the caller', async () => {
+    const { ws } = await workspaceWithMain({ 'docs/stack.md': 'Node e React' });
+    const failing = { update: async () => undefined, merge: async () => { throw new Error('merge caiu'); } } as unknown as Graphify;
+    const logs: string[] = [];
+    refreshMergedGraph(failing, { ws, project: project as Project, newestSpec: undefined }, (line) => logs.push(line));
+    await vi.waitFor(() => expect(logs).toEqual(['project graph not merged again: merge caiu']), { timeout: 15_000 });
   });
 });
 

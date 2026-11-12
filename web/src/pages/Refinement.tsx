@@ -1,7 +1,7 @@
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { criterionSentence } from '../criterion.js';
-import { api, refineApi, type AcceptanceCriterion, type ChecklistItem, type DroppedQuestionRow, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
+import { api, refineApi, settingsApi, type AcceptanceCriterion, type ChecklistItem, type DroppedQuestionRow, type PatchRow, type QuestionRow, type Snapshot, type StoredEvent } from '../api.js';
 import { mdDownload } from '../download.js';
 import { StepCard, TILE } from '../refine/StepCard.js';
 import { StartMissingAlert } from '../refine/StartMissingAlert.js';
@@ -286,6 +286,8 @@ export interface ViewProps {
   onEvaluate(): void | Promise<unknown>;
   /** The owner's button for everything: the team answers, decides, repairs and prepares until the start is clear. */
   onResolveAll?(): void | Promise<unknown>;
+  /** Whether the project lets the agents decide; unknown until the setting loads. */
+  agentsDecide?: boolean;
   /** The owner accepts every suggestion at once; the agents run again on what was decided. */
   onAcceptAll?(): void | Promise<unknown>;
   /** The owner takes every suggestion the review of a stage left, with no new review. */
@@ -1452,10 +1454,10 @@ export function RefinementView(p: ViewProps) {
   const backlogScreen = () => (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6" data-testid="backlog-stage">
       {backlogStageHeading}
-      {backlogOn && startMissing.length > 0 && <StartMissingAlert items={startMissing} />}
+      {backlogOn && startMissing.length > 0 && <StartMissingAlert items={startMissing} agentsDecide={p.agentsDecide} busy={preparing || serverBusy || evaluating} onResolve={p.onResolveAll ? resolveAll : undefined} />}
       {openOwner > 0 && needsCard(false)}
+      {backlogOn && <BacklogProgress progress={backlogSteps} since={speckit?.startedAt ?? st.evaluation?.startedAt} waiting={snap.waiting ?? null} ready={snap.closing?.ok === true} last={lastLine} total={money(snap.tokens.costUsd)} repeated={progress?.repeated === true} />}
       {backlogCards()}
-      {backlogOn && <BacklogProgress progress={backlogSteps} since={speckit?.startedAt ?? st.evaluation?.startedAt} ready={snap.closing?.ok === true} last={lastLine} total={money(snap.tokens.costUsd)} repeated={progress?.repeated === true} />}
     </div>
   );
   // The development starts only once specs.md is written from the current backlog, with the reason beside the button.
@@ -1802,6 +1804,10 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
   // Each write the server answered counts here: a read that started before one is older than it, so the page reads again.
   const writes = useRef(0);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [agentsDecide, setAgentsDecide] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    settingsApi.agentsDecide(projectId).then((r) => setAgentsDecide(r.agentsDecide), () => undefined);
+  }, [projectId]);
   const load = (): void => {
     if (reading.current) {
       rereadQueued.current = true;
@@ -1982,6 +1988,7 @@ function RefinementSession({ projectId, specId }: { projectId: string; specId: s
         }}
         onEvaluate={act(() => refineApi.evaluate(projectId, specId))}
         onResolveAll={act(() => refineApi.autopilot(projectId, specId))}
+        agentsDecide={agentsDecide}
         onAcceptAll={act(() => refineApi.acceptAll(projectId, specId))}
         onApplyStage={(f) => act(() => refineApi.applyStage(projectId, specId, f))()}
         onProceedStage={(f) => act(() => refineApi.proceedStage(projectId, specId, f))()}

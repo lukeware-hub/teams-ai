@@ -250,8 +250,17 @@ function endedBlocked(evs: readonly StoredEvent[]): boolean {
 async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: string | null, specId: string) {
   const answers = root ? await readOwnerDecisions(root, specId) : [];
   const asked = evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => ({ taskId: String(e.data.taskId), runId, question: String(e.data.question), options: e.data.options }));
+  // A question the agents answered themselves (the owner lets them decide) is answered too, and says so.
+  const byAgents = evs.filter((e) => e.type === OrchEvent.DecisionAnswered);
+  const agentAnswer = (taskId: string, question: string): string | null => {
+    const found = [...byAgents].reverse().find((e) => e.data.taskId === taskId && e.data.question === question);
+    return found ? String(found.data.answer) : null;
+  };
   // The screen keeps the shape it always had: the run is implied by the page.
-  return pairDecisions(asked, answers).map((d) => ({ taskId: d.taskId, question: d.question, options: d.options, answer: d.answer }));
+  return pairDecisions(asked, answers).map((d) => {
+    const mine = d.answer === null ? agentAnswer(d.taskId, d.question) : null;
+    return { taskId: d.taskId, question: d.question, options: d.options, answer: d.answer ?? mine, ...(mine !== null ? { answeredBy: 'agents' as const } : {}) };
+  });
 }
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {

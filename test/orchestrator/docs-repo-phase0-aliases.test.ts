@@ -72,12 +72,47 @@ async function writeSnapshot(omit: string[] = []): Promise<string> {
   return snapshot;
 }
 
+describe('the graph experiment arm of a run', () => {
+  const started = (run: Run) => run.journal.events.find((e) => e.type === OrchEvent.RunStarted)!.data.graphArm;
+
+  it('is journaled with the start of a run in a project that has an experiment, and left out of one that has none', async () => {
+    const exec = new FakeExec();
+    const plain = await Run.create(deps(exec, await writeSnapshot()), 'hello-001-arm-1');
+    expect(started(plain)).toBeUndefined();
+    await plain.close();
+    const d = deps(exec, await writeSnapshot());
+    d.cfg = { ...d.cfg, graphAb: { 'hello-app': ['dev'] } };
+    const inExperiment = await Run.create(d, 'hello-001-arm-2');
+    expect(['control', 'graph']).toContain(started(inExperiment));
+    await inExperiment.close();
+  });
+});
+
 describe('phase 0 of a docs-repo project checks every alias', () => {
   it('fails with PHASE_FAILED that names the task list of a second alias the snapshot lacks', async () => {
     const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
     const run = await Run.create(deps(exec, await writeSnapshot([`${OTHER}/task.md`])), 'hello-001-p0-alias-1');
     expect(await run.executePhase0()).toEqual({ ok: false, reason: `the document ${OTHER}/task.md is not in the closing snapshot` });
     expect(run.journal.events.some((e) => e.type === OrchEvent.PhaseFailed && String(e.data.reason).includes(`${OTHER}/task.md`))).toBe(true);
+    await run.close();
+  });
+
+  it('ignores a stale copy of a spec that moved to another service', async () => {
+    const exec = new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s));
+    const moved = makeFrozenSpec({ specId: 'hello-001', repository: 'billing-api' });
+    const d = { ...deps(exec, await writeSnapshot()), spec: moved };
+    d.docs = { style: 'microservices', snapshot: d.docs!.snapshot };
+    const snapshot = d.docs.snapshot;
+    await fs.rm(path.join(snapshot, 'docs/specify'), { recursive: true });
+    const own = 'docs/billing-api/specify/hello-001';
+    const stale = 'docs/old-api/specify/hello-001';
+    for (const [rel, text] of Object.entries({ [`${own}/spec.md`]: '#', [`${own}/plan.md`]: '#', [`${own}/task.md`]: '#', [`${stale}/spec.md`]: '#' })) {
+      await fs.mkdir(path.dirname(path.join(snapshot, rel)), { recursive: true });
+      await fs.writeFile(path.join(snapshot, rel), text);
+    }
+    const run = await Run.create(d, 'hello-001-p0-alias-3');
+    const result = await run.executePhase0();
+    expect(result.ok === false ? result.reason : '').not.toContain('closing snapshot');
     await run.close();
   });
 

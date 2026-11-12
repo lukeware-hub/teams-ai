@@ -72,6 +72,43 @@ export interface GraphQueries extends QueryCount {
   chat: QueryCount;
 }
 
+/** What the finished steps of one kind spent, summed. */
+export interface StepSpend {
+  steps: number;
+  costUsd: number;
+  toolCalls: number;
+  /** Read and Grep calls: the file reading the graph is meant to spare. */
+  reads: number;
+  failed: number;
+}
+
+/** The steps of one kind that queried the graph next to the ones that did not; only a same-kind comparison is fair. */
+export interface GraphEffectOfKind {
+  withGraph: StepSpend;
+  withoutGraph: StepSpend;
+}
+
+/** The steps of one kind in the runs of the graph experiment: the arm that had the graph next to the control arm that did not. */
+export interface GraphArms {
+  graph: StepSpend;
+  control: StepSpend;
+  /** How many different specs each arm has: an arm is chosen per spec, so a few specs mix the effect of the graph with the size of the spec. */
+  specs: { graph: number; control: number };
+}
+
+/** What the graph queries returned, and how the steps that used the graph compare with the ones that did not. */
+export interface GraphEffect {
+  byKind: Record<string, GraphEffectOfKind>;
+  /** The experiment, by step kind: runs whose start journaled their arm. Unlike `byKind`, the arm does not depend on what the agent chose to do. */
+  arms: Record<string, GraphArms>;
+  /** Queries that found nothing or failed, queries the token budget cut, and the characters all queries returned. */
+  empty: number;
+  truncated: number;
+  resultChars: number;
+  /** The queries of the steps that recorded those three figures; older steps recorded only the count, so shares divide by this. */
+  measured: number;
+}
+
 /** Where the counts besides the delivery runs come from: the event lists of the refinement drafts and the stored chat answers. */
 export interface GraphUsageSources {
   refine?: ReadonlyArray<readonly StoredEvent[]>;
@@ -95,7 +132,11 @@ export interface GraphView {
   communities: number;
   /** The most connected nodes, and the links between them only. */
   top: GraphViewNode[];
-  usage: { graph: number; grep: number; none: number; recent: GraphUse[]; queries: GraphQueries };
+  usage: { graph: number; grep: number; none: number; recent: GraphUse[]; queries: GraphQueries; effect?: GraphEffect };
+  /** How many spec files the graph holds, so the health panel can tell a graph with no relations from a project with no specs. */
+  specs?: number;
+  /** How many links of each relation the project's own state and failure notes added between specs, plans, services and failures; absent when the graph holds none. */
+  relations?: Record<string, number>;
   /** How many nodes of each kind the brain of the project holds: its code, its documents and the notes written from its runs and chat. */
   composition?: GraphComposition;
   /** Every node and link for the interactive map, with the communities the nodes fall into. */
@@ -104,23 +145,74 @@ export interface GraphView {
   status?: { updatedAt: string | null; failure: { at: string; message: string } | null };
 }
 
+/** The relations the graph gets from the project's saved state and from the failures of its runs, counted for the health panel. */
+const RELATIONS: ReadonlySet<string> = new Set(['depends_on', 'has_plan', 'has_tasks', 'belongs_to', 'derived_from', 'touches', 'similar_failure']);
+
+/** The links of the graph by relation, over those the specs and failures added; the description's own nodes count, since the specs sit there. */
+function relationsOf(links: ReadonlyArray<{ relation?: string }>): Record<string, number> | undefined {
+  const found: Record<string, number> = {};
+  for (const l of links) if (l.relation && RELATIONS.has(l.relation)) found[l.relation] = (found[l.relation] ?? 0) + 1;
+  return Object.keys(found).length > 0 ? found : undefined;
+}
+
+/** The page node of a spec file, in the layout of a documentation repository or the legacy one. */
+const SPEC_PAGE = /(?:^|\/)(?:specify|specs)\/[^/]+\/spec\.md$/;
+
 /** The description of the project that the graph is merged with; it repeats the documents and has no file of its own. */
 const DESCRIPTION_REPO = 'project-info';
 /** Nodes that read their file at most this many at a time, so a big graph does not flood git. */
 const LINK_BATCH = 10;
 
 interface RawGraph {
-  nodes?: Array<{ id: string; label?: string; repo?: string; file_type?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
-  links?: Array<{ source: string; target: string }>;
+  nodes?: Array<{ id: string; label?: string; repo?: string; file_type?: string; node_kind?: string; source_file?: string; source_location?: string; community_name?: string; community?: number }>;
+  links?: Array<{ source: string; target: string; relation?: string }>;
 }
 
 function emptyUsage(): GraphView['usage'] {
   return { graph: 0, grep: 0, none: 0, recent: [], queries: { total: 0, steps: 0, byKind: {}, refine: { total: 0, steps: 0 }, chat: { total: 0, steps: 0 } } };
 }
 
+const spendOf = (): StepSpend => ({ steps: 0, costUsd: 0, toolCalls: 0, reads: 0, failed: 0 });
+const numberOf = (value: unknown): number => (typeof value === 'number' ? value : 0);
+
+/** Adds one finished step to the effect: into its kind's with-graph or without-graph sum, and the query figures into the totals. */
+function addSpend(sum: StepSpend, e: StoredEvent): void {
+  const calls = (e.data.profile as { toolCalls?: Record<string, number> } | undefined)?.toolCalls ?? {};
+  sum.steps += 1;
+  sum.costUsd += numberOf(e.data.costUsd);
+  sum.toolCalls += Object.values(calls).reduce((n, c) => n + c, 0);
+  sum.reads += numberOf(calls.Read) + numberOf(calls.Grep);
+  if (e.data.ok === false) sum.failed += 1;
+}
+
+/** Adds a finished step of a run in the experiment to the arm the run's start put it in. */
+function addArm(effect: GraphEffect, arm: string | undefined, specId: string, seen: Map<string, Set<string>>, e: StoredEvent): void {
+  if ((arm !== 'graph' && arm !== 'control') || e.type !== 'STEP_FINISHED') return;
+  const kind = String(e.data.kind);
+  const of = (effect.arms[kind] ??= { graph: spendOf(), control: spendOf(), specs: { graph: 0, control: 0 } });
+  addSpend(of[arm], e);
+  const key = `${kind}|${arm}`;
+  const specs = seen.get(key) ?? new Set<string>();
+  seen.set(key, specs.add(specId));
+  of.specs[arm] = specs.size;
+}
+
+function addEffect(effect: GraphEffect, e: StoredEvent): void {
+  const profile = e.data.profile as { graphQueries?: unknown; graphEmpty?: unknown; graphTruncated?: unknown; graphResultChars?: unknown } | undefined;
+  if (e.type !== 'STEP_FINISHED' || typeof profile?.graphQueries !== 'number') return;
+  const of = (effect.byKind[String(e.data.kind)] ??= { withGraph: spendOf(), withoutGraph: spendOf() });
+  addSpend(profile.graphQueries > 0 ? of.withGraph : of.withoutGraph, e);
+  if (typeof profile.graphEmpty === 'number') effect.measured += profile.graphQueries;
+  effect.empty += numberOf(profile.graphEmpty);
+  effect.truncated += numberOf(profile.graphTruncated);
+  effect.resultChars += numberOf(profile.graphResultChars);
+}
+
 /** How the agents used the code context, read from the runs' journals. */
 export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly StoredEvent[] }>, sources: GraphUsageSources = {}): GraphView['usage'] {
   const usage = emptyUsage();
+  const effect: GraphEffect = { byKind: {}, arms: {}, empty: 0, truncated: 0, resultChars: 0, measured: 0 };
+  usage.effect = effect;
   // A finished step that carries the count; older steps have no `graphQueries` and would read as zero.
   const countOf = (e: StoredEvent): number | null => {
     const queries = (e.data.profile as { graphQueries?: unknown } | undefined)?.graphQueries;
@@ -128,6 +220,7 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
   };
   for (const events of sources.refine ?? []) {
     for (const e of events) {
+      addEffect(effect, e);
       const n = countOf(e);
       if (n === null) continue;
       usage.queries.refine.steps += 1;
@@ -140,9 +233,15 @@ export function graphUsage(runs: ReadonlyArray<{ runId: string; events: readonly
     usage.queries.chat.total += n;
   }
   const all: GraphUse[] = [];
+  const armSpecs = new Map<string, Set<string>>();
   for (const run of runs) {
+    const started = run.events.find((e) => e.type === 'RUN_STARTED');
+    const arm = started?.data.graphArm;
+    const specId = String(started?.data.specId ?? run.runId);
     for (const e of run.events) {
       if (e.type === 'STEP_FINISHED') {
+        addEffect(effect, e);
+        addArm(effect, typeof arm === 'string' ? arm : undefined, specId, armSpecs, e);
         const queries = countOf(e);
         if (queries === null) continue;
         const kind = String(e.data.kind);
@@ -275,5 +374,7 @@ export function buildGraphView(raw: string | null, runs: Parameters<typeof graph
     communities: groups.list,
     truncated: nodes.length > MAP_NODES,
   };
-  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map, composition: compositionOf(nodes) };
+  const relations = relationsOf(graph.links ?? []);
+  const specs = all.filter((n) => n.node_kind === 'page' && SPEC_PAGE.test(n.source_file ?? '')).length;
+  return { available: true, nodes: nodes.length, links: links.length, communities: groups.list.length, top, usage, map, composition: compositionOf(nodes), specs, ...(relations ? { relations } : {}) };
 }

@@ -207,6 +207,17 @@ describe('docsMergeSteps', () => {
   });
 });
 
+describe('afterMerge and the project graph', () => {
+  it('updates the repository graph, then tells the run to merge the project graph again', async () => {
+    const order: string[] = [];
+    const d = deps({ exec: new FakeExec().exec });
+    d.graphify = { update: async () => void order.push('update') } as unknown as MergeStepsDeps['graphify'];
+    d.mergedGraph = () => void order.push('merged');
+    await taskMergeSteps(d, task, worktree, 'task/spec-001-T1', spec, 's').afterMerge!();
+    expect(order).toEqual(['update', 'merged']);
+  });
+});
+
 describe('afterMerge and the repo lock', () => {
   // git() prepends `-c key=value` pairs; the subcommand follows the last one.
   const subcommand = (s: CommandSpec) => s.args[s.args.lastIndexOf('-c') + 2];

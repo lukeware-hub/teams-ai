@@ -72,7 +72,7 @@ export function stageInfo(file: string, jevReads: boolean, firstStage: boolean):
 }
 
 /** The waiting for the Claude quota, the moment it ends as a clock time. */
-const untilText = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+export const untilText = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /** The stage cost line: rounds, time, charge and calls, from the journal. */
 export function stageCostText(file: string, cost: { rounds: number; steps: number; durationMs: number; costUsd: number }): string {

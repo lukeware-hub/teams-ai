@@ -216,7 +216,7 @@ export async function runStep<K extends StepKind>(req: StepRequest, deps: StepDe
   }
 
   const clock = deps.clock ?? (() => new Date());
-  return withRefreshGate(hostEnv, clock, deps.caps.timeoutMs + REFRESH_WINDOW_MS, async () => {
+  return withRefreshGate(hostEnv, clock, Math.min(deps.caps.timeoutMs, REFRESH_LOOKAHEAD_MAX_MS) + REFRESH_WINDOW_MS, async () => {
     let home: string | undefined;
     try {
       // A short path: the sandbox socket in $HOME/tmp must fit the 108 characters of a Unix socket path.
@@ -273,6 +273,9 @@ export function jsonParseError(text: string | null): string | null {
 
 /** Margin on top of the step timeout: a stored token that expires within both is refreshed by one step at a time. */
 export const REFRESH_WINDOW_MS = 5 * 60_000;
+
+/** How far ahead of its end a step is assumed to run: a long step limit (hours) must not serialize every step for the last hours of a token. */
+export const REFRESH_LOOKAHEAD_MAX_MS = 30 * 60_000;
 
 let refreshTail: Promise<void> = Promise.resolve();
 

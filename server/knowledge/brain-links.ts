@@ -1,5 +1,5 @@
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { editGraphFile } from './graph-file.js';
 import type { BrainLink } from './brain-notes.js';
 
 interface RawNode {
@@ -53,16 +53,5 @@ export function linkBrain<G extends RawGraph>(graph: G, wanted: readonly BrainLi
 /** Adds the links to the graph file in place; a file that cannot be read or parsed is left as it is. */
 export async function linkBrainFile(graphFile: string, wanted: readonly BrainLink[]): Promise<number> {
   if (wanted.length === 0) return 0;
-  let graph: RawGraph;
-  try {
-    graph = JSON.parse(await fs.readFile(graphFile, 'utf8')) as RawGraph;
-  } catch {
-    return 0;
-  }
-  const { graph: linked, added } = linkBrain(graph, wanted);
-  if (added === 0) return 0;
-  const tmp = `${graphFile}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(linked));
-  await fs.rename(tmp, graphFile);
-  return added;
+  return editGraphFile<RawGraph>(graphFile, (graph) => linkBrain(graph, wanted));
 }

@@ -632,6 +632,10 @@ export interface AgentStepDeps {
   agentsDecide?: () => Promise<boolean>;
   /** The graphs the agent may query; added to the pack of every step unless the request brings its own. */
   graphAccess?: GraphAccess;
+  /** Step kinds not offered the graph, set per project to compare their cost with the steps that are. */
+  graphOff?: readonly string[];
+  /** What the graph's relations say about the spec of the run, added to the pack of every step the graph is offered to. */
+  specBrief?: () => Promise<string>;
   specHash: string;
 }
 
@@ -648,7 +652,12 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
   const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
   // A lean step reads only the context in its prompt: the graph is not offered to it.
-  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess && !isLean(req) ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
+  // A step the project turned the graph off for gets neither the graphs nor the brief of its spec, so the two groups compare cleanly.
+  const offered = !isLean(req) && !deps.graphOff?.includes(req.kind);
+  const brief = !resume && offered && !req.pack.specBrief ? await deps.specBrief?.().catch(() => '') : '';
+  const pack = resume
+    ? resumedPack(req.session!.resumePrompt)
+    : buildContextPack({ ...req.pack, ...(deps.graphAccess && !req.pack.graphAccess && offered ? { graphAccess: deps.graphAccess } : {}), ...(brief ? { specBrief: brief } : offered ? {} : { specBrief: undefined }) });
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);

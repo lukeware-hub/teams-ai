@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanTask } from '../../server/contracts/plan.js';
-import { buildContextPack, SECTION_ORDER, type ContextPackInput } from '../../server/knowledge/context-pack.js';
+import { buildContextPack, GRAPH_QUERY_BUDGET, SECTION_ORDER, type ContextPackInput } from '../../server/knowledge/context-pack.js';
 
 const base: ContextPackInput = {
   kind: 'dev',
@@ -41,6 +41,13 @@ describe('graph access in the pack', () => {
 
   it('gives no ready query for a step with no task', () => {
     expect(buildContextPack({ ...base, graphAccess: all }).text).not.toContain('Ready queries');
+  });
+
+  it('asks for a larger answer than the graph default in the ready query and in the instruction, since the default cut most answers', () => {
+    const text = buildContextPack({ ...base, task: task(), graphAccess: all }).text;
+    expect(GRAPH_QUERY_BUDGET).toBeGreaterThan(2000);
+    expect(text).toContain(`graphify query "<question>" --graph <file> --budget ${GRAPH_QUERY_BUDGET}`);
+    expect(text.split('\n').find((l) => l.startsWith('- graphify query'))).toContain(`--budget ${GRAPH_QUERY_BUDGET}`);
   });
 
   it('keeps a task title from reaching a shell: quotes, substitutions and separators are dropped', () => {

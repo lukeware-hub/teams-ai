@@ -45,13 +45,13 @@ const record = (value: unknown): Record<string, unknown> => (value !== null && t
 /** A path that is safe to name in a note: relative, no `..`, no backtick. */
 const safePath = (p: string): boolean => p !== '' && !p.startsWith('/') && !p.split('/').includes('..') && !p.includes('`') && !/\s/.test(p);
 
-interface SpecRuns {
+export interface SpecRuns {
   specId: string;
   runs: Array<{ runId: string; at: string; events: readonly StoredEvent[] }>;
 }
 
 /** The runs grouped by spec, oldest first, from each journal's RUN_STARTED. A journal with no spec is left out. */
-function bySpec(runs: readonly RunJournal[]): SpecRuns[] {
+export function bySpec(runs: readonly RunJournal[]): SpecRuns[] {
   const groups = new Map<string, SpecRuns['runs']>();
   for (const run of runs) {
     const started = run.events.find((e) => e.type === 'RUN_STARTED');

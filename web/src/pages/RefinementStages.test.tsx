@@ -553,7 +553,8 @@ describe('the button that lets the team resolve everything', () => {
     const missing = screen.getByTestId('start-missing');
     expect(missing.className).toContain('text-warn');
     expect(missing.parentElement?.contains(screen.getByTestId('prepare-backlog'))).toBe(false);
-    expect(missing.nextElementSibling?.getAttribute('data-testid')).toBe('backlog-cards');
+    expect(missing.nextElementSibling?.getAttribute('data-testid')).toBe('finish-panel');
+    expect(screen.getByTestId('finish-panel').nextElementSibling?.getAttribute('data-testid')).toBe('backlog-cards');
     fireEvent.click(screen.getByTestId('prepare-backlog'));
     fireEvent.click(screen.getByTestId('stage-confirm'));
     const button = screen.getByTestId('prepare-backlog') as HTMLButtonElement;

@@ -578,6 +578,27 @@ describe('start, resume, stop', () => {
     expect(detail.decisions).toEqual([{ taskId: 'T1-a', question: 'Qual versão do Go?', options, answer: 'Go 1.26.9' }]);
   });
 
+  it('shows a question the agents answered themselves as answered, saying who answered it', async () => {
+    const options = [{ label: 'Isentar do e2e', detail: 'Prova nos testes de unidade.' }, { label: 'Documentar a operação', detail: 'Publicar no stack.md.', recommended: true }];
+    await writeRun(
+      runs,
+      'hello-001-r1',
+      [
+        started('hello-001-r1'),
+        { type: 'DECISION_REQUESTED', data: { taskId: 'T1-a', reason: 'rounds', question: 'Isentar os critérios?', options } },
+        { type: 'DECISION_ANSWERED', data: { taskId: 'T1-a', question: 'Isentar os critérios?', answer: 'Documentar a operação', by: 'agents' } },
+        { type: 'DECISION_REQUESTED', data: { taskId: 'T2-b', reason: 'rounds', question: 'Outra dúvida?', options } },
+      ],
+      state('blocked'),
+      1,
+    );
+    const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(detail.decisions).toEqual([
+      { taskId: 'T1-a', question: 'Isentar os critérios?', options, answer: 'Documentar a operação', answeredBy: 'agents' },
+      { taskId: 'T2-b', question: 'Outra dúvida?', options, answer: null },
+    ]);
+  });
+
   it('complete refuses an unknown spec (404) and a spec not awaiting validation (409) without keeping the spec locked', async () => {
     const complete = '/api/projects/hello-app/specs/hello-001/complete';
     expect((await post('/api/projects/hello-app/specs/nope/complete')).status).toBe(404);

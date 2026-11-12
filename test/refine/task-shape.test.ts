@@ -82,6 +82,11 @@ describe('task list shape', () => {
     expect(issues).toContain('Task 2 lists criteria AC-001, AC-002, but its plan task delivers AC-002');
   });
 
+  it('accepts an entry that cites once a criterion the plan task repeats', () => {
+    const repeated = PLAN.replace('**Criteria:** AC-002', '**Criteria:** AC-002, AC-002');
+    expect(taskShapeIssues(TASKS, repeated, CRITERIA, 'shop-api')).toEqual([]);
+  });
+
   it('refuses a criterion that no entry proves, and one the spec does not have', () => {
     const uncovered = taskShapeIssues(TASKS.replace('**Criteria:** AC-002', '**Criteria:** AC-001'), PLAN, CRITERIA, 'shop-api');
     expect(uncovered).toContain('criterion AC-002 is in no task entry');
