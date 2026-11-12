@@ -8,7 +8,11 @@ import { Accounting } from '../budget/accounting.js';
 import { replayAccounting } from './accounting-replay.js';
 import { Governor } from '../budget/governor.js';
 import { DEFAULT_BREAKER, QuotaBreaker } from '../budget/quota-breaker.js';
-import { agentsDecideFor, manualAgentSettings, stepBudgetFor, automaticStepOf, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
+import { codeQuestionOf } from '../knowledge/code-question.js';
+import { readRelationSpecs } from '../knowledge/relation-links.js';
+import { failureLines, failuresOf, readRunJournals } from '../knowledge/failure-memory.js';
+import { BRIEF_MAX_CHARS, specBrief } from '../knowledge/spec-brief.js';
+import { agentsDecideFor, graphArmOf, graphOffFor, manualAgentSettings, stepBudgetFor, automaticStepOf, type AgentSetting, type Config, type Role, type SettingKey } from '../config/config.js';
 import { parseAnyPlan, scaffoldId, servicePlans, type AnyPlan, type Plan, type PlanTask, type ServiceView } from '../contracts/plan.js';
 import type { Project } from '../contracts/project.js';
 import type { Spec } from '../contracts/spec.js';
@@ -26,7 +30,7 @@ import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, GraphAccess, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
-import { ensureProjectGraph, refreshProjectGraph } from '../knowledge/project-graph.js';
+import { ensureProjectGraph, refreshMergedGraph, refreshProjectGraph, type LocatedProject } from '../knowledge/project-graph.js';
 import type { KnowledgeIndex } from '../knowledge/retrieval.js';
 import { RunEvent, type RunState } from '../pipeline/run-state.js';
 import { ACTIVE_STATES, DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
@@ -208,6 +212,12 @@ export function fixTasksOutcome(state: RunState): 'merged' | 'blocked' {
   return [...state.tasks.values()].some((t) => t.state === 'blocked') ? 'blocked' : 'merged';
 }
 
+/** The arm of the graph experiment the run is in, journaled with its start so the report can tell the two groups apart; nothing outside the experiment. */
+const graphArmFact = (deps: Pick<RunDeps, 'cfg' | 'project' | 'spec'>): { graphArm?: 'control' | 'graph' } => {
+  const { arm } = graphArmOf(deps.cfg, deps.project.projectId, deps.spec.specId);
+  return arm ? { graphArm: arm } : {};
+};
+
 /** How many times a blocked run goes back to the agents on its own, when the owner lets them decide. */
 export const MAX_AUTO_RETURNS = 3;
 
@@ -283,7 +293,7 @@ export class Run {
     const id = runId ?? (await nextRunId(deps.ws, deps.spec.specId));
     await fs.mkdir(runDir(deps.ws, id), { recursive: true });
     const journal = await Run.openJournal(deps, id);
-    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec, ...(deps.autoReprocess ? { autoReprocess: true } : {}) });
+    await journal.fact(OrchEvent.RunStarted, { runId: id, specId: deps.spec.specId, projectId: deps.project.projectId, firstSpec: deps.firstSpec, ...(deps.autoReprocess ? { autoReprocess: true } : {}), ...graphArmFact(deps) });
     return new Run(id, journal, deps, await Run.loadPriorGateFixes(deps, id));
   }
 
@@ -433,8 +443,40 @@ export class Run {
       docsRoot: this.deps.docs?.snapshot,
       agentsDecide: () => this.autonomous(),
       graphAccess: this.graphAccess(view),
+      graphOff: this.graphOff(),
+      specBrief: () => this.specBrief(),
       specHash: this.deps.spec.specHash!,
     };
+  }
+
+  /** The step kinds this run is not offered the graph for: the project's own list, plus the experiment's kinds only when the run's start put it in the experiment's control arm. */
+  private graphOff(): readonly string[] {
+    const cfg = this.deps.cfg;
+    const { projectId } = this.deps.project;
+    const inExperiment = this.journal.events.find((e) => e.type === OrchEvent.RunStarted)?.data.graphArm !== undefined;
+    return inExperiment ? graphArmOf(cfg, projectId, this.deps.spec.specId).off : graphOffFor(cfg, projectId);
+  }
+
+  /** After a merge, the project's graph is merged again from the repositories' graphs. */
+  private mergedGraph(): void {
+    if (this.deps.graphify) refreshMergedGraph(this.deps.graphify, this.located(), this.deps.log);
+  }
+
+  /** The project as the graph builders take it, with the GitHub owner the settings name: the graph keeps to that owner's repositories. */
+  private located(): LocatedProject {
+    return { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId, owner: this.deps.bootstrap?.owner ?? this.deps.project.github.owner ?? this.deps.cfg.github.owner };
+  }
+
+  private briefOf?: Promise<string>;
+
+  /** The relations of this run's spec, read once from the project's saved state; empty for a project with none. */
+  private specBrief(): Promise<string> {
+    this.briefOf ??= (async () => {
+      const runs = expandHome(this.deps.cfg.paths.runs);
+      const [specs, journals] = await Promise.all([readRelationSpecs(this.deps.ws), readRunJournals(runs, this.deps.project.projectId)]);
+      return specBrief(specs, this.deps.spec.specId, BRIEF_MAX_CHARS, failureLines(failuresOf(journals), this.deps.spec.specId));
+    })();
+    return this.briefOf;
   }
 
   /** The graphs the agents of a step may query, each only when its file exists: the repository's and the project's brain. */
@@ -573,7 +615,7 @@ export class Run {
   }
 
   private mergeDeps(view: ServiceView | null): MergeStepsDeps {
-    return { journal: this.journal, ws: view ? this.wsOf(view) : this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: view ? this.gatesFor(view) : NO_GATES, graphify: this.deps.graphify, secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock, docs: this.deps.docs };
+    return { journal: this.journal, ws: view ? this.wsOf(view) : this.deps.ws, exec: this.deps.exec, ghExec: this.deps.ghExec, gates: view ? this.gatesFor(view) : NO_GATES, graphify: this.deps.graphify, mergedGraph: () => this.mergedGraph(), secretValues: () => this.secretValues(), handoffs: this.handoffs, clock: this.clock, docs: this.deps.docs };
   }
 
   private packBase = (): PackBase => ({
@@ -599,8 +641,9 @@ export class Run {
         const tracked = await withRepoLock(ws.repo, () => g.trackedFiles(ws.repo)).catch(() => [] as string[]);
         const cov = await g.coverage(graphDir(ws, null), tracked).catch(() => null);
         if (cov && cov.ratio >= MIN_COVERAGE) {
-          const q = await g.query(graphDir(ws, null), `${task.title} ${task.description}`, 2000);
-          return { source: 'graph', nodes: q.nodes, truncated: q.truncated, graphFile: graphFile(graphDir(ws, null)) };
+          const q = await g.query(graphDir(ws, null), codeQuestionOf(task), 2000);
+          // A graphify that failed answers nothing; the step reads the code with grep and the journal says it was grep.
+          if (q.failed === undefined) return { source: 'graph', nodes: q.nodes, truncated: q.truncated, graphFile: graphFile(graphDir(ws, null)) };
         }
       }
       return { source: 'grep', grep: await grepFallback(worktree, terms, this.deps.exec) };
@@ -849,7 +892,7 @@ export class Run {
     const phase0 = await this.executePhase0();
     if (!phase0.ok) return phase0.reason === PAUSED_AUTH ? 'paused:auth' : this.finish('phase-failed', phase0.reason);
     // A project with no graph yet gets one now, so the first task already has code context; a slow or failed build never stops the run.
-    if (this.deps.graphify) await ensureProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, { log: this.deps.log });
+    if (this.deps.graphify) await ensureProjectGraph(this.deps.graphify, this.located(), { log: this.deps.log });
     // A docs-repo project has no technical spec: its plan is the technical specification, so Phase 1 does not run.
     if (!this.deps.docsRepo) {
       const phase1 = await runPhase1(this.phaseDeps());
@@ -1137,7 +1180,7 @@ export class Run {
     await this.journal.fact(OrchEvent.RunFinished, { result: r, reason: reason ?? null, merged: tasks.filter((t) => t.state === 'merged').map((t) => t.def.id), blocked, tokens: this.accounting.total() });
     await this.writeState();
     // The agents read the graph, so it is rebuilt from main when a run ends, whatever the outcome: a blocked or failed run is history the graph should hold too.
-    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, { ws: this.deps.ws, project: this.deps.project, newestSpec: this.deps.spec.specId }, this.deps.log);
+    if (this.deps.graphify) refreshProjectGraph(this.deps.graphify, this.located(), this.deps.log);
     return r;
   }
 

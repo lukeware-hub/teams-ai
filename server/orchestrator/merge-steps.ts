@@ -21,6 +21,8 @@ export interface MergeStepsDeps {
   ghExec: Exec;
   gates: (worktree: string, branch: string) => Promise<{ results: GateResult[]; blockingFailure: GateResult | null }>;
   graphify: Graphify | null;
+  /** Called after a merge updated the repository's graph, so the project's graph can be merged again. */
+  mergedGraph?: () => void;
   secretValues: () => readonly string[];
   handoffs: HandoffSummary[];
   clock: () => Date;
@@ -179,6 +181,7 @@ export function taskMergeSteps(deps: MergeStepsDeps, task: PlanTask, worktree: s
       await withCheckoutLock(deps.ws.repo, async () => {
         await resetMainCheckout(deps);
         if (deps.graphify) await deps.graphify.update(deps.ws.repo, graphDir(deps.ws, null));
+        deps.mergedGraph?.();
       });
       await base.cleanup();
       deps.handoffs.push({ taskId: task.id, title: task.title, summary: redactSecrets(summary, deps.secretValues()), changedFiles: changed, mergedAt: deps.clock().toISOString() });

@@ -418,6 +418,27 @@ describe('RunView', () => {
       expect(onDecide).toHaveBeenCalledWith([{ taskId: 'T2', answer: 'Go 1.26.9' }]);
     });
 
+    it('lists what the agents decided themselves, and still asks the owner what they could not, also when they decide', () => {
+      const onDecide = vi.fn();
+      const options = [{ label: 'Isentar do e2e', detail: 'Prova nos testes de unidade.' }, { label: 'Documentar a operação', detail: 'Publicar no stack.md.', recommended: true }];
+      const decisions = [
+        { taskId: 'T1', question: 'Isentar os critérios do e2e?', options, answer: 'Documentar a operação', answeredBy: 'agents' as const },
+        { taskId: 'T2', question: 'Qual rota de gravação?', options, answer: null },
+      ];
+      render(failedView({ detail: { ...detail, status: 'phase-failed', agentsDecide: true, decisions }, decideAction: { onDecide, busy: false, error: null } }));
+      const decided = screen.getAllByTestId('run-outcome-decided-item');
+      expect(decided).toHaveLength(1);
+      expect(decided[0]!.textContent).toBe('Isentar os critérios do e2e?→ Documentar a operação');
+      expect(screen.getByTestId('decision-question').textContent).toBe('Qual rota de gravação?');
+      fireEvent.click(screen.getByTestId('decide'));
+      expect(onDecide).toHaveBeenCalledWith([{ taskId: 'T2', answer: 'Documentar a operação' }]);
+    });
+
+    it('shows no list of agent decisions when the agents decided nothing', () => {
+      render(failedView({ detail: { ...detail, status: 'phase-failed', agentsDecide: true } }));
+      expect(screen.queryByTestId('run-outcome-decided')).toBeNull();
+    });
+
     it('offers Reprocessar only when wired, disabled while the new run starts, with its error inline', () => {
       const onReprocess = vi.fn();
       const { rerender } = render(failedView());

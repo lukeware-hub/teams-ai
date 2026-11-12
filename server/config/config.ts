@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { ROLES, type Role } from './roles.js';
 export { ROLES, type Role };
@@ -185,6 +186,10 @@ export const Config = z.object({
   stepTimeouts: z.record(z.string().min(1), positive.max(TIMER_MAX_MS)).default({}),
   /** Per project id: whether its agents decide a block themselves, set in Settings; a project absent here does not. */
   agentsDecide: z.record(z.string().min(1), z.boolean()).default({}),
+  /** Per project id: the step kinds that are not offered the graph, to compare their cost with the steps that are; absent offers it to all. */
+  graphOff: z.record(z.string().min(1), z.array(z.string().min(1))).default({}),
+  /** Per project id: the step kinds of the graph experiment; half of the specs, told apart by a hash of the spec id, run those kinds without the graph. */
+  graphAb: z.record(z.string().min(1), z.array(z.string().min(1))).default({}),
   budgets: z
     .object({
       step: StepBudget.prefault({}),
@@ -393,6 +398,23 @@ export function stepBudgetFor(cfg: Config, projectId?: string): Config['budgets'
 
 /** Whether the agents of one project decide its blocks themselves; a project absent from Settings does not. */
 export const agentsDecideFor = (cfg: Config, projectId: string): boolean => Object.hasOwn(cfg.agentsDecide, projectId) && cfg.agentsDecide[projectId] === true;
+
+/** The step kinds of one project that are not offered the graph; none when the project is absent from the config. */
+export const graphOffFor = (cfg: Config, projectId: string): readonly string[] => (Object.hasOwn(cfg.graphOff, projectId) ? cfg.graphOff[projectId]! : []);
+
+/** The kinds a spec runs without the graph, and the arm of the experiment it is in: `control` runs the experiment's kinds without the graph, `graph` with it; null outside the experiment. */
+export interface GraphArm {
+  off: readonly string[];
+  arm: 'control' | 'graph' | null;
+}
+
+export function graphArmOf(cfg: Config, projectId: string, specId: string): GraphArm {
+  const manual = graphOffFor(cfg, projectId);
+  const kinds = Object.hasOwn(cfg.graphAb, projectId) ? cfg.graphAb[projectId]! : [];
+  if (kinds.length === 0) return { off: manual, arm: null };
+  const control = createHash('sha256').update(`${projectId}:${specId}`).digest()[0]! % 2 === 0;
+  return { off: [...new Set([...manual, ...(control ? kinds : [])])], arm: control ? 'control' : 'graph' };
+}
 
 export class ConfigError extends Error {}
 

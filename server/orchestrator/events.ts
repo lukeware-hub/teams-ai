@@ -48,6 +48,8 @@ export const OrchEvent = {
   TaskBlocked: 'TASK_BLOCKED',
   /** The SM's question and choices for a block, asked of the owner on the run screen. */
   DecisionRequested: 'DECISION_REQUESTED',
+  /** The agents answered a question themselves, with the choice the SM recommended, because the owner lets them decide. */
+  DecisionAnswered: 'DECISION_ANSWERED',
   BudgetExceeded: 'BUDGET_EXCEEDED',
   RunCostAlert: 'RUN_COST_ALERT',
   RunFinished: 'RUN_FINISHED',
@@ -211,6 +213,24 @@ export class Journal {
       if (e.type === OrchEvent.Feedback && e.data.taskId === taskId) return String(e.data.text);
     }
     return null;
+  }
+
+  /** The SM answers to the Dev's spec-gap questions on one task and on the tasks it replaced, oldest first. */
+  specGapAnswers(taskId: string): Array<{ question: string; answer: string }> {
+    const ids = new Set([taskId]);
+    const replans = this.log.filter((e) => e.type === RunEvent.TaskReplanned);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const e of replans) {
+        const replaced = e.data.taskId as string;
+        if (!ids.has(replaced) && (e.data.replacements as { id: string }[]).some((r) => ids.has(r.id))) {
+          ids.add(replaced);
+          grew = true;
+        }
+      }
+    }
+    return this.log.filter((e) => e.type === OrchEvent.SpecGapAnswered && ids.has(e.data.taskId as string)).map((e) => ({ question: String(e.data.question), answer: String(e.data.answer) }));
   }
 
   assumptions(): string[] {

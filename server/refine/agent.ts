@@ -22,6 +22,8 @@ export interface AgentWiring {
   workspacesRoot: string;
   /** The graphs the agents of one project may query (its brain); read per step. */
   graphAccess?: (projectId: string) => Promise<GraphAccess | undefined>;
+  /** The step kinds of one project that are not offered the graph, read per step. */
+  graphOff?: (projectId: string) => Promise<readonly string[]>;
   claudeJsonPath?: string;
   runStep?: typeof runStepFn;
   /** The agent settings of one project, read per step so a change applies to the next step. */
@@ -55,6 +57,7 @@ export async function makeRunAgent(w: AgentWiring): Promise<RunAgent & { resetQu
     return runAgentStep(req, {
       agentSetting: (role) => manual[role],
       ...(ctx.projectId && w.graphAccess ? { graphAccess: await w.graphAccess(ctx.projectId) } : {}),
+      ...(ctx.projectId && w.graphOff ? { graphOff: await w.graphOff(ctx.projectId) } : {}),
       runStep: w.runStep ?? runStepFn,
       stepDeps: {
         binary,

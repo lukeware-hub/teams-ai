@@ -6,10 +6,11 @@ import type { StepKind } from '../agents/outputs.js';
 import { Accounting } from '../budget/accounting.js';
 import { agentsDecideFor, type Config, type Role } from '../config/config.js';
 import { AnyPlan } from '../contracts/plan.js';
-import { loadSecretValues, loadSecrets } from '../core/secrets.js';
-import { draftPaths, refineRoot } from '../refine/draft.js';
+import { loadSecretValues, loadSecrets, SECRET_NAME, writeSecret } from '../core/secrets.js';
+import { draftPaths, readDoc, refineRoot, type DocFile } from '../refine/draft.js';
 import { reduceRefineEvents } from '../refine/state.js';
-import { requiredSecretNames } from '../refine/session.js';
+import { declaredDependencies, requiredSecretNames, sectionsMentioning } from '../refine/session.js';
+import type { ExternalDependency } from '../contracts/spec.js';
 import { phase6Resume } from '../orchestrator/phase6-resume.js';
 import { redactSecrets } from '../core/redact.js';
 import { removeTree } from '../core/remove-tree.js';
@@ -45,7 +46,7 @@ import { liveBlocked, rootBlockers } from '../orchestrator/stop-explain.js';
 import { ID_PATTERNS, parseRunId } from '../core/ids.js';
 import { docsStoreDir, isDocsRepo, readState } from '../docs/project-state.js';
 import { releaseDocs } from '../docs/store.js';
-import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews, type DashboardSpecInput } from './repository-dashboard.js';
+import { buildDashboard, DASHBOARD_TABLES, dashboardPage, loadRepoRuns, specViews, type DashboardSpecInput, type SecretInfo } from './repository-dashboard.js';
 import { graphLinkResolver } from './graph-links.js';
 import { buildGraphView, linkNodes } from './repository-graph.js';
 import { pageRequest, queryPage, type TableSpec } from './paging.js';
@@ -250,8 +251,35 @@ function endedBlocked(evs: readonly StoredEvent[]): boolean {
 async function decisionsOf(evs: readonly StoredEvent[], runId: string, root: string | null, specId: string) {
   const answers = root ? await readOwnerDecisions(root, specId) : [];
   const asked = evs.filter((e) => e.type === OrchEvent.DecisionRequested).map((e) => ({ taskId: String(e.data.taskId), runId, question: String(e.data.question), options: e.data.options }));
+  // A question the agents answered themselves (the owner lets them decide) is answered too, and says so.
+  const byAgents = evs.filter((e) => e.type === OrchEvent.DecisionAnswered);
+  const agentAnswer = (taskId: string, question: string): string | null => {
+    const found = [...byAgents].reverse().find((e) => e.data.taskId === taskId && e.data.question === question);
+    return found ? String(found.data.answer) : null;
+  };
   // The screen keeps the shape it always had: the run is implied by the page.
-  return pairDecisions(asked, answers).map((d) => ({ taskId: d.taskId, question: d.question, options: d.options, answer: d.answer }));
+  return pairDecisions(asked, answers).map((d) => {
+    const mine = d.answer === null ? agentAnswer(d.taskId, d.question) : null;
+    return { taskId: d.taskId, question: d.question, options: d.options, answer: d.answer ?? mine, ...(mine !== null ? { answeredBy: 'agents' as const } : {}) };
+  });
+}
+
+const DOC_FILES: DocFile[] = ['project.md', 'briefing.md', 'stack.md', 'flow.md', 'design.md'];
+/** For each missing secret: what it is, what it is for, where it is used, and the document sections that name it. */
+async function secretInfoOf(ws: Workspace, names: readonly string[], declared: ReadonlyArray<{ id: string; deps: readonly ExternalDependency[] }>): Promise<Record<string, SecretInfo>> {
+  const info: Record<string, SecretInfo> = {};
+  for (const name of names) {
+    const owners = declared.filter((d) => d.deps.some((dep) => dep.secretNames.includes(name)));
+    const deps = owners.flatMap((o) => o.deps.filter((dep) => dep.secretNames.includes(name)));
+    const mentions: string[] = [];
+    for (const owner of owners) {
+      const draft = draftPaths(ws, owner.id);
+      const docs = Object.fromEntries(await Promise.all(DOC_FILES.map(async (file) => [file, await readDoc(draft, file).catch(() => '')] as const)));
+      for (const m of sectionsMentioning(docs, name)) if (!mentions.includes(`${m.doc} › ${m.heading}`)) mentions.push(`${m.doc} › ${m.heading}`);
+    }
+    info[name] = { what: deps.find((d) => d.what)?.what ?? null, purpose: deps[0]?.purpose ?? null, usage: deps.find((d) => d.usage)?.usage ?? null, mentions };
+  }
+  return info;
 }
 
 export function runRoutes(deps: RunRoutesDeps): Route[] {
@@ -448,15 +476,18 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const drafts = await fs.readdir(refineRoot(ws)).catch(() => [] as string[]);
     const questions: Array<{ itemKey: string | null; text: string }> = [];
     const needed = new Set<string>();
+    const declared: Array<{ id: string; deps: ExternalDependency[] }> = [];
     for (const id of drafts) {
       const events = await loadEvents(draftPaths(ws, id).events).catch(() => []);
       if (events.length === 0) continue;
       const state = reduceRefineEvents(events);
       questions.push(...state.questions.filter((q) => q.status === 'pending' && q.blocking).map((q) => ({ itemKey: q.itemKey ?? null, text: q.text })));
       for (const name of requiredSecretNames(state)) needed.add(name);
+      declared.push({ id, deps: declaredDependencies(state) });
     }
     const present = new Set(Object.keys(await loadSecrets(ws.secrets).catch(() => ({}))));
     const missingSecrets = [...needed].filter((name) => !present.has(name)).sort();
+    const secretInfo = await secretInfoOf(ws, missingSecrets, declared);
     // The root blocked tasks of each run: a task blocked on its own cause, read from the run's journal as it stands.
     const rootBlocks: Array<{ specId: string; taskId: string; reason: string }> = [];
     // The fix and deploy-fix tasks the orchestrator added to each spec's runs, counted apart from the planned tasks.
@@ -484,7 +515,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       const text = await fs.readFile(path.join(row.dir, 'docs', 'specs', spec.specId, 'task.md'), 'utf8').catch(() => '');
       taskLists.set(spec.specId, [...text.matchAll(/^## Task (\d+): (.+)$/gm)].map((m) => ({ taskId: `T${m[1]}`, title: m[2]!.trim() })));
     }
-    return { src: { ...src, questions, missingSecrets, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists };
+    return { src: { ...src, questions, missingSecrets, secretInfo, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists };
   };
   // The dashboard's input for one repository; the summary and each paged table read the same input.
   const dashboardInput = async (params: Record<string, string>) => {
@@ -499,6 +530,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       runs: repoRuns.filter((r) => ids.has(r.specId)),
       questions: detail.questions.map((q) => q.text),
       missingSecrets: detail.missingSecrets,
+      secretInfo: detail.secretInfo,
       programStops: detail.reasons.map((r) => ({ specId: r.specId, reason: r.reason })),
     };
   };
@@ -596,6 +628,24 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const table = DASHBOARD_TABLES.find((t) => t === params.table);
         if (!table) throw new HttpError(404, `unknown dashboard table ${params.table}`);
         json(200, dashboardPage(await dashboardInput(params), table, pageRequest(query)));
+      },
+    },
+    {
+      method: 'PUT',
+      path: `${P}/projects/:projectId/secrets/:name`,
+      handler: async ({ params, body, json }) => {
+        const name = params.name!;
+        if (!SECRET_NAME.test(name)) throw new HttpError(400, 'invalid secret name');
+        const value = str(await body(), 'value');
+        const { src } = await repoSource(params.projectId!);
+        if (!src?.missingSecrets?.includes(name)) throw new HttpError(404, `${name} is not a secret this project is missing`);
+        try {
+          await writeSecret(workspacePaths((await index()).cfg, params.projectId!, deps.home).secrets, name, value);
+        } catch (err) {
+          if (err instanceof RangeError) throw new HttpError(400, err.message);
+          throw err;
+        }
+        json(200, { present: true });
       },
     },
     {

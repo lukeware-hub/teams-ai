@@ -89,6 +89,15 @@ describe('refresh gate (plan 38)', () => {
     await Promise.all([runStep(request({ taskId: 'A' }), deps), runStep(request({ taskId: 'B' }), deps)]);
     expect((await fs.readFile(trace, 'utf8')).trim().split('\n')).toEqual(['start', 'end', 'start', 'end']);
   });
+
+  it('does not wait for a long step limit: a token with hours left lets steps run together', async () => {
+    await fs.writeFile(path.join(host, '.claude', '.credentials.json'), cred(NOW.getTime() + 120 * 60_000, 'r1'));
+    const trace = path.join(dir, 'trace.txt');
+    deps.binary = { ...deps.binary, env: { ...deps.binary.env, FAKE_TRACE: trace } };
+    deps.caps = { ...deps.caps, timeoutMs: 300 * 60_000 };
+    await Promise.all([runStep(request({ taskId: 'A' }), deps), runStep(request({ taskId: 'B' }), deps)]);
+    expect((await fs.readFile(trace, 'utf8')).trim().split('\n')).toEqual(['start', 'start', 'end', 'end']);
+  });
 });
 
 describe('createStepHome', () => {

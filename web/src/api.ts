@@ -227,7 +227,7 @@ export type GapsReport = { items: GapItem[] } | { unavailable: string };
 /** A doc section the user accepted as out of scope. */
 export interface GapDecision { doc: string; heading: string; note: string; at: string }
 /** A question a blocked run asked the owner, with its choices and the answer given to it, if any. */
-export interface RunDecision { taskId: string; question: string; options: Array<{ label: string; detail: string; recommended?: boolean }>; answer: string | null }
+export interface RunDecision { taskId: string; question: string; options: Array<{ label: string; detail: string; recommended?: boolean }>; answer: string | null; /** Set when the agents answered it themselves, since the owner lets them decide. */ answeredBy?: 'agents' }
 export interface Report {
   runId: string;
   specId: string;
@@ -334,6 +334,7 @@ export const runApi = {
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/specs?${pageQuery(req)}`).then((r) => json<Page<RepoSpecView>>(r)),
   repositoryDashboardTable: <T,>(projectId: string, repo: string, table: DashboardTable, req: PageRequest) =>
     fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/dashboard/${table}?${pageQuery(req)}`).then((r) => json<Page<T>>(r)),
+  saveSecret: (projectId: string, name: string, value: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(name)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) }).then((r) => json<{ present: true }>(r)),
   projects: () => fetch(`${R}/projects`).then((r) => json<ProjectRow[]>(r)),
   addProject: (url: string) => jsonPost('/projects', { url }).then((r) => json<ProjectRow>(r)),
   deleteProject: (projectId: string, deleteGithub: boolean) => fetch(`${R}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deleteGithub }) }).then((r) => json<{ deleted: true }>(r)),
@@ -679,7 +680,7 @@ export interface Snapshot {
   docs: { 'project.md': string; 'briefing.md': string; 'stack.md': string; 'flow.md': string; 'design.md': string };
   /** The sha256 of each document on disk: a save sends the one its text was typed over. */
   hashes?: Partial<Record<'project.md' | 'briefing.md' | 'stack.md' | 'flow.md' | 'design.md', string>>;
-  secrets: Array<{ name: string; present: boolean; hint: string | null; uses: Array<{ dependency: string; purpose: string }>; mentions: Array<{ doc: string; heading: string }> }>;
+  secrets: Array<{ name: string; present: boolean; hint: string | null; uses: Array<{ dependency: string; purpose: string; what?: string; usage?: string }>; mentions: Array<{ doc: string; heading: string }> }>;
   tokens: { inputTokens: number; outputTokens: number; costUsd: number; steps: number; graph?: { inputTokens: number; outputTokens: number; extractions: number } };
   /** The seq of the last journal event the state holds. */
   seq?: number;

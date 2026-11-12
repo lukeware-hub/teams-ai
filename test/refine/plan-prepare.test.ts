@@ -74,12 +74,12 @@ async function writePlan(req: AgentStepRequest<'speckit'>, text: (key: string) =
 }
 
 /** A wizard session whose backlog of two items is detailed, with each item's spec and pre-plan. */
-async function detailedSession(): Promise<RefineSession> {
+async function detailedSession(needs: Record<string, string[]> = {}): Promise<RefineSession> {
   const created = await RefineSession.create(deps(), 'new-project', { repositories: false });
   await created.enableBacklog();
   await created.close();
   const journal = await RefineJournal.open(draft().events, { projectId: 'hello-app', specId: 'hello-001' });
-  const item = (key: string, rank: number) => ({ key, title: `Item ${key}`, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: [], sources: [] });
+  const item = (key: string, rank: number) => ({ key, title: `Item ${key}`, epic: 'core', priority: 'must', rank, size: 'S', scope: 's', rationale: 'r', dependsOn: needs[key] ?? [], sources: [] });
   await journal.fact(RefineEvent.BacklogDerived, { project: null, epics: [], items: [item('login', 1), item('cart', 2)], cycle: 1 });
   for (const key of ['cart', 'login']) {
     const spec = makeSpec({ specId: key });
@@ -133,6 +133,16 @@ describe('RefineSession.runPlans waits for a current backlog', () => {
     const session = await detailedSession();
     await journalOf(session).fact(RefineEvent.PreplanDerived, { key: 'cart', inputHash: 'i', specRev: 'r', preplan: null, issues: ['falhou'], cycle: 2 });
     expect(() => session.runPlans()).toThrow(/cada item precisa do seu pré-plano/);
+  });
+});
+
+describe('RefineSession.runPlans carries the relations of the backlog', () => {
+  it('gives the pack of each item what it needs and what needs it', async () => {
+    const session = await detailedSession({ cart: ['login'] });
+    await session.runPlans();
+    const briefOf = (key: string) => agentCalls.find((req) => keyOf(req) === key)!.pack.specBrief;
+    expect(briefOf('cart')).toContain('Needs (finish these first): login');
+    expect(briefOf('login')).toContain('Needed by (do not break their contract): cart');
   });
 });
 

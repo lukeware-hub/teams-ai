@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Architecture, repositoryContext, type RepoKind } from '../contracts/architecture.js';
 import { loadEvents } from '../store/event-store.js';
+import type { SecretInfo } from './repository-dashboard.js';
 
 /** The run statuses that stop a spec: its run needs the owner. */
 export const BLOCKED_RUN: ReadonlySet<string> = new Set(['blocked', 'deadlocked', 'phase-failed']);
@@ -56,6 +57,8 @@ export interface RepoSource {
   questions?: Array<{ itemKey: string | null; text: string }>;
   /** The secrets the project's specs need that the vault does not hold, by name. */
   missingSecrets?: string[];
+  /** What each missing secret is, what it is for and where it is used, by name. */
+  secretInfo?: Record<string, SecretInfo>;
   /** The program items that stopped with a reason: a blocked, failed or partial spec. */
   programStops?: Array<{ specId: string; status: string; reason: string }>;
   /** The root blocked tasks of each run of the project: a task blocked on its own cause, not waiting on another. */
@@ -89,6 +92,7 @@ export interface RepoDetail extends RepoCard {
   rootBlocks: Array<{ specId: string; taskId: string; reason: string }>;
   questions: Array<{ itemKey: string | null; text: string }>;
   missingSecrets: string[];
+  secretInfo: Record<string, SecretInfo>;
 }
 
 /** The status a repository shows: the worst state among its specs, retired ones aside. */
@@ -139,7 +143,7 @@ export function repositoryDetail(src: RepoSource, name: string): RepoDetail | nu
   const card = cardOf(src, name);
   const ctx = repositoryContext(src.architecture, name);
   if (!card || !ctx) return null;
-  return { ...card, integrations: ctx.integrations, rows: rowsOf(src, name), rootBlocks: (src.rootBlocks ?? []).filter((b) => src.specs.some((r) => r.repository === name && r.specId === b.specId)), reasons: (src.programStops ?? []).filter((s) => src.specs.some((r) => r.repository === name && r.specId === s.specId)), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [] };
+  return { ...card, integrations: ctx.integrations, rows: rowsOf(src, name), rootBlocks: (src.rootBlocks ?? []).filter((b) => src.specs.some((r) => r.repository === name && r.specId === b.specId)), reasons: (src.programStops ?? []).filter((s) => src.specs.some((r) => r.repository === name && r.specId === s.specId)), questions: (src.questions ?? []).filter((q) => q.itemKey !== null && (src.specs.some((s) => s.repository === name && s.key === q.itemKey))), missingSecrets: src.missingSecrets ?? [], secretInfo: src.secretInfo ?? {} };
 }
 
 interface SpecIndexEntry {

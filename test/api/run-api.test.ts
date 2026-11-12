@@ -174,6 +174,12 @@ describe('projects', () => {
     expect(listed.find((p) => p.services)!.services).toEqual(registered.services);
   });
 
+  it('refuses to save a secret the project is not missing, and one with an invalid name', async () => {
+    const put = (name: string) => fetch(`${base()}/api/projects/hello-app/secrets/${name}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: 'a-long-secret-value' }) });
+    expect((await put('lower')).status).toBe(400);
+    expect((await put('NOT_MISSING')).status).toBe(404);
+  });
+
   it('registers a project once and refuses a directory without a valid project.json', async () => {
     const other = path.join(home, '.teams-ai', 'workspaces', 'proj');
     await fs.mkdir(path.join(other, 'docs', 'specs'), { recursive: true });
@@ -576,6 +582,27 @@ describe('start, resume, stop', () => {
     expect((await post({ decisions: [{ taskId: 'T1-a', answer: 'Go 1.26.9' }] })).status).toBe(200);
     const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
     expect(detail.decisions).toEqual([{ taskId: 'T1-a', question: 'Qual versão do Go?', options, answer: 'Go 1.26.9' }]);
+  });
+
+  it('shows a question the agents answered themselves as answered, saying who answered it', async () => {
+    const options = [{ label: 'Isentar do e2e', detail: 'Prova nos testes de unidade.' }, { label: 'Documentar a operação', detail: 'Publicar no stack.md.', recommended: true }];
+    await writeRun(
+      runs,
+      'hello-001-r1',
+      [
+        started('hello-001-r1'),
+        { type: 'DECISION_REQUESTED', data: { taskId: 'T1-a', reason: 'rounds', question: 'Isentar os critérios?', options } },
+        { type: 'DECISION_ANSWERED', data: { taskId: 'T1-a', question: 'Isentar os critérios?', answer: 'Documentar a operação', by: 'agents' } },
+        { type: 'DECISION_REQUESTED', data: { taskId: 'T2-b', reason: 'rounds', question: 'Outra dúvida?', options } },
+      ],
+      state('blocked'),
+      1,
+    );
+    const detail = await (await fetch(`${base()}/api/runs/hello-001-r1`)).json();
+    expect(detail.decisions).toEqual([
+      { taskId: 'T1-a', question: 'Isentar os critérios?', options, answer: 'Documentar a operação', answeredBy: 'agents' },
+      { taskId: 'T2-b', question: 'Outra dúvida?', options, answer: null },
+    ]);
   });
 
   it('complete refuses an unknown spec (404) and a spec not awaiting validation (409) without keeping the spec locked', async () => {

@@ -9,6 +9,6 @@ export function renderSpecMd(spec: Spec): string {
   parts.push('## Critérios de aceite', '', ...spec.acceptanceCriteria.map((c) => `- ${c.id}: Dado ${c.given}, quando ${c.when}, então ${c.then}`), '');
   if (spec.tasks?.length) parts.push('## Tarefas', '', ...spec.tasks.map((t) => `- ${t.title}: ${t.description}`), '');
   parts.push('## Fora do escopo', '', ...bullets(spec.outOfScope), '');
-  if (spec.externalDependencies.length > 0) parts.push('## Dependências externas', '', ...spec.externalDependencies.map((d) => `- ${d.name}: ${d.purpose}${d.secretNames.length > 0 ? ` (${d.secretNames.join(', ')})` : ''}`), '');
+  if (spec.externalDependencies.length > 0) parts.push('## Dependências externas', '', ...spec.externalDependencies.map((d) => `- ${d.name}: ${d.purpose}${d.what ? ` O que é: ${d.what}` : ''}${d.usage ? ` Onde é usado: ${d.usage}` : ''}${d.secretNames.length > 0 ? ` (${d.secretNames.join(', ')})` : ''}`), '');
   return parts.join('\n');
 }

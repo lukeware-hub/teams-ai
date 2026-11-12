@@ -195,7 +195,7 @@ export interface SecretRow {
   present: boolean;
   hint: string | null;
   /** The dependencies that need this secret, with what each one is for. */
-  uses: Array<{ dependency: string; purpose: string }>;
+  uses: Array<{ dependency: string; purpose: string; what?: string; usage?: string }>;
   /** The document sections that name this secret. */
   mentions: Array<{ doc: string; heading: string }>;
 }
@@ -480,7 +480,7 @@ export class RefineSession {
       name,
       present: name in present,
       hint: name in present ? '****' : null,
-      uses: dependencies.filter((d) => d.secretNames.includes(name)).map((d) => ({ dependency: d.name, purpose: d.purpose })),
+      uses: dependencies.filter((d) => d.secretNames.includes(name)).map((d) => ({ dependency: d.name, purpose: d.purpose, ...(d.what ? { what: d.what } : {}), ...(d.usage ? { usage: d.usage } : {}) })),
       mentions: sectionsMentioning(docs, name),
     }));
     const tokens = { inputTokens: 0, outputTokens: 0, costUsd: 0, steps: 0 };
@@ -1294,7 +1294,8 @@ export class RefineSession {
       this.running = null;
       this.abortCtl = null;
     });
-    this.running = run.then(() => undefined);
+    // The caller gets the failure from `await run` below; waiting for the step must not raise it a second time.
+    this.running = run.then(() => undefined, () => undefined);
     const ids = await run;
     // Only what the PO wrote into the documents decides the question; with nothing written it stays for the owner.
     const reasons = this.state.patches.filter((p) => ids.includes(p.patchId) && p.status === 'accepted').map((p) => p.reason);

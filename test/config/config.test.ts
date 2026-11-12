@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { automaticSettingsOf, ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, agentsDecideFor, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
+import { automaticSettingsOf, ConfigError, DEFAULT_CONFIG, TIMER_MAX_MS, agentsDecideFor, graphArmOf, graphOffFor, loadConfig, stepBudgetFor, stepModelFor } from '../../server/config/config.js';
 
 describe('stepModelFor', () => {
   it("gives a services plan the plan's model unless it has its own, since both plan the run", () => {
@@ -90,6 +90,38 @@ describe('loadConfig', () => {
     expect(agentsDecideFor(cfg, 'demo')).toBe(true);
     expect(agentsDecideFor(cfg, 'other')).toBe(false);
     expect(agentsDecideFor(cfg, 'constructor')).toBe(false);
+  });
+});
+
+describe('graphOffFor', () => {
+  it('lists the step kinds a project turned the graph off for, and none for any other name', () => {
+    expect(graphOffFor(loadConfig({}), 'demo')).toEqual([]);
+    const cfg = loadConfig({ graphOff: { demo: ['speckit', 'dev'] } });
+    expect(graphOffFor(cfg, 'demo')).toEqual(['speckit', 'dev']);
+    expect(graphOffFor(cfg, 'other')).toEqual([]);
+    expect(graphOffFor(cfg, 'constructor')).toEqual([]);
+  });
+});
+
+describe('graphArmOf', () => {
+  const ids = Array.from({ length: 40 }, (_, i) => `spec-${i}`);
+
+  it('puts no spec in the experiment unless the project lists kinds, and keeps the manual list for all', () => {
+    expect(graphArmOf(loadConfig({}), 'demo', 'a')).toEqual({ off: [], arm: null });
+    expect(graphArmOf(loadConfig({ graphOff: { demo: ['dev'] } }), 'demo', 'a')).toEqual({ off: ['dev'], arm: null });
+  });
+
+  it('splits the specs of a project between the two arms, always the same way for one spec, and turns the kinds off only in the control arm', () => {
+    const cfg = loadConfig({ graphOff: { demo: ['gaps'] }, graphAb: { demo: ['dev', 'review'] } });
+    const arms = ids.map((id) => graphArmOf(cfg, 'demo', id));
+    expect(arms.filter((a) => a.arm === 'control').length).toBeGreaterThan(5);
+    expect(arms.filter((a) => a.arm === 'graph').length).toBeGreaterThan(5);
+    for (const a of arms) expect(a.off).toEqual(a.arm === 'control' ? ['gaps', 'dev', 'review'] : ['gaps']);
+    expect(ids.map((id) => graphArmOf(cfg, 'demo', id).arm)).toEqual(arms.map((a) => a.arm));
+  });
+
+  it('leaves other projects out of the experiment', () => {
+    expect(graphArmOf(loadConfig({ graphAb: { demo: ['dev'] } }), 'other', 'spec-1').arm).toBeNull();
   });
 });
 

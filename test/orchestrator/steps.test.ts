@@ -251,6 +251,23 @@ describe('packs', () => {
     expect(reviewPack(base, task, review).feedback).not.toContain('earlier findings');
   });
 
+  it('the review lists the Dev deviations as recorded and adds nothing without them', () => {
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const feedback = reviewPack(base, task, { ...review, deviations: ['Dockerfile uses Go 1.27.4 because of GO-2026-6859.'] }).feedback;
+    expect(feedback).toContain('they count as recorded, so never ask to record them in the plan or in any file under docs/');
+    expect(feedback).toContain('- Dockerfile uses Go 1.27.4 because of GO-2026-6859.');
+    expect(reviewPack(base, task, { ...review, deviations: [] }).feedback).toBe(reviewPack(base, task, review).feedback);
+    expect(reviewPack(base, task, review).feedback).not.toContain('departures');
+  });
+
+  it('the review carries the SM answers on the task,so it does not ask for what the SM ruled out', () => {
+    const review = { diffStat: '', changedFiles: [], diff: '', junit: [], code: { source: 'none' as const }, profile: 'standard' as const };
+    const answered = reviewPack(base, task, { ...review, answers: [{ question: 'Which write route?', answer: 'Do not create AppendAuditEvent.' }] }).feedback;
+    expect(answered).toContain('The SM answered these questions on this task; they bind the change, so never ask for what they rule out');
+    expect(answered).toContain('Q: Which write route?\nA: Do not create AppendAuditEvent.');
+    expect(reviewPack(base, task, { ...review, answers: [] }).feedback).toBe(reviewPack(base, task, review).feedback);
+  });
+
   // R11.7.6: the Dev and the Test engineer read the owner's answers the frozen spec carries.
   it("dev, tech-spec and review packs carry the spec's decisions, and a spec without them adds none", () => {
     const decided: PackBase = { ...base, spec: { ...spec, decisions: [{ question: 'O total inclui frete?', answer: 'Sim.' }] } };
@@ -416,6 +433,18 @@ describe('specGapPack', () => {
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('overrule it');
   });
 
+  it('tells the SM to settle a document-versus-code conflict by research, with the code following the choice and no edit of docs/', () => {
+    const decides = specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback;
+    expect(decides).toContain('Research the official documentation');
+    expect(decides).toContain('never tell the Dev to edit a file under docs/');
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('Research the official documentation');
+  });
+
+  it('asks for owner choices that never need a file under docs/ to change, and only when the agents decide', () => {
+    expect(blockOptionsPack(base, task, { reason: 'r', autonomous: true }).feedback).toContain('no choice may need a file under docs/ to change');
+    expect(blockOptionsPack(base, task, { reason: 'r' }).feedback).not.toContain('under docs/');
+  });
+
   it('offers the SM an image change for a version bump only when the owner lets the agents decide', () => {
     expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('imageFix');
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('imageFix');
@@ -480,6 +509,54 @@ describe('runAgentStep', () => {
     d.graphAccess = undefined;
     await runAgentStep(req, d);
     expect(prompts[2]).not.toContain('Graph access');
+  });
+
+  it('offers no graph to a step kind the project turned off, and still offers it to the others', async () => {
+    const prompts: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push(req.prompt);
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.graphAccess = { projectGraph: '/ws/p/graph/project/graphify-out/graph.json' };
+    d.graphOff = ['dev'];
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    await runAgentStep({ kind: 'dev', role: 'dev', pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(prompts[0]).not.toContain('Graph access');
+    d.graphOff = ['review'];
+    await runAgentStep({ kind: 'dev', role: 'dev', pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(prompts[1]).toContain('Graph access');
+  });
+
+  it('adds the brief of the spec to the pack of a step the graph is offered to, and keeps the one a pack brings', async () => {
+    const prompts: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push(req.prompt);
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.specBrief = async () => '- Service: billing-api';
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    const req = { kind: 'dev' as const, role: 'dev' as const, pack, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 };
+    await runAgentStep(req, d);
+    expect(prompts[0]).toContain('## Spec relations (from the graph)\n- Service: billing-api');
+    await runAgentStep({ ...req, pack: { ...pack, specBrief: '- Service: own-api' } }, d);
+    expect(prompts[1]).toContain('own-api');
+    expect(prompts[1]).not.toContain('billing-api');
+  });
+
+  it('leaves the brief out of a step kind the project turned the graph off for, even one its pack carries', async () => {
+    const prompts: string[] = [];
+    const d = await deps(async () => ({ ok: true, value: {}, summary: summary() }));
+    d.runStep = (async (req) => {
+      prompts.push(req.prompt);
+      return { ok: true, value: { specHash: HASH, status: 'done', summary: 'ok', changedFiles: [], commitMessage: 'feat: x' }, summary: summary() };
+    }) as AgentStepDeps['runStep'];
+    d.specBrief = async () => '- Service: billing-api';
+    d.graphOff = ['dev'];
+    const pack = devPack(base, task, { code: { source: 'none' }, handoffs: [], feedback: null });
+    await runAgentStep({ kind: 'dev', role: 'dev', pack: { ...pack, specBrief: '- Service: own-api' }, cwd: dir, phase: 'phase3', taskId: 'T1', attempt: 1 }, d);
+    expect(prompts[0]).not.toContain('Spec relations');
   });
 
   it('offers no graph to the architecture and backlog steps, whose prompt already holds the documents', async () => {

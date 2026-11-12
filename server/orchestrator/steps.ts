@@ -242,12 +242,16 @@ export function resumedPack(text: string): ContextPack {
 export function reviewPack(
   base: PackBase,
   task: PlanTask,
-  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }>; languageCheck?: string },
+  opts: { diffStat: string; changedFiles: readonly string[]; diff: string; junit: readonly TestResult[]; code: CodeContext; profile: ReviewProfile; priorFindings?: ReadonlyArray<{ file: string; line: number | null; problem: string }>; languageCheck?: string; answers?: ReadonlyArray<{ question: string; answer: string }>; deviations?: readonly string[] },
 ): ContextPackInput {
   const prior = (opts.priorFindings ?? []).slice(0, REVIEW_PRIOR_LINES).map((f) => `- ${f.file}${f.line === null ? '' : `:${f.line}`} ${f.problem}`);
   if ((opts.priorFindings?.length ?? 0) > REVIEW_PRIOR_LINES) prior.push(`- ... ${(opts.priorFindings?.length ?? 0) - REVIEW_PRIOR_LINES} more`);
   const history = prior.length > 0 ? `\n\nYour earlier findings on this task (the Dev applied them; do not reverse one without saying which and why):\n${prior.join('\n')}` : '';
-  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".${history}`;
+  const answered = (opts.answers ?? []).map((a) => `Q: ${a.question}\nA: ${a.answer}`);
+  const answers = answered.length > 0 ? `\n\nThe SM answered these questions on this task; they bind the change, so never ask for what they rule out:\n${answered.join('\n\n')}` : '';
+  const declared = (opts.deviations ?? []).map((d) => `- ${d}`);
+  const deviations = declared.length > 0 ? `\n\nThe Dev declared these departures from the plan; they count as recorded, so never ask to record them in the plan or in any file under docs/, which the Dev cannot edit:\n${declared.join('\n')}` : '';
+  const feedback = `Review profile: ${opts.profile}\n\nA finding that the change contradicts the implementation plan of its spec gets category "plan"; every other finding gets category "code".${history}${answers}${deviations}`;
   const results = opts.junit.slice(0, REVIEW_JUNIT_LINES).map((t) => `- ${t.id} [${t.status}]${t.acIds.length > 0 ? ` ${t.acIds.join(', ')}` : ''}`);
   if (opts.junit.length > REVIEW_JUNIT_LINES) results.push(`- ... ${opts.junit.length - REVIEW_JUNIT_LINES} more`);
   // The merge gates already ran the suite on this exact diff: the reviewer reads their result instead of re-running it (R11.13 slice 2).
@@ -418,10 +422,13 @@ export function planPack(
   };
 }
 
+/** A technical conflict (a version, a library, a flag) is the agents' to settle; a build task never edits docs/, so no answer may depend on it. */
+const TECHNICAL_CONFLICT_RULE = 'When a technical detail of stack.md (a pinned version with a known vulnerability, an incompatible library, a removed flag) fails, settle it yourself; the product, the flow, the requirements and the chosen technologies in the documents never change. Research the official documentation, the release notes and the code before you answer, and pick the choice that passes the gates. The code follows that choice; never tell the Dev to edit a file under docs/, because build tasks cannot change it. Name the document line that now differs in the assumption.';
+
 export function specGapPack(base: PackBase, task: PlanTask, opts: { question: string; overrule?: boolean; frozenPaths: readonly string[]; gates?: ReadonlyArray<{ name: string; command: string }> }): ContextPackInput {
   // The commands the gates run now, after every gateFix already applied: a fix that repeats one of them changes nothing.
   const gates = opts.gates && opts.gates.length > 0 ? `\n\nGate commands the orchestrator runs now (a gateFix equal to one of them is already applied):\n${opts.gates.map((g) => `- ${g.name}: ${g.command}`).join('\n')}` : '';
-  const overrule = opts.overrule ? '\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.' : '';
+  const overrule = opts.overrule ? `\n\nThe owner lets the agents decide. When an owner decision cannot be met in this environment, overrule it: name that decision and the reason in the assumption.\n\n${TECHNICAL_CONFLICT_RULE}` : '';
   const frozen = opts.frozenPaths.length > 0 ? `\n\nPaths in frozenPaths (${opts.frozenPaths.join(', ')}) are rejected by the orchestrator in every task after the scaffold; never tell the Dev to change one, and never overrule this.` : '';
   const gateFix = '\n\nWhen the question shows that a blocking gate command in the plan is wrong (the code is right, the command cannot pass, for example a sed that leaves a number empty), answer with gateFix: the gate name and the whole corrected command on one line, keeping the same check. The orchestrator applies it, journaled, and the Dev runs again with it. Leave gateFix out of every other answer, and never write a gate result file by hand.';
   const imageFix = opts.overrule ? '\n\nWhen your answer moves the toolchain to a newer version (a patched Go that a dependency scan asks for), also answer with imageFix: the whole new gate image reference, same repository and flavour, for example golang:1.27.2-bookworm to golang:1.27.3-bookworm. The orchestrator then runs the install and the gates in it; without it the Dev\'s new version cannot run there. In the answer, name the files the Dev moves to the same version.' : '';
@@ -429,13 +436,14 @@ export function specGapPack(base: PackBase, task: PlanTask, opts: { question: st
 }
 
 /** The owner's question for a block the agents cannot finish: one question and 2 to 4 choices the repository can carry out. */
-export function blockOptionsPack(base: PackBase, task: PlanTask, opts: { reason: string }): ContextPackInput {
+export function blockOptionsPack(base: PackBase, task: PlanTask, opts: { reason: string; autonomous?: boolean }): ContextPackInput {
+  const docs = opts.autonomous ? ' Because the agents take the recommended choice, no choice may need a file under docs/ to change: the Dev cannot edit it.' : '';
   return {
     ...common(base, 'block-options', 'sm'),
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,
-    feedback: `The Dev cannot finish this task as written:\n${opts.reason}\n\nWrite one question for the owner in Brazilian Portuguese (pt-BR), in plain words, and 2 to 4 choices the agents can carry out inside this repository. Each choice has a short label, a detail in one sentence with its cost or risk, and at most one is recommended. Never ask for a credential or a value only the owner has.`,
+    feedback: `The Dev cannot finish this task as written:\n${opts.reason}\n\nWrite one question for the owner in Brazilian Portuguese (pt-BR), in plain words, and 2 to 4 choices the agents can carry out inside this repository. Each choice has a short label, a detail in one sentence with its cost or risk, and at most one is recommended. Never ask for a credential or a value only the owner has.${docs}`,
   };
 }
 
@@ -632,6 +640,10 @@ export interface AgentStepDeps {
   agentsDecide?: () => Promise<boolean>;
   /** The graphs the agent may query; added to the pack of every step unless the request brings its own. */
   graphAccess?: GraphAccess;
+  /** Step kinds not offered the graph, set per project to compare their cost with the steps that are. */
+  graphOff?: readonly string[];
+  /** What the graph's relations say about the spec of the run, added to the pack of every step the graph is offered to. */
+  specBrief?: () => Promise<string>;
   specHash: string;
 }
 
@@ -648,7 +660,12 @@ export async function runAgentStep<K extends StepKind>(req: AgentStepRequest<K>,
   const sessionStore = req.session && req.taskId && deps.sessionDir ? deps.sessionDir(req.taskId) : undefined;
   const resume = req.session !== undefined && sessionStore !== undefined && (await hasSession(sessionStore, req.session.id, req.cwd));
   // A lean step reads only the context in its prompt: the graph is not offered to it.
-  const pack = resume ? resumedPack(req.session!.resumePrompt) : buildContextPack(deps.graphAccess && !req.pack.graphAccess && !isLean(req) ? { ...req.pack, graphAccess: deps.graphAccess } : req.pack);
+  // A step the project turned the graph off for gets neither the graphs nor the brief of its spec, so the two groups compare cleanly.
+  const offered = !isLean(req) && !deps.graphOff?.includes(req.kind);
+  const brief = !resume && offered && !req.pack.specBrief ? await deps.specBrief?.().catch(() => '') : '';
+  const pack = resume
+    ? resumedPack(req.session!.resumePrompt)
+    : buildContextPack({ ...req.pack, ...(deps.graphAccess && !req.pack.graphAccess && offered ? { graphAccess: deps.graphAccess } : {}), ...(brief ? { specBrief: brief } : offered ? {} : { specBrief: undefined }) });
   const dir = deps.stepDir(seq);
   await fs.mkdir(dir, { recursive: true });
   const profile = deps.profile(req.role);

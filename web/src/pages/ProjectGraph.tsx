@@ -5,6 +5,7 @@ import { Breadcrumb } from '../components/Breadcrumb.js';
 import { Loading } from '../components/Loading.js';
 import { projectPath } from '../routes.js';
 import { GraphCanvas } from './graph/GraphCanvas.js';
+import { GraphHealth } from './graph/GraphHealth.js';
 import { action, panel, plural, sectionHeading, when } from './project-shared.js';
 
 /** Communities listed one by one; the rest share a single "Outras" line. */
@@ -57,6 +58,8 @@ export function ProjectGraph() {
   const [fileUrl, setFileUrl] = useState<string | null | undefined>(undefined);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+  // The list of communities starts open beside the map and closed under it on a phone.
+  const wide = useMemo(() => window.matchMedia?.('(min-width: 1024px)').matches ?? true, []);
 
   // The nodes with no link start turned off: they are most of the picture and tell little, and one tick brings them back.
   const first = useRef(true);
@@ -76,6 +79,8 @@ export function ProjectGraph() {
     void load();
   }, [load]);
 
+  // The age of the graph is read against the moment the view arrived, so it does not shift while the page is open.
+  const asOf = useMemo(() => Date.now(), [view]);
   const map = view?.map;
   const communities = map?.communities ?? [];
   const listed = communities.slice(0, LISTED);
@@ -168,18 +173,20 @@ export function ProjectGraph() {
       ) : null}
       {view?.available && map ? (
         <>
-          <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
-            {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
-          </p>
-          <p data-testid="graph-queries" className="m-0 text-[0.875rem] text-ink-soft">{queriesLine(view.usage.queries)}</p>
-          {view.usage.queries.steps >= ALERT_STEPS && view.usage.queries.total === 0 ? (
-            <p data-testid="graph-queries-none" className="m-0 text-[0.875rem] text-ink" role="status">
-              {`Nenhum agente consultou o grafo nos últimos ${view.usage.queries.steps} passos. O contexto entregue pelo sistema continua chegando.`}
+          <GraphHealth view={view} now={asOf}>
+            <p data-testid="graph-usage" className="m-0 text-[0.875rem] text-ink-soft">
+              {`Uso pelos agentes: ${view.usage.graph} pelo grafo · ${view.usage.grep} por busca de texto · ${view.usage.none} sem contexto de código`}
             </p>
-          ) : null}
+            <p data-testid="graph-queries" className="m-0 text-[0.875rem] text-ink-soft">{queriesLine(view.usage.queries)}</p>
+            {view.usage.queries.steps >= ALERT_STEPS && view.usage.queries.total === 0 ? (
+              <p data-testid="graph-queries-none" className="m-0 text-[0.875rem] text-ink" role="status">
+                {`Nenhum agente consultou o grafo nos últimos ${view.usage.queries.steps} passos. O contexto entregue pelo sistema continua chegando.`}
+              </p>
+            ) : null}
+          </GraphHealth>
           {map.truncated ? <p data-testid="graph-truncated" className="m-0 text-[0.8125rem] text-ink-soft">{`O mapa mostra os ${map.nodes.length} nós mais ligados de ${view.nodes}.`}</p> : null}
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            <div className="grid min-w-0 gap-3">
+            <div className="grid min-w-0 gap-3 max-lg:order-2 lg:col-start-1 lg:row-span-2 lg:row-start-1">
               <GraphCanvas nodes={map.nodes} links={map.links} colorOf={color} hidden={hidden} selected={selected} matches={matchedIds} onSelect={setSelected} />
               {picked ? (
                 <section data-testid="graph-node-detail" className={`${panel} gap-2`}>
@@ -200,7 +207,7 @@ export function ProjectGraph() {
                 </section>
               ) : null}
             </div>
-            <aside data-testid="graph-communities" className={`${panel} content-start gap-3 lg:max-h-[calc(60vh+8rem)] lg:overflow-auto`}>
+            <section data-testid="graph-search-box" className={`${panel} content-start gap-2 max-lg:order-1 lg:col-start-2 lg:row-start-1`}>
               <label className="grid gap-1">
                 <span className="sr-only">Buscar nó</span>
                 <input data-testid="graph-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar nó pelo nome" className="w-full min-w-0" />
@@ -215,14 +222,21 @@ export function ProjectGraph() {
                   {matched.length > SEARCH_ROWS ? <li className="px-2 text-[0.75rem] text-ink-soft">{`e mais ${matched.length - SEARCH_ROWS}`}</li> : null}
                 </ul>
               ) : query.trim() !== '' ? <p className="m-0 text-[0.8125rem] text-ink-soft">Nenhum nó com esse nome.</p> : null}
-              <label className="flex items-center gap-2 text-[0.875rem] font-semibold text-ink">
+            </section>
+            <details data-testid="graph-communities" open={wide} className={`${panel} group content-start gap-3 max-lg:order-3 lg:col-start-2 lg:row-start-2 lg:max-h-[calc(60vh+4rem)] lg:overflow-auto`}>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <span className={sectionHeading}>{`Comunidades (${communities.length})`}</span>
+                <span className="link-button text-[0.8125rem] group-open:hidden lg:hidden">Mostrar</span>
+                <span className="link-button hidden text-[0.8125rem] group-open:max-lg:inline">Ocultar</span>
+              </summary>
+              <label className="flex items-center gap-2 text-[0.875rem] font-semibold text-ink max-lg:min-h-11">
                 <input data-testid="graph-select-all" type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" ref={(el) => { if (el) el.indeterminate = hidden.size > 0 && hidden.size < communities.length; }} checked={hidden.size === 0} onChange={toggleAll} />
                 Selecionar todas
               </label>
               <ul className="m-0 grid list-none gap-1 p-0">
                 {listed.map((c, i) => (
                   <li key={c.id}>
-                    <label className="flex items-center gap-2 text-[0.8125rem] text-ink">
+                    <label className="flex items-center gap-2 text-[0.8125rem] text-ink max-lg:min-h-11">
                       <input data-testid={`graph-community-${c.id}`} type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" checked={!hidden.has(c.id)} onChange={() => toggle([c.id])} />
                       <span aria-hidden="true" className="size-2.5 flex-none rounded-full" style={{ background: colorFor(i) }} />
                       <span className="min-w-0 flex-1 wrap-anywhere">{c.name}</span>
@@ -232,7 +246,7 @@ export function ProjectGraph() {
                 ))}
                 {others.length > 0 ? (
                   <li>
-                    <label className="flex items-center gap-2 text-[0.8125rem] text-ink">
+                    <label className="flex items-center gap-2 text-[0.8125rem] text-ink max-lg:min-h-11">
                       <input data-testid={`graph-community-${OTHERS}`} type="checkbox" className="m-0 size-4 min-w-0 flex-none p-0" ref={(el) => { if (el) el.indeterminate = others.some((c) => hidden.has(c.id)) && !others.every((c) => hidden.has(c.id)); }} checked={others.some((c) => !hidden.has(c.id))} onChange={() => toggle(others.map((c) => c.id))} />
                       <span aria-hidden="true" className="size-2.5 flex-none rounded-full" style={{ background: GREY }} />
                       <span className="min-w-0 flex-1">{`Outras (${others.length})`}</span>
@@ -241,7 +255,7 @@ export function ProjectGraph() {
                   </li>
                 ) : null}
               </ul>
-            </aside>
+            </details>
           </div>
         </>
       ) : null}

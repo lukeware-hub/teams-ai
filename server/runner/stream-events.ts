@@ -93,6 +93,12 @@ export interface StepProfile {
   skills?: Record<string, number>;
   /** Times the agent ran graphify query, explain or path in the step; absent on steps recorded before it was counted. */
   graphQueries?: number;
+  /** Of those graph queries, the ones that found nothing or failed; present only when the step queried the graph. */
+  graphEmpty?: number;
+  /** Of those graph queries, the ones whose answer the token budget cut; present only when the step queried the graph. */
+  graphTruncated?: number;
+  /** Characters the graph queries returned; present only when the step queried the graph. */
+  graphResultChars?: number;
   /** Characters of tool results the agent read back, a proxy for the context a tool adds per turn. */
   toolResultChars: number;
   /** A tool result said the CLI's own sandbox could not start (the agent may report it in any language, the tool result does not). */
@@ -254,30 +260,50 @@ const textLength = (content: unknown): number => {
 const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
 
 const GRAPH_QUERY = /^\s*graphify\s+(?:query|explain|path)(?:\s|$)/;
+const GRAPH_TRUNCATED = /\[!\] TRUNCATED/;
+const GRAPH_NOTHING = /^\s*(?:No node matching|No path|No matches|Error)|Traceback/i;
+/** An answer shorter than this holds no node line. */
+const GRAPH_MIN_ANSWER = 30;
 
-function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'skills' | 'graphQueries' | 'toolResultChars' | 'sandboxInitFailed'> {
+type GraphFigures = Pick<StepProfile, 'graphEmpty' | 'graphTruncated' | 'graphResultChars'>;
+
+function toolActivity(events: readonly StreamEvent[]): Pick<StepProfile, 'toolCalls' | 'skills' | 'graphQueries' | 'toolResultChars' | 'sandboxInitFailed'> & GraphFigures {
   const toolCalls: Record<string, number> = {};
   const skills: Record<string, number> = {};
+  const graphCalls = new Set<string>();
   let toolResultChars = 0;
   let graphQueries = 0;
+  let graphEmpty = 0;
+  let graphTruncated = 0;
+  let graphResultChars = 0;
   let sandboxInitFailed = false;
   for (const e of events) {
     if (e.type !== 'assistant' && e.type !== 'user') continue;
     const content = (e as { message?: { content?: unknown } }).message?.content;
     if (!Array.isArray(content)) continue;
-    for (const block of content as Array<{ type?: string; name?: string; input?: { skill?: unknown; command?: unknown }; content?: unknown }>) {
+    for (const block of content as Array<{ type?: string; id?: string; tool_use_id?: string; name?: string; input?: { skill?: unknown; command?: unknown }; content?: unknown }>) {
       if (block?.type === 'tool_use' && typeof block.name === 'string') {
         toolCalls[block.name] = (toolCalls[block.name] ?? 0) + 1;
         const skill = block.input?.skill;
         if (block.name === 'Skill' && typeof skill === 'string') skills[skill] = (skills[skill] ?? 0) + 1;
-        if (block.name === 'Bash' && typeof block.input?.command === 'string' && GRAPH_QUERY.test(block.input.command)) graphQueries++;
+        if (block.name === 'Bash' && typeof block.input?.command === 'string' && GRAPH_QUERY.test(block.input.command)) {
+          graphQueries++;
+          if (typeof block.id === 'string') graphCalls.add(block.id);
+        }
       } else if (block?.type === 'tool_result') {
         toolResultChars += textLength(block.content);
         if (SANDBOX_INIT_FAILURE.test(JSON.stringify(block.content ?? ''))) sandboxInitFailed = true;
+        if (typeof block.tool_use_id === 'string' && graphCalls.has(block.tool_use_id)) {
+          const answer = resultText(block.content);
+          graphResultChars += answer.length;
+          if (answer.trim().length < GRAPH_MIN_ANSWER || GRAPH_NOTHING.test(answer)) graphEmpty++;
+          if (GRAPH_TRUNCATED.test(answer)) graphTruncated++;
+        }
       }
     }
   }
-  return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), graphQueries, toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
+  const graph: GraphFigures = graphQueries > 0 ? { graphEmpty, graphTruncated, graphResultChars } : {};
+  return { toolCalls, ...(Object.keys(skills).length > 0 ? { skills } : {}), graphQueries, ...graph, toolResultChars, ...(sandboxInitFailed ? { sandboxInitFailed } : {}) };
 }
 
 /** The text of a tool result: a string, or the text parts of a list. */

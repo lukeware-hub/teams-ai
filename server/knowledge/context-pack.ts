@@ -45,6 +45,8 @@ export interface ContextPackInput {
   assumptions?: readonly string[];
   handoffs?: readonly HandoffSummary[];
   code?: CodeContext;
+  /** What the graph's relations say about the spec the step works on; rendered in every pack that has one and never dropped (it is short by construction). */
+  specBrief?: string;
   /** Where the agent finds the graphs; rendered in every pack and never dropped, so the agent always knows the brain exists. */
   graphAccess?: GraphAccess;
   retrieval?: readonly Hit[];
@@ -78,6 +80,7 @@ export const SECTION_ORDER = [
   'adrs',
   'assumptions',
   'handoffs',
+  'spec-brief',
   'code',
   'graph-access',
   'retrieval',
@@ -92,6 +95,8 @@ export const NEVER_DROP: readonly Section[] = ['principles', 'contract', 'task',
 /** Drop order when over budget. */
 const DROP_ORDER: readonly Section[] = ['retrieval', 'code', 'adrs', 'tech-spec', 'objectives', 'handoffs', 'assumptions', 'current-docs'];
 
+/** The answer budget a graph query asks for: the graph's default of 2000 tokens cut 63% of the answers the agents measured, and the cut nodes were often the ones that mattered. */
+export const GRAPH_QUERY_BUDGET = 4000;
 const MAX_HANDOFFS = 6;
 const HANDOFF_SUMMARY_CHARS = 400;
 
@@ -108,11 +113,11 @@ function renderGraphAccess(access: GraphAccess, task: PlanTask | undefined): str
   if (files.length === 0) return null;
   const main = access.projectGraph ?? access.repoGraph!;
   const ready = task
-    ? [`- graphify query "${plain(task.title)}" --graph ${main}`, ...task.affectedPaths.slice(0, 2).map((p) => `- graphify explain "${plain(p.split('/').pop() ?? p)}" --graph ${main}`)].filter((q) => !q.includes('""'))
+    ? [`- graphify query "${plain(task.title)}" --graph ${main} --budget ${GRAPH_QUERY_BUDGET}`, ...task.affectedPaths.slice(0, 2).map((p) => `- graphify explain "${plain(p.split('/').pop() ?? p)}" --graph ${main}`)].filter((q) => !q.includes('""'))
     : [];
   return [
     '## Graph access (the brain)',
-    'Query the graph before you edit, review, plan or write a document: it holds what the project knows. Use graphify query "<question>" --graph <file>, also graphify explain "<node>" and graphify path "<A>" "<B>".',
+    `Query the graph before you edit, review, plan or write a document: it holds what the project knows. Use graphify query "<question>" --graph <file> --budget ${GRAPH_QUERY_BUDGET}, also graphify explain "<node>" and graphify path "<A>" "<B>".`,
     ...files,
     ...(ready.length ? ['Ready queries for this step:', ...ready] : []),
   ].join('\n');
@@ -156,6 +161,7 @@ function render(input: ContextPackInput): Map<Section, string> {
         .join('\n')}`,
     );
   }
+  if (input.specBrief) out.set('spec-brief', `## Spec relations (from the graph)\n${input.specBrief}`);
   if (input.code && input.code.source !== 'none') {
     if (input.code.source === 'graph') {
       const nodes = (input.code.nodes ?? []).map((n) => `- ${n.label} — ${n.file}${n.line ? `:${n.line}` : ''}`);

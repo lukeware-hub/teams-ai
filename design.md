@@ -1423,13 +1423,7 @@ Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua sp
 └───────────────────────────────────────────────────────┘
 ┌ Precisa de você ─── só quando algo espera o dono ─────┐
 └───────────────────────────────────────────────────────┘
-┌ Itens do backlog ───────────── 88 specs · detalhado ──┐
-│ [72 seções] [88 itens] [88 specs] [1025 critérios]    │
-│ [567 tarefas] [3 lacunas]                             │
-│ ▸ Contratos e eventos                              3  │
-│ ▸ Identidade e tenancy                             1  │
-└───────────────────────────────────────────────────────┘
-┌ Progresso do backlog ─────────────────────────── 62% ─┐
+┌ Progresso do backlog ⓘ ───────────────────────── 62% ─┐
 │ ███████████░░░░░░░░   Faltam 38%   Tempo 41:12        │
 │ ✓ Documentos                                          │
 │ ✓ Specs                                    23 de 23   │
@@ -1444,6 +1438,12 @@ Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua sp
 │ Última avaliação: 4 min · US$ 0,40 · 1 item refeito…  │
 │ Total do refinamento: US$ 12,30                       │
 └───────────────────────────────────────────────────────┘
+┌ Itens do backlog ───────────── 88 specs · detalhado ──┐
+│ [72 seções] [88 itens] [88 specs] [1025 critérios]    │
+│ [567 tarefas] [3 lacunas]                             │
+│ ▸ Contratos e eventos                              3  │
+│ ▸ Identidade e tenancy                             1  │
+└───────────────────────────────────────────────────────┘
 ───────────────────────────────────────────────────────── (rodapé)
 7577 chamadas · 77507562 tokens …
         [ Preparar backlog ]  [ Iniciar desenvolvimento ]
@@ -1451,15 +1451,15 @@ Os agentes quebram os cinco documentos em itens do backlog, cada um com a sua sp
 
 | Elemento | Especificação |
 |---|---|
-| Progresso do backlog | Um quadro no fim da etapa, logo antes do rodapé com as chamadas e os tokens. O título leva o percentual feito; abaixo dele a barra (`progressbar`), `Faltam N%` e o tempo desde que a etapa começou a ser preparada. Uma linha por verificação do fechamento, na ordem: Documentos, Specs, Planos, Tarefas (só em sessão de repositórios), Arquitetura, Dependências, Perguntas. Feito: ícone `check` em `good`. Em andamento: `clock` em `warn`, com `X de Y` quando conta itens. Pendente: `chevron-right` em cinza. Com divergência ou erro: `alert` em `warn`, com o motivo curto. O estado nunca é só cor. |
+| Progresso do backlog | Um quadro antes dos itens do backlog, logo abaixo do alerta e de `Precisa de você`. O título leva o ícone `info` com o que o percentual conta. O título leva o percentual feito; abaixo dele a barra (`progressbar`), `Faltam N%` e o tempo desde que a etapa começou a ser preparada. Uma linha por verificação do fechamento, na ordem: Documentos, Specs, Planos, Tarefas (só em sessão de repositórios), Arquitetura, Dependências, Perguntas. Feito: ícone `check` em `good`. Em andamento: `clock` em `warn`, com `X de Y` quando conta itens. Pendente: `chevron-right` em cinza. Com divergência ou erro: `alert` em `warn`, com o motivo curto. O estado nunca é só cor. |
 | Percentual | Só dados reais: unidades feitas ÷ unidades esperadas. Unidades: Documentos, Dependências, Arquitetura e Perguntas valem 1 cada; cada item vale 1 em Specs, 1 em Planos e 1 em Tarefas. Vai a 99% no máximo enquanto o fechamento não estiver completo. |
-| Agora | O que roda neste momento: o plano ou a lista de tarefas de cada item, a decisão da arquitetura ou os passos da avaliação, com o tempo de cada um. Até 4 linhas e `e mais N`. Sem nada rodando e com pendência: `Parado: falta …`. |
+| Agora | O que roda neste momento: o plano ou a lista de tarefas de cada item, a decisão da arquitetura ou os passos da avaliação, com o tempo de cada um. Até 4 linhas e `e mais N`. Sem nada rodando e com pendência: `Parado: falta …`. Com o plano da Claude sem cota, a linha `Aguardando a cota do Claude até HH:MM` (ícone `clock`, `warn`) entra ao lado do tempo e as linhas de `Agora` trocam o círculo girando por um relógio, porque nada está sendo executado. |
 | Última avaliação | `Última avaliação: X min · US$ Y · N itens refeitos, M reaproveitados`. |
 | Total | `Total do refinamento: US$ Z`. |
 | Repetição | Só quando a última avaliação começou no mesmo texto da anterior: aviso em `warn`, ícone `alert`, `nada mudou nos documentos`. |
 | Precisa de você | Só aparece quando algo espera o dono. Junta as perguntas do PO e do SM, as perguntas dos planos (escondidas enquanto os planos estão sendo preparados) e as perguntas repetidas que não foram feitas de novo. |
 | Itens do backlog | O único card da etapa, sempre aberto: a cobertura (§26.8.1) e a lista de itens por épico. |
-| Falta para iniciar | Um alerta no topo da etapa, logo abaixo do título e da introdução e antes dos cards. Borda e fundo `warn`, ícone `alert`, título `Falta para iniciar o desenvolvimento` e uma linha por pendência (backlog, perguntas obrigatórias, `specs.md` e planos), com o texto em `ink`. Some quando nada mais fecha `Iniciar desenvolvimento`. O rodapé fica só com os botões. |
+| Falta para iniciar | Um alerta no topo da etapa, logo abaixo do título e da introdução e antes dos cards. Borda e fundo `warn`, ícone `alert`, título `Falta para iniciar o desenvolvimento` e uma linha por pendência (backlog, perguntas obrigatórias, `specs.md` e planos), com o texto em `ink`. Some quando nada mais fecha `Iniciar desenvolvimento`. Abaixo da lista diz quem resolve: com a autonomia dos agentes ligada, `Quem resolve: os agentes` e o botão `Deixar os agentes resolverem`; desligada, `Quem resolve: você` e para onde ir (Precisa de você ou Configurações). Sem a configuração carregada, só a lista. O rodapé fica só com os botões. |
 | Pedido de continuação | A tela de um pedido (`Detalhes do time`) continua com os cards `Planos de implementação` e `Verificação` abaixo dos itens. |
 
 ### 26.16 Revisão opcional (todas as etapas)
@@ -1491,7 +1491,7 @@ Not yet pinned by a reference. Until one exists, they inherit Part I and §25 wi
 
 - **Projects** — breadcrumb `⌂ › Projetos`, one panel per project or a table (§11.16) where the count exceeds a screen. The actions of a project card (`Excluir`, `Nova spec`, `Graphify`, `Abrir`) stand one under the other in a single column of full-width buttons, at every screen width. Empty state per §11.11, sectional form.
 - **Run** — breadcrumb `⌂ › Projetos › <project> › <run>`, a phase timeline using chips (§11.4), a task list using rows (§11.10), the terminal (§11.15), and the meta line (§11.12) for tokens and cost. The existing `.phase`, `.test` and `.status-pill` classes all collapse into the one chip family.
-- **Blocked run: the owner's question** — when a block asks the owner, the banner's "Próximo passo" row holds a radio group (the shared `OptionGroup`, as in the refinement questions: one option tagged "Recomendada", and "Outra resposta…" with a text box) and one primary button, "Decidir e continuar". Reprocessar is secondary while a question is open. The question comes from the Scrum Master's `block-options` step, which runs only when the owner decides blocks (the switch is No) and asks for two to four choices the repository can carry out. Its rules live in the step's pack and in the Scrum Master's agent file.
+- **Blocked run: the owner's question** — when a block asks the owner, the banner's "Próximo passo" row holds a radio group (the shared `OptionGroup`, as in the refinement questions: one option tagged "Recomendada", and "Outra resposta…" with a text box) and one primary button, "Decidir e continuar". Reprocessar is secondary while a question is open. The question comes from the Scrum Master's `block-options` step, which asks for two to four choices the repository can carry out; its rules live in the step's pack and in the Scrum Master's agent file. When the Dev's doubt survives the Scrum Master's three answers, the step runs for every project. With "Autorizo os agentes a tomar decisões?" at Sim, the agents take the recommended choice themselves, the task goes on and the banner lists each one under `Decidido pelos agentes`, one line `pergunta → resposta`; a task asks at most twice, and the third time it fails its attempt as before. With the switch at Não the task stays blocked and the question waits for the owner as described above. A question the agents could not answer stays open and shows the same radio group and "Decidir e continuar", also when the switch is Sim.
 - **Project hub** (`/projects/:projectId`) — section headings are H2. Services are a grid of links to their repositories: one column on a phone, up to eight on a wide screen. The specs are one list in groups by who must act next: `Precisam de você`, `Em andamento`, `Prontas`, `Concluídas`; a group with no spec is left out. While a backlog runs, the specs card leaves out the `planejada` rows, because the panel "Specs do backlog" lists them; the running or interrupted spec stays with its `Abrir execução` button, and with no backlog running the planned rows show as before. Each row has one primary action. The new spec form uses the app's own fields and buttons: a padded textarea, a 40px input, `Cancelar` as the secondary action and the primary action at the right.
 - **Info buttons** — a section or counter whose meaning is not obvious carries the app's `InfoTip` after its title, with one or two plain sentences; a title that says everything gets none. The project hub explains its counters (executions, in progress, total cost), runs, documents, repositories and the decisions panel; the repository page explains agent activity, deliveries per spec, failures, blockers and runs.
 - **Link buttons** — the label of a `.link-button` is centered, also when the button grows to the minimum button width.
@@ -1638,6 +1638,7 @@ The user-provided reference images 2 and 3 are the approved visual target for `/
 - Keep the secrets and token summary at the bottom. `Iniciar análise` is the panel's primary action and occupies the full available width.
 - Surface the current analysis cost immediately below the quality-panel header in a highlighted summary: steps, tokens, and USD cost. Cost visibility is part of the primary workspace hierarchy, not a footer detail.
 - Render secrets as compact key/value rows with an `Adicionar segredo` action. Accept any valid uppercase environment-style key, support multiple rows, never echo stored values, and keep saving controls aligned with the panel grid.
+- On the repository dashboard, `Bloqueios` lists each missing secret as a collapsed row: the key name and the status `Não salvo`. Opening it shows what the secret is, what it is for, where it is used and the document sections that name it, then an optional password field with `Salvar` and the note `Opcional. O valor fica neste computador e não é mostrado de novo.` A fact the specs did not provide is left out, never invented. A failed save keeps the typed value and shows the error under the field; a saved secret leaves the list.
 
 ### 30.5 Interaction and accessibility
 
@@ -1972,3 +1973,27 @@ O grafo (graphify) é o cérebro do Teams AI. Cada projeto tem o seu, em `/graph
 
 - Todo passo de agente, na entrega e no refinamento, recebe a seção `Graph access`: o caminho do grafo do projeto e do repositório e, em um passo de tarefa, consultas prontas. A seção nunca é cortada por falta de espaço. O chat conhece só o projeto aberto e diz isso quando a pergunta é sobre outro projeto.
 - Um run cria o grafo do projeto antes da primeira tarefa quando ele não existe, esperando no máximo 90 segundos.
+
+### 36.3 Saúde do grafo (proposta, aguardando aprovação do dono)
+
+Um painel acima de `Uso pelos agentes` diz, em uma olhada, se o grafo está ajudando. Ele estende o visual da tela de refinamento: painel de vidro escuro, chips, o gradiente só no botão principal.
+
+- Cabeçalho do painel: título `Saúde do grafo`, um chip com o veredito e uma frase com o motivo. O veredito é `Funcionando`, `Degradado` ou `Sem dados`, e nunca depende só da cor: o chip leva ícone e texto.
+- `Sem dados`: o grafo não existe, ou nenhum passo mediu consultas ainda.
+- `Degradado`, com o motivo dito na frase: a última atualização falhou; o grafo tem mais de 2 horas; metade ou mais das consultas medidas voltou vazia (com 10 consultas medidas ou mais); o projeto tem specs e o grafo não tem nenhuma ligação entre elas.
+- `Funcionando`: nenhum dos motivos acima.
+- Quatro medidas em linha, uma por bloco: `Idade` (`Atualizado há 12 min`), `Ligações entre specs` (`137 depende de · 81 plano · 81 serviço · 136 origem · 8 falhas parecidas`), `Consultas úteis` (`87% de 41 consultas`; com `0 consultas`, diz `nenhuma consulta medida`) e `Comunidades` (`366`).
+- Abaixo, `Com grafo × sem grafo`: uma linha por tipo de passo do experimento (`dev`, `review`, `security`), com `Custo por passo`, `Leituras de arquivo por passo` e `Passos e specs` (quantos passos e quantas specs diferentes cada grupo tem), cada uma com o valor com grafo, o valor sem grafo e a diferença em porcentagem (`-18%` quer dizer que o grafo custou menos). O grupo é escolhido por spec, então poucas specs misturam o efeito do grafo com o tamanho delas: com menos de 10 passos ou menos de 5 specs em algum grupo, a linha diz `Poucos passos ou poucas specs: ainda não conclui`, por maior que seja a diferença. Sem nenhum passo, o bloco diz `O experimento acumula conforme as rodadas terminam.`
+- Celular: as quatro medidas empilham em duas colunas e a tabela vira uma lista, um bloco por tipo de passo.
+- Estados: carregando, erro de leitura (o painel some e fica a mensagem que a tela já tem), sem grafo.
+
+### 36.4 Primeira dobra e uso no celular (aprovada pelo dono)
+
+O mapa é o motivo da tela e aparece na primeira dobra, no desktop e no celular. Nada abre à frente dele.
+
+- Faixa de estado, logo abaixo do cabeçalho: uma linha com o chip do veredito, a idade do grafo e `Consultas úteis`, e o botão `Ver saúde do grafo`. É o painel de §36.3 fechado.
+- Painel de saúde: fechado por padrão. Ao abrir, mostra o conteúdo de §36.3 e, no fim, as linhas `Uso pelos agentes` e `Consultas feitas pelos agentes`. O botão leva `aria-expanded` e muda para `Ocultar saúde do grafo`.
+- Desktop: o mapa e a coluna de busca e comunidades ficam lado a lado logo abaixo da faixa. A lista de comunidades começa aberta.
+- Celular: a busca fica acima do mapa; o mapa vem em seguida; o nó escolhido e a lista de comunidades ficam embaixo. A lista de comunidades começa fechada, com o título `Comunidades (N)`.
+- Alvos de toque de pelo menos 44 px nos botões e nas caixas da lista de comunidades.
+- Estados: os de §36 e §36.3; a faixa de estado some junto com o painel quando o grafo não existe.

@@ -62,6 +62,14 @@ describe('Spec', () => {
     expect(plain.externalDependencies[0]).not.toHaveProperty('generated');
   });
 
+  it('accepts what a secret is and where it is used, and a spec without them keeps its hash', () => {
+    const plain = Spec.parse({ ...makeSpec(), externalDependencies: [{ name: 'db', purpose: 'dados', secretNames: ['DATABASE_URL'] }] });
+    const described = Spec.parse({ ...makeSpec(), externalDependencies: [{ name: 'db', purpose: 'dados', what: 'Endereço do banco', usage: 'Serviço de pedidos', secretNames: ['DATABASE_URL'] }] });
+    expect(described.externalDependencies[0]).toMatchObject({ what: 'Endereço do banco', usage: 'Serviço de pedidos' });
+    expect(plain.externalDependencies[0]).not.toHaveProperty('what');
+    expect(computeSpecHash(described)).not.toBe(computeSpecHash(plain));
+  });
+
   it('rejects malformed acceptance criterion ids', () => {
     const result = Spec.safeParse({
       ...makeSpec(),

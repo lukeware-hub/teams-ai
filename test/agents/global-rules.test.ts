@@ -25,6 +25,11 @@ describe('global rules', () => {
     expect(GLOBAL_RULES).toContain('the document wins');
   });
 
+  it('let only a failing technical detail of stack.md yield, never the direction of the documents', () => {
+    expect(GLOBAL_RULES).toContain('Only a technical detail of stack.md');
+    expect(GLOBAL_RULES).toContain('Product, flow, requirements and chosen technologies never change');
+  });
+
   it('stay within the size a system prompt can carry', () => {
     expect(GLOBAL_RULES.length).toBeLessThanOrEqual(6000);
   });

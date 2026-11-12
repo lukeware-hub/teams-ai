@@ -15,6 +15,7 @@ export interface StepRow {
   kind: string;
   role: string;
   model: string | null;
+  effort: string | null;
   attempt: number;
   ok: boolean | null;
   failure: string | null;
@@ -190,7 +191,7 @@ export function pausedUntil(events: StoredEvent[]): string | null {
   return until;
 }
 
-const startedStep = (d: Record<string, unknown>, tier: string | null = null): StepRow => ({ stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, attempt: Number(d.attempt), ok: null, failure: null, usage: null, durationMs: null, tier });
+const startedStep = (d: Record<string, unknown>, tier: string | null = null): StepRow => ({ stepId: String(d.stepId), kind: String(d.kind), role: String(d.role), model: typeof d.model === 'string' ? d.model : null, effort: typeof d.effort === 'string' ? d.effort : null, attempt: Number(d.attempt), ok: null, failure: null, usage: null, durationMs: null, tier });
 const finishStep = (s: StepRow, d: Record<string, unknown>) => Object.assign(s, { ok: Boolean(d.ok), failure: (d.failure as string | null) ?? null, usage: d.usage ? add(zero(), d.usage as Usage, (d.costUsd as number | null) ?? null) : null, durationMs: Number(d.durationMs ?? 0) });
 /** A task's branch is task/<specId>-<taskId>; runs before readable ids used task/<specId>/<taskId>. */
 const isTaskBranch = (branch: string, taskId: string): boolean => branch.startsWith('task/') && (branch.endsWith(`-${taskId}`) || branch.endsWith(`/${taskId}`));

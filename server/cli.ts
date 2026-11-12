@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadAgents } from './agents/registry.js';
-import { agentsDecideFor, loadConfig, slotSettingOf, stepBudgetFor, type Config, type Slot } from './config/config.js';
+import { agentsDecideFor, graphOffFor, loadConfig, slotSettingOf, stepBudgetFor, type Config, type Slot } from './config/config.js';
 import { Project } from './contracts/project.js';
 import { generatedSecretNames, Spec } from './contracts/spec.js';
 import { writeFileAtomic } from './core/atomic-write.js';
@@ -13,6 +13,7 @@ import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
 import { docGraphContext, extractDocs } from './knowledge/doc-graph.js';
+import { readRunJournals } from './knowledge/failure-memory.js';
 import { buildLocatedProjectGraphOnce, ensureFreshGraph, locateProject, projectMainDocs, rebuildProjectGraph, setBrainSource } from './knowledge/project-graph.js';
 import { openProjectKnowledge } from './knowledge/project-docs.js';
 import { isFirstSpec } from './orchestrator/first-spec.js';
@@ -138,7 +139,8 @@ async function startUiReal(port: number, io: CliIo): Promise<{ port: number; clo
     graphAccess: async (projectId) => {
       const projectGraph = graphFile(path.posix.join(workspacePaths((await readUserConfig()).cfg, projectId).graph, 'project'));
       return existsSync(projectGraph) ? { projectGraph } : {};
-    } });
+    },
+    graphOff: async (projectId) => graphOffFor((await readUserConfig()).cfg, projectId) });
   /** The model and effort a project's chat or graphify setting fixes in Settings. */
   const slotSettingIn = async (projectId: string, slot: Slot) => slotSettingOf((await readUserConfig()).cfg.agentSettings[projectId] ?? {}, slot);
   const projectDirOf = async (projectId: string): Promise<string | null> => {
@@ -394,6 +396,8 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   if (errors.length > 0) throw new Error(`preconditions failed:\n- ${errors.join('\n- ')}`);
   const agents = await loadAgents(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.claude', 'agents'));
   const graphify = new Graphify({ exec, readFile: (p) => fs.readFile(p, 'utf8').catch(() => null) });
+  // The graph a run rebuilds keeps the notes of the runs; the chat is the UI process's, so a rebuild here leaves it out until the UI builds again.
+  setBrainSource(async (projectId) => ({ runs: await readRunJournals(expandHome(cfg.paths.runs), projectId), chat: null }));
   // A `--draft` first run's workspace root (ws.root, parent of knowledgeDb) doesn't exist yet — Phase 0
   // creates ws.repo underneath it — so ensure it exists before SQLite tries to open a file inside it.
   await fs.mkdir(ws.root, { recursive: true });

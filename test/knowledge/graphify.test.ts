@@ -2,7 +2,7 @@ import { promises as fs, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Graphify, MIN_COVERAGE, grepFallback, parseAffected, parseGodNodes, parseQuery } from '../../server/knowledge/graphify.js';
+import { Graphify, MIN_COVERAGE, grepFallback, parseAffected, parseGodNodes, parseQuery, pruneGraph } from '../../server/knowledge/graphify.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
 const fx = (name: string) => readFileSync(path.resolve(`test/fixtures/graphify/${name}`), 'utf8');
@@ -84,8 +84,15 @@ describe('Graphify', () => {
   it('returns empty results instead of throwing when graphify fails', async () => {
     const fake = new FakeExec().on((s) => s.bin === 'graphify', () => ({ exitCode: 1, stderr: 'no graph' }));
     const g = new Graphify({ exec: fake.exec, readFile: files({}) });
-    expect(await g.query('/ws/graph', 'x', 100)).toEqual({ nodes: [], truncated: false, text: '' });
+    expect(await g.query('/ws/graph', 'x', 100)).toEqual({ nodes: [], truncated: false, text: '', failed: 'exit 1: no graph' });
     expect(await g.affected('/ws/graph', 'x', 1)).toEqual([]);
+  });
+
+  it('tells a graphify that failed from a question the graph could not answer', async () => {
+    const asked = new Graphify({ exec: new FakeExec().onArgs('graphify', ['query'], () => ({ stdout: 'Graph: g.json (3 nodes)\nnothing found' })).exec, readFile: files({}) });
+    const found = await asked.query('/ws/graph', 'x', 100);
+    expect(found.nodes).toEqual([]);
+    expect(found).not.toHaveProperty('failed');
   });
 });
 
@@ -165,6 +172,66 @@ describe('Graphify.update concurrency', () => {
     release();
     await Promise.all([first, second]);
     expect(order).toEqual(['graphify', 'move', 'graphify', 'move']);
+  });
+});
+
+describe('pruneGraph', () => {
+  const graph = JSON.stringify({
+    directed: true,
+    nodes: [{ id: 'a', source_file: 'docs/a.md' }, { id: 'b', source_file: 'src/b.ts' }, { id: 'c', source_file: '.claude/hooks/c.cjs' }],
+    links: [{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }, { source: { id: 'b' }, target: { id: 'b' } }],
+  });
+
+  it('drops the nodes of the skipped folders and the links that touch them, and keeps the rest of the graph', () => {
+    const pruned = JSON.parse(pruneGraph(graph, ['.claude/', 'docs/'])!);
+    expect(pruned.directed).toBe(true);
+    expect(pruned.nodes.map((n: { id: string }) => n.id)).toEqual(['b']);
+    expect(pruned.links).toHaveLength(1);
+  });
+
+  it('returns the text itself when nothing is skipped or it is not a graph, and null when no node is left', () => {
+    expect(pruneGraph(graph, ['other/'])).toBe(graph);
+    expect(pruneGraph('{not json', ['docs/'])).toBe('{not json');
+    expect(pruneGraph('{}', ['docs/'])).toBe('{}');
+    expect(pruneGraph(JSON.stringify({ nodes: [{ id: 'a', source_file: 'docs/a.md' }], links: [] }), ['docs/'])).toBeNull();
+  });
+});
+
+describe('merge skips', () => {
+  it('leaves the skipped folders out of a staged graph, and a graph left empty out of the merge', async () => {
+    const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-skip-'))).replace(/\\/g, '/');
+    const fake = new FakeExec();
+    const docsOnly = JSON.stringify({ nodes: [{ id: 'a', source_file: 'docs/a.md' }], links: [] });
+    const mixed = JSON.stringify({ nodes: [{ id: 'a', source_file: 'docs/a.md' }, { id: 'b', source_file: 'src/b.ts' }, { id: 'c', source_file: '.claude/x.cjs' }], links: [] });
+    const g = new Graphify({ exec: fake.exec, readFile: async (p) => (p.includes('docs-repo') ? docsOnly : p.includes('code-repo') ? mixed : null) });
+    const ok = await g.merge([{ dir: path.join(out, 'docs-repo'), name: 'central', skip: ['docs/'] }, { dir: path.join(out, 'code-repo'), name: 'api' }], path.join(out, 'project'));
+    expect(ok).toBe(true);
+    // The central graph held only documents, so one graph is left: it is copied, not merged.
+    expect(fake.calls).toHaveLength(0);
+    expect(JSON.parse(await fs.readFile(`${out}/project/graphify-out/graph.json`, 'utf8')).nodes.map((n: { id: string }) => n.id)).toEqual(['a', 'b']);
+    await fs.rm(out, { recursive: true, force: true });
+  });
+});
+
+describe('update and cluster', () => {
+  it('takes the Claude settings of the repository out of the graph it wrote', async () => {
+    const out = (await fs.mkdtemp(path.join(os.tmpdir(), 'graphify-update-'))).replace(/\\/g, '/');
+    const file = `${out}/graphify-out/graph.json`;
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ nodes: [{ id: 'a', source_file: '.claude/hooks/a.cjs' }, { id: 'b', source_file: 'src/b.ts' }], links: [] }));
+    const g = new Graphify({ exec: new FakeExec().exec, readFile: async (p) => fs.readFile(p, 'utf8').catch(() => null), moveDir: async () => undefined });
+    await g.update('/ws/repo', out);
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).nodes.map((n: { id: string }) => n.id)).toEqual(['b']);
+    await fs.rm(out, { recursive: true, force: true });
+  });
+
+  it('asks graphify to group the nodes without naming the groups by a model, and says whether it worked', async () => {
+    const fake = new FakeExec();
+    const g = new Graphify({ exec: fake.exec, readFile: async () => null });
+    expect(await g.cluster('/ws/graph/project')).toBe(true);
+    expect(fake.lines('graphify')[0]).toBe('cluster-only /ws/graph/project --no-viz --no-label');
+    const failing = new Graphify({ exec: new FakeExec().on((s) => s.bin === 'graphify', () => ({ exitCode: 2, stderr: 'boom' })).exec, readFile: async () => null });
+    expect(await failing.cluster('/ws/graph/project')).toBe(false);
   });
 });
 

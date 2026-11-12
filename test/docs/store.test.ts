@@ -248,6 +248,14 @@ describe('ownership', () => {
     expect(await showFile(store.dir, 'HEAD', 'docs/specify/alpha/spec.md')).toBe('three\n');
   });
 
+  it('retires the folder of an alias that moved to another service', async () => {
+    store = await openStore(ws, 'microservices', execCommand);
+    await commitProjection(store, flush({ 'docs/billing-api/specify/alpha/spec.md': 'one\n' }));
+    await commitProjection(store, flush({ 'docs/web-bff/specify/alpha/spec.md': 'one\n' }));
+    expect(await exists('docs/billing-api/specify/alpha/spec.md')).toBe(false);
+    expect(await exists('docs/web-bff/specify/alpha/spec.md')).toBe(true);
+  });
+
   it('refuses a frozen alias even to the draft that owns it', async () => {
     await commitProjection(store, flush(spec('alpha', 'one\n')));
     const r = await commitProjection(store, flush(spec('alpha', 'two\n'), { frozen: ['alpha'] }));

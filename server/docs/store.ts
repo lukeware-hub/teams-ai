@@ -266,8 +266,18 @@ async function decide(c: Ctx, p: Projection, files: ProjectedFile[]): Promise<De
     if (await canWrite(folder)) decision.retire.push(folder);
     else decision.aliasTaken.push(path.posix.basename(folder));
   }
+  for (const folder of await movedFolders(c, decision.accepted)) if (!decision.retire.includes(folder) && (await canWrite(folder))) decision.retire.push(folder);
   decision.aliasTaken = [...new Set(decision.aliasTaken)];
   return decision;
+}
+
+/** The folders of an alias being written that sit under another service: a spec whose repository changed leaves its old folder behind. */
+async function movedFolders(c: Ctx, accepted: readonly ProjectedFile[]): Promise<string[]> {
+  if (c.store.style !== 'microservices') return [];
+  const written = new Set(accepted.map((f) => path.posix.dirname(f.path)).filter((folder) => isAliasFolder('microservices', folder)));
+  const aliases = new Set([...written].map((folder) => path.posix.basename(folder)));
+  const held = new Set((await specFilesAt(c.store, 'HEAD')).map((p) => path.posix.dirname(p)));
+  return [...held].filter((folder) => !written.has(folder) && aliases.has(path.posix.basename(folder)));
 }
 
 /** Writes the files atomically and stages exactly those paths. */

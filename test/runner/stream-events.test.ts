@@ -131,6 +131,25 @@ describe('summarizeStream step profile', () => {
     expect(profile.toolCalls).toEqual({ Bash: 6 });
   });
 
+  it('counts the graph queries that found nothing, were cut by the budget, and the characters returned', () => {
+    const use = (id: string, command: string) => JSON.stringify({ type: 'assistant', message: { id, content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
+    const out = (id: string, text: string) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: [{ type: 'text', text }] }] } });
+    const nodes = 'NODE Handler [src=a.ts loc=L1 community=]\nNODE Other [src=b.ts loc=L2 community=]';
+    const text = [
+      use('q1', 'graphify query "a" --graph g.json'), out('q1', nodes),
+      use('q2', 'graphify explain main.go'), out('q2', "No node matching 'main.go' found."),
+      use('q3', 'graphify query "b"'), out('q3', `[!] TRUNCATED: showing 1 of 9 nodes\n${nodes}`),
+      use('q4', 'npm test'), out('q4', 'ok'),
+    ].join('\n');
+    const profile = summarizeStream(parseStreamJson(text)).profile!;
+    expect(profile).toMatchObject({ graphQueries: 3, graphEmpty: 1, graphTruncated: 1 });
+    expect(profile.graphResultChars).toBe(nodes.length + "No node matching 'main.go' found.".length + nodes.length + '[!] TRUNCATED: showing 1 of 9 nodes\n'.length);
+  });
+
+  it('leaves the graph figures out of a step that did not query the graph', () => {
+    expect(summarizeStream(parseStreamJson(fixture('real-turns'))).profile).not.toHaveProperty('graphEmpty');
+  });
+
   it('records zero graph queries when the agent asked the graph nothing', () => {
     expect(summarizeStream(parseStreamJson(fixture('real-turns'))).profile!.graphQueries).toBe(0);
   });

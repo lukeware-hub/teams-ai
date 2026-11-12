@@ -583,8 +583,9 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
   const autonomous = detail.agentsDecide === true;
-  // The owner's questions still open: none when the agents decide, since they never ask.
-  const pendingDecisions = autonomous ? [] : (detail.decisions ?? []).filter((d) => d.answer === null);
+  // The questions still open, also when the agents decide: they answer the ones they can, and what they could not is the owner's.
+  const pendingDecisions = (detail.decisions ?? []).filter((d) => d.answer === null);
+  const decidedByAgents = (detail.decisions ?? []).filter((d) => d.answeredBy === 'agents');
   const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase, autonomous });
   const before = stop ? stopBefore(status, blocked, autonomous) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
@@ -844,6 +845,21 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         </dt>
                         <dd data-testid="run-outcome-owner-value">{ownerChip(pendingDecisions.length ? 'Você' : stop.owner, 'outcome-owner')}</dd>
                       </div>
+                      {decidedByAgents.length > 0 ? (
+                        <div data-testid="run-outcome-decided">
+                          <dt data-testid="run-outcome-decided-term">Decidido pelos agentes</dt>
+                          <dd className="m-0">
+                            <ul className="m-0 grid list-none gap-2 p-0">
+                              {decidedByAgents.map((d) => (
+                                <li key={`${d.taskId}-${d.question}`} data-testid="run-outcome-decided-item" className="grid gap-0.5">
+                                  <span>{d.question}</span>
+                                  <span className="text-ink-soft">{`→ ${d.answer}`}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </dd>
+                        </div>
+                      ) : null}
                       <div data-testid="run-outcome-next">
                         <dt data-testid="run-outcome-next-term">Próximo passo</dt>
                         <dd data-testid="run-outcome-next-value">

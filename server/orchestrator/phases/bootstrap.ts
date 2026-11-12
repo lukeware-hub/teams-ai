@@ -37,10 +37,15 @@ async function missingSnapshotFile(docs: DocsRun, spec: Pick<Spec, 'specId' | 'r
   const service = docs.style === 'microservices' ? spec.repository : undefined;
   const files = [...FIVE_DOC_PATHS, repoPath(docs.style, 'plan', spec.specId, service), repoPath(docs.style, 'task', spec.specId, service)];
   for (const file of files) if (!(await exists(path.join(docs.snapshot, file)))) return file;
-  for (const folder of await specFoldersOf(docs.snapshot)) {
+  const folders = await specFoldersOf(docs.snapshot);
+  for (const folder of folders) {
     for (const kind of ['plan', 'task'] as const) {
       const file = `${folder}/${SPEC_FILES[kind]}`;
-      if (!(await exists(path.join(docs.snapshot, file)))) return file;
+      if (await exists(path.join(docs.snapshot, file))) continue;
+      // A stale copy of a spec that moved to another service is no gap while that service's folder holds the file.
+      const sameAlias = folders.filter((other) => other !== folder && path.posix.basename(other) === path.posix.basename(folder));
+      const held = await Promise.all(sameAlias.map((other) => exists(path.join(docs.snapshot, other, SPEC_FILES[kind]))));
+      if (!held.includes(true)) return file;
     }
   }
   return null;

@@ -34,6 +34,8 @@ export interface PlanPackInput {
   repair?: string | null;
   /** The part of the document graph about the spec, when the graph has something. */
   graphContext?: string;
+  /** What the backlog's relations say about the spec: its service, what it needs and what needs it. */
+  specBrief?: string;
   /** The repository the spec changes, in a stamped draft: its plan names it in the header. */
   repository?: RepositoryContext;
 }
@@ -78,7 +80,7 @@ ${input.graphContext}`] : []),
     ...(input.repair ? [input.repair] : []),
     ...(input.adjust ? [ADJUST_NOTE] : []),
   ].join('\n\n');
-  return { kind: 'speckit', role: 'dev', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000, decisions: input.decisions };
+  return { kind: 'speckit', role: 'dev', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000, decisions: input.decisions, ...(input.specBrief ? { specBrief: input.specBrief } : {}) };
 }
 
 export interface TaskPackInput {
@@ -95,6 +97,8 @@ export interface TaskPackInput {
   repair?: string | null;
   /** The part of the document graph about the spec, when the graph has something. */
   graphContext?: string;
+  /** What the backlog's relations say about the spec: its service, what it needs and what needs it. */
+  specBrief?: string;
 }
 
 /** The task list of one spec: QA writes it from the plan in the staging folder, one entry per plan task, each proven by its criteria. */
@@ -114,5 +118,5 @@ ${input.graphContext}`] : []),
     ...(input.repository ? [repositoryNote(input.repository)] : []),
     ...(input.repair ? [input.repair] : []),
   ].join('\n\n');
-  return { kind: 'speckit', role: 'test', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000 };
+  return { kind: 'speckit', role: 'test', specHash: input.specHash, principles: [], outputContract: outputContract('speckit'), criteria: [], feedback, budgetTokens: 8_000, ...(input.specBrief ? { specBrief: input.specBrief } : {}) };
 }

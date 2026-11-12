@@ -66,6 +66,33 @@ export function parseGodNodes(text: string): Array<{ label: string; edges: numbe
   return out;
 }
 
+/** Folders no graph holds: a repository's Claude settings are tooling for its agents, not part of the product. */
+export const GRAPH_SKIP: readonly string[] = ['.claude/'];
+
+interface RawGraph {
+  nodes?: Array<{ id: string; source_file?: string }>;
+  links?: Array<{ source: unknown; target: unknown }>;
+}
+
+const endOf = (end: unknown): unknown => (typeof end === 'object' && end !== null ? (end as { id?: unknown }).id : end);
+
+/** The graph text without the nodes of the skipped folders and the links that touch them; null when no node is left, the text itself when nothing is skipped or it is not a graph. */
+export function pruneGraph(raw: string, skip: readonly string[]): string | null {
+  let graph: RawGraph;
+  try {
+    graph = JSON.parse(raw) as RawGraph;
+  } catch {
+    return raw;
+  }
+  if (!Array.isArray(graph.nodes)) return raw;
+  const gone = new Set(graph.nodes.filter((n) => typeof n.source_file === 'string' && skip.some((prefix) => n.source_file!.startsWith(prefix))).map((n) => n.id));
+  if (gone.size === 0) return raw;
+  const nodes = graph.nodes.filter((n) => !gone.has(n.id));
+  if (nodes.length === 0) return null;
+  const links = (graph.links ?? []).filter((l) => !gone.has(endOf(l.source) as string) && !gone.has(endOf(l.target) as string));
+  return JSON.stringify({ ...graph, nodes, links });
+}
+
 export interface GraphifyDeps {
   exec: Exec;
   readFile: (absolutePath: string) => Promise<string | null>;
@@ -94,13 +121,34 @@ export class Graphify {
     return path.posix.join(outDir.replace(/\\/g, '/'), 'graphify-out', 'graph.json');
   }
 
-  private async run(args: string[], cwd?: string): Promise<string> {
+  /** The output of a graphify command, and why it failed when it did: a failure and an answer with nothing in it are not the same. */
+  private async runChecked(args: string[], cwd?: string): Promise<{ text: string; failed?: string }> {
     try {
       const r = await this.deps.exec({ bin: 'graphify', args, cwd, timeoutMs: TIMEOUT });
-      return r.exitCode === 0 ? r.stdout : '';
-    } catch {
-      return '';
+      return r.exitCode === 0 ? { text: r.stdout } : { text: '', failed: `exit ${r.exitCode}: ${r.stderr.trim().slice(-200)}` };
+    } catch (err) {
+      return { text: '', failed: (err as Error).message.slice(0, 200) };
     }
+  }
+
+  private async run(args: string[], cwd?: string): Promise<string> {
+    return (await this.runChecked(args, cwd)).text;
+  }
+
+  /** Takes the skipped folders out of the graph an update wrote; a graph left with no node is removed, so a merge leaves it out. */
+  private async prune(outDir: string, skip: readonly string[]): Promise<void> {
+    const file = this.graphPath(outDir);
+    const raw = await this.deps.readFile(file);
+    if (raw === null) return;
+    const text = pruneGraph(raw, skip);
+    if (text === raw) return;
+    if (text === null) await rm(file, { force: true });
+    else await writeFile(file, text);
+  }
+
+  /** Groups the nodes of a graph into communities (no model call: the groups keep their numbered names). False when graphify failed. */
+  async cluster(outDir: string): Promise<boolean> {
+    return (await this.runChecked(['cluster-only', outDir, '--no-viz', '--no-label'])).failed === undefined;
   }
 
   /**
@@ -118,6 +166,7 @@ export class Graphify {
       } catch {
         /* nothing produced (unsupported repo) → coverage 0 below */
       }
+      await this.prune(outDir, GRAPH_SKIP);
       return this.coverage(outDir, await this.trackedFiles(repoDir));
     };
     const previous = this.updates.get(key) ?? Promise.resolve();
@@ -131,16 +180,19 @@ export class Graphify {
    * node with the folder name of its graph, and every repository's graph sits at the same inner path, so each one is copied
    * under its own name first: the tag then says which repository a node belongs to.
    */
-  async merge(graphs: ReadonlyArray<{ dir: string; name: string }>, outDir: string): Promise<boolean> {
+  async merge(graphs: ReadonlyArray<{ dir: string; name: string; skip?: readonly string[] }>, outDir: string): Promise<boolean> {
     const staged = path.join(outDir, 'inputs');
     await rm(staged, { recursive: true, force: true });
     const inputs: string[] = [];
-    for (const { dir, name } of graphs) {
+    for (const { dir, name, skip } of graphs) {
       const raw = await this.deps.readFile(this.graphPath(dir));
       if (!raw) continue;
+      // A graph left with nothing after the skipped folders has nothing to add.
+      const text = pruneGraph(raw, [...GRAPH_SKIP, ...(skip ?? [])]);
+      if (text === null) continue;
       const file = this.graphPath(path.join(staged, path.basename(name)));
       await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, raw);
+      await writeFile(file, text);
       inputs.push(file);
     }
     if (inputs.length === 0) return false;
@@ -193,9 +245,10 @@ export class Graphify {
     }
   }
 
-  async query(outDir: string, question: string, budgetTokens: number): Promise<{ nodes: GraphNode[]; truncated: boolean; text: string }> {
-    const text = await this.run(['query', question, '--budget', String(budgetTokens), '--graph', this.graphPath(outDir)]);
-    return { ...parseQuery(text), text };
+  /** The nodes that answer a question; `failed` says why graphify could not answer, which an answer with no node does not. */
+  async query(outDir: string, question: string, budgetTokens: number): Promise<{ nodes: GraphNode[]; truncated: boolean; text: string; failed?: string }> {
+    const { text, failed } = await this.runChecked(['query', question, '--budget', String(budgetTokens), '--graph', this.graphPath(outDir)]);
+    return { ...parseQuery(text), text, ...(failed === undefined ? {} : { failed }) };
   }
 
   async affected(outDir: string, symbol: string, depth: number): Promise<AffectedNode[]> {

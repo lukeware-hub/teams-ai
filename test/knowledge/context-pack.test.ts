@@ -46,6 +46,7 @@ describe('buildContextPack', () => {
       assumptions: ['T1: titles are trimmed (SM, 2026-09-24)'],
       handoffs: [{ taskId: 'T0-scaffold', title: 'Scaffold', summary: 'Project skeleton with Fastify server', changedFiles: ['package.json', 'src/index.ts'], mergedAt: '2026-09-24T10:00:00Z' }],
       graphAccess: { projectGraph: '/ws/p/graph/project/graphify-out/graph.json' },
+      specBrief: '- Service: todo-api\n- Needs (finish these first): scaffold',
       code: { source: 'graph', nodes: [{ label: 'createTodo()', file: 'src/todos/create.ts', line: 10 }], affected: [{ label: 'router.ts', relation: 'imports', file: 'src/router.ts', line: 3 }], truncated: false },
       retrieval: [{ chunkId: 'spec-001#2', docId: 'spec-001', kind: 'spec', title: 'Spec 1', heading: 'Decisions', snippet: 'max [discount] 5', text: 'The maximum discount is 5 percent.', score: 1 }],
       currentDocs: 'Current docs/README.md:\n# Todo',
@@ -53,6 +54,8 @@ describe('buildContextPack', () => {
       changeSet: 'Changed files:\nsrc/todos/create.ts',
     });
     expect(pack.sections).toEqual([...SECTION_ORDER]);
+    expect(pack.text).toContain('## Spec relations (from the graph)\n- Service: todo-api');
+    expect(pack.text.indexOf('## Spec relations')).toBeLessThan(pack.text.indexOf('## Code context'));
     expect(pack.text.indexOf('## Current docs on main')).toBeGreaterThan(pack.text.indexOf('## Retrieved context'));
     expect(pack.text.indexOf('## Feedback')).toBeGreaterThan(pack.text.indexOf('## Current docs on main'));
     expect(pack.text).toContain('src/todos/create.ts:10');
@@ -178,5 +181,13 @@ describe('buildContextPack', () => {
     const pack = buildContextPack({ ...base, code: { source: 'grep', grep: [{ file: 'src/a.ts', line: 12, text: 'const discount = 5;' }] } });
     expect(pack.text).toContain('code graph unavailable or too thin');
     expect(pack.text).toContain('src/a.ts:12: const discount = 5;');
+  });
+});
+
+describe('spec brief section', () => {
+  it('never drops the brief for budget', () => {
+    const pack = buildContextPack({ ...base, budgetTokens: 10, specBrief: '- Service: todo-api', retrieval: [{ chunkId: 'a#1', docId: 'a', kind: 'spec', title: 'A', heading: 'H', snippet: 's', text: 'x'.repeat(4000), score: 1 }] });
+    expect(pack.dropped).toContain('retrieval');
+    expect(pack.sections).toContain('spec-brief');
   });
 });

@@ -46,6 +46,32 @@ describe('ProjectGraph', () => {
     expect(screen.getByTestId('graph-canvas').getAttribute('role')).toBe('img');
   });
 
+  it('shows the health panel above the use by the agents, with its verdict', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: null } }));
+    show();
+    const panel = await screen.findByTestId('graph-health');
+    expect(panel.textContent).toContain('Saúde do grafo');
+    expect(screen.getByTestId('graph-health-verdict').textContent).toBe('Degradado');
+    expect(panel.compareDocumentPosition(screen.getByTestId('graph-usage')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('starts the health panel closed with a one-line summary, and keeps the communities open beside the map', async () => {
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view({ status: { updatedAt: '2026-11-06T15:30:00.000Z', failure: null } }));
+    show();
+    const panel = (await screen.findByTestId('graph-health')) as HTMLDetailsElement;
+    expect(panel.open).toBe(false);
+    expect(screen.getByTestId('graph-health-summary').textContent).toContain('há ');
+    expect((screen.getByTestId('graph-communities') as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it('closes the communities on a narrow screen', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
+    show();
+    expect(((await screen.findByTestId('graph-communities')) as HTMLDetailsElement).open).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
   it('shows what the agents asked the graph themselves, by kind of step', async () => {
     vi.spyOn(runApi, 'projectGraph').mockResolvedValue(view());
     show();

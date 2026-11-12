@@ -47,6 +47,8 @@ import { acceptReuseSkill, assignSkill, capabilityKey, createDraftSkill, syncSki
 
 /** The diff is inlined into the sec prompt (the role has no Bash); the rest of a huge diff is read from the worktree. */
 const SECURITY_DIFF_CHARS = 80_000;
+/** How many questions a task puts to the owner or decides on its own before the attempt fails as it did before the questions existed. */
+const MAX_TASK_DECISIONS = 2;
 /** The claude CLI's own sandbox (bubblewrap/socat) occasionally fails to start, denying every tool call for that
  * step; a transient infra flake, never a reason in the task's own files, so it is worth one more try instead of
  * blocking the task at once (spec 10A.5-adjacent: `environment` failures already retry without an attempt). */
@@ -564,7 +566,9 @@ export class TaskRunner {
     this.specGapRounds += 1;
     if (this.specGapRounds > this.maxSpecGapRounds) {
       this.specGapRounds = 0;
-      return this.fail('code', `spec-gap rounds exhausted (${this.maxSpecGapRounds}); last question: ${question}`);
+      const reason = `spec-gap rounds exhausted (${this.maxSpecGapRounds}); last question: ${question}`;
+      if (await this.settle(task, reason)) return;
+      return this.fail('code', reason);
     }
     // The SM only reads the repo. It reads a snapshot of origin/main, so another task's merge cannot rewrite the tree under it.
     const overrule = await this.autonomous();
@@ -697,7 +701,7 @@ export class TaskRunner {
 
   /** Journals where a step's code context came from, so the graph's use is visible. */
   private recordCode(step: 'dev' | 'review' | 'security', code: CodeContext): Promise<unknown> {
-    return this.deps.journal.fact(OrchEvent.CodeContextUsed, { taskId: this.taskId, step, source: code.source, nodes: (code.nodes?.length ?? 0) + (code.affected?.length ?? 0) });
+    return this.deps.journal.fact(OrchEvent.CodeContextUsed, { taskId: this.taskId, step, source: code.source, nodes: (code.nodes?.length ?? 0) + (code.affected?.length ?? 0), ...(code.truncated ? { truncated: true } : {}) });
   }
 
   private async review(): Promise<void> {
@@ -724,7 +728,8 @@ export class TaskRunner {
     const languageDiff = await git(this.worktree, ['diff', '-U0', 'origin/main...HEAD'], this.deps.exec);
     // Only the latest message: the merge squashes, and the Dev cannot rewrite an earlier commit.
     const messages = await git(this.worktree, ['log', '-1', '--format=%B'], this.deps.exec);
-    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages) });
+    const committed = [...this.deps.journal.events].reverse().find((e) => e.type === OrchEvent.DevCommitted && e.data.taskId === this.taskId);
+    const pack = reviewPack(this.deps.packBase(), this.task.def, { diffStat, changedFiles: changed, diff, junit: this.junit, code, profile, priorFindings, languageCheck: languageCheck(languageDiff, messages), answers: this.deps.journal.specGapAnswers(this.taskId), deviations: (committed?.data.deviations as string[] | undefined) ?? [] });
     // R11.13 slice 5: both reviews read the same diff and edit nothing, so they run together (about 40 s per task). The
     // security step must settle before this method returns, or a Dev retry could edit the worktree while it still reads it.
     const security = this.startSecurity(changed, diffStat, diff, code);
@@ -1023,11 +1028,38 @@ export class TaskRunner {
   }
 
   /** Asks the SM for the owner's question and choices on a block and journals them for the run screen; a failed step leaves the block as it is. */
-  private async askOwner(task: PlanTask, reason: string): Promise<void> {
-    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
-    if (!outcome.ok) return;
+  private async askOwner(task: PlanTask, reason: string): Promise<BlockOptionsOutput | null> {
+    const autonomous = await this.autonomous();
+    const outcome = await withMainSnapshot(this.deps.ws, this.deps.exec, (cwd) => this.deps.runAgent<'block-options'>({ kind: 'block-options', role: 'sm', pack: blockOptionsPack(this.deps.packBase(), task, { reason, autonomous }), cwd, phase: 'phase3', taskId: this.taskId, attempt: this.task.attempts + 1 }));
+    if (!outcome.ok) return null;
     const value = outcome.value as BlockOptionsOutput;
     await this.deps.journal.fact(OrchEvent.DecisionRequested, { taskId: this.taskId, specHash: this.deps.specHash, reason, question: value.question, options: value.options });
+    return value;
+  }
+
+  /**
+   * A doubt the SM could not settle in its rounds. The SM words it as a question with choices. When the owner lets the agents decide, they take
+   * the recommended choice and the task goes on with it; otherwise the question waits for the owner on the run screen and the task stays blocked.
+   * False when it was asked enough times already or the SM could not word it: the attempt then fails as it always did.
+   */
+  private async settle(task: PlanTask, reason: string): Promise<boolean> {
+    const asked = this.deps.journal.events.filter((e) => e.type === OrchEvent.DecisionRequested && e.data.taskId === this.taskId).length;
+    if (asked >= MAX_TASK_DECISIONS) return false;
+    const autonomous = await this.autonomous();
+    const value = await this.askOwner(task, reason);
+    if (!value) return false;
+    if (!autonomous) {
+      await this.block(reason);
+      return true;
+    }
+    const choice = value.options.find((o) => o.recommended) ?? value.options[0]!;
+    await this.deps.journal.fact(OrchEvent.DecisionAnswered, { taskId: this.taskId, question: value.question, answer: choice.label, by: 'agents' });
+    await this.feedback(`Decision taken by the agents, binding for this task:
+Q: ${value.question}
+A: ${choice.label}. ${choice.detail}
+Carry it out now and do not ask about it again. A file under docs/ is not yours to change: leave it as it is and name the difference in your handoff.`);
+    await this.implement();
+    return true;
   }
 
   private async block(reason: string): Promise<void> {

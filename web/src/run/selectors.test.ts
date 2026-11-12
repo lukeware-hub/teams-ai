@@ -29,6 +29,10 @@ describe('run selectors', () => {
     expect(pausedUntil(events)).toBe('2026-09-24T10:30:00.000Z');
     expect(pausedUntil([...events, { ...events[0]!, seq: 999, type: 'RUN_RESUMED', data: {} }])).toBeNull();
   });
+  it('task detail keeps the effort a step started with', () => {
+    const started = { ...events[0]!, seq: 900, type: 'STEP_STARTED', data: { stepId: 'sx', kind: 'dev', role: 'dev', model: 'claude-haiku-5-5', effort: 'high', taskId: 'T9', attempt: 1 } } as StoredEvent;
+    expect(taskDetail([started], 'T9').attempts[0]!.steps[0]!.effort).toBe('high');
+  });
   it('task detail groups steps, gates and review by attempt and finds the PR', () => {
     const d = taskDetail(events, 'T1');
     expect(d.attempts.map((a) => a.attempt)).toEqual([1, 2]);
