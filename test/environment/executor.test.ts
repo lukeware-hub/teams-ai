@@ -20,6 +20,31 @@ describe('applyRecipes', () => {
     if (process.platform !== 'win32') expect((await stat(path.join(secretsDir, 'PLATFORM_ADMIN_TOKEN'))).mode & 0o777).toBe(0o600);
   });
 
+  it('builds a connection string from a password made up in the same pass', async () => {
+    const secretsDir = await dir();
+    const vars: EnvironmentVariable[] = [
+      { ...base, name: 'DATABASE_URL', strategy: 'derive', template: 'postgres://app:${POSTGRES_PASSWORD}@db:5432/app' },
+      { ...base, name: 'POSTGRES_PASSWORD', strategy: 'random' },
+    ];
+    const r = await applyRecipes(vars, { secretsDir, held: {}, serviceEnv: async () => null });
+    expect(r.values.DATABASE_URL).toBe(`postgres://app:${r.values.POSTGRES_PASSWORD}@db:5432/app`);
+    expect((await readFile(path.join(secretsDir, 'DATABASE_URL'), 'utf8')).trim()).toBe(r.values.DATABASE_URL);
+  });
+
+  it('builds a connection string from a password the platform already holds', async () => {
+    const r = await applyRecipes([{ ...base, name: 'DATABASE_URL', strategy: 'derive', template: 'postgres://app:${POSTGRES_PASSWORD}@db:5432/app' }], { secretsDir: await dir(), held: { POSTGRES_PASSWORD: 'held-pass' }, serviceEnv: async () => null });
+    expect(r.values.DATABASE_URL).toBe('postgres://app:held-pass@db:5432/app');
+    expect(r.applied[0]!.outcome).toBe('created');
+  });
+
+  it('defers a derived value whose source does not exist, and writes nothing', async () => {
+    const secretsDir = await dir();
+    const r = await applyRecipes([{ ...base, name: 'DATABASE_URL', strategy: 'derive', template: 'postgres://app:${MISSING_ONE}@db/app' }], { secretsDir, held: {}, serviceEnv: async () => null });
+    expect(r.values.DATABASE_URL).toBeUndefined();
+    expect(r.applied[0]!.outcome).toBe('deferred');
+    await expect(stat(path.join(secretsDir, 'DATABASE_URL'))).rejects.toThrow();
+  });
+
   it('keeps a value that already exists, whatever the recipe says', async () => {
     const secretsDir = await dir();
     const r = await applyRecipes([{ ...base, name: 'LLM_API_KEY', strategy: 'fake', prefix: 'sk-local-' }], { secretsDir, held: { LLM_API_KEY: 'the-real-one' }, serviceEnv: async () => null });

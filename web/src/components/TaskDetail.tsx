@@ -25,13 +25,13 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
       {d.attempts.length ? null : <p className="hint m-0" data-testid="task-detail-empty">Nenhuma tentativa registrada ainda.</p>}
       {d.attempts.map((a) => (
         <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
-          <h3 data-testid={`task-detail-attempt-title-${a.attempt}`}>Tentativa {a.attempt}</h3>
+          <h3 className="mt-0" data-testid={`task-detail-attempt-title-${a.attempt}`}>Tentativa {a.attempt}</h3>
           <StepList steps={a.steps} loadStep={loadStep} />
           {a.gates.length ? (
-            <p className="gates" data-testid={`task-detail-gates-${a.attempt}`}>
+            <p className="gates m-0 mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1.5" data-testid={`task-detail-gates-${a.attempt}`}>
               <span className="hint" data-testid={`task-detail-gates-label-${a.attempt}`}>Portões:</span>{' '}
               {a.gates.map((g) => (
-                <span key={g.gate} className={`test test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined} data-testid={`task-detail-gate-${a.attempt}-${g.gate}`}>
+                <span key={g.gate} className={`test m-0 test-${g.passed ? 'passed' : 'failed'}`} title={g.failedTests.length ? g.failedTests.join(', ') : undefined} data-testid={`task-detail-gate-${a.attempt}-${g.gate}`}>
                   {g.gate} {g.passed ? 'passou' : 'falhou'}
                   {g.failedTests.length ? ` (${g.failedTests.length})` : ''}
                 </span>

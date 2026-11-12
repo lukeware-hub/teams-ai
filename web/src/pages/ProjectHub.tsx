@@ -10,6 +10,7 @@ import { Pagination, SortHeader, TableFilters, usePagedTable } from '../componen
 import { Icon } from '../components/Icons.js';
 import { InfoTip } from '../components/InfoTip.js';
 import { RepositoriesPanel } from './RepositoriesPanel.js';
+import { headRow, table, tableWrap } from './costs/CostParts.js';
 import { BacklogExecution } from '../refine/BacklogExecution.js';
 import { RequestNotice } from '../refine/RequestNotice.js';
 import { Breadcrumb } from '../components/Breadcrumb.js';
@@ -29,8 +30,13 @@ const empty = 'm-0 rounded-lg border border-line bg-surface-sunken px-4 py-3 tex
 // Runs in flight stand out from the history instead of blending into the table.
 // On a phone the whole card carries the live tint; cell by cell it would box every field.
 const live = '@min-[44rem]:[&>td]:bg-good-soft @min-[44rem]:[&>td:first-child]:shadow-[inset_3px_0_0_var(--good-live)] @max-[44rem]:bg-good-soft @max-[44rem]:shadow-[inset_3px_0_0_var(--good-live)]';
-// A group title spans the spec list; the first group's title needs no space above it.
-const groupHeading = 'col-span-full px-[0.6rem] pt-3 text-[0.75rem] font-[650] uppercase tracking-[0.07em] text-ink-soft first:pt-0';
+// A group title spans every column of the spec table.
+const groupHeading = 'pt-4 pb-1 text-left text-[0.75rem] font-[650] uppercase tracking-[0.07em] text-ink-soft';
+const SPEC_COLUMNS: ReadonlyArray<readonly [string, string, string]> = [
+  ['spec', 'Spec', 'O alias da spec, o nome curto que identifica uma entrega do projeto.'],
+  ['status', 'Status', 'A etapa em que a spec está: pronta para executar, em execução, pausada, aguardando validação ou concluída.'],
+  ['actions', 'Ações', 'O próximo passo possível para a spec, como iniciar a execução, continuar ou validar.'],
+];
 // Specs sit in the first group that names their status, so the human's work comes first; unknown statuses fall in the first group too.
 const SPEC_GROUPS: ReadonlyArray<{ title: string; statuses: readonly string[] }> = [
   { title: 'Precisam de você', statuses: ['awaiting-validation', 'answering', 'paused:auth', 'interrupted', 'drained', 'blocked', 'deadlocked', 'phase-failed', 'verification-failed', 'deploy-failed', 'launch-failed', 'error'] },
@@ -395,14 +401,31 @@ export function ProjectHubView(p: {
           ) : specsView.rows.length === 0 ? (
             <p data-testid="project-hub-specs-empty" className={empty}>Nenhuma spec corresponde ao filtro.</p>
           ) : (
-            <ul data-testid="project-hub-specs-list" className={rows}>
-              {groupedSpecs.flatMap((g) => [
-                <li data-testid={`project-hub-specs-group-${g.title}`} role="presentation" key={g.title} className={groupHeading}>{g.title}</li>,
-                ...g.rows.map((s) => (
-                <li data-testid={`project-hub-spec-${s.specId}`} className={row} key={s.specId}>
-                  <span data-testid={`project-hub-spec-id-${s.specId}`} className={rowId}>{s.specId}</span>
-                  {chip(s.shownStatus)}
-                  <span data-testid={`project-hub-spec-actions-${s.specId}`} className={rowActions}>
+            <div className={tableWrap}>
+            <table data-testid="project-hub-specs-list" className={table}>
+              <thead className={responsiveHead}>
+                <tr className={headRow}>
+                  {SPEC_COLUMNS.map(([key, label, help]) => (
+                    <th key={key} scope="col" className={key === 'actions' ? 'text-right' : undefined}>
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap hyphens-none">
+                        {label}
+                        <InfoTip label={label} text={help} />
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              {groupedSpecs.map((g) => (
+              <tbody key={g.title} data-testid={`project-hub-specs-group-${g.title}`}>
+                <tr>
+                  <th scope="colgroup" colSpan={3} className={groupHeading}>{g.title}</th>
+                </tr>
+                {g.rows.map((s) => (
+                <tr data-testid={`project-hub-spec-${s.specId}`} className={responsiveRow} key={s.specId}>
+                  <td data-testid={`project-hub-spec-id-${s.specId}`} data-label="Spec" className={`${responsiveCell} ${rowId}`}>{s.specId}</td>
+                  <td data-label="Status" className={responsiveCell}>{chip(s.shownStatus)}</td>
+                  <td data-testid={`project-hub-spec-actions-${s.specId}`} data-label="Ações" className={`${responsiveCell} @max-[44rem]:before:hidden`}>
+                  <span className="flex flex-wrap justify-end gap-2 @max-[44rem]:w-full @max-[44rem]:flex-col @max-[44rem]:justify-start">
                     {CONTINUABLE.has(s.status) ? (
                       <ActionButton className={action.secondary} data-testid={`continue-${s.specId}`} aria-label={`Continuar spec ${s.specId}`} onClick={() => p.onContinue(s.specId)} icon={<Icon name="arrow-right" size={14} />}>
                         Continuar spec
@@ -432,8 +455,8 @@ export function ProjectHubView(p: {
                       )
                     ) : s.status === 'done' ? (
                       s.lastRunId ? (
-                        <Link className={`${action.secondary} max-sm:absolute max-sm:inset-0 max-sm:h-auto max-sm:justify-end max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:pr-3 max-sm:focus-visible:outline-offset-[-2px]`} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
-                          <span className="max-sm:sr-only">Ver validação</span>
+                        <Link className={action.secondary} data-testid={`validation-${s.specId}`} aria-label={`Ver validação de ${s.specId}`} to={validationPath(s.lastRunId)}>
+                          <span>Ver validação</span>
                           <Icon name="arrow-right" size={14} />
                         </Link>
                       ) : null
@@ -445,10 +468,13 @@ export function ProjectHubView(p: {
                       </ActionButton>
                     )}
                   </span>
-                </li>
-                )),
-              ])}
-            </ul>
+                  </td>
+                </tr>
+                ))}
+              </tbody>
+              ))}
+            </table>
+            </div>
           )}
           <Pagination view={specsView} />
         </div>

@@ -22,22 +22,36 @@ export function StepList({ steps, loadStep }: { steps: StepRow[]; loadStep: (ste
     setOpen((o) => ({ ...o, [stepId]: art }));
   };
   return (
-    <ul data-testid="step-list">
+    <ul data-testid="step-list" className="m-0 grid list-none gap-2 p-0">
       {steps.map((s) => {
         const art = open[s.stepId];
+        const parts = [
+          s.tier,
+          s.model,
+          s.effort ? `esforço ${EFFORT_NAME[s.effort] ?? s.effort}` : '',
+          s.ok === null ? stateLabel('running') : s.ok ? stateLabel('ok') : `${stateLabel('failed')} (${s.failure})`,
+          s.usage ? `${s.usage.inputTokens + s.usage.outputTokens} tokens` : '',
+          s.durationMs ? formatDuration(s.durationMs) : '',
+        ].filter(Boolean);
         return (
-          <li data-testid={`step-list-item-${s.stepId}`} key={s.stepId}>
-            <button className="min-w-[auto]" data-testid={`step-${s.stepId}`} onClick={() => void toggle(s.stepId)}>
+          <li data-testid={`step-list-item-${s.stepId}`} key={s.stepId} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 rounded-md border border-line px-3 py-2">
+            <button className="min-h-0 w-auto min-w-0 px-2 py-0.5 text-[0.8125rem]" data-testid={`step-${s.stepId}`} onClick={() => void toggle(s.stepId)}>
               {s.stepId}
-            </button>{' '}
-            {s.kind} · {s.role}
-            {s.tier ? ` · ${s.tier}` : ''}
-            {s.model ? ` · ${s.model}` : ''}
-            {s.effort ? ` · esforço ${EFFORT_NAME[s.effort] ?? s.effort}` : ''} · {s.ok === null ? stateLabel('running') : s.ok ? stateLabel('ok') : `${stateLabel('failed')} (${s.failure})`}
-            {s.usage ? ` · ${s.usage.inputTokens + s.usage.outputTokens} tokens` : ''}
-            {s.durationMs ? ` · ${formatDuration(s.durationMs)}` : ''}
+            </button>
+            <div className="min-w-0">
+              <p className="m-0 text-[0.875rem] font-semibold text-ink">
+                {s.kind} · {s.role}
+              </p>
+              <p className="m-0 flex flex-wrap gap-x-2 text-[0.8125rem] text-ink-soft">
+                {parts.map((part, i) => (
+                  <span key={i} className="whitespace-nowrap">
+                    {part}
+                  </span>
+                ))}
+              </p>
+            </div>
             {art && art !== 'loading' ? (
-              <pre data-testid={`step-list-output-${s.stepId}`} className="output">
+              <pre data-testid={`step-list-output-${s.stepId}`} className="output col-span-2 m-0">
                 {art.prompt}
                 {'\n---\n'}
                 {JSON.stringify(art.output, null, 2)}

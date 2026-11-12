@@ -15,12 +15,12 @@ describe('Timeline', () => {
     const spy = vi.spyOn(runApi, 'repositoryDashboardTable').mockImplementation((_p, _r, _t, req) => Promise.resolve(queryPage(ROWS, { text: (e) => [e.text] }, req)));
     render(<MemoryRouter><Timeline projectId="kayron" repo="shop" /></MemoryRouter>);
     const panel = within(screen.getByTestId('repo-timeline'));
-    await waitFor(() => expect(panel.getAllByRole('listitem')).toHaveLength(10));
+    await waitFor(() => expect(panel.getAllByRole('row')).toHaveLength(11));
     expect(spy).toHaveBeenLastCalledWith('kayron', 'shop', 'timeline', expect.objectContaining({ page: 1, size: 10 }));
     expect(panel.getByText('Evento 1')).toBeTruthy();
     fireEvent.click(panel.getByRole('button', { name: 'Próxima página' }));
     await waitFor(() => expect(panel.getByText('Evento 11')).toBeTruthy());
-    expect(panel.getAllByRole('listitem')).toHaveLength(10);
+    expect(panel.getAllByRole('row')).toHaveLength(11);
     expect(panel.getByText('11–20 de 25')).toBeTruthy();
   });
 

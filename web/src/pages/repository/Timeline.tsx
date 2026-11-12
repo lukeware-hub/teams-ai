@@ -3,7 +3,8 @@ import { runPath } from '../../routes.js';
 import { runApi, type TimelineEntry } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
-import { panel, sectionHeading, sectionTitle, when } from '../project-shared.js';
+import { headRow, table, tableWrap } from '../costs/CostParts.js';
+import { panel, responsiveCell, responsiveHead, responsiveRow, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
 /** The events of every run of the repository, newest first, one page at a time; each with its agent and a link to its run. Open by default. */
 export function Timeline({ projectId, repo }: { projectId: string; repo: string }) {
@@ -19,16 +20,37 @@ export function Timeline({ projectId, repo }: { projectId: string; repo: string 
         <p data-testid="timeline-empty" className="hint">sem dados: nenhum evento registrado.</p>
       ) : (
         <>
-          <ol data-testid="timeline-list" className="m-0 grid list-none gap-2 p-0 text-[0.8125rem]">
-            {view.rows.map((e, i) => (
-              <li data-testid={`timeline-event-${e.runId}-${(view.page - 1) * view.size + i}`} key={`${e.runId}-${e.at}-${(view.page - 1) * view.size + i}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span data-testid={`timeline-event-time-${e.runId}-${(view.page - 1) * view.size + i}`} className="hint tabular-nums">{when(e.at)}</span>
-                {e.role && <span data-testid={`timeline-event-role-${e.runId}-${(view.page - 1) * view.size + i}`} className="count-pill">{ROLE_LABEL[e.role] ?? e.role}</span>}
-                <span data-testid={`timeline-event-text-${e.runId}-${(view.page - 1) * view.size + i}`} className={e.tone === 'bad' ? 'tone-bad rounded px-1' : e.tone === 'good' ? 'tone-good rounded px-1' : ''}>{e.text}</span>
-                <Link to={runPath(e.runId)}>{e.runId}</Link>
-              </li>
-            ))}
-          </ol>
+          <div className={tableWrap}>
+            <table data-testid="timeline-list" className={table}>
+              <thead className={responsiveHead}>
+                <tr className={headRow}>
+                  <th scope="col" className="whitespace-nowrap">Data e hora</th>
+                  <th scope="col">Agente</th>
+                  <th scope="col">Evento</th>
+                  <th scope="col">Run</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.rows.map((e, i) => {
+                  const key = `${e.runId}-${(view.page - 1) * view.size + i}`;
+                  return (
+                    <tr data-testid={`timeline-event-${key}`} key={`${key}-${e.at}`} className={responsiveRow}>
+                      <td data-testid={`timeline-event-time-${key}`} data-label="Data e hora" className={`${responsiveCell} whitespace-nowrap text-ink-soft tabular-nums`}>{when(e.at)}</td>
+                      <td data-label="Agente" className={responsiveCell}>
+                        {e.role ? <span data-testid={`timeline-event-role-${key}`} className="count-pill">{ROLE_LABEL[e.role] ?? e.role}</span> : '—'}
+                      </td>
+                      <td data-label="Evento" className={`${responsiveCell} wrap-anywhere`}>
+                        <span data-testid={`timeline-event-text-${key}`} className={e.tone === 'bad' ? 'tone-bad rounded px-1' : e.tone === 'good' ? 'tone-good rounded px-1' : ''}>{e.text}</span>
+                      </td>
+                      <td data-label="Run" className={`${responsiveCell} wrap-anywhere`}>
+                        <Link to={runPath(e.runId)}>{e.runId}</Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           <Pagination view={view} />
         </>
       )}

@@ -4,6 +4,16 @@ import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
 import { money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
+const COLUMNS: ReadonlyArray<readonly [string, string, string]> = [
+  ['agent', 'Agente', 'O papel do agente que trabalhou neste repositório.'],
+  ['steps', 'Etapas', 'Quantas etapas o agente executou, e quantas terminaram bem ou falharam.'],
+  ['tasks', 'Tarefas', 'Tarefas que o agente criou, iniciou e concluiu. Traço quando o papel não cria tarefas.'],
+  ['files', 'Arquivos', 'Quantos arquivos o agente alterou.'],
+  ['tests', 'Testes', 'Testes que passaram e que falharam nas etapas do agente. Traço quando o papel não roda testes.'],
+  ['cost', 'Custo', 'Quanto o agente gastou neste repositório, em dólar.'],
+  ['last', 'Última atividade', 'O que o agente fez por último e quando.'],
+];
+
 /** What each agent role did in the repository's runs: steps, tasks it owns, files, tests, cost and last activity. */
 export function AgentActivity({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(`${projectId}/${repo}/agents`, (req) => runApi.repositoryDashboardTable<RoleActivity>(projectId, repo, 'agents', req), (role) => ROLE_LABEL[role] ?? role);
@@ -22,13 +32,14 @@ export function AgentActivity({ projectId, repo }: { projectId: string; repo: st
           <table data-testid="agent-activity-table" className="w-full text-[0.8125rem]">
             <thead data-testid="agent-activity-head" className={responsiveHead}>
               <tr data-testid="agent-activity-head-row" className="text-left text-ink-soft">
-                <th data-testid="agent-activity-th-agent" scope="col">Agente</th>
-                <th data-testid="agent-activity-th-steps" scope="col">Etapas</th>
-                <th data-testid="agent-activity-th-tasks" scope="col">Tarefas</th>
-                <th data-testid="agent-activity-th-files" scope="col">Arquivos</th>
-                <th data-testid="agent-activity-th-tests" scope="col">Testes</th>
-                <th data-testid="agent-activity-th-cost" scope="col">Custo</th>
-                <th data-testid="agent-activity-th-last" scope="col">Última atividade</th>
+                {COLUMNS.map(([key, label, help]) => (
+                  <th key={key} data-testid={`agent-activity-th-${key}`} scope="col">
+                    <span className="inline-flex items-center gap-1 whitespace-nowrap hyphens-none">
+                      {label}
+                      <InfoTip label={label} text={help} />
+                    </span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody data-testid="agent-activity-body">

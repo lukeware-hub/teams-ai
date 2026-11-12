@@ -75,18 +75,20 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   };
 
   return (
-    <section className={panel} data-testid="repo-header">
-      <div data-testid="repo-header-title-row" className="flex flex-wrap items-center gap-2">
-        <h1 data-testid="repo-header-name" className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
-        <span data-testid="repo-header-kind" className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
-        <span data-testid="repo-status">
-          <StatePill label={STATUS_LABEL[detail.status]} tone={STATUS_TONE[detail.status]} />
-        </span>
+    <section className={`${panel} grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start`} data-testid="repo-header">
+      <div className="grid min-w-0 gap-2">
+        <div data-testid="repo-header-title-row" className="flex flex-wrap items-center gap-2">
+          <h1 data-testid="repo-header-name" className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
+          <span data-testid="repo-header-kind" className="count-pill">{KIND_LABEL[detail.kind ?? ''] ?? detail.kind ?? 'sem tipo'}</span>
+          <span data-testid="repo-status">
+            <StatePill label={STATUS_LABEL[detail.status]} tone={STATUS_TONE[detail.status]} />
+          </span>
+        </div>
+        <p data-testid="repo-header-responsibility" className="hint m-0 max-w-[65ch]">{detail.responsibility}</p>
       </div>
-      <p data-testid="repo-header-responsibility" className="hint">{detail.responsibility}</p>
-      <div className="flex flex-wrap items-start gap-3" data-testid="repo-shortcuts">
+      <div className="flex flex-wrap items-start gap-3 max-md:flex-col md:max-w-[34rem] md:justify-end" data-testid="repo-shortcuts">
         {shortcuts.map((s) => (
-          <div data-testid={`repo-header-shortcut-${s.kind}`} key={s.kind} className="grid gap-1">
+          <div data-testid={`repo-header-shortcut-${s.kind}`} key={s.kind} className="grid gap-1 max-md:w-full">
             {s.href ? (
               <a href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
                 {SHORTCUT_LABEL[s.kind]}
@@ -94,7 +96,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
               </a>
             ) : (
               // aria-disabled keeps the button in the tab order, so the reason it gives can be read where it is.
-              <button type="button" className={`${action.secondary} cursor-not-allowed opacity-60`} aria-disabled="true" aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
+              <button type="button" className={`${action.secondary} cursor-not-allowed border-line bg-surface-muted text-ink-soft hover:bg-surface-muted`} aria-disabled="true" aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
                 {SHORTCUT_LABEL[s.kind]}
               </button>
             )}

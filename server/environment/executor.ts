@@ -19,7 +19,7 @@ export interface AppliedVariable {
   name: string;
   scope: EnvironmentVariable['scope'];
   strategy: EnvironmentVariable['strategy'];
-  /** `kept`: a value already existed; `fallback`: `from-service` found nothing and a random one was made; `deferred`: minted after the deploy. */
+  /** `kept`: a value already existed; `fallback`: `from-service` found nothing and a random one was made; `deferred`: minted after the deploy, or derived from a variable that does not exist yet. */
   outcome: 'created' | 'kept' | 'fallback' | 'deferred';
 }
 
@@ -39,7 +39,7 @@ function randomText(format: 'hex' | 'base64url' | 'alnum', length: number, rando
   return [...random(length)].map((b) => chars[b % chars.length]).join('');
 }
 
-function valueOf(v: EnvironmentVariable, random: (bytes: number) => Buffer): string {
+function valueOf(v: Exclude<EnvironmentVariable, { strategy: 'derive' | 'mint' }>, random: (bytes: number) => Buffer): string {
   if (v.strategy === 'fake') return `${v.prefix ?? ''}${randomText('hex', Math.max(v.minLength ?? DEFAULT_LENGTH, 16), random)}`;
   const format = v.strategy === 'random' ? (v.format ?? 'hex') : 'hex';
   const length = v.strategy === 'random' ? (v.minLength ?? DEFAULT_LENGTH) : DEFAULT_LENGTH;
@@ -52,6 +52,7 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
   const values: Record<string, string> = {};
   const applied: AppliedVariable[] = [];
   const mints: MintRecipe[] = [];
+  const derived: Array<Extract<EnvironmentVariable, { strategy: 'derive' }>> = [];
   const seen = new Set<string>();
   for (const v of variables) {
     if (seen.has(v.name)) continue;
@@ -68,12 +69,28 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
       applied.push({ ...base, outcome: 'kept' });
       continue;
     }
+    if (v.strategy === 'derive') {
+      derived.push(v);
+      continue;
+    }
     // Only the variable of the same name: a recipe cannot read another variable of a service and relabel it.
     const copied = v.strategy === 'from-service' && v.variable === v.name ? await deps.serviceEnv(v.service, v.variable).catch(() => null) : null;
     const value = copied ?? valueOf(v, random);
     await writeSecret(deps.secretsDir, v.name, value);
     values[v.name] = value;
     applied.push({ ...base, outcome: v.strategy === 'from-service' && copied === null ? 'fallback' : 'created' });
+  }
+  // After the rest, so a derived value reads a password made up in this same pass.
+  for (const v of derived) {
+    const base = { name: v.name, scope: v.scope, strategy: v.strategy };
+    try {
+      const value = resolveTemplate(v.template, { ...deps.held, ...values });
+      await writeSecret(deps.secretsDir, v.name, value);
+      values[v.name] = value;
+      applied.push({ ...base, outcome: 'created' });
+    } catch {
+      applied.push({ ...base, outcome: 'deferred' });
+    }
   }
   return { values, applied, mints };
 }

@@ -1,9 +1,22 @@
+import net from 'node:net';
 import type { Exec } from '../exec/command.js';
 import type { Spec } from '../contracts/spec.js';
 
 const USER = 'teamsai';
 const DB = 'teamsai';
 const IMAGE = 'postgres:16';
+
+/** A port the operating system has just handed out, free to publish on. */
+export function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as net.AddressInfo;
+      server.close(() => resolve(port));
+    });
+  });
+}
 
 /**
  * Does this spec's own externalDependencies name a `DATABASE_URL` secret? The one signal already in the

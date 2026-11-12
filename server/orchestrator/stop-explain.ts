@@ -9,13 +9,13 @@ export interface JournalEvent {
   data: Record<string, unknown>;
 }
 
-const PHASE_NAMES: Record<number, string> = { 0: 'Preparação do repositório', 1: 'Especificação técnica', 2: 'Plano', 3: 'Implementação', 4: 'Verificação', 5: 'Deploy', 6: 'Relatório', 7: 'Workflows de CI' };
+const PHASE_NAMES: Record<number, string> = { 0: 'Preparação do repositório', 1: 'Especificação técnica', 2: 'Plano', 3: 'Implementação', 4: 'Verificação', 5: 'Deploy', 6: 'Relatório', 7: 'Workflows de CI', 8: 'Documentação' };
 
 /** "4 · Verificação". The CI workflows (7) are published between phases 2 and 3, so their number would only mislead. */
 export function phaseTitle(phase: number): string {
   const name = PHASE_NAMES[phase];
   if (!name) return `Fase ${phase}`;
-  return phase <= 6 ? `${phase} · ${name}` : name;
+  return phase === 7 ? name : `${phase} · ${name}`;
 }
 
 export interface DeployFailure {

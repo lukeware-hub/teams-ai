@@ -346,7 +346,8 @@ describe('ProjectHubView', () => {
       </MemoryRouter>,
     );
     await settle();
-    const table = within(screen.getByRole('table'));
+    // The page has two tables now: the runs table is the one that has the "Execução" column.
+    const table = within(screen.getAllByRole('table').find((t) => within(t).queryByRole('columnheader', { name: /^Execução/ }))!);
     for (const column of ['Execução', 'Spec', 'Quando', 'Status', 'Tokens', 'Custo']) {
       const header = table.getByRole('columnheader', { name: new RegExp(`^${column}`) });
       expect(within(header).getByRole('button', { name: column })).toBeTruthy();
@@ -456,7 +457,7 @@ describe('ProjectHubView', () => {
       </MemoryRouter>,
     );
     await settle();
-    const groups = Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
+    const groups = Array.from(container.querySelectorAll('th[scope="colgroup"]'), (th) => th.textContent);
     expect(groups).toEqual(['Precisam de você', 'Prontas', 'Concluídas']);
     expect(screen.getByTestId('validate-hello-011')).toBeTruthy();
   });
@@ -477,7 +478,7 @@ describe('ProjectHubView', () => {
     await settle();
     const specs = within(screen.getByTestId('project-specs'));
     const ids = () => specs.queryAllByText(/^hello-\d{3}$/).map((el) => el.textContent);
-    const headings = () => Array.from(container.querySelectorAll('li[role="presentation"]'), (li) => li.textContent);
+    const headings = () => Array.from(container.querySelectorAll('th[scope="colgroup"]'), (th) => th.textContent);
     // The pages arrive from a mocked server: under load they take longer than one tick, so each check waits for them.
     await waitFor(() => expect(ids()).toEqual(many.slice(0, 10).map((s) => s.specId)));
     expect(headings()).toEqual(['Precisam de você', 'Prontas']);

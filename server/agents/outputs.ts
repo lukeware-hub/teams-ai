@@ -236,6 +236,8 @@ export const EnvironmentVariable = z.discriminatedUnion('strategy', [
   z.object({ ...envBase, strategy: z.literal('fake'), prefix: z.string().max(24).regex(/^[A-Za-z0-9_.-]*$/).optional(), minLength: z.number().int().min(16).max(128).optional() }),
   /** The value a service that is already deployed runs with (an admin token that one service accepts and another sends). */
   z.object({ ...envBase, strategy: z.literal('from-service'), service: z.string().min(1), variable: envName }),
+  /** A connection string built from other variables of the project: `${NAME}` in the template is replaced by that variable's value (`postgres://app:${POSTGRES_PASSWORD}@db:5432/app`). */
+  z.object({ ...envBase, strategy: z.literal('derive'), template: z.string().min(1).max(500) }),
   /** A value got by calling a deployed service after the deploy (a session header minted with the admin token). `${NAME}` in headers and body is another variable. */
   z.object({
     ...envBase,

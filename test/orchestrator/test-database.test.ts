@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { needsTestDatabase, startTestDatabase, stopTestDatabase } from '../../server/orchestrator/test-database.js';
+import { freePort, needsTestDatabase, startTestDatabase, stopTestDatabase } from '../../server/orchestrator/test-database.js';
 import { makeSpec } from '../fixtures/contracts.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
 
@@ -49,5 +49,13 @@ describe('stopTestDatabase', () => {
     exec.onArgs('docker', ['rm'], () => ({ exitCode: 1, stderr: 'No such container' }));
     await expect(stopTestDatabase(exec.exec, 'teams-ai-r1-testdb')).resolves.toBeUndefined();
     expect(exec.lines('docker')).toContain('rm -f teams-ai-r1-testdb');
+  });
+});
+
+describe('freePort', () => {
+  it('hands out a usable port number', async () => {
+    const port = await freePort();
+    expect(port).toBeGreaterThan(1023);
+    expect(port).toBeLessThan(65536);
   });
 });

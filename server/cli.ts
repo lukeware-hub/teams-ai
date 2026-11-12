@@ -8,7 +8,8 @@ import { Project } from './contracts/project.js';
 import { generatedSecretNames, Spec } from './contracts/spec.js';
 import { writeFileAtomic } from './core/atomic-write.js';
 import { redactSecrets } from './core/redact.js';
-import { ensureGeneratedSecrets, loadSecrets } from './core/secrets.js';
+import { ensureGeneratedSecrets, loadSecrets, writeSecret } from './core/secrets.js';
+import { sharedDatabase } from './orchestrator/shared-database.js';
 import { execCommand, type Exec } from './exec/command.js';
 import { withGhAuth, withGitAuth, withGitAuthEnv } from './git/auth.js';
 import { Graphify } from './knowledge/graphify.js';
@@ -388,6 +389,14 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const platformSecrets = await loadSecrets(expandHome(cfg.paths.secrets));
   await ensureGeneratedSecrets(path.posix.join(ws.root, 'secrets'), [...generatedSecretNames(spec.externalDependencies), ...DATASTORE_CREDENTIALS, ...cfg.environment.generatedSecrets], platformSecrets);
   const secrets = { ...platformSecrets, ...(await loadSecrets(path.posix.join(ws.root, 'secrets'))) };
+  // A system whose specs name a DATABASE_URL gets one platform PostgreSQL; the URL replaces any older value, which may point at a host that does not exist.
+  const specsDir = path.join(projectDir, 'docs', 'specs');
+  const projectSpecs = await Promise.all((await fs.readdir(specsDir)).map((id) => readJson(path.join(specsDir, id, 'spec.json'), (v) => Spec.parse(v)).catch(() => null)));
+  const shared = sharedDatabase(project, projectSpecs.filter((s): s is Spec => s !== null), secrets.POSTGRES_PASSWORD);
+  if (shared) {
+    await writeSecret(path.posix.join(ws.root, 'secrets'), 'DATABASE_URL', shared.url);
+    secrets.DATABASE_URL = shared.url;
+  }
   const exec: Exec = (s) => execCommand(s.bin === 'git' ? { ...s, env: withGitAuthEnv(s.env ?? {}, platformSecrets.GITHUB_TOKEN) } : s);
   const ghExec: Exec = (s) => execCommand({ ...s, env: withGitAuthEnv(s.env ?? {}, platformSecrets.GITHUB_TOKEN) });
   if (!opts.dryRun) await prepareSkills(exec, io.env, (line) => io.stderr(line));
@@ -420,7 +429,7 @@ export async function loadRunDeps(io: CliIo, projectDir: string, specIdArg: stri
   const marker = await readDocsMarker(ws);
   const docs = await docsRunOf(ws, projectDir, marker);
   const { planFile, taskFile } = await planFilesFor(projectDir, specId, spec, docs);
-  return { cfg, ws, project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs };
+  return { cfg, ws, project: shared?.project ?? project, spec, repairNotes: await readRepairNotes(projectDir, specId), ownerDecisions: await readOwnerDecisions(projectDir, specId), firstSpec, planFile, taskFile, requireDelivery: true, requireSecurityTooling: true, requireE2e: true, requireCoverage: true, requireFrozenScope: true, exec, ghExec, runStep: step, binary, agents, graphify, knowledge, secrets, log: io.stderr, maxParallel: opts.maxParallel, bootstrap, target, agentSettings: async (projectId) => (await readUserConfig()).cfg.agentSettings[projectId] ?? {}, agentsDecide: async (projectId) => agentsDecideFor((await readUserConfig()).cfg, projectId), docsRepo: marker !== null, docs };
 }
 
 type Factory = (deps: RunDeps, runId?: string, explicitId?: string) => Promise<Run>;

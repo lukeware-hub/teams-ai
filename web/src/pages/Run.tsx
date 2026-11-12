@@ -194,10 +194,12 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
           const owner = ROLE_LABEL[task.owner] ?? task.owner;
           return (
             <li key={task.id} data-testid={`plan-task-${task.id}`} className="grid gap-2 px-[0.9rem] py-[0.8rem]">
-              <div data-testid={`plan-task-head-${task.id}`} className="flex items-baseline gap-[0.85rem] max-md:flex-wrap">
-                <span data-testid={`plan-task-id-${task.id}`} className={`min-w-[5.75rem] flex-none text-ink-soft ${TASK_ID}`}>{task.id}</span>
-                <span data-testid={`plan-task-title-${task.id}`} className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
-                <span data-testid={`plan-task-tags-${task.id}`} className="inline-flex flex-none items-center gap-[0.4rem] [&_.tag]:m-0">
+              <div data-testid={`plan-task-head-${task.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 max-md:grid-cols-1">
+                <div className="grid min-w-0 gap-[0.1rem]">
+                  <span data-testid={`plan-task-title-${task.id}`} className={`${ROW_TITLE} font-medium wrap-anywhere`}>{task.title}</span>
+                  <span data-testid={`plan-task-id-${task.id}`} className={`text-ink-soft wrap-anywhere ${TASK_ID} text-[0.75rem]! font-normal!`}>{task.id}</span>
+                </div>
+                <span data-testid={`plan-task-tags-${task.id}`} className="flex flex-wrap items-center justify-end gap-[0.4rem] max-md:justify-start [&_.tag]:m-0">
                   {task.service ? <Tipped text={SERVICE_HELP}><span data-testid={`plan-task-service-${task.id}`} className="tag" title="Serviço">{task.service}</span></Tipped> : null}
                   {task.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[task.origin] ?? 'De onde esta tarefa veio.'}><span data-testid={`plan-task-origin-${task.id}`} className="tag">{ORIGIN_LABEL[task.origin] ?? task.origin}</span></Tipped> : null}
                   <Tipped text={`Responsável pela tarefa: ${owner}.`}>
@@ -208,7 +210,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                   </Tipped>
                 </span>
               </div>
-              <div data-testid={`plan-task-facets-${task.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem] pl-[6.6rem] max-md:pl-0">
+              <div data-testid={`plan-task-facets-${task.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[0.6rem] gap-y-[0.4rem]">
                 <span data-testid={`plan-task-criteria-icon-${task.id}`} className={FACET_ICON} role="img" aria-label="Critérios de aceite" title="Critérios de aceite que esta tarefa cumpre">
                   <Icon name="check" size={14} />
                 </span>
@@ -221,7 +223,7 @@ function PlanCard({ plan }: { plan: NonNullable<RunDetail['plan']> }) {
                 <span data-testid={`plan-task-files-${task.id}`} className={FACET_ITEMS}>
                   {paths.map((path) => <code key={path} data-testid={`plan-task-path-${task.id}-${path}`} className={PLAN_PATH}>{path}</code>)}
                   {hidden > 0 ? (
-                    <button type="button" data-testid={`plan-task-more-${task.id}`} className="min-w-[auto] h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
+                    <button type="button" data-testid={`plan-task-more-${task.id}`} className="min-w-[auto] w-auto h-6 border-0 bg-transparent px-[0.45rem] text-[0.75rem] text-accent-text underline-offset-[3px] hover:bg-transparent hover:underline" aria-expanded={open} onClick={() => toggle(task.id)}>
                       {open ? 'Mostrar menos' : `+${hidden}`}
                     </button>
                   ) : null}
@@ -952,17 +954,17 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                 {prs.length ? (
                   <section data-testid="run-prs" className="card">
                     <h2 data-testid="run-prs-title">Pull requests mesclados</h2>
-                    <ul data-testid="run-prs-list" className="m-0 grid list-none grid-cols-1 gap-[0.6rem] p-0 sm:grid-cols-2 lg:grid-cols-4">
+                    <ul data-testid="run-prs-list" className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(100%,15rem),1fr))] gap-[0.6rem] p-0">
                       {prs.map((p) => (
-                        <li key={p.taskId} data-testid={`run-pr-${p.taskId}`} className="flex min-w-0 flex-wrap items-center justify-center gap-2 rounded-md border border-line px-[0.6rem] py-[0.3rem]">
-                          <span data-testid={`run-pr-task-${p.taskId}`} className="break-all font-mono text-[0.8125rem] text-ink-soft">{p.taskId}</span>
+                        <li key={p.taskId} data-testid={`run-pr-${p.taskId}`} className="grid min-w-0 content-start justify-items-start gap-[0.2rem] rounded-md border border-line px-[0.85rem] py-[0.6rem] hover:bg-surface-sunken">
+                          <span data-testid={`run-pr-task-${p.taskId}`} className="order-2 font-mono text-[0.75rem] text-ink-soft wrap-anywhere">{p.taskId}</span>
                           {safeHttpUrl(p.url) ? (
-                            <a data-testid={`run-pr-link-${p.taskId}`} href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
+                            <a data-testid={`run-pr-link-${p.taskId}`} href={safeHttpUrl(p.url)} target="_blank" rel="noreferrer" className="order-1 inline-flex items-center gap-[0.35rem] font-semibold text-accent-text no-underline hover:underline">
                               PR #{p.number}
                               <Icon name="external" size={14} />
                             </a>
                           ) : (
-                            <span data-testid={`run-pr-plain-${p.taskId}`}>PR #{p.number}</span>
+                            <span data-testid={`run-pr-plain-${p.taskId}`} className="order-1 font-semibold">PR #{p.number}</span>
                           )}
                         </li>
                       ))}
@@ -983,14 +985,16 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                         {ids.map((id) => {
                           const tk = state.tasks.get(id)!;
                           return (
-                            <li key={id} data-testid={`run-task-row-${id}`} className="flex flex-wrap items-baseline gap-[0.85rem] px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken">
-                              <button className={`min-w-[5.75rem] ${TASK_ID_BUTTON}`} data-testid={`task-${id}`} onClick={openDetail({ kind: 'task', taskId: id })}>
-                                {id}
-                              </button>
-                              <span data-testid={`run-task-title-${id}`} className="min-w-0 flex-[1_1_16rem] leading-[1.45] text-ink">{tk.def.title}</span>
-                              {tk.def.service ? <Tipped text={SERVICE_HELP}><span data-testid={`run-task-service-${id}`} className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
-                              <span data-testid={`run-task-meta-${id}`} className="ml-auto inline-flex items-center gap-[0.4rem] text-[0.8125rem] whitespace-nowrap text-ink-soft max-md:ml-0 max-md:whitespace-normal [&_.tag]:m-0">
-                                {tk.attempts > 0 ? `${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}` : null}
+                            <li key={id} data-testid={`run-task-row-${id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 px-[0.9rem] py-[0.65rem] hover:bg-surface-sunken max-md:grid-cols-1">
+                              <div className="grid min-w-0 justify-items-start gap-[0.15rem]">
+                                <span data-testid={`run-task-title-${id}`} className="min-w-0 leading-[1.45] font-medium text-ink wrap-anywhere">{tk.def.title}</span>
+                                <button className={`w-auto min-w-0 text-left wrap-anywhere ${TASK_ID_BUTTON} text-[0.75rem]! font-normal!`} data-testid={`task-${id}`} onClick={openDetail({ kind: 'task', taskId: id })}>
+                                  {id}
+                                </button>
+                              </div>
+                              <span data-testid={`run-task-meta-${id}`} className="flex flex-wrap items-center justify-end gap-[0.4rem] text-[0.8125rem] text-ink-soft max-md:justify-start [&_.tag]:m-0">
+                                {tk.def.service ? <Tipped text={SERVICE_HELP}><span data-testid={`run-task-service-${id}`} className="tag" title="Serviço">{tk.def.service}</span></Tipped> : null}
+                                {tk.attempts > 0 ? <span className="whitespace-nowrap">{`${tk.attempts} ${tk.attempts === 1 ? 'tentativa' : 'tentativas'}`}</span> : null}
                                 {tk.replanned ? <Tipped text="O plano desta tarefa foi refeito durante a execução."><span data-testid={`run-task-replanned-${id}`} className="tag">replanejada</span></Tipped> : null}
                                 {tk.def.origin && tk.def.origin !== 'plan' ? <Tipped text={ORIGIN_HELP[tk.def.origin] ?? 'De onde esta tarefa veio.'}><span data-testid={`run-task-origin-${id}`} className={`tag tag-${tk.def.origin}`}>{tk.def.origin}</span></Tipped> : null}
                               </span>

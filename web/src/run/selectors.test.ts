@@ -383,6 +383,7 @@ describe('phase rows', () => {
     ]);
     expect(phaseTitle(7)).toBe('Workflows de CI');
     expect(phaseTitle(4)).toBe('4 · Verificação');
+    expect(phaseTitle(8)).toBe('8 · Documentação');
     expect(phaseTitle(9)).toBe('Fase 9');
   });
 

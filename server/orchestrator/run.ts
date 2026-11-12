@@ -27,6 +27,7 @@ import { prepareGateImage, runGate, runGates, type GateContext, type GateExecuto
 import { TEST_GATE, withTestServices } from '../exec/test-services.js';
 import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from '../git/git.js';
 import { INSTALLED_AT, needsInstall } from './install-state.js';
+import { freePort, needsTestDatabase, startTestDatabase, stopTestDatabase } from './test-database.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, GraphAccess, HandoffSummary } from '../knowledge/context-pack.js';
 import { grepFallback, MIN_COVERAGE, type Graphify } from '../knowledge/graphify.js';
@@ -699,6 +700,7 @@ export class Run {
     return {
       journal: this.journal, ws, spec, project, plan: view.plan, specHash: spec.specHash!, firstSpec: this.firstSpecOf(view), docs: this.deps.docs,
       exec: this.deps.exec,
+      testDatabaseUrl: this.testDatabaseUrl,
       runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => runAgentStep(req, this.agentDeps(view)),
       gates: this.gatesFor(view),
       installDeps: (worktree) => this.installDeps(view, worktree),
@@ -907,6 +909,7 @@ export class Run {
     const workflows = await this.executeWorkflows(this.plan);
     if (!workflows.ok) return this.finish('phase-failed', workflows.reason);
     if (!this.journal.events.some((e) => e.type === OrchEvent.PhaseStarted && e.data.phase === 3)) await this.journal.fact(OrchEvent.PhaseStarted, { phase: 3 });
+    await this.startTestDatabase();
     // R11.4 retry: a fresh run's journal starts every task 'planned'; one an earlier run of this same version delivered with the
     // same definition is adopted as 'merged' straight away instead of redone (Phase 4 still proves it from the current repo's JUnit).
     const inherited = await mergedByPriorRuns(this.deps.ws, this.deps.spec.specId, this.runId, this.plan.tasks, this.deps.spec.specHash!);
@@ -1190,8 +1193,20 @@ export class Run {
     await fs.writeFile(stateFile(this.deps.ws, this.runId), JSON.stringify(snapshot, null, 2));
   }
 
+  private testDatabaseUrl: string | null = null;
+  private readonly testDatabaseName = () => `teams-ai-${this.runId}-db`;
+
+  /** A spec that names a DATABASE_URL gets a disposable local PostgreSQL for its Dev tasks; a failure to start it leaves the tasks without one. */
+  private async startTestDatabase(): Promise<void> {
+    if (!needsTestDatabase(this.deps.spec)) return;
+    await stopTestDatabase(this.deps.exec, this.testDatabaseName());
+    const started = await startTestDatabase(this.deps.exec, { containerName: this.testDatabaseName(), serviceHost: this.deps.cfg.docker.serviceHost, port: await freePort() });
+    this.testDatabaseUrl = started.ok ? started.url : null;
+  }
+
   async close(): Promise<void> {
     try {
+      if (this.testDatabaseUrl !== null) await stopTestDatabase(this.deps.exec, this.testDatabaseName());
       await this.journal.close();
     } finally {
       this.deps.knowledge?.close();
