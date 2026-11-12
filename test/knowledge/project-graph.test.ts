@@ -85,6 +85,21 @@ describe('buildProjectGraph', () => {
     expect(await fs.readFile(path.join(info, 'projeto.md'), 'utf8')).toContain('Kayron Hub');
     await expect(fs.access(path.join(info, 'stack.md'))).rejects.toThrow();
     await expect(fs.access(path.join(info, 'flow.md'))).rejects.toThrow();
+    await expect(fs.access(path.join(info, 'flow-outline.md'))).rejects.toThrow();
+  });
+
+  it('adds an outline of the flow steps beside flow.md, so the graph holds one node per step', async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'project-graph-'));
+    const ws = workspacePaths({ paths: { workspaces: root, runs: path.join(root, 'runs') } } as unknown as Config, 'kayron-hub');
+    const fake = new FakeExec();
+    const graphify = new Graphify({ exec: fake.exec, readFile: async (p) => (p.endsWith('graph.json') ? '{}' : null) });
+    const flow = '```mermaid\nflowchart TD\nsubgraph GOV["0. Governança"]\nA-->B\nend\n```';
+
+    await mergeProjectGraph(graphify, ws, project, [], [{ file: 'flow.md', text: flow }]);
+
+    const info = path.join(ws.graph, 'project-info');
+    expect(await fs.readFile(path.join(info, 'flow.md'), 'utf8')).toBe(flow);
+    expect(await fs.readFile(path.join(info, 'flow-outline.md'), 'utf8')).toContain('## 0. Governança');
   });
 });
 

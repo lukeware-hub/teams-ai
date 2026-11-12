@@ -362,6 +362,7 @@ describe('TaskRunner: implementing', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.DecisionAnswered)!.data).toMatchObject({ taskId: 'T1', answer: 'Documentar a operação', by: 'agents' });
     expect(journal.lastFeedback('T1')).toContain('Decision taken by the agents');
     expect(journal.lastFeedback('T1')).toContain('Documentar a operação');
+    expect(journal.lastFeedback('T1')).toContain('do not ask about it again');
     expect(agentCalls.filter((c) => c.kind === 'dev')).toHaveLength(5);
     expect(state().state).not.toBe('blocked');
   });

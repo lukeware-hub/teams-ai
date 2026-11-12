@@ -424,6 +424,18 @@ describe('specGapPack', () => {
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('overrule it');
   });
 
+  it('tells the SM to settle a document-versus-code conflict by research, with the code following the choice and no edit of docs/', () => {
+    const decides = specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback;
+    expect(decides).toContain('Research the official documentation');
+    expect(decides).toContain('never tell the Dev to edit a file under docs/');
+    expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('Research the official documentation');
+  });
+
+  it('asks for owner choices that never need a file under docs/ to change, and only when the agents decide', () => {
+    expect(blockOptionsPack(base, task, { reason: 'r', autonomous: true }).feedback).toContain('no choice may need a file under docs/ to change');
+    expect(blockOptionsPack(base, task, { reason: 'r' }).feedback).not.toContain('under docs/');
+  });
+
   it('offers the SM an image change for a version bump only when the owner lets the agents decide', () => {
     expect(specGapPack(base, task, { question: 'Which Go?', frozenPaths: [] }).feedback).not.toContain('imageFix');
     expect(specGapPack(base, task, { question: 'Which Go?', overrule: true, frozenPaths: [] }).feedback).toContain('imageFix');
