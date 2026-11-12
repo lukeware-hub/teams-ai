@@ -18,13 +18,13 @@ export const runName = (r: { kind: string; n: number }) => `${KIND_NAME[r.kind] 
 // 'idle' is not a server status: a spec frozen for running ('running') with no run in progress.
 export const LABEL: Record<string, string> = {
   idle: 'pronta para executar', refining: 'em refinamento', planned: 'planejada', retired: 'retirada', running: 'em execução', draining: 'finalizando',
-  'paused:quota': 'pausada por cota', 'paused:auth': 'aguardando login', interrupted: 'interrompida', 'awaiting-validation': 'aguardando validação',
+  'paused:quota': 'pausada por cota', 'paused:auth': 'aguardando login', interrupted: 'interrompida', cancelled: 'cancelada', 'awaiting-validation': 'aguardando validação',
   done: 'concluída', complete: 'concluída', drained: 'encerrada', blocked: 'bloqueada', deadlocked: 'travada',
   'phase-failed': 'fase falhou', 'verification-failed': 'verificação falhou', 'deploy-failed': 'deploy falhou', 'launch-failed': 'não iniciou', unknown: 'sem status',
   drafting: 'em edição', evaluating: 'em avaliação', answering: 'aguardando respostas', ready: 'pronto para iniciar', error: 'com erro',
 };
 export const TONE: Record<string, string> = {
-  done: 'good', complete: 'good', ready: 'good',
+  done: 'good', complete: 'good', ready: 'good', cancelled: 'neutral',
   running: 'neutral', draining: 'neutral', evaluating: 'neutral',
   'paused:quota': 'warn', 'paused:auth': 'warn', interrupted: 'warn', 'awaiting-validation': 'warn', answering: 'warn',
   blocked: 'bad', deadlocked: 'bad', 'phase-failed': 'bad', 'verification-failed': 'bad', 'deploy-failed': 'bad', 'launch-failed': 'bad', error: 'bad',
@@ -77,6 +77,7 @@ export const STATUS_HELP: Record<string, string> = {
   'paused:quota': 'O limite de uso do Claude acabou. A execução continua sozinha quando o limite renovar.',
   'paused:auth': 'A sessão do Claude expirou. Entre de novo e use Retomar.',
   interrupted: 'O processo parou antes do fim. Use Retomar para continuar.',
+  cancelled: 'Você cancelou esta execução. Ela não retoma mais; o que já foi enviado ao repositório fica.',
   'awaiting-validation': 'Terminou e o serviço foi publicado. Falta você validar o resultado.',
   done: 'Terminou com sucesso.',
   complete: 'Terminou com sucesso.',

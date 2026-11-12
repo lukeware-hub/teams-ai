@@ -273,7 +273,7 @@ export class ProgramService {
     };
     return {
       now: () => this.now(),
-      findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).find((r) => r.specId === specId && claimsSpec(r))?.runId ?? null,
+      findActiveRun: async (specId) => (await listRuns(await this.index(), projectId)).filter((r) => r.specId === specId && r.kind === 'run' && claimsSpec(r)).sort((a, b) => b.n - a.n)[0]?.runId ?? null,
       startRun: async (specId) => {
         // A spec already delivered cannot be frozen again: the run that delivered it is the one to read (live: guide-detail-timeline failed on that freeze after its own delivery).
         const delivered = await this.deliveredRun(projectId, await rootOf(specId), specId);
@@ -349,6 +349,8 @@ export class ProgramService {
       case 'paused:auth':
       case 'draining':
         return { kind: 'running' };
+      case 'cancelled':
+        return { kind: 'stopped', finished: true, costUsd: (await finished())?.tokens?.costUsd ?? row.cost };
       case 'interrupted':
       case 'unknown': {
         // The user's Stop holds until they resume the run themselves.

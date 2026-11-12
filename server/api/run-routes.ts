@@ -36,7 +36,7 @@ import { readProjectDocs } from '../git/main-docs.js';
 import { refuseCloneHost, type ResolveHost } from './security.js';
 import { tailJournal } from './journal-tail.js';
 import { abandonLaunch, DRAIN_STOP_MS, isAlive, NO_DRAIN_STOP_MS, spawnRun, stop, type RunControlDeps } from './run-control.js';
-import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markStopRequested, progressOf, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
+import { claimLaunch, claimsSpec, concludedSpecs, clearPid, clearStopRequested, finishOf, listProjects, listRuns, markCancelled, markStopRequested, progressOf, readPid, readProject, runLiveness, runRow, runsDir, SAFE_ID, writePid, type IndexDeps, type ProjectRow, type RunRow } from './run-index.js';
 import type { Spec } from '../contracts/spec.js';
 import { HttpError, type Route } from './server.js';
 import { probeProcess, type ProbeProcess } from './process-identity.js';
@@ -431,7 +431,43 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     await writePid(runs, o.runId, pid);
     deps.log?.(`run ${o.runId} ${o.mode} pid ${pid}`);
   };
-  // The 409 checks read the filesystem, which lags a spawn by up to the journal wait; two concurrent
+  /** Ends a run that is stopped for good (login expired or process gone) so nothing resumes it; a run with a live process says to Stop it first. */
+  const cancelStopped = async (idx: IndexDeps, runId: string): Promise<RunRow> => {
+    const { row } = await findRun(idx, runId);
+    const runs = runsDir(idx);
+    if (row.locked) throw new HttpError(409, `run ${runId} belongs to concluded spec ${row.specId}; create a new spec`);
+    if (row.status !== 'paused:auth' && row.status !== 'interrupted') throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth or interrupted runs cancel`);
+    const pid = await readPid(runs, runId);
+    if (pid !== null && isAlive(deps.control, pid)) throw new HttpError(409, `run ${runId} still has a live process; stop it first`);
+    await markCancelled(runs, runId);
+    return row;
+  };
+
+  /** Starts the next run of a running spec, or queues it in the program that holds the spec. */
+  const startSpecRun = async (idx: IndexDeps, projectId: string, specId: string): Promise<{ runId: string } | { queued: true; draftId: string }> => {
+    const dir = await projectDir(idx, projectId, specId);
+    const { specs } = await readProject(dir);
+    if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
+    // A spec a running program owns runs there, ahead of its queue: never a second, loose run beside the program.
+    const queued = await deps.queueInProgram?.(projectId, specId);
+    if (queued && 'refused' in queued) throw new HttpError(409, queued.refused);
+    if (queued) return { queued: true, draftId: queued.draftId };
+    const runId = await exclusive(specKey(projectId, specId), async () => {
+      const rows = await listRuns(idx, projectId);
+      refuseConcluded(specs, rows, specId);
+      // The launched process runs only a running spec; saying so here leaves no dead run behind.
+      const status = specs.find((s) => s.specId === specId)!.status;
+      if (status !== 'running') throw new HttpError(409, `spec ${specId} is ${status}; only a running spec gets a new run`);
+      const active = rows.find((r) => r.specId === specId && claimsSpec(r));
+      if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
+      const id = await nextRunId({ runs: runsDir(idx), projectId }, specId);
+      await launch(idx, { projectDir: dir, specId, runId: id, mode: 'run' });
+      return id;
+    });
+    return { runId };
+  };
+
+ // The 409 checks read the filesystem, which lags a spawn by up to the journal wait; two concurrent
   // requests would both pass. A key is held from the check to the pid write.
   const launching = new Set<string>();
   const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
@@ -844,29 +880,26 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     {
       method: 'POST',
       path: `${P}/projects/:projectId/specs/:specId/runs`,
+      handler: async ({ params, json }) => json(200, await startSpecRun(await index(), params.projectId!, safe(params.specId!))),
+    },
+    {
+      method: 'POST',
+      path: `${P}/runs/:runId/cancel`,
       handler: async ({ params, json }) => {
         const idx = await index();
-        const specId = safe(params.specId!);
-        const dir = await projectDir(idx, params.projectId!, specId);
-        const { specs } = await readProject(dir);
-        if (!specs.some((s) => s.specId === specId)) throw new HttpError(404, `unknown spec ${specId}`);
-        // A spec a running program owns runs there, ahead of its queue: never a second, loose run beside the program.
-        const queued = await deps.queueInProgram?.(params.projectId!, specId);
-        if (queued && 'refused' in queued) throw new HttpError(409, queued.refused);
-        if (queued) return json(200, { queued: true, draftId: queued.draftId });
-        const runId = await exclusive(specKey(params.projectId!, specId), async () => {
-          const rows = await listRuns(idx, params.projectId!);
-          refuseConcluded(specs, rows, specId);
-          // The launched process runs only a running spec; saying so here leaves no dead run behind.
-          const status = specs.find((s) => s.specId === specId)!.status;
-          if (status !== 'running') throw new HttpError(409, `spec ${specId} is ${status}; only a running spec gets a new run`);
-          const active = rows.find((r) => r.specId === specId && claimsSpec(r));
-          if (active) throw new HttpError(409, `spec ${specId} already has run ${active.runId} (${active.status})`);
-          const id = await nextRunId({ runs: runsDir(idx), projectId: params.projectId! }, specId);
-          await launch(idx, { projectDir: dir, specId, runId: id, mode: 'run' });
-          return id;
-        });
-        json(200, { runId });
+        const runId = safe(params.runId!);
+        await exclusive(`run ${runId}`, () => cancelStopped(idx, runId));
+        json(200, { cancelled: true });
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/runs/:runId/restart`,
+      handler: async ({ params, json }) => {
+        const idx = await index();
+        const runId = safe(params.runId!);
+        const row = await exclusive(`run ${runId}`, () => cancelStopped(idx, runId));
+        json(200, await startSpecRun(idx, row.projectId, row.specId));
       },
     },
     {

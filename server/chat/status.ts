@@ -9,6 +9,7 @@ export const RUN_STATUS: Record<RunListStatus, string> = {
   'paused:auth': 'pausada por falha de login',
   'awaiting-validation': 'esperando a validação de uma pessoa',
   interrupted: 'interrompida',
+  cancelled: 'cancelada',
   complete: 'concluída',
   done: 'concluída',
   drained: 'encerrada depois de um pedido para parar',

@@ -9,6 +9,8 @@
  * A spec whose code is already on main when it fails for good (a deploy) ends `partial`, and its dependents still run.
  */
 
+import { parseRunId } from '../core/ids.js';
+
 /** `delivered`: its run delivered it, its code is on main, and the owner validates it; the program completes nothing on its own. */
 export type ItemStatus = 'pending' | 'running' | 'completing' | 'delivered' | 'waiting' | 'done' | 'partial' | 'failed' | 'blocked';
 
@@ -279,6 +281,13 @@ export async function tick(program: Program, fx: ProgramEffects, save: (p: Progr
             wait(item, message(err));
           }
         }
+        dirty = true;
+        continue;
+      }
+      // A newer run of the spec (started by hand) replaces the one the ledger holds: the item follows it.
+      const latest = await fx.findActiveRun(item.specId);
+      if (latest !== null && latest !== item.runId && (parseRunId(latest)?.n ?? 0) > (parseRunId(item.runId)?.n ?? 0)) {
+        item.runId = latest;
         dirty = true;
         continue;
       }

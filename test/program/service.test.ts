@@ -203,6 +203,7 @@ describe('program service tick', () => {
     const again = await service(cause('code-defect')).tick('shop', 'd');
     expect(again!.items[0]).toMatchObject({ repairs: 1, failures: ['verification-failed: AC-004 missing'] });
     expect(await fs.readFile(path.join(root, 'draft', 'repair', 'd-a.md'), 'utf8')).toContain('verification-failed: AC-004 missing');
+    await fs.rm(path.join(runsDir(), 'shop--d-a--run-2'), { recursive: true, force: true }); // the repair started it; this half of the test replays the first failure
     await fs.writeFile(ledger, JSON.stringify({ version: 1, draftId: 'd', status: 'running', updatedAt: '', items: [item] }));
     const final = await service(cause('spec-problem')).tick('shop', 'd');
     expect(final!.items[0]).toMatchObject({ status: 'failed', reason: 'verification-failed: AC-004 missing' });

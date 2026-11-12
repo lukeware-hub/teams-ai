@@ -11,7 +11,7 @@ import { probeProcess } from './process-identity.js';
 /** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
 export const SAFE_ID = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
 
-export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'launch-failed' | 'unknown';
+export type RunListStatus = 'running' | 'paused:quota' | 'paused:auth' | 'draining' | 'complete' | 'blocked' | 'deadlocked' | 'drained' | 'phase-failed' | 'awaiting-validation' | 'verification-failed' | 'deploy-failed' | 'done' | 'interrupted' | 'cancelled' | 'launch-failed' | 'unknown';
 const ACTIVE: ReadonlySet<string> = new Set(['running', 'paused:quota', 'paused:auth', 'draining']);
 /** A spec with an interrupted run is resumed, not restarted: the UI offers Resume instead of Start. */
 export const CLAIMS_SPEC: ReadonlySet<string> = new Set([...ACTIVE, 'interrupted']);
@@ -144,6 +144,18 @@ export async function isStopRequested(runs: string, runId: string): Promise<bool
   );
 }
 
+// The user's Cancel: the run is over for good, nothing resumes it. A file for the same reason as Stop.
+const cancelFile = (runs: string, runId: string) => path.join(runs, runId, 'cancelled');
+export async function markCancelled(runs: string, runId: string): Promise<void> {
+  await fs.writeFile(cancelFile(runs, runId), '');
+}
+export async function isCancelled(runs: string, runId: string): Promise<boolean> {
+  return fs.access(cancelFile(runs, runId)).then(
+    () => true,
+    () => false,
+  );
+}
+
 const claimFile = (runs: string, runId: string) => path.join(runs, runId, 'launch-claim');
 /** A launch waits at most ~10 s for the journal; a claim older than this belongs to a spawner that died mid-launch. */
 const CLAIM_TTL_MS = 60_000;
@@ -213,7 +225,8 @@ export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | n
   // A launch that never wrote its journal leaves only ui.log behind.
   const launchLog = events.length === 0 && !state ? await fs.stat(path.join(runs, runId, 'ui.log')).catch(() => null) : null;
   let status: RunListStatus;
-  if (finished) status = String(finished.data.result) as RunListStatus;
+  if (!finished && (await isCancelled(runs, runId))) status = 'cancelled';
+  else if (finished) status = String(finished.data.result) as RunListStatus;
   // Phases 0-2 journal before the first state snapshot: a live process is running, not unknown (the spec must stay claimed).
   else if (!state?.status) status = alive ? 'running' : events.length === 0 && launchLog ? 'launch-failed' : interrupted && userStopped ? 'interrupted' : 'unknown';
   // A run paused by an expired login exits on purpose and waits for a human, not for a resume on the same login.

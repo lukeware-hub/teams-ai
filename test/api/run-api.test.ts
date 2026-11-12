@@ -918,6 +918,36 @@ describe('start, resume, stop', () => {
     expect((await resume.json()).error).toBe(`run hello-001-r1 is behind ${runId} of spec hello-001; only the latest run of a spec resumes`);
   });
 
+  it('cancel ends a paused or interrupted run for good: no resume, no hold on the spec, and a live process says to stop it first', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
+    expect((await post('/api/runs/hello-001-r1/cancel')).status).toBe(200);
+    const row = ((await (await fetch(`${base()}/api/projects/hello-app/runs`)).json()) as Array<{ runId: string; status: string }>).find((r) => r.runId === 'hello-001-r1');
+    expect(row?.status).toBe('cancelled');
+    const resume = await post('/api/runs/hello-001-r1/resume');
+    expect(resume.status).toBe(409);
+    expect((await resume.json()).error).toContain('cancelled');
+    await writeRun(runs, 'hello-001-r2', [started('hello-001-r2')], state('running'), 960);
+    alive.add(960);
+    expect((await post('/api/runs/hello-001-r2/cancel')).status).toBe(409);
+    await writeRun(runs, 'hello-001-r3', [started('hello-001-r3'), { type: 'RUN_FINISHED', data: { result: 'complete' } }], state('running'));
+    expect((await post('/api/runs/hello-001-r3/cancel')).status).toBe(409);
+    expect((await post('/api/runs/missing/cancel')).status).toBe(404);
+  });
+
+  it('restart cancels the stopped run and starts the next one of the spec', async () => {
+    await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('paused:auth'));
+    onSpawn = async (runId) => {
+      await writeRun(runs, runId, [started(runId)], state('running'));
+    };
+    const res = await post('/api/runs/hello-001-r1/restart');
+    expect(res.status).toBe(200);
+    const { runId } = (await res.json()) as { runId: string };
+    expect(runId).not.toBe('hello-001-r1');
+    const rows = (await (await fetch(`${base()}/api/projects/hello-app/runs`)).json()) as Array<{ runId: string; status: string }>;
+    expect(rows.find((r) => r.runId === 'hello-001-r1')?.status).toBe('cancelled');
+    expect(rows.find((r) => r.runId === runId)?.status).toBe('running');
+  });
+
   it('a supervisor scan between the stop signal and the pid cleanup does not resume the run', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'), 950);
     alive.add(950);

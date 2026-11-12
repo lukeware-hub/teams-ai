@@ -266,6 +266,16 @@ describe('program controller', () => {
     expect(next.items[0]).toMatchObject({ status: 'running', runId: 'd-a-r7' });
   });
 
+  it('follows a newer run of the spec started by hand instead of staying on the one the ledger holds', async () => {
+    const { fx, calls, active } = world({ 'd-a-r1': { kind: 'running' }, 'd-a-r2': { kind: 'running' } });
+    let p = await tick(newProgram('d', [entry('a', 1)], NOW), fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'running', runId: 'd-a-r1' });
+    active.set('d-a', 'd-a-r2'); // the owner restarted the spec; the old run is cancelled
+    p = await tick(p, fx, save);
+    expect(p.items[0]).toMatchObject({ status: 'running', runId: 'd-a-r2' });
+    expect(calls).toEqual(['start d-a']);
+  });
+
   it('puts an item whose start failed to wait and goes on', async () => {
     const { fx } = world();
     fx.startRun = async (specId) => {
