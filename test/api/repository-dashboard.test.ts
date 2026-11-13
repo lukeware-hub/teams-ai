@@ -218,6 +218,14 @@ describe('the tasks table', () => {
     expect(byId['T4-wait']).toMatchObject({ state: 'pending', rawReason: null });
   });
 
+  it('drops the block reason of a task that was blocked once and then merged', () => {
+    const retried = input({
+      specs: [spec('cart', { tasks: 1 })],
+      runs: [run('r1', 'cart', 1, 'running', [planned('r1', 'T1-ok'), ev('r1', 'TASK_BLOCKED', { taskId: 'T1-ok', reason: 'Review requested changes:' }), to('r1', 'T1-ok', 'merged')])],
+    });
+    expect(tasksPage(retried).list[0]).toMatchObject({ state: 'delivered', reason: null, rawReason: null });
+  });
+
   it('filters by state and searches by title', () => {
     expect(tasksPage(inp, { facet: 'failed' }).list.map((t) => t.taskId)).toEqual(['T3-bad']);
     expect(tasksPage(inp, { q: 'tarefa t2' }).list.map((t) => t.taskId)).toEqual(['T2-dep']);

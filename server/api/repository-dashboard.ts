@@ -297,7 +297,7 @@ function specTasks(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: M
         owner: rt.def.owner,
         state,
         attempts: rt.attempts,
-        reason: reason === undefined ? null : firstSentence(explainBlockReason(reason)),
+        reason: reason === undefined || state === 'delivered' ? null : firstSentence(explainBlockReason(reason)),
         rawReason: state === 'blocked' || state === 'failed' ? (reason ?? null) : null,
         pr: prs.get(id) ?? null,
       });
