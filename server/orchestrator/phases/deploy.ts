@@ -404,7 +404,10 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   }
   // A service this spec does not change still runs from an earlier spec: its registered port reaches it on the shared network.
   const registry = deps.workspacesRoot ? await registeredPorts(deps.workspacesRoot) : {};
-  const untouchedServices = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && registry[portKey(deps.project.projectId, s)]);
+  // Planning gives every service of the project a port, delivered or not: only one with code on main can run from an earlier spec.
+  const otherServices = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s));
+  const hasCode = await Promise.all(otherServices.map(async (s) => (await deps.serviceHasCode?.(s)) ?? true));
+  const untouchedServices = otherServices.filter((s, i) => hasCode[i] && registry[portKey(deps.project.projectId, s)]);
   const untouched = untouchedServices.map((s) => [serviceUrlEnv(s), `http://${s}:${registry[portKey(deps.project.projectId, s)]}`] as const);
   // They may have stopped since their own spec (a restart of the host): start them again, and say so when one cannot, so the failure reads as the environment's.
   const started = await Promise.all(untouchedServices.map(async (s) => [s, await (target.ensureRunning?.(deps.project.projectId, s) ?? { ok: true, detail: '' })] as const));
@@ -430,7 +433,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   const down = revived.filter(([, r]) => !r.ok).map(([s, r]) => `${s}: ${r.detail}`);
   const withEnvironment = (detail: string) => (down.length > 0 ? `${detail}\n\nenvironment: a service of an earlier spec is not running (${down.join('; ')})` : detail);
   // A service of another spec that never published has no address; a suite that fails reaching it needs that spec, not a fix task.
-  const unpublished = (deps.project.services ?? []).filter((s) => !services.repos.some((r) => r.service === s) && !registry[portKey(deps.project.projectId, s)]);
+  const unpublished = otherServices.filter((s) => !untouchedServices.includes(s));
   // The name counts only where it is an address (a URL host, a failed DNS lookup, host:port) or its variable: a short name such as `api` also sits in every /api/ path.
   const unreachable = (detail: string) => unpublished.filter((s) => new RegExp(`(?:\\/\\/|lookup\\s+|host\\s+|ENOTFOUND\\s+|EAI_AGAIN\\s+|getaddrinfo\\s+)${s}(?![\\w-])|(?<![\\w/-])${s}:\\d+`).test(detail) || detail.includes(serviceUrlEnv(s)));
   const suiteFailed = (stage: 'smoke' | 'e2e', detail: string, repo: ServiceRepo) => {

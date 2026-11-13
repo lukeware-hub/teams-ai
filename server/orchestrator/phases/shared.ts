@@ -89,6 +89,8 @@ export interface PhaseDeps {
     prepare(repo: EnvironmentRepo, failure: string | null): Promise<boolean>;
     mint(urls: Record<string, string>): Promise<void>;
   };
+  /** False for a service whose main holds no code yet: it has a registered port from planning, but was never delivered, so there is nothing to start or build. Absent means every service has code. */
+  serviceHasCode?: (service: string) => Promise<boolean>;
   /** The platform containers to start: the project's, plus one shared PostgreSQL when `needed` (a service reads DATABASE_URL) and the project declares none. */
   provisionDatabase?: (needed: boolean) => Promise<readonly PlatformService[]>;
   /** A services plan and its repositories; absent means the project repository with `plan` and `gates`. */

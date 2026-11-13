@@ -38,6 +38,8 @@ interface TargetOpts {
   urlThrows?: string;
   /** A service of an earlier spec that cannot be started again. */
   cannotStart?: string;
+  /** Services that have a registered port but whose main holds no code yet (planned, never delivered). */
+  neverCoded?: string[];
 }
 
 /** A target that records what it does. */
@@ -87,6 +89,7 @@ async function setup(log: string[], opts: TargetOpts & { e2eFails?: string; deta
     exec: new FakeExec().on((s) => s.bin === 'git', (s) => execCommand(s)).exec,
     target: target(log, opts), smoke: gate('smoke'), e2e: gate('e2e'), requireE2e: true,
     services: { plan: opts.plan ?? plan, repos },
+    ...(opts.neverCoded ? { serviceHasCode: async (service: string) => !opts.neverCoded!.includes(service) } : {}),
   } as unknown as PhaseDeps;
   return { deps, scopes, root };
 }
@@ -273,6 +276,21 @@ describe('Phase 5 with several services', () => {
     expect(await runServicesPhase5(deps, 1)).toEqual({ ok: true });
     expect(log.filter((l) => l.startsWith('ensure'))).toEqual(['ensure:ledger-api']);
     expect(log.indexOf('ensure:ledger-api')).toBeLessThan(log.indexOf('smoke:orders-api'));
+  });
+
+  it('leaves alone a service that has a registered port but no code yet: nothing to start, and no environment blame (live: kayron-hub, 44 of 48 services)', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log, { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 }, neverCoded: ['ledger-api'], e2eFails: 'e2e:orders-api', detail: 'AC-001: failed' });
+    expect((await runServicesPhase5(deps, 1)).ok).toBe(false);
+    expect(log.some((l) => l.startsWith('ensure'))).toBe(false);
+    expect(String(failure().detail)).toContain('AC-001: failed');
+    expect(String(failure().detail)).not.toContain('environment:');
+  });
+
+  it('says a suite that cannot reach a registered but never coded service needs that spec delivered first', async () => {
+    const { deps } = await setup([], { services: ['orders-api', 'inventory-api', 'ledger-api'], ports: { 'shop/ledger-api': 20009 }, neverCoded: ['ledger-api'], e2eFails: 'e2e:orders-api', detail: 'getaddrinfo ENOTFOUND ledger-api' });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok ? '' : res.reason).toContain('environment: ledger-api of another spec was never published');
   });
 
   it('builds again a service of an earlier spec whose container is gone or exits when started (live: kayron-hub policy-registry-api)', () => {

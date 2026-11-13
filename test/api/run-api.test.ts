@@ -841,6 +841,9 @@ describe('start, resume, stop', () => {
     const retried = await post('/api/runs/hello-001-r4/resume');
     expect(retried.status).toBe(200);
     expect(spawns.at(-1)!.args).toEqual(['cli', 'resume', '--project', HELLO, '--run', 'hello-001-r4', '--retry-blocked']);
+    // A run whose process died before its first state snapshot reads as unknown; the page offers Retomar, so it resumes too.
+    await writeRun(runs, 'hello-001-r5', [started('hello-001-r5')], null, 901);
+    expect((await post('/api/runs/hello-001-r5/resume')).status).toBe(200);
     expect((await post('/api/runs/missing/resume')).status).toBe(404);
     expect((await post('/api/runs/..%2Fx/resume')).status).toBe(400);
   });
