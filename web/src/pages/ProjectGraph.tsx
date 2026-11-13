@@ -10,6 +10,8 @@ import { action, panel, plural, sectionHeading, when } from './project-shared.js
 
 /** Communities listed one by one; the rest share a single "Outras" line. */
 const LISTED = 20;
+/** One shared empty list, so the colors are not rebuilt on every render while there is no map. */
+const NO_COMMUNITIES: NonNullable<GraphView['map']>['communities'] = [];
 const SEARCH_ROWS = 8;
 const OTHERS = 'others';
 const GREY = '#8a93a6';
@@ -82,7 +84,7 @@ export function ProjectGraph() {
   // The age of the graph is read against the moment the view arrived, so it does not shift while the page is open.
   const asOf = useMemo(() => Date.now(), [view]);
   const map = view?.map;
-  const communities = map?.communities ?? [];
+  const communities = map?.communities ?? NO_COMMUNITIES;
   const listed = communities.slice(0, LISTED);
   const others = communities.slice(LISTED);
   const color = useMemo(() => {

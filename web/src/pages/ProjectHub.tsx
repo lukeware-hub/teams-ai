@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
 import { refineApi, runApi, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
@@ -45,6 +45,9 @@ const SPEC_GROUPS: ReadonlyArray<{ title: string; statuses: readonly string[] }>
   { title: 'Prontas', statuses: ['idle', 'ready', 'planned'] },
   { title: 'Concluídas', statuses: ['done', 'complete', 'retired'] },
 ];
+
+const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
+const statusLabel = (status: string) => LABEL[status] ?? status;
 
 /** The hub before its data arrives: the real breadcrumb, then the header, the four counters and the specs panel as placeholders. */
 function ProjectHubSkeleton({ projectId, error }: { projectId: string; error: string | null }) {
@@ -131,16 +134,33 @@ export function ProjectHubView(p: {
 }) {
   const projectId = p.project?.projectId ?? '';
   // A run's status, tokens and cost move while it goes on: the runs table reads the page again when they do.
-  const runsKey = p.runs.map((r) => `${r.runId}:${r.status}:${r.tokens}:${r.cost}`).join('|');
-  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), (status) => LABEL[status] ?? status, runsKey);
-  const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), (status) => LABEL[status] ?? status);
-  const groupOf = (status: string) => SPEC_GROUPS.find((g) => g.statuses.includes(status)) ?? SPEC_GROUPS[0]!;
+  // Built once per runs change instead of on every render.
+  const runsKey = useMemo(() => p.runs.map((r) => `${r.runId}:${r.status}:${r.tokens}:${r.cost}`).join('|'), [p.runs]);
+  const runsView = usePagedTable(`${projectId}/runs`, (req) => runApi.projectRunsPage(projectId, req), statusLabel, runsKey);
+  const specsView = usePagedTable(`${projectId}/specs`, (req) => runApi.projectSpecsPage(projectId, req), statusLabel);
   // While a backlog runs its panel lists the planned specs, so the specs card leaves them out.
   const [running, setRunning] = useState<string[]>([]);
   const trackRunning = (specId: string, on: boolean) => setRunning((r) => (on === r.includes(specId) ? r : on ? [...r, specId] : r.filter((id) => id !== specId)));
-  const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
-  const groupSpecs = (rows: SpecPageRow[]) => SPEC_GROUPS.map((g) => ({ title: g.title, rows: rows.filter((s) => listed(s) && groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
-  const groupedSpecs = groupSpecs(specsView.rows);
+  // Grouping walks every spec row, so it reruns only when the rows or the running backlogs change.
+  const groupedSpecs = useMemo(() => {
+    const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
+    return SPEC_GROUPS.map((g) => ({ title: g.title, rows: specsView.rows.filter((s) => listed(s) && groupOf(s.shownStatus) === g) })).filter((g) => g.rows.length > 0);
+  }, [specsView.rows, running]);
+  // The newest run number of each spec, so every row checks "latest" with one lookup.
+  const newestRunOf = useMemo(() => {
+    const newest = new Map<string, number>();
+    for (const o of p.runs) if (o.kind === 'run') newest.set(o.specId, Math.max(newest.get(o.specId) ?? o.n, o.n));
+    return newest;
+  }, [p.runs]);
+  // The counters read every run, so they rerun only when the runs change.
+  const { agentRuns, activeRuns, totalCost } = useMemo(() => ({
+    agentRuns: p.runs.filter((r) => r.kind === 'run').length,
+    activeRuns: p.runs.filter((r) => ACTIVE.has(r.status)),
+    totalCost: p.runs.reduce((sum, r) => sum + r.cost, 0),
+  }), [p.runs]);
+  const specRows = p.project?.specs;
+  // Counting the concluded specs reruns only when the project's specs change.
+  const doneCount = useMemo(() => (specRows ?? []).filter((s) => s.status === 'done' || s.status === 'complete').length, [specRows]);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingRestart, setPendingRestart] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -161,12 +181,8 @@ export function ProjectHubView(p: {
   if (!p.project) return <main data-testid="project-hub-empty" />;
   const pr = p.project;
   const refineSpec = p.backlogs?.find((id) => id === `${pr.projectId}-001`);
-  const doneCount = pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length;
   const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
   const allConcluded = percent === 100;
-  const agentRuns = p.runs.filter((r) => r.kind === 'run').length;
-  const activeRuns = p.runs.filter((r) => ACTIVE.has(r.status));
-  const totalCost = p.runs.reduce((sum, r) => sum + r.cost, 0);
   return (
     <main data-testid="project-hub-main">
       <Breadcrumb testId="project-hub-breadcrumb" trail={[{ label: pr.projectId, testId: 'project-hub-breadcrumb-project' }]} />
@@ -266,7 +282,7 @@ export function ProjectHubView(p: {
                               </ActionButton>
                             ) : null}
                             {!r.locked && r.kind === 'run' && (r.status === 'paused:auth' || r.status === 'interrupted') ? (
-                              <RunStoppedActions runId={r.runId} latest={!p.runs.some((o) => o.specId === r.specId && o.kind === 'run' && o.n > r.n)} onResume={p.onResume} onRestart={p.onRestartRun} onCancel={p.onCancelRun} />
+                              <RunStoppedActions runId={r.runId} latest={r.n >= (newestRunOf.get(r.specId) ?? r.n)} onResume={p.onResume} onRestart={p.onRestartRun} onCancel={p.onCancelRun} />
                             ) : null}
                           </span>
                         </td>

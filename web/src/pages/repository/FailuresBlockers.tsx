@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { InfoTip } from '../../components/InfoTip.js';
 import { runPath } from '../../routes.js';
@@ -10,14 +10,15 @@ import { SecretBlocker } from './SecretBlocker.js';
 const KIND_LABEL: Record<DashboardItem['kind'], string> = { task: 'Tarefa', run: 'Run', question: 'Pergunta', secret: 'Segredo', stop: 'Parada' };
 
 /** Failures and blockers of the repository as two cards, each searched, filtered and paged on the server; a card with no item is hidden. */
-export function FailuresBlockers({ projectId, repo, failures, blockers }: { projectId: string; repo: string; failures: number; blockers: number }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const FailuresBlockers = memo(function FailuresBlockers({ projectId, repo, failures, blockers }: { projectId: string; repo: string; failures: number; blockers: number }) {
   return (
     <>
       {failures > 0 && <ItemsCard title="Falhas" table="failures" projectId={projectId} repo={repo} testId="repo-failures" />}
       {blockers > 0 && <ItemsCard title="Bloqueios" table="blockers" projectId={projectId} repo={repo} testId="repo-blockers" />}
     </>
   );
-}
+});
 
 function ItemsCard({ title, table, projectId, repo, testId }: { title: string; table: DashboardTable; projectId: string; repo: string; testId: string }) {
   const [saved, setSaved] = useState(0);

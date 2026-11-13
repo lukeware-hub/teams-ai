@@ -12,6 +12,8 @@ const META = 'flex flex-wrap items-center gap-2 md:justify-end';
 
 /** The specs of the repository grouped by state, each spec opening its tasks with their state, attempts and run link. */
 export function DeliveryBoard({ specs, tasks }: { specs: DashboardSpec[]; tasks: DashboardTask[] }) {
+  const tasksBySpec = new Map<string, DashboardTask[]>();
+  for (const t of tasks) tasksBySpec.set(t.specId, [...(tasksBySpec.get(t.specId) ?? []), t]);
   return (
     <section className={panel} data-testid="repo-board">
       <div data-testid="delivery-board-title" className={sectionTitle}>
@@ -21,13 +23,13 @@ export function DeliveryBoard({ specs, tasks }: { specs: DashboardSpec[]; tasks:
       {specs.length === 0 ? (
         <p data-testid="delivery-board-empty" className="hint">sem dados: nenhuma spec neste repositório.</p>
       ) : (
-        SPEC_ORDER.map((state) => <Group key={state} state={state} specs={specs.filter((s) => s.state === state)} tasks={tasks} />)
+        SPEC_ORDER.map((state) => <Group key={state} state={state} specs={specs.filter((s) => s.state === state)} tasksBySpec={tasksBySpec} />)
       )}
     </section>
   );
 }
 
-function Group({ state, specs, tasks }: { state: SpecState; specs: DashboardSpec[]; tasks: DashboardTask[] }) {
+function Group({ state, specs, tasksBySpec }: { state: SpecState; specs: DashboardSpec[]; tasksBySpec: Map<string, DashboardTask[]> }) {
   if (specs.length === 0) return null;
   return (
     <div className="grid gap-1" data-testid={`board-${state}`}>
@@ -50,7 +52,7 @@ function Group({ state, specs, tasks }: { state: SpecState; specs: DashboardSpec
             )}
             </span>
           </summary>
-          <TaskList specId={spec.specId} tasks={tasks.filter((t) => t.specId === spec.specId)} />
+          <TaskList specId={spec.specId} tasks={tasksBySpec.get(spec.specId) ?? []} />
         </details>
       ))}
     </div>

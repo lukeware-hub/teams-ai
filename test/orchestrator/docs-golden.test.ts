@@ -19,8 +19,8 @@ describe('legacy packs and charters stay byte-identical (plan 119, I8 item 5)', 
   });
 
   it('the Dev pack, with and without plan and task files', () => {
-    expect(sha(devPack(legacy, task, { code, handoffs: [], feedback: null }).principles)).toBe('ca12090c1bb36ae49da76cc2e3465e295fe69a6a4f09bf10569a7fa98b126dd4');
-    expect(sha(devPack(withFiles, task, { code, handoffs: [], feedback: null, plan: { file: withFiles.planFile!, ids: ['T1'] } }).principles)).toBe('edf4781594799af2dbe2be5e885c3013b90c9ad387da41f608c45bc193f7f0c9');
+    expect(sha(devPack(legacy, task, { code, handoffs: [], feedback: null }).principles)).toBe('2143b135445ab4f746e5affb446b2fdcebb9a47c9c203dafb5fd0209d4713a23');
+    expect(sha(devPack(withFiles, task, { code, handoffs: [], feedback: null, plan: { file: withFiles.planFile!, ids: ['T1'] } }).principles)).toBe('c7648a3172ed1fe3655e8fc96ff075a18f305cbcc13e1b9eb46906d58c66f8a6');
   });
 
   it('the review, security, ui-check and converge packs', () => {

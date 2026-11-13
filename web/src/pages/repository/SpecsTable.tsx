@@ -1,8 +1,10 @@
+import { memo } from 'react';
 import { runApi, type RepoSpecView } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 
 /** The specs of the repository, one page at a time from the server; each row shows its state, plan, tasks and dependencies. */
-export function SpecsTable({ projectId, repo }: { projectId: string; repo: string }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const SpecsTable = memo(function SpecsTable({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(`${projectId}/${repo}/specs`, (req) => runApi.repositorySpecsPage(projectId, repo, req));
   if (!view.loaded) return <p data-testid="repository-specs-loading" className="hint" role="status">Carregando as especificações…</p>;
   if (view.total === 0) return <p data-testid="repository-specs-empty" className="hint">Nenhuma spec neste repositório.</p>;
@@ -35,4 +37,4 @@ export function SpecsTable({ projectId, repo }: { projectId: string; repo: strin
       <Pagination view={view} />
     </div>
   );
-}
+});

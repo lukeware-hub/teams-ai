@@ -176,6 +176,18 @@ describe('Phase 5', () => {
     expect(r.ok ? null : r.fixTask?.origin).toBe('deploy-fix');
   });
 
+  it('a smoke failure with no smoke test lets the Dev change the product code, so it can expose the routes the test calls (live: kayron-hub identity-roles-authority)', async () => {
+    const plan = makePlan(spec);
+    const devPaths = plan.tasks.filter((t) => t.owner === 'dev').flatMap((t) => t.affectedPaths);
+    const r = await runPhase5({ ...deps('AC-037: no smoke test'), plan }, 1);
+    const task = r.ok ? null : r.fixTask;
+    expect(devPaths.length).toBeGreaterThan(0);
+    expect(task?.affectedPaths).toEqual(expect.arrayContaining(devPaths));
+    expect(task?.description).toContain('Build the missing routes');
+    const other = await runPhase5({ ...deps('AC-037: smoke test failed'), plan }, 1);
+    expect(other.ok ? null : other.fixTask?.description).not.toContain('Build the missing routes');
+  });
+
   it('a smoke deploy-fix covers the e2e suite too, which runs next against the same service and usually repeats its requests', async () => {
     // Live: the fix repaired the smoke test's request, and the next attempt failed at e2e on the same request.
     const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/e2e_test.go', readmeSections: ['Run'] };

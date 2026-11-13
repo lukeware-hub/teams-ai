@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { projectPath, refinePath, runPath } from '../routes.js';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -312,8 +312,17 @@ function GapRow({ gap, decision, locked, canReport, onPrefill, onAccept, autonom
   );
 }
 
+const gapKey = (g: { doc: string; heading: string }) => `${g.doc} › ${g.heading}`;
+
 function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept, autonomous }: { gaps: GapsReport; decisions: GapDecision[]; locked: boolean; canReport: boolean; onPrefill: (text: string) => void; onAccept: (gap: GapItem, note: string) => unknown; autonomous: boolean }) {
-  const open = 'items' in gaps ? gaps.items.filter((g) => g.status !== 'delivered') : [];
+  // The open list and the decision lookup change only with the gaps and decisions, not with each row's typing.
+  const open = useMemo(() => ('items' in gaps ? gaps.items.filter((g) => g.status !== 'delivered') : []), [gaps]);
+  // One lookup per gap instead of a scan of every decision; the first decision of a gap wins.
+  const decisionOf = useMemo(() => {
+    const byGap = new Map<string, GapDecision>();
+    for (const d of decisions) byGap.set(gapKey(d), byGap.get(gapKey(d)) ?? d);
+    return byGap;
+  }, [decisions]);
   return (
     <section className="card" data-testid="gaps">
       <div data-testid="validation-gaps-head" className={RUN_UI.panelHead}>
@@ -328,7 +337,7 @@ function GapsCard({ gaps, decisions, locked, canReport, onPrefill, onAccept, aut
           {open.length ? (
             <ul className={FINDINGS} data-testid="gaps-open">
               {open.map((gap) => (
-                <GapRow key={`${gap.doc} › ${gap.heading}`} gap={gap} decision={decisions.find((d) => d.doc === gap.doc && d.heading === gap.heading)} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} autonomous={autonomous} />
+                <GapRow key={gapKey(gap)} gap={gap} decision={decisionOf.get(gapKey(gap))} locked={locked} canReport={canReport} onPrefill={onPrefill} onAccept={onAccept} autonomous={autonomous} />
               ))}
             </ul>
           ) : <p data-testid="validation-gaps-empty" className="hint m-0">Nenhum trecho em aberto.</p>}
@@ -348,18 +357,30 @@ export function ValidationView({ detail, specStatus, actionError = null, service
     writeChecks(detail.runId, next);
   };
   // The same explanation the Run page gives a run that stopped, so the cause is at the top here too.
-  const blocked = (detail.finished?.blocked ?? report?.blocked ?? []) as Array<{ taskId: string; reason: string }>;
+  const finished = detail.finished;
+  const reportBlocked = report?.blocked;
+  // Kept stable so the causes and the stop summary below are not rebuilt on every checkbox click.
+  const blocked = useMemo(() => (finished?.blocked ?? reportBlocked ?? []) as Array<{ taskId: string; reason: string }>, [finished?.blocked, reportBlocked]);
   // A run that ended with blocked tasks (its RUN_FINISHED) is not delivered: the owner validates only a run whose every task merged.
   const endedBlocked = (detail.finished?.blocked ?? []) as Array<{ taskId: string; reason: string }>;
   const enabled = specStatus === 'awaiting-validation' && report?.result === 'awaiting-validation' && !completing && endedBlocked.length === 0;
   const specState = specStatus ? ` e a especificação está “${statusLabel(specStatus)}”` : '';
   const blockedNote = endedBlocked.length > 0 ? `${endedBlocked.length === 1 ? 'Há 1 tarefa bloqueada' : `Há ${endedBlocked.length} tarefas bloqueadas`}: a entrega não está pronta para validar. Envie a run de volta para o agente corrigir, na página da run.` : null;
   const note = enabled ? null : blockedNote ?? (specStatus === 'done' ? 'Esta especificação já foi concluída.' : report ? `Ações indisponíveis: a execução terminou como “${statusLabel(report.result)}”${specState}.` : 'As ações ficam disponíveis quando a execução gerar o relatório.');
-  const steps = report?.exploratoryScript.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [];
-  const stepsDone = steps.filter((id) => checks[id]).length;
-  const causes = rootBlockers(blocked);
-  const stop = stopSummary({ status: detail.status, reason: typeof detail.finished?.reason === 'string' ? detail.finished.reason : null, causes, deployFailure: report?.deploy.lastFailure ?? null });
-  const before = stop ? stopBefore(detail.status, blocked) : null;
+  const script = report?.exploratoryScript;
+  // The step ids depend only on the script, so ticking a box does not rebuild them.
+  const steps = useMemo(() => script?.flatMap((b) => b.steps.map((_, i) => `${b.acId}-${i}`)) ?? [], [script]);
+  const stepsDone = useMemo(() => steps.filter((id) => checks[id]).length, [steps, checks]);
+  const causes = useMemo(() => rootBlockers(blocked), [blocked]);
+  const lastFailure = report?.deploy.lastFailure ?? null;
+  const stop = useMemo(() => stopSummary({ status: detail.status, reason: typeof finished?.reason === 'string' ? finished.reason : null, causes, deployFailure: lastFailure }), [detail.status, finished?.reason, causes, lastFailure]);
+  const before = useMemo(() => (stop ? stopBefore(detail.status, blocked) : null), [stop, detail.status, blocked]);
+  // One lookup per script block instead of a scan of every criterion.
+  const criterionOf = useMemo(() => {
+    const byId = new Map<string, AcceptanceCriterion>();
+    for (const c of detail.acceptanceCriteria) byId.set(c.id, byId.get(c.id) ?? c);
+    return byId;
+  }, [detail.acceptanceCriteria]);
   const raw = stop && !causes.some((c) => c.reason === stop.raw) ? stop.raw : '';
   return (
     <main data-testid="validation-main" className={`${RUN_UI.page} ${CODE}`}>
@@ -462,7 +483,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                       </div>
                       {report.exploratoryScript.length === 0 ? <p data-testid="validation-script-empty" className="hint">Nenhum passo sugerido.</p> : null}
                       {report.exploratoryScript.map((block) => {
-                        const criterion = detail.acceptanceCriteria.find((c) => c.id === block.acId);
+                        const criterion = criterionOf.get(block.acId);
                         return (
                           <div data-testid={`validation-script-block-${block.acId}`} key={block.acId}>
                             {/* Manual script: one bordered list per criterion, a real checkbox on every row. */}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { graphPath, projectPath, refinePath } from '../routes.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link, useNavigate } from 'react-router-dom';
@@ -25,6 +25,8 @@ const form = 'card grid gap-4 px-6 pt-5 pb-6 max-md:p-4';
 const formHint = 'mt-1 mb-0 max-w-[72ch] text-[0.875rem] text-ink-soft';
 const field = 'grid min-w-0 gap-1.5';
 const fieldLabel = 'text-[0.8125rem] font-semibold text-ink-soft';
+
+const matchesQuery = (q: string, values: string[]) => q === '' || values.some((v) => v.toLowerCase().includes(q));
 
 const HELP = {
   newProjects: 'Projetos criados em Novo projeto que ainda estão em refinamento. Eles entram na lista de projetos quando a primeira execução começar.',
@@ -94,11 +96,13 @@ export function ProjectsView(p: {
   const [panel, setPanel] = useState<'new' | 'git' | null>(null);
   const [query, setQuery] = useState('');
   const filterRef = useRef<HTMLInputElement>(null);
-  const openDrafts = p.drafts.filter((d) => d.state !== 'started');
+  // Typing in the other forms re-renders this view, so the open drafts are kept until the drafts change.
+  const openDrafts = useMemo(() => p.drafts.filter((d) => d.state !== 'started'), [p.drafts]);
   const q = query.trim().toLowerCase();
-  const matches = (...values: string[]) => q === '' || values.some((v) => v.toLowerCase().includes(q));
-  const visible = p.projects.filter((pr) => matches(pr.projectId, pr.name, pr.description, pr.dir, ...pr.specs.map((s) => s.specId)));
-  const unregistered = openDrafts.filter((d) => !d.registered && matches(d.projectId, d.specId));
+  // The filter scans every project and spec, so it only runs when the list or the search text changes.
+  const visible = useMemo(() => p.projects.filter((pr) => matchesQuery(q, [pr.projectId, pr.name, pr.description, pr.dir, ...pr.specs.map((s) => s.specId)])), [p.projects, q]);
+  // Same reason: it only runs when the drafts or the search text change.
+  const unregistered = useMemo(() => openDrafts.filter((d) => !d.registered && matchesQuery(q, [d.projectId, d.specId])), [openDrafts, q]);
   const total = plural(p.projects.length, 'projeto', 'projetos');
   const toggle = (next: 'new' | 'git') => setPanel(panel === next ? null : next);
   // The project whose code graph is open in a dialog.
@@ -111,7 +115,8 @@ export function ProjectsView(p: {
   const [typedName, setTypedName] = useState('');
   const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
-  const busyIds = [...deletingIds, ...(p.deleting ?? []).filter((id) => !deletingIds.includes(id))];
+  // A stable list keeps the per-card busy checks cheap while the typed text changes.
+  const busyIds = useMemo(() => [...deletingIds, ...(p.deleting ?? []).filter((id) => !deletingIds.includes(id))], [deletingIds, p.deleting]);
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const closeDelete = () => {

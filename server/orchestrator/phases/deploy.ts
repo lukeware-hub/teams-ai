@@ -163,10 +163,13 @@ const fixTask = (deps: PhaseDeps, attempt: number, stage: DeployStage, detail: s
   if (stage === 'smoke') {
     // The e2e suite runs next against the same service; fixing a request only in smoke failed the next attempt at e2e (live).
     const suite = deps.plan!.delivery?.e2eSuite;
+    const missing = detail.includes('no smoke test');
     const e2e = suite ? `\n\nThe e2e suite (${suite}) runs right after smoke against the same service and usually makes the same requests: fix the same defect there too.` : '';
     return { ...base, description: `Deploy attempt ${attempt} succeeded but the smoke suite did not prove the smoke criteria: ${detail}${e2e}
 
-Contract: ${SMOKE_CONTRACT}${history}`, affectedPaths: ['tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...(suite ? [suite] : []), ...MANIFESTS], owner: 'dev' };
+Contract: ${SMOKE_CONTRACT}${missing ? `
+
+A criterion without a test usually means the service does not expose what the test must call. Build the missing routes, main wiring, authentication and test data in the product code too, then write the tests.` : ''}${history}`, affectedPaths: [...(missing ? deps.plan!.tasks.filter((t) => t.owner === 'dev').flatMap((t) => t.affectedPaths) : []), 'tests/smoke/**', 'tests/smoke', 'smoke/**', '**/*smoke*_test.go', 'vitest.config.ts', ...(suite ? [suite] : []), ...MANIFESTS], owner: 'dev' };
   }
   if (stage === 'e2e') {
     const suite = deps.plan!.delivery?.e2eSuite;

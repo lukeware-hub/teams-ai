@@ -27,6 +27,13 @@ describe('failure cause classification (R11.14)', () => {
     expect(d.calls[0]![0]).toBe('failure-cause');
   });
 
+  it('a criterion with no smoke test is a code defect even when the text also names services that are down, with no classifier call (live: kayron-hub identity-roles-authority)', async () => {
+    const d = fakeDecider({ answered: true, backend: 'jev', escalated: false, answers: { cause: choiceAnswer('environment', { environment: 0.9 }) } });
+    const failure = 'deploy-failed: AC-037: no smoke test; AC-038: no smoke test\n\nenvironment: a service of an earlier spec is not running (privacy-api: docker compose up failed)';
+    expect(await classifyFailure([failure], d, { confidential: false })).toBe('code-defect');
+    expect(d.calls).toHaveLength(0);
+  });
+
   it('gives null when unanswered or the answer is not an option', async () => {
     expect(await classifyFailure(['x'], fakeDecider({ answered: false, reason: 'disabled' }), { confidential: false })).toBeNull();
     const odd = fakeDecider({ answered: true, backend: 'local', escalated: false, answers: { cause: choiceAnswer('luck', { luck: 1 }) } });

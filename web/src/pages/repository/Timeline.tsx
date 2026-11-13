@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { runPath } from '../../routes.js';
 import { runApi, type TimelineEntry } from '../../api.js';
@@ -7,7 +8,8 @@ import { headRow, table } from '../costs/CostParts.js';
 import { cardCell, cardRow, cardTable, panel, responsiveHead, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
 /** The events of every run of the repository, newest first, one page at a time; each with its agent and a link to its run. Open by default. */
-export function Timeline({ projectId, repo }: { projectId: string; repo: string }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const Timeline = memo(function Timeline({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(`${projectId}/${repo}/timeline`, (req) => runApi.repositoryDashboardTable<TimelineEntry>(projectId, repo, 'timeline', req));
   return (
     <details className={panel} open data-testid="repo-timeline">
@@ -56,4 +58,4 @@ export function Timeline({ projectId, repo }: { projectId: string; repo: string 
       )}
     </details>
   );
-}
+});

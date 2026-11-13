@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PAGE_SIZES, type Page, type PageRequest } from '@server/api/paging.js';
 import { Icon } from './Icons.js';
 import { Select } from './Select.js';
@@ -60,7 +60,8 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
   const matched = data?.matched ?? 0;
   const pages = data?.pages ?? 1;
   const current = data?.page ?? page;
-  const options = (data?.facets ?? []).map((v) => ({ value: v, label: facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label));
+  // Sorting the facet labels is the costly part, so it reruns only when the facets or the label function change.
+  const options = useMemo(() => (data?.facets ?? []).map((v) => ({ value: v, label: facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label)), [data?.facets, facetLabel]);
   return {
     rows: data?.list ?? [],
     loaded: data !== null,

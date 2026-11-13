@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { Breadcrumb } from '../components/Breadcrumb.js';
 import { afterStartPath, projectPath, runPath, validationPath } from '../routes.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -532,9 +532,13 @@ const RESUMABLE = new Set(['interrupted', 'paused:auth', 'verification-failed'])
 
 export function RunView({ detail, events, ended, error, loadStep, readmeAction, redeployAction, reprocessAction, decideAction, stopAction, resumeAction, testLinks }: { detail: RunDetail; events: StoredEvent[]; ended: boolean; error: string | null; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }>; readmeAction?: ReadmeAction; redeployAction?: RedeployAction; reprocessAction?: ReprocessAction; decideAction?: DecideAction; stopAction?: StopAction; resumeAction?: ResumeAction; testLinks?: Record<string, TestLink> }) {
   const [newSpec, setNewSpec] = useState(false);
-  const unique = events.filter((e, i) => events.findIndex((x) => x.seq === e.seq) === i);
-  const state = runState(unique);
-  const finished = finishedEvent(unique);
+  // The clock re-renders this view every second: the event passes below only run when the events change.
+  const unique = useMemo(() => {
+    const seen = new Set<number>();
+    return events.filter((e) => !seen.has(e.seq) && seen.add(e.seq));
+  }, [events]);
+  const state = useMemo(() => runState(unique), [unique]);
+  const finished = useMemo(() => finishedEvent(unique), [unique]);
   // The journal wins while it streams; before the first event and after the stream ends the server's snapshot is authoritative.
   // Except for 'interrupted': a dead process writes nothing, so the journal alone would read as running forever.
   // Only the server can tell (it checks the pid), and `detail` is re-fetched periodically to pick that up live.
@@ -543,13 +547,13 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const status = result === 'awaiting-validation' && detail.status === 'done' ? 'done' : result ?? (detail.status === 'interrupted' ? 'interrupted' : ended || unique.length === 0 ? detail.status : state.status);
   // A run whose process is gone has no task in flight: the tasks it had running are interrupted, not running.
   const interruptedRun = status === 'interrupted';
-  const until = pausedUntil(unique);
-  const t = tokens(unique);
-  const doing = currentActivity(unique);
+  const until = useMemo(() => pausedUntil(unique), [unique]);
+  const t = useMemo(() => tokens(unique), [unique]);
+  const doing = useMemo(() => currentActivity(unique), [unique]);
   const clock = useNow(doing.running.length > 0);
   const runningNow = (status === 'running' || status === 'draining') && doing.running.length > 0;
-  const phaseList = phases(unique);
-  const activity = phaseActivity(unique);
+  const phaseList = useMemo(() => phases(unique), [unique]);
+  const activity = useMemo(() => phaseActivity(unique), [unique]);
   // The trigger gets focus back when the dialog closes.
   const [readmeOpen, setReadmeOpen] = useState(false);
   const [opened, setOpened] = useState<(DetailTarget & { opener: HTMLElement }) | null>(null);
@@ -568,20 +572,21 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   // Once the process is gone, the tasks in flight form one interrupted group in place of the running ones.
   const groupOf = (s: string) => (interruptedRun && IN_FLIGHT.has(s) ? 'interrupted' : s);
   const groupKeys = interruptedRun ? ['interrupted', ...ORDER.filter((s) => !IN_FLIGHT.has(s))] : ORDER;
-  const groups = groupKeys.map((s) => [s, state.order.filter((id) => groupOf(state.tasks.get(id)!.state) === s)] as const).filter(([, ids]) => ids.length);
+  const groups = useMemo(() => groupKeys.map((s) => [s, state.order.filter((id) => groupOf(state.tasks.get(id)!.state) === s)] as const).filter(([, ids]) => ids.length), [interruptedRun, state]);
   // Before the run finishes, RUN_FINISHED.blocked does not exist yet: a task stuck mid-run still shows its own cause,
   // from its own TASK_BLOCKED event, instead of waiting for the whole run to stop before anyone can see why.
-  const blocked = (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked'));
-  const causes = rootBlockers(blocked);
+  const blocked = useMemo(() => (finished?.data.blocked as Array<{ taskId: string; reason: string }> | undefined) ?? liveBlocked(unique, state.order.filter((id) => state.tasks.get(id)!.state === 'blocked')), [finished, unique, state]);
+  const causes = useMemo(() => rootBlockers(blocked), [blocked]);
   // Blocked tasks end the run unfinished: the button sends them back to the agents, also for runs delivered before that rule.
   const sendBack = !resumeAction?.sent && (status === 'blocked' || (status === 'awaiting-validation' && blocked.length > 0));
-  const causeGroups = groupCauses(causes);
-  const waiting = cascadeBlockers(blocked).map((b) => b.taskId);
+  const causeGroups = useMemo(() => groupCauses(causes), [causes]);
+  const waiting = useMemo(() => cascadeBlockers(blocked).map((b) => b.taskId), [blocked]);
   // Every blocked task that blocked in this phase and is still blocked, its own cause or waiting on another.
-  const phaseBlocks = (phase: number) => {
-    const ids = activity.get(phase)?.blockedTaskIds ?? [];
-    return blocked.filter((b) => ids.includes(b.taskId));
-  };
+  const phaseCounts = useMemo(() => new Map(phaseList.map((p) => {
+    const ids = activity.get(p.phase)?.blockedTaskIds ?? [];
+    const blockers = blocked.filter((b) => ids.includes(b.taskId));
+    return [p.phase, { problems: problemItems(activity.get(p.phase)?.items ?? []).length, own: rootBlockers(blockers).length, waiting: cascadeBlockers(blockers).length }] as const;
+  })), [phaseList, activity, blocked]);
   // A phase-failed run stopped at its last failed phase; earlier ones (a failed verification) did not stop it.
   const failedPhase = [...phaseList].reverse().find((p) => p.result === 'failed')?.phase ?? null;
   const autonomous = detail.agentsDecide === true;
@@ -591,18 +596,18 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
   const stop = stopSummary({ status, reason: finished?.data.reason ? String(finished.data.reason) : null, causes, deployFailure: lastDeployFailure(unique) ?? detail.report?.deploy?.lastFailure ?? null, failedPhase, autonomous });
   const before = stop ? stopBefore(status, blocked, autonomous) : null;
   const redeploying = !detail.locked && stop?.action === 'redeploy' && redeployAction !== undefined;
-  const prs = mergedPrs(unique);
-  const totalTasks = state.order.filter((id) => state.tasks.get(id)!.state !== 'superseded').length;
+  const prs = useMemo(() => mergedPrs(unique), [unique]);
+  const totalTasks = useMemo(() => state.order.filter((id) => state.tasks.get(id)!.state !== 'superseded').length, [state]);
   // Merged is the only finished state, so the bar also shows work in flight and blocked work: otherwise a run
   // sits at "0 de N" for as long as its tasks are being implemented, validated and reviewed.
-  const tally = [...state.tasks.values()].reduce((acc, t) => {
+  const tally = useMemo(() => [...state.tasks.values()].reduce((acc, t) => {
     if (t.state === 'merged') acc.merged += 1;
     else if (IN_FLIGHT.has(t.state)) acc[interruptedRun ? 'interrupted' : 'active'] += 1;
     else if (t.state === 'blocked') acc.blocked += 1;
     return acc;
-  }, { merged: 0, active: 0, interrupted: 0, blocked: 0 });
+  }, { merged: 0, active: 0, interrupted: 0, blocked: 0 }), [state, interruptedRun]);
   const doneTasks = tally.merged;
-  const blockedTasks = [...state.tasks.values()].filter((t) => t.state === 'blocked').length;
+  const blockedTasks = tally.blocked;
   const closeDetail = () => setOpened(null);
   let detailDialog: ReactNode = null;
   if (opened?.kind === 'outcome' && stop) {
@@ -1025,10 +1030,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                     <ol data-testid="run-phases-list" className="m-0 grid list-none divide-y divide-line p-0">
                       {phaseList.map((p) => {
                         const [label, tone] = phaseState(p, status, blockedTasks);
-                        const problems = problemItems(activity.get(p.phase)?.items ?? []).length;
-                        const blockers = phaseBlocks(p.phase);
-                        const ownCount = rootBlockers(blockers).length;
-                        const waitingCount = cascadeBlockers(blockers).length;
+                        const { problems, own: ownCount, waiting: waitingCount } = phaseCounts.get(p.phase)!;
                         const blockText = [ownCount ? (ownCount === 1 ? '1 tarefa bloqueada' : `${ownCount} tarefas bloqueadas`) : null, waitingCount ? (waitingCount === 1 ? '1 tarefa espera por ela' : `${waitingCount} tarefas esperam por elas`) : null].filter(Boolean).join(' · ');
                         return (
                           <li key={p.phase} data-testid="phase" className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[0.35rem] py-[0.6rem] first:pt-0 last:pb-0">

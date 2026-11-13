@@ -533,7 +533,8 @@ export function RefinementView(p: ViewProps) {
   const runLocked = locked || graphingNow;
   const graphReason = 'Espere a extração do Graphify terminar: os botões liberam sozinhos.';
   const jevAdvisory = st.error?.startsWith('Jev bloqueou') ?? false;
-  const pending = [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking));
+  // Sorted only when the questions change, not on every keystroke.
+  const pending = useMemo(() => [...st.questions.filter((q) => q.status === 'pending')].sort((a, b) => Number(b.blocking) - Number(a.blocking)), [st.questions]);
   const current = pending[0];
   const speckitAsked = speckitQuestions(st);
   const specsAsked = specsQuestions(st);
@@ -549,7 +550,8 @@ export function RefinementView(p: ViewProps) {
   const stageDivergences = st.stageAlignment?.[tab];
   const staleFrom = st.staleBy?.[tab] as DocFile | undefined;
   const aligned = newProject ? alignedLine(stageDivergences, noContradictions) : null;
-  const openChecks = st.checklist.filter((c) => !c.passed).map((c) => c.id);
+  // Rebuilt only when the checklist changes.
+  const openChecks = useMemo(() => st.checklist.filter((c) => !c.passed).map((c) => c.id), [st.checklist]);
   // The text typed on a stage screen is saved a moment after the owner stops typing.
   const typed = isDocStep(step) ? docs[step] : undefined;
   useEffect(() => {
@@ -575,7 +577,13 @@ export function RefinementView(p: ViewProps) {
   };
   // What the plan preparation covers: each backlog item, or the single spec as one item.
   const speckitList = useMemo(() => planItems(snap.specId, st as never), [snap.specId, st.backlog, st.derived, st.featureKey]);
-  const itemTitles = new Map(speckitList.map((i) => [i.key, i.title]));
+  // Rebuilt only when the plan items change.
+  const itemTitles = useMemo(() => new Map(speckitList.map((i) => [i.key, i.title])), [speckitList]);
+  // The stepper nodes and the step order are rebuilt only when the state or the step changes.
+  const requestSteps = useMemo(() => (st.extension ? requestNodes(st) : []), [st]);
+  const wizardSteps = useMemo(() => (newProject ? wizardNodes(st, step) : []), [st, step, newProject]);
+  const wizardOrder = useMemo(() => stepsOf(st), [st]);
+  const views = useMemo(() => (newProject ? stageViews(st) : []), [st, newProject]);
   const speckit = st.speckit;
   const speckitRunning = speckit?.status === 'running';
   // Every session prepares its plans before it starts; the server holds the same rule.
@@ -615,7 +623,7 @@ export function RefinementView(p: ViewProps) {
   const specFile = mdFiles ? { name: 'specs.md', text: specsMd } : { name: 'spec.md', text: st.derived ? renderSpecMd(st.derived.spec as never) : '' };
   // A detailed backlog numbers criteria across its item specs, so a question may cite any of them; a single-spec
   // derivation left in the journal from before backlog mode no longer counts.
-  const criteria = backlogOn ? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []) : st.derived?.spec.acceptanceCriteria ?? [];
+  const criteria = useMemo(() => backlogOn ? Object.values(st.backlog?.specs ?? {}).flatMap((row) => row.spec?.acceptanceCriteria ?? []) : st.derived?.spec.acceptanceCriteria ?? [], [backlogOn, st.backlog, st.derived]);
   const listState = st.status === 'evaluating'
     ? { label: 'Avaliando', tone: 'tone-neutral' }
     : st.cycle === 0
@@ -779,7 +787,7 @@ export function RefinementView(p: ViewProps) {
       {newProject ? (
         <>
           {confidentialAsk}
-          <StageSteps views={stageViews(st)} shown={tab} />
+          <StageSteps views={views} shown={tab} />
         </>
       ) : existing ? (
         <div data-testid="refinement-docs-tabs-existing" className="mb-4 flex flex-wrap gap-x-6 border-b border-line" role="tablist" aria-label="Documentos">
@@ -1438,7 +1446,7 @@ export function RefinementView(p: ViewProps) {
   );
   // The steps from the backlog to the start, and what the latest evaluation spent, so the owner sees the work move.
   const items = st.backlog?.items.length ?? 0;
-  const backlogSteps = backlogProgress({
+  const backlogSteps = useMemo(() => backlogProgress({
     items: speckitList,
     detailed: speckitList.filter((i) => st.backlog?.specs?.[i.key]?.spec).map((i) => i.key),
     steps: speckit?.steps ?? [],
@@ -1447,7 +1455,7 @@ export function RefinementView(p: ViewProps) {
     checks: snap.closing?.checks ?? [],
     architectureRunning: st.architectureRunning === true,
     closed: snap.closing?.ok === true,
-  });
+  }), [speckitList, st.backlog, speckit, st.repositories, snap.closing, st.architectureRunning]);
   const progress = snap.evaluationProgress;
   // While an evaluation runs its numbers are read at its end, so the line says so instead of showing a stale count.
   const lastLine = evaluating ? 'Avaliação em andamento: o tempo e o custo dela aparecem quando terminar.' : progress ? `Última avaliação: ${Math.max(1, Math.round(progress.durationMs / 60_000))} min · ${money(progress.costUsd)} · ${progress.redone} ${progress.redone === 1 ? 'item refeito' : 'itens refeitos'}, ${Math.max(0, items - progress.redone)} ${items - progress.redone === 1 ? 'reaproveitado' : 'reaproveitados'}` : null;
@@ -1475,7 +1483,7 @@ export function RefinementView(p: ViewProps) {
   const closingFailing = snap.closing?.checks.filter((check) => !check.ok) ?? [];
   const resolveClosing = p.onResolveClosing;
   // What the team can settle alone on the summary: stages outdated by an edit and suggestions that change no scope.
-  const stagePending = [...Object.keys(st.staleBy ?? {}), ...st.patches.filter((x) => x.status === 'pending').map((x) => x.patchId)].sort().join(',');
+  const stagePending = useMemo(() => [...Object.keys(st.staleBy ?? {}), ...st.patches.filter((x) => x.status === 'pending').map((x) => x.patchId)].sort().join(','), [st.staleBy, st.patches]);
   const canResolve = resolveClosing !== undefined && !locked && st.reviewClosed !== true && (stagePending !== '' || (closingFailing.length > 0 && st.backlog?.detail === true));
   const resolveBlock = canResolve ? (
     <div data-testid="final-resolve" className="grid gap-2 rounded-lg bg-surface-sunken px-3 py-2.5">
@@ -1502,11 +1510,15 @@ export function RefinementView(p: ViewProps) {
   // The backlog step shows no plans card, so its plan and specs.md questions wait for the owner here.
   // A plan question waits while the preparation runs, since the server refuses the answer then.
   const unfiled = st.extension === undefined ? [...unfiledQuestions(st), ...(speckitRunning ? [] : speckitAsked), ...specsAsked] : unfiledQuestions(st);
-  const byDoc = DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0);
+  const byDoc = useMemo(() => DOC_STAGES.map((file) => ({ file, count: pendingCount(st, file) })).filter((x) => x.count > 0), [st.questions, st.patches]);
   const pendingTotal = byDoc.reduce((sum, x) => sum + x.count, 0);
   /** The suggestions the owner can take at once: the pending ones not already queued. */
   const acceptable = st.patches.filter((x) => x.status === 'pending' && !queuedOf(x.patchId)).length;
-  const queuedIn = (file: DocFile) => (st.queued ?? []).filter((d) => st.patches.some((x) => x.patchId === d.id && x.file === file) || st.questions.some((q) => q.questionId === d.id && q.file === file)).length;
+  // A set of "id|file" keys makes each queued lookup constant time.
+  const queuedIn = useMemo(() => {
+    const keys = new Set([...st.patches.map((x) => `${x.patchId}|${x.file}`), ...st.questions.map((q) => `${q.questionId}|${q.file}`)]);
+    return (file: DocFile) => (st.queued ?? []).filter((d) => keys.has(`${d.id}|${file}`)).length;
+  }, [st.patches, st.questions, st.queued]);
   const pendingSummary = (
     <div className="grid gap-3" data-testid="final-pending">
             {acceptable > 0 && p.onAcceptAll && <p data-testid="accept-all-note" className="m-0 max-w-[72ch] text-[0.8125rem] leading-normal text-ink-soft">Decida uma por uma, abaixo, ou aceite todas de uma vez: as sugestões entram nos documentos e o time segue, sem revisar de novo.</p>}
@@ -1606,7 +1618,7 @@ export function RefinementView(p: ViewProps) {
               if (result === false) return;
             }
             // The next step of the list: the architecture in a repository session, the backlog otherwise.
-            goTo(nextWizardStep('review', stepsOf(st)) ?? 'backlog');
+            goTo(nextWizardStep('review', wizardOrder) ?? 'backlog');
           }}
           icon={<Icon name="arrow-right" size={16} />}
         >
@@ -1658,7 +1670,7 @@ export function RefinementView(p: ViewProps) {
             // The document goes into Graphify in the background while the owner moves on.
             if (result === false) return;
           }
-          goTo(nextWizardStep(step, stepsOf(st)));
+          goTo(nextWizardStep(step, wizardOrder));
         }}
         icon={<Icon name="arrow-right" size={16} />}
       >
@@ -1694,7 +1706,7 @@ export function RefinementView(p: ViewProps) {
       return (
         <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-document">
           <WizardShell
-            stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={() => navigate(window.location.pathname)} />}
+            stepper={<Stepper steps={requestSteps} ariaLabel="Etapas do pedido" onSelect={() => navigate(window.location.pathname)} />}
             stepKey={step}
             meta={usageLine}
             back={{ onClick: () => navigate(window.location.pathname), disabled: false }}
@@ -1710,7 +1722,7 @@ export function RefinementView(p: ViewProps) {
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="request-screen">
         <h1 className="sr-only">{requestHeading(st.extension.requestId)}</h1>
         <WizardShell
-          stepper={<Stepper steps={requestNodes(st)} ariaLabel="Etapas do pedido" onSelect={(key) => { document.querySelector('[data-testid="request-details"]')?.setAttribute('open', ''); document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
+          stepper={<Stepper steps={requestSteps} ariaLabel="Etapas do pedido" onSelect={(key) => { document.querySelector('[data-testid="request-details"]')?.setAttribute('open', ''); document.querySelector(`[data-testid="${REQUEST_STEP_TARGET[key]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
           stepKey="request"
           meta={usageLine}
           back={{ onClick: () => navigate(projectPath(snap.projectId)), disabled: false }}
@@ -1746,10 +1758,10 @@ export function RefinementView(p: ViewProps) {
     return (
       <div className="min-h-0 min-w-0 lg:overflow-y-auto" data-testid="stage-wizard">
         <WizardShell
-          stepper={<Stepper steps={wizardNodes(st, step)} ariaLabel="Etapas dos documentos" canSelect={(key) => stepOpen(st, key as WizardStep)} onSelect={(key) => { if (stepOpen(st, key as WizardStep)) goTo(key as WizardStep); }} />}
+          stepper={<Stepper steps={wizardSteps} ariaLabel="Etapas dos documentos" canSelect={(key) => stepOpen(st, key as WizardStep)} onSelect={(key) => { if (stepOpen(st, key as WizardStep)) goTo(key as WizardStep); }} />}
           stepKey={step}
           meta={usageLine}
-          back={{ onClick: () => goTo(prevStep(step, stepsOf(st))), disabled: prevStep(step, stepsOf(st)) === null, reason: 'Esta é a primeira etapa' }}
+          back={{ onClick: () => goTo(prevStep(step, wizardOrder)), disabled: prevStep(step, wizardOrder) === null, reason: 'Esta é a primeira etapa' }}
           actions={wizardActions}
         >
           <div className="grid gap-4">

@@ -16,8 +16,12 @@ export function failureCauseQuestions(): Questions {
 
 export const failureCauseState = (failures: readonly string[]): string => failures.map((f, i) => `attempt ${i + 1}:\n${f}`).join('\n\n');
 
+/** A criterion with no smoke test is a code gap, even when the same failure text also lists services of earlier specs that are down. */
+const isMissingSmokeTest = (failure: string): boolean => /AC-\d+: no smoke test/.test(failure);
+
 /** Unanswered (layer off or exhausted) gives null. */
 export async function classifyFailure(failures: readonly string[], decider: Pick<Decider, 'decide'>, ctx: DecideContext): Promise<FailureCause | null> {
+  if (isMissingSmokeTest(failures.at(-1) ?? '')) return 'code-defect';
   const outcome = await decider.decide('failure-cause', failureCauseState(failures), failureCauseQuestions(), ctx);
   if (!outcome.answered) return null;
   const answer = outcome.answers.cause;

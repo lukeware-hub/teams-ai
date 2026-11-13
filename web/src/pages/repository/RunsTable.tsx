@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import { InfoTip } from '../../components/InfoTip.js';
 import { runPath } from '../../routes.js';
@@ -7,7 +8,8 @@ import { cardCell, cardRow, cardTable, cardTitleCell, chip, money, panel, respon
 import { RUN_KIND_LABEL } from './labels.js';
 
 /** The runs of the repository's specs, newest first, one page at a time; each row links to its run page. */
-export function RunsTable({ projectId, repo }: { projectId: string; repo: string }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const RunsTable = memo(function RunsTable({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(`${projectId}/${repo}/runs`, (req) => runApi.repositoryDashboardTable<DashboardRunRow>(projectId, repo, 'runs', req));
   return (
     <section className={panel} data-testid="repo-runs">
@@ -52,4 +54,4 @@ export function RunsTable({ projectId, repo }: { projectId: string; repo: string
       )}
     </section>
   );
-}
+});

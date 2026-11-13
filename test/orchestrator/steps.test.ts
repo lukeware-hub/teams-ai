@@ -8,7 +8,7 @@ import { Governor } from '../../server/budget/governor.js';
 import { QuotaBreaker } from '../../server/budget/quota-breaker.js';
 import { buildContextPack } from '../../server/knowledge/context-pack.js';
 import { Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { DEVIATIONS_RULE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, docsPack, fixTasksPack, outputContract, planPack, planRules, REPLAN_CAUSE_RULE, replanPack, reportPack, SCAFFOLD_REPLAN_RULE, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
+import { DEVIATIONS_RULE, FILES_READ_RULE, blockOptionsPack, devPack, devResumePrompt, docsPack, fixTasksPack, outputContract, planPack, planRules, REPLAN_CAUSE_RULE, replanPack, reportPack, SCAFFOLD_REPLAN_RULE, reviewPack, runAgentStep, securityPack, servicesPlanRules, planRule, sourceDocsRule, specGapPack, taskRule, techSpecPack, TOOL_INSTALL_RULE, type AgentStepDeps, type PackBase } from '../../server/orchestrator/steps.js';
 import { servicePlans } from '../../server/contracts/plan.js';
 import { saveSession } from '../../server/runner/session-store.js';
 import type { StepOutcome } from '../../server/runner/step.js';
@@ -157,8 +157,8 @@ describe('packs', () => {
     expect(rules).toContain('keeps the data of earlier runs');
     expect(rules).toContain('Never skip a test');
     expect(devPack(base, { ...task, affectedPaths: ['test/e2e/**'] }, opts).principles.join('\n')).toContain('Never skip a test');
-    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
-    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE]);
+    expect(devPack(base, { ...task, affectedPaths: ['src/app.mjs'] }, opts).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE, TOOL_INSTALL_RULE]);
+    expect(devPack(base, suiteTask, { ...opts, e2eSuite: undefined }).principles).toEqual([...base.project.principles, planRule(), sourceDocsRule(spec.specId), FILES_READ_RULE, DEVIATIONS_RULE, TOOL_INSTALL_RULE]);
   });
 
   it('tells the dev which blocking gates run on the change and that a failure test must assert the failure, so it is not learned from a rejected attempt', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { refinePath } from '../routes.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link } from 'react-router-dom';
@@ -72,7 +72,8 @@ function Correction({ projectId, correction }: { projectId: string; correction: 
   );
 }
 
-function Message({ projectId, message }: { projectId: string; message: ChatMessage }) {
+// Typing in the draft re-renders the page; memo keeps the answers from rendering again.
+const Message = memo(function Message({ projectId, message }: { projectId: string; message: ChatMessage }) {
   if (message.role === 'user') return <p data-testid="chat-message-user" className={`${bubble} m-0 justify-self-end bg-accent-soft text-ink`}>{message.text}</p>;
   return (
     <div data-testid="chat-message" className="grid justify-items-start gap-2">
@@ -81,7 +82,7 @@ function Message({ projectId, message }: { projectId: string; message: ChatMessa
       {message.correction ? <Correction projectId={projectId} correction={message.correction} /> : null}
     </div>
   );
-}
+});
 
 export function ChatPage() {
   const [projects, setProjects] = useState<ProjectRow[] | null>(null);
@@ -135,6 +136,8 @@ export function ChatPage() {
       setAsking(null);
     }
   };
+  // The questions of the chosen project, newest first, each text once; rebuilt only when the messages change.
+  const questions = useMemo(() => [...new Set((messages ?? []).filter((m) => m.role === 'user').map((m) => m.text).reverse())], [messages]);
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -171,8 +174,6 @@ export function ChatPage() {
 
   if (projects === null) return <main data-testid="chat-page-loading"><Loading /></main>;
   const project = projects.find((p) => p.projectId === projectId);
-  // The questions of the chosen project, newest first, each text once.
-  const questions = [...new Set((messages ?? []).filter((m) => m.role === 'user').map((m) => m.text).reverse())];
   return (
     <main data-testid="chat-page">
       <nav data-testid="chat-breadcrumb" className="refine-breadcrumb" aria-label="Navegação">

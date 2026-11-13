@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Icon } from './Icons.js';
 
 export interface StepperStep {
@@ -19,7 +20,7 @@ interface Props {
 }
 
 /** Numbered steps in the look of the onboarding; a step opens on click when `onSelect` is given. */
-export function Stepper({ steps, ariaLabel, onSelect, canSelect }: Props) {
+export const Stepper = memo(function Stepper({ steps, ariaLabel, onSelect, canSelect }: Props) {
   // On a phone the flags do not fit under their labels, so the flagged steps are named in a line below the steps.
   const flagged = steps.filter((step) => step.marker);
   const flags = [...new Set(flagged.map((step) => step.marker))].join(' · ');
@@ -58,4 +59,4 @@ export function Stepper({ steps, ariaLabel, onSelect, canSelect }: Props) {
       {flagged.length > 0 && <p data-testid="stepper-flags" className="m-0 hidden text-[0.8125rem] font-semibold text-warn max-[720px]:block">{flagged.map((step) => step.label).join(', ')}: {flags}.</p>}
     </>
   );
-}
+});

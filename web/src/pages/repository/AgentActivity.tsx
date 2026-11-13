@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { runApi, type RoleActivity } from '../../api.js';
 import { InfoTip } from '../../components/InfoTip.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
@@ -15,7 +16,8 @@ const COLUMNS: ReadonlyArray<readonly [string, string, string]> = [
 ];
 
 /** What each agent role did in the repository's runs: steps, tasks it owns, files, tests, cost and last activity. */
-export function AgentActivity({ projectId, repo }: { projectId: string; repo: string }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const AgentActivity = memo(function AgentActivity({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(`${projectId}/${repo}/agents`, (req) => runApi.repositoryDashboardTable<RoleActivity>(projectId, repo, 'agents', req), (role) => ROLE_LABEL[role] ?? role);
   return (
     <section className={panel} data-testid="repo-agents">
@@ -61,4 +63,4 @@ export function AgentActivity({ projectId, repo }: { projectId: string; repo: st
       )}
     </section>
   );
-}
+});

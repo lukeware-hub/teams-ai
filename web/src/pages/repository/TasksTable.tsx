@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { runPath } from '../../routes.js';
 import { runApi, type DashboardTaskRow, type TaskState } from '../../api.js';
@@ -17,7 +17,8 @@ const DID_NOT_FINISH: ReadonlySet<TaskState> = new Set(['blocked', 'failed']);
 const DETAIL_BUTTON = 'secondary h-10 flex-none px-3 text-[0.8125rem]';
 
 /** Every task of the repository, filtered by status and searched, paged on the server like the other repository tables. */
-export function TasksTable({ projectId, repo }: { projectId: string; repo: string }) {
+// Its props stay the same across the page's polling, so memo skips those re-renders.
+export const TasksTable = memo(function TasksTable({ projectId, repo }: { projectId: string; repo: string }) {
   const view = usePagedTable(
     `${projectId}/${repo}/tasks`,
     (req) => runApi.repositoryDashboardTable<DashboardTaskRow>(projectId, repo, 'tasks', req),
@@ -61,7 +62,7 @@ export function TasksTable({ projectId, repo }: { projectId: string; repo: strin
       {opened && <TaskDetailDialog task={opened.task} opener={opened.opener} onClose={() => setOpened(null)} />}
     </section>
   );
-}
+});
 
 /** Why one task did not finish: the problem and the solution in plain words, the reviewer text folded away. */
 function TaskDetailDialog({ task, opener, onClose }: { task: DashboardTaskRow; opener: HTMLElement; onClose: () => void }) {
