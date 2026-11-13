@@ -56,6 +56,7 @@ import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../en
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
+import { holdsOnlyDocs } from './first-spec.js';
 import { deliveredByPriorRuns, eventsFile, expandHome, graphDir, graphFile, mergedByPriorRuns, nextRunId, runDir, sameVersionRunEvents, serviceWorkspace, sessionDir, stateFile, stepDir, worktreeDir, type Workspace } from './workspace.js';
 import type { StoredEvent } from '../store/event-store.js';
 import type { DeployTarget } from '../deploy/target.js';
@@ -747,6 +748,7 @@ export class Run {
       journal: this.journal, ws: this.deps.ws, docsRepo: this.deps.docsRepo, artifactsDir: path.join(runDir(this.deps.ws, this.runId), 'artifacts'), workspacesRoot: expandHome(this.deps.cfg.paths.workspaces), spec: this.deps.spec, project: this.deps.project, specHash: this.deps.spec.specHash!, firstSpec: this.deps.firstSpec, requireDelivery: this.deps.requireDelivery, requireSecurityTooling: this.deps.requireSecurityTooling, requireE2e: this.deps.requireE2e, requireCoverage: this.deps.requireCoverage, requireFrozenScope: this.deps.requireFrozenScope, exec: this.deps.exec,
       runAgent: this.runAgent,
       generatedSecretNames: this.deps.cfg.environment.generatedSecrets,
+      serviceHasCode: async (service) => !(await holdsOnlyDocs(serviceWorkspace(this.deps.ws, service).repo, this.deps.exec)),
       environment: this.environment(),
       provisionDatabase: (needed) => this.provisionDatabase(needed),
       decider: this.decider(),
