@@ -330,9 +330,14 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   // Every service is checked out and has a compose file before any is applied: nothing is left half deployed.
   const tags: string[] = [];
   for (const repo of services.repos) tags.push(await checkoutMain({ ...deps, ws: repo.ws }));
-  const intents = services.repos.map((repo, i) => serviceIntent(deps, repo, tags[i]!));
+  // A service that reads DATABASE_URL gets it whichever spec is delivered: the spec may not declare it, and an undeclared secret never reaches the container.
+  const readsDatabase = await anyServiceReads(services.repos, 'DATABASE_URL');
+  const intents = services.repos.map((repo, i) => {
+    const intent = serviceIntent(deps, repo, tags[i]!);
+    return readsDatabase ? { ...intent, secretNames: [...new Set([...intent.secretNames, 'DATABASE_URL'])] } : intent;
+  });
   // Before the environment step, which keeps a value that already exists: the database URL must be the platform's by then.
-  const platformContainers = deps.provisionDatabase ? await deps.provisionDatabase(await anyServiceReads(services.repos, 'DATABASE_URL')) : deps.project.platform ?? [];
+  const platformContainers = deps.provisionDatabase ? await deps.provisionDatabase(readsDatabase) : deps.project.platform ?? [];
   for (const repo of services.repos) await deps.environment?.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, null);
   const applied: Array<{ repo: ServiceRepo; intent: DeploymentIntent; previous: string | null; healthcheck: string }> = [];
   const failed = async (stage: DeployStage | 'platform', detail: string, repo: ServiceRepo | null, own: { intent?: DeploymentIntent; rolledBack?: boolean; rollbackHealthy?: boolean | null; fixable?: boolean } = {}) => {

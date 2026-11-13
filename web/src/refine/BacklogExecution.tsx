@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { refineApi, runApi } from '../api.js';
 import { DecisionTimeline, useDecisions } from './DecisionTimeline.js';
 import { ProgramPanel, useBacklogTitles, useProgram } from './ProgramPanel.js';
 
 /** A running backlog followed on the project page: status, every spec with its run, and the decisions; nothing once it finished. */
-export function BacklogExecution({ projectId, specId, onRunning }: { projectId: string; specId: string; /** Told when this backlog starts or stops showing, so the page can drop what the panel already lists. */ onRunning?: (specId: string, running: boolean) => void }) {
+export function BacklogExecution({ projectId, specId, onRunning, decisionsSlot }: { projectId: string; specId: string; /** Told when this backlog starts or stops showing, so the page can drop what the panel already lists. */ onRunning?: (specId: string, running: boolean) => void; /** Where the decision timeline shows; with none it shows under the panel. */ decisionsSlot?: HTMLElement | null }) {
   const titles = useBacklogTitles(projectId, specId);
   const { program, phases, setProgram } = useProgram(projectId, specId, true);
   const { decisions, unanswered } = useDecisions(projectId, specId, program?.status !== 'finished');
@@ -25,11 +26,13 @@ export function BacklogExecution({ projectId, specId, onRunning }: { projectId: 
     return go(runId).then(() => refineApi.program(projectId, specId)).then((r) => setProgram(r.program), (e: Error) => setError(e.message));
   };
   const stoppedRun = { resume: onRun(runApi.resumeRun), restart: onRun(runApi.restartRun), cancel: onRun(runApi.cancelRun) };
+  const timeline = decisions.length > 0 ? <DecisionTimeline decisions={decisions} titles={titles} /> : null;
+  const decisionsPanel = decisionsSlot === undefined ? timeline : timeline && decisionsSlot && createPortal(timeline, decisionsSlot);
   return (
     <div className="grid gap-5" data-testid={`backlog-execution-${specId}`}>
       {error && <p className="error" role="alert" data-testid="program-error">{error}</p>}
       <ProgramPanel program={program} titles={titles} phases={phases} unanswered={unanswered} onPrioritize={prioritize} onStoppedRun={stoppedRun} />
-      {decisions.length > 0 && <DecisionTimeline decisions={decisions} titles={titles} />}
+      {decisionsPanel}
     </div>
   );
 }

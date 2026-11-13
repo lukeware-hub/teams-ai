@@ -3,7 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { queryPage } from '@server/api/paging.js';
 import { RUN_TABLE, SPEC_TABLE, specPageRow } from '@server/api/project-pages.js';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { refineApi, runApi, type ProgramView, type ProjectDoc } from '../api.js';
+import { refineApi, runApi, type ProgramView, type ProjectDoc, type RepoCardView } from '../api.js';
 import { appLinks, ProjectHub, ProjectHubView, shouldAutoDeploy } from './ProjectHub.js';
 
 const project = {
@@ -570,17 +570,32 @@ describe('the backlog banner on the project page', () => {
     expect(await screen.findByTestId('program-panel-phase-base')).toBeTruthy();
     expect(screen.getByTestId('program-panel-phase-base').textContent).toBe('4 · Verificação');
   });
-  it('puts the runs right after the backlog banner, before the specs', async () => {
-    const program: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null, interrupted: { runId: 'hello-002-r1' } }] };
+  it('orders the cards: header, counters, runs, repositories, backlog specs, specs, documents, decisions', async () => {
+    const program: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] };
     vi.spyOn(refineApi, 'program').mockResolvedValue({ program });
     vi.spyOn(refineApi, 'snapshot').mockResolvedValue({ state: { backlog: { items: [{ key: 'base', title: 'Fundação' }] } } } as never);
-    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 4 } as never);
-    render(view({ backlogs: ['hello-001'] }));
-    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Backlog interrompido/));
+    vi.spyOn(refineApi, 'programDecisions').mockResolvedValue({ unanswered: 0, decisions: [{ at: '2026-10-13T12:00:00.000Z', key: 'base', runId: 'hello-002-r1', decisionId: 'model-tier', backend: 'jev', escalated: false, answers: [{ question: 'tier', value: 'large', confidence: 0.91 }] }] });
+    vi.spyOn(runApi, 'run').mockResolvedValue({ phase: 2 } as never);
+    const repository: RepoCardView = { name: 'hello-api', kind: 'api', responsibility: 'Saúda', status: 'done', specs: 1, plans: 1, tasks: 2, tasksDone: 1, blockers: 0 };
+    render(view({ backlogs: ['hello-001'], repositories: [repository], docs: [{ file: 'project.md', text: '# Hello' }] }));
+    const decisions = await screen.findByRole('heading', { name: 'Decisões dos agentes' });
     const banner = screen.getByRole('status');
-    const runsHeading = screen.getByRole('heading', { name: 'Execuções' });
-    expect(banner.compareDocumentPosition(runsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(runsHeading.compareDocumentPosition(screen.getByTestId('project-specs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const chain = [
+      screen.getByTestId('project-hub-header'),
+      screen.getByTestId('project-hub-stats'),
+      screen.getByRole('heading', { name: 'Execuções' }),
+      screen.getByRole('heading', { name: /Repositórios/ }),
+      banner,
+      screen.getByTestId('project-specs'),
+      screen.getByTestId('project-docs'),
+      decisions,
+    ];
+    chain.slice(1).forEach((el, i) => expect(chain[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
+  });
+  it('keeps both header links in one container, graph first', () => {
+    render(view({ project: { ...project, repoUrl: 'https://github.com/acme/hello' } }));
+    const links = screen.getByTestId('project-hub-header-links');
+    expect([...links.children].map((el) => el.getAttribute('data-testid'))).toEqual(['graph-link', 'github-link']);
   });
   const running: ProgramView = { version: 1, draftId: 'hello-001', status: 'running', updatedAt: '', items: [{ specId: 'hello-001-base', key: 'base', rank: 1, dependsOn: [], status: 'running', runId: 'hello-002-r1', completeRunId: null, startedAt: null, finishedAt: null, reason: null, resumes: 0, costUsd: null }] };
   const spyProgram = (program: ProgramView) => {

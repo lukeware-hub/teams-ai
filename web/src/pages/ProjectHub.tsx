@@ -141,6 +141,8 @@ export function ProjectHubView(p: {
   // While a backlog runs its panel lists the planned specs, so the specs card leaves them out.
   const [running, setRunning] = useState<string[]>([]);
   const trackRunning = (specId: string, on: boolean) => setRunning((r) => (on === r.includes(specId) ? r : on ? [...r, specId] : r.filter((id) => id !== specId)));
+  // The decisions of the running backlogs show at the page end, in this slot.
+  const [decisionsSlot, setDecisionsSlot] = useState<HTMLElement | null>(null);
   // Grouping walks every spec row, so it reruns only when the rows or the running backlogs change.
   const groupedSpecs = useMemo(() => {
     const listed = (s: SpecPageRow) => !(running.length > 0 && s.shownStatus === 'planned');
@@ -192,23 +194,25 @@ export function ProjectHubView(p: {
           <p data-testid="project-hub-desc" className={desc}>{pr.description}</p>
           <code data-testid="project-hub-dir" className={dir}>{pr.dir}</code>
         </div>
-        <div data-testid="project-hub-header-actions" className="grid flex-none justify-items-end gap-3 max-sm:w-full max-sm:justify-items-stretch">
+        <div data-testid="project-hub-header-actions" className="flex flex-none flex-col items-end gap-3 self-stretch max-sm:w-full max-sm:items-stretch">
           {percent === null ? null : (
             <div data-testid="project-hub-progress" className="flex flex-none items-center gap-2.5 max-sm:flex-1" role="img" aria-label={`${percent}% concluído`}>
               <div data-testid="project-hub-progress-track" className="h-2 w-32 overflow-hidden rounded-full bg-surface-muted max-sm:flex-1"><span data-testid="project-hub-progress-bar" className="block size-full origin-left rounded-full bg-good-live transition-transform duration-[var(--duration-slow)] ease-[var(--ease-out)]" style={{ transform: `scaleX(${percent / 100})` }} /></div>
               <span data-testid="project-hub-progress-value" className="text-[0.8125rem] font-[650] text-ink-soft tabular-nums">{percent}%</span>
             </div>
           )}
-          <Link className="link-button" data-testid="graph-link" to={graphPath(pr.projectId)}>
-            Ver cérebro do projeto
-            <Icon name="code" size={16} />
-          </Link>
-          {pr.repoUrl ? (
-            <a className="link-button" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
-              Abrir no GitHub
-              <Icon name="external" size={16} />
-            </a>
-          ) : null}
+          <div data-testid="project-hub-header-links" className="mt-auto grid auto-cols-fr grid-flow-col gap-2 max-sm:grid-flow-row">
+            <Link className="link-button whitespace-nowrap" data-testid="graph-link" to={graphPath(pr.projectId)}>
+              Ver cérebro do projeto
+              <Icon name="code" size={16} />
+            </Link>
+            {pr.repoUrl ? (
+              <a className="link-button whitespace-nowrap" data-testid="github-link" href={pr.repoUrl} target="_blank" rel="noreferrer">
+                Abrir no GitHub
+                <Icon name="external" size={16} />
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
       <div data-testid="project-hub-stats" className={stats}>
@@ -229,9 +233,6 @@ export function ProjectHubView(p: {
           <span data-testid="project-hub-stat-cost-label" className={statLabel}>custo total<InfoTip label="Custo total" text="Soma do custo estimado das chamadas aos modelos de IA em todas as execuções do projeto. É um aviso: o custo nunca para o trabalho." /></span>
         </div>
       </div>
-      <section id="execucao" data-testid="project-hub-execution" className="grid gap-5 empty:hidden scroll-mt-4" aria-label="Execução do backlog">
-        {(p.backlogs ?? []).map((specId) => <BacklogExecution key={specId} projectId={pr.projectId} specId={specId} onRunning={trackRunning} />)}
-      </section>
       <section data-testid="project-hub-runs-card" className={`${panel} @container`}>
         <div data-testid="project-hub-runs-section" className={section}>
           <div data-testid="project-hub-runs-title-row" className={sectionTitle}>
@@ -353,41 +354,9 @@ export function ProjectHubView(p: {
         </section>
       ) : null}
       {p.error ? <p data-testid="project-hub-error" className="error m-0" role="alert">{p.error}</p> : null}
-      {p.docs?.length ? (
-        <section className={panel} data-testid="project-docs">
-          <div data-testid="project-hub-docs-section" className={section}>
-            <div data-testid="project-hub-docs-head" className={sectionHead}>
-              <div data-testid="project-hub-docs-title-row" className={sectionTitle}>
-                <span data-testid="project-hub-docs-icon" className={sectionIcon}><Icon name="download" size={14} /></span>
-                <h2 data-testid="project-hub-docs-title" className={sectionHeading}>Documentos</h2>
-                <InfoTip label="Documentos" text="Os cinco documentos do projeto: fluxo, projeto, briefing, stack e design. Baixe para ler ou guardar." />
-              </div>
-            </div>
-            <ul data-testid="project-hub-docs-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-              {p.docs.map((d) => (
-                <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2 max-sm:flex-col max-sm:items-stretch" key={d.file} data-testid={`project-doc-${d.file}`}>
-                  {refineSpec ? (
-                    <Link className="link-button min-w-0 flex-1 justify-between" to={`${refinePath(pr.projectId, refineSpec)}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
-                      <span data-testid={`project-hub-doc-name-${d.file}`} className="wrap-anywhere">{d.file}</span>
-                      <Icon name="arrow-right" size={16} />
-                    </Link>
-                  ) : (
-                    <strong data-testid={`project-hub-doc-label-${d.file}`} className="wrap-anywhere min-w-0 flex-1">{d.file}</strong>
-                  )}
-                  {d.text === null ? (
-                    <span data-testid={`project-hub-doc-pending-${d.file}`} className="hint">Ainda não publicado</span>
-                  ) : (
-                    <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
-                      <Icon name="download" size={16} />
-                      <span className="sm:hidden" aria-hidden="true">Baixar</span>
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      ) : null}
+      <section id="execucao" data-testid="project-hub-execution" className="grid gap-5 empty:hidden scroll-mt-4" aria-label="Execução do backlog">
+        {(p.backlogs ?? []).map((specId) => <BacklogExecution key={specId} projectId={pr.projectId} specId={specId} onRunning={trackRunning} decisionsSlot={decisionsSlot} />)}
+      </section>
       <section className={panel} data-testid="project-specs">
         <div data-testid="project-hub-specs-section" className={section}>
           <div data-testid="project-hub-specs-head" className={sectionHead}>
@@ -496,6 +465,42 @@ export function ProjectHubView(p: {
           <Pagination view={specsView} />
         </div>
       </section>
+      {p.docs?.length ? (
+        <section className={panel} data-testid="project-docs">
+          <div data-testid="project-hub-docs-section" className={section}>
+            <div data-testid="project-hub-docs-head" className={sectionHead}>
+              <div data-testid="project-hub-docs-title-row" className={sectionTitle}>
+                <span data-testid="project-hub-docs-icon" className={sectionIcon}><Icon name="download" size={14} /></span>
+                <h2 data-testid="project-hub-docs-title" className={sectionHeading}>Documentos</h2>
+                <InfoTip label="Documentos" text="Os cinco documentos do projeto: fluxo, projeto, briefing, stack e design. Baixe para ler ou guardar." />
+              </div>
+            </div>
+            <ul data-testid="project-hub-docs-list" className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+              {p.docs.map((d) => (
+                <li className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3 py-2 max-sm:flex-col max-sm:items-stretch" key={d.file} data-testid={`project-doc-${d.file}`}>
+                  {refineSpec ? (
+                    <Link className="link-button min-w-0 flex-1 justify-between" to={`${refinePath(pr.projectId, refineSpec)}?etapa=${d.file}`} aria-label={`Visualizar ${d.file}`}>
+                      <span data-testid={`project-hub-doc-name-${d.file}`} className="wrap-anywhere">{d.file}</span>
+                      <Icon name="arrow-right" size={16} />
+                    </Link>
+                  ) : (
+                    <strong data-testid={`project-hub-doc-label-${d.file}`} className="wrap-anywhere min-w-0 flex-1">{d.file}</strong>
+                  )}
+                  {d.text === null ? (
+                    <span data-testid={`project-hub-doc-pending-${d.file}`} className="hint">Ainda não publicado</span>
+                  ) : (
+                    <a className="link-button min-w-0 shrink-0" data-testid={`download-${d.file.replace('.', '-')}`} href={mdDownload(d.text)} download={d.file} aria-label={`Baixar ${d.file}`}>
+                      <Icon name="download" size={16} />
+                      <span className="sm:hidden" aria-hidden="true">Baixar</span>
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      ) : null}
+      <div data-testid="project-hub-decisions-slot" ref={setDecisionsSlot} className="empty:hidden" />
       {p.drafts.length > 0 ? (
         <section className={panel} data-testid="project-hub-drafts-card">
           <div data-testid="project-hub-drafts-section" className={section}>

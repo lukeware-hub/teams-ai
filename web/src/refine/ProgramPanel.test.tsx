@@ -29,13 +29,13 @@ describe('ProgramPanel', () => {
     expect(within(screen.getByTestId('program-item-c')).getByText(/depends on b, which failed/)).toBeTruthy();
   });
 
-  it('shows a spec whose code is on main but whose deploy failed as partly done, with the reason and no retry', () => {
-    renderPanel(program([
-      item('a', { rank: 1, status: 'partial', runId: 'd-a-r1', reason: 'deploy-failed: smoke 500' }),
-    ], 'finished'));
+  it('shows a spec whose code is on main but whose deploy failed as partly done, with the reason and a retry', () => {
+    const onPrioritize = vi.fn();
+    render(<MemoryRouter><ProgramPanel program={program([item('a', { rank: 1, status: 'partial', runId: 'd-a-r1', reason: 'deploy-failed: smoke 500' })], 'finished')} titles={titles} onPrioritize={onPrioritize} /></MemoryRouter>);
     const a = within(screen.getByTestId('program-item-a'));
     expect(a.getByText('concluída parcialmente')).toBeTruthy();
-    expect(a.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    fireEvent.click(a.getByRole('button', { name: 'Tentar de novo' }));
+    expect(onPrioritize).toHaveBeenCalledWith('d-a');
     expect(screen.getByText(/há specs concluídas parcialmente/)).toBeTruthy();
   });
 

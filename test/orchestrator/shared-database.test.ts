@@ -7,18 +7,26 @@ const system = makeProject({ services: ['policy-registry-api', 'audit-api'] });
 describe('sharedDatabase', () => {
   it('adds one PostgreSQL container to the platform and builds the URL every service reads', () => {
     const r = sharedDatabase(system, true, 'pw1')!;
-    expect(r.url).toBe('postgres://app:pw1@postgres:5432/app');
-    expect(r.project.platform).toEqual([expect.objectContaining({ name: 'postgres', image: 'postgres:17-bookworm', environment: { POSTGRES_USER: 'app', POSTGRES_PASSWORD: 'pw1', POSTGRES_DB: 'app' } })]);
+    expect(r.url).toBe('postgres://app:pw1@platform-postgres:5432/app');
+    expect(r.project.platform).toEqual([expect.objectContaining({ name: 'platform-postgres', image: 'postgres:17-bookworm', environment: { POSTGRES_USER: 'app', POSTGRES_PASSWORD: 'pw1', POSTGRES_DB: 'app' } })]);
   });
 
   it('keeps the other platform containers', () => {
     const broker = { name: 'nats', image: 'nats:2.10' };
     const r = sharedDatabase({ ...system, platform: [broker] }, true, 'pw1')!;
-    expect(r.project.platform?.map((p) => p.name)).toEqual(['nats', 'postgres']);
+    expect(r.project.platform?.map((p) => p.name)).toEqual(['nats', 'platform-postgres']);
   });
 
   it('leaves a project that declares its own postgres alone, since its credentials are not known', () => {
     expect(sharedDatabase({ ...system, platform: [{ name: 'postgres', image: 'postgres:16-bookworm' }] }, true, 'pw1')).toBeNull();
+  });
+
+  it('leaves a project alone whatever name its own postgres has', () => {
+    expect(sharedDatabase({ ...system, platform: [{ name: 'db', image: 'postgres:16-bookworm' }] }, true, 'pw1')).toBeNull();
+  });
+
+  it('never takes the bare name postgres, which a service compose file may also give its own database on the shared network', () => {
+    expect(sharedDatabase(system, true, 'pw1')!.project.platform?.some((p) => p.name === 'postgres')).toBe(false);
   });
 
   it('does nothing when nothing needs a DATABASE_URL', () => {

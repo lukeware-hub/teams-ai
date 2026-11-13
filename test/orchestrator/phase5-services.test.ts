@@ -112,6 +112,18 @@ describe('Phase 5 shared database', () => {
     expect(seen[0]).toContainEqual(postgres);
   });
 
+  it('hands DATABASE_URL to every service even when the spec being delivered does not declare it (live: kayron-hub contract-version-tiss)', async () => {
+    const { deps } = await setup([]);
+    await fs.writeFile(path.join(deps.services!.repos[0]!.ws.repo, 'docker-compose.yml'), 'services:\n  api:\n    environment:\n      - DATABASE_URL\n');
+    deps.provisionDatabase = async (needed) => (needed ? [...deps.project.platform!, postgres] : deps.project.platform!);
+    const intents: DeploymentIntent[] = [];
+    const apply = deps.target!.apply.bind(deps.target);
+    deps.target!.apply = async (i, ...rest) => { intents.push(i); return apply(i, ...rest); };
+    await runServicesPhase5(deps, 1);
+    expect(intents.length).toBeGreaterThan(0);
+    for (const i of intents) expect(i.secretNames).toContain('DATABASE_URL');
+  });
+
   it('asks for no database when no compose file or suite of a service reads DATABASE_URL', async () => {
     const { deps } = await setup([]);
     const asked: boolean[] = [];

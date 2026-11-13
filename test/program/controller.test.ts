@@ -507,9 +507,23 @@ describe('program controller', () => {
     expect(retried.status).toBe('running');
   });
 
-  it('refuses to retry an item that is not failed', () => {
+  it('prioritizeItem reopens a partial item and puts it first, as it does a failed one', () => {
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p.items[0] = { ...p.items[0]!, status: 'partial', reason: 'deploy failed', runId: 'd-a-r4', finishedAt: NOW.toISOString() };
+    p = prioritizeItem(p, 'd-a', NOW);
+    expect(p.items[0]).toMatchObject({ status: 'pending', priority: true, runId: null });
+  });
+
+  it('retryItem reopens a partial item, whose code is on main but whose deploy never came up', () => {
+    let p = newProgram('d', [entry('a', 1)], NOW);
+    p.items[0] = { ...p.items[0]!, status: 'partial', reason: 'deploy failed; 4 runs in a row failed and were put down to the environment', runId: 'd-a-r4', finishedAt: NOW.toISOString(), repairs: 2, failures: ['x', 'y'] };
+    const retried = retryItem(p, 'd-a', NOW);
+    expect(retried.items[0]).toMatchObject({ status: 'pending', reason: null, runId: null, finishedAt: null, repairs: 0, failures: [] });
+  });
+
+  it('refuses to retry an item that is neither failed nor partial', () => {
     const p = newProgram('d', [entry('a', 1)], NOW);
-    expect(() => retryItem(p, 'd-a', NOW)).toThrow(/not failed/);
+    expect(() => retryItem(p, 'd-a', NOW)).toThrow(/neither failed nor partial/);
   });
 
   it('refuses to retry an unknown spec id', () => {

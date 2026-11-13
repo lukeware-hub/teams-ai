@@ -163,7 +163,7 @@ export function extendProgram(program: Program, entries: readonly ProgramEntry[]
 export function prioritizeItem(program: Program, specId: string, now: Date): Program {
   const found = program.items.find((i) => i.specId === specId);
   if (!found) throw new RangeError(`unknown spec ${specId}`);
-  const p = found.status === 'failed' ? retryItem(program, specId, now) : structuredClone(program);
+  const p = found.status === 'failed' || found.status === 'partial' ? retryItem(program, specId, now) : structuredClone(program);
   const item = p.items.find((i) => i.specId === specId)!;
   if (item.status === 'waiting') clearForRetry(item);
   if (item.status !== 'pending') throw new RangeError(`item ${specId} is ${item.status}${item.reason ? `: ${item.reason}` : ''}`);
@@ -181,7 +181,7 @@ export function retryItem(program: Program, specId: string, now: Date): Program 
   const p: Program = structuredClone(program);
   const item = p.items.find((i) => i.specId === specId);
   if (!item) throw new RangeError(`unknown spec ${specId}`);
-  if (item.status !== 'failed') throw new RangeError(`item ${specId} is not failed (it is ${item.status})`);
+  if (item.status !== 'failed' && item.status !== 'partial') throw new RangeError(`item ${specId} is neither failed nor partial (it is ${item.status})`);
   Object.assign(clearForRetry(item), { repairs: 0, failures: [] });
   for (const i of p.items) if (i.status === 'blocked') Object.assign(i, { status: 'pending', reason: null, finishedAt: null });
   p.status = 'running';
