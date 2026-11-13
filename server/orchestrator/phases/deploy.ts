@@ -31,7 +31,8 @@ const deployPort = (deps: PhaseDeps) => Number([...deps.journal.events].reverse(
 
 const PORT_TAKEN = /port is already allocated/;
 /** The start of a service whose container is gone: its daemon was recreated, so only a build brings it back. */
-const NO_CONTAINER = /no container found/;
+/** A service of an earlier spec whose container is gone or exits when started: it is built again from main. */
+export const NO_CONTAINER = /no container found|exited \(\d+\)/;
 
 /** Draws a free port in place of `from`, never one of `avoid`, and records it; null when none is left. */
 async function reassignPort(deps: PhaseDeps, from: number, service: string | null = null, avoid: readonly number[] = []): Promise<number | null> {

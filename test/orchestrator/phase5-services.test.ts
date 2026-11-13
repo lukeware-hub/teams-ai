@@ -6,7 +6,7 @@ import { servicePlans, type ServicesPlan } from '../../server/contracts/plan.js'
 import type { DeploymentIntent } from '../../server/deploy/target.js';
 import { execCommand } from '../../server/exec/command.js';
 import { Intent, Journal, OrchEvent } from '../../server/orchestrator/events.js';
-import { runServicesPhase5 } from '../../server/orchestrator/phases/deploy.js';
+import { NO_CONTAINER, runServicesPhase5 } from '../../server/orchestrator/phases/deploy.js';
 import type { GateScope, PhaseDeps, ServiceRepo } from '../../server/orchestrator/phases/shared.js';
 import { RunEvent } from '../../server/pipeline/run-state.js';
 import { makeFrozenSpec, makePlanTask, makeProject, makeServicesPlan } from '../fixtures/contracts.js';
@@ -261,6 +261,12 @@ describe('Phase 5 with several services', () => {
     expect(await runServicesPhase5(deps, 1)).toEqual({ ok: true });
     expect(log.filter((l) => l.startsWith('ensure'))).toEqual(['ensure:ledger-api']);
     expect(log.indexOf('ensure:ledger-api')).toBeLessThan(log.indexOf('smoke:orders-api'));
+  });
+
+  it('builds again a service of an earlier spec whose container is gone or exits when started (live: kayron-hub policy-registry-api)', () => {
+    expect(NO_CONTAINER.test('no container found for project "teams-ai-kayron-hub--pki-api": not found')).toBe(true);
+    expect(NO_CONTAINER.test('container teams-ai-kayron-hub--policy-registry-api-1 exited (1)')).toBe(true);
+    expect(NO_CONTAINER.test('docker compose start failed: permission denied')).toBe(false);
   });
 
   it('says a failed proof may be the environment\'s when a service of an earlier spec cannot be started', async () => {
