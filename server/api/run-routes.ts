@@ -28,7 +28,7 @@ import { reduceEvents } from '../pipeline/run-state.js';
 import { locateTests, testsByRepo, type TestRef } from '../evidence/locate.js';
 import { EventLogCorruptError, loadEventsCached, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
-import { teardownProject } from '../deploy/docker-local.js';
+import { setServiceRunning, teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { withGitAuth } from '../git/auth.js';
 import { fetch as fetchRepo } from '../git/git.js';
@@ -619,6 +619,20 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       path: `${P}/projects/:projectId/repositories/:repo/dashboard`,
       handler: async ({ params, json }) => {
         json(200, buildDashboard(await dashboardInput(params)));
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/repositories/:repo/service/:action`,
+      handler: async ({ params, json }) => {
+        const on = params.action === 'start';
+        if (!on && params.action !== 'stop') throw new HttpError(400, `unknown action ${params.action}`);
+        const deploy = buildDashboard(await dashboardInput(params)).lastDeploy;
+        if (!deploy) throw new HttpError(404, 'this repository has no deployed service');
+        const own = deploy.services?.some((s) => s.service === params.repo) ? params.repo! : null;
+        const result = await setServiceRunning(deps.exec ?? execCommand, params.projectId!, own, on);
+        if (!result.ok) throw new HttpError(502, result.detail);
+        json(200, { running: on });
       },
     },
     {

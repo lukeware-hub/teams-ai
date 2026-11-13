@@ -16,6 +16,13 @@ export interface DeploymentIntent {
   shared?: { composeProject: string; network: string; alias: string };
 }
 
+export interface PlatformRequest {
+  method: 'GET' | 'POST' | 'PUT';
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
 export interface DeployTarget {
   readonly name: 'docker-local';
   validate(intent: DeploymentIntent): Promise<string[]>;
@@ -39,6 +46,8 @@ export interface DeployTarget {
   ensureRunning?(projectId: string, service: string): Promise<{ ok: boolean; detail: string }>;
   /** Adds values to the environment every later compose call of this run gets (credentials the environment step made up). */
   provide?(env: Readonly<Record<string, string>>): void;
+  /** One HTTP call from inside the project's shared network, where a platform container answers by its name. */
+  platformRequest?(projectId: string, req: PlatformRequest): Promise<{ status: number; body: string }>;
   /** The value `variable` has inside the running main container of a service of the project, or null when the service or the variable is not there. */
   serviceEnv?(projectId: string, service: string, variable: string): Promise<string | null>;
 }

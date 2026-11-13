@@ -467,6 +467,8 @@ export interface ReprocessAction {
   onReprocess: () => void;
   busy: boolean;
   error: string | null;
+  /** The program took the spec into its queue: the new run starts when a slot frees up. */
+  queued?: boolean;
 }
 
 /** Saves the owner's answers to the questions of a blocked run, then starts the next run of the spec. */
@@ -881,7 +883,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                 {reprocessAction && !detail.locked && (!autonomous || status === 'deploy-failed') ? (
                                   <span data-testid="run-outcome-reprocess" className="flex min-w-0 flex-1 items-center gap-[0.35rem]">
                                     <ActionButton className={`${redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} flex-1`} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
-                                      {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
+                                      {reprocessAction.busy ? (reprocessAction.queued ? 'Na fila…' : 'Iniciando nova run…') : 'Reprocessar'}
                                     </ActionButton>
                                     <InfoTip label="Reprocessar" text={TIP.reprocess} />
                                   </span>
@@ -905,6 +907,16 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                           })()}
                           {redeployAction?.error ? <p className="error" data-testid="redeploy-error">{redeployAction.error}</p> : null}
                           {reprocessAction?.error ? <p className="error" data-testid="reprocess-error">{reprocessAction.error}</p> : null}
+                          {reprocessAction?.queued ? (
+                            <div role="status" data-testid="reprocess-queued" className="mt-3 grid gap-3 rounded-lg border border-accent-line bg-accent-soft p-[14px] text-ink">
+                              <p className="m-0">
+                                <strong className="text-accent-ink">Aguardando vaga:</strong> a run entrou na fila do programa e começa quando houver vaga.
+                              </p>
+                              <Link to={afterStartPath(detail.projectId)} data-testid="reprocess-queue-link" className="link-button justify-self-start">
+                                Ver a fila do programa
+                              </Link>
+                            </div>
+                          ) : null}
                         </dd>
                       </div>
                     </dl>
@@ -1135,16 +1147,11 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
 }
 
 // The start route answers 409 in English when the spec already has a live run.
-/** The run a queued spec gets: a program launches it a moment after the click, so the page waits for the newest run of the spec after `current`. */
-export async function awaitNewRun(projectId: string, specId: string, current: string): Promise<string | null> {
-  for (let tick = 0; tick < 30; tick++) {
-    const rows: RunRow[] = await runApi.runs(projectId).catch(() => []);
-    const afterN = rows.find((r) => r.runId === current)?.n ?? 0;
-    const next = rows.filter((r) => r.specId === specId && r.kind === 'run' && r.n > afterN).sort((a, b) => b.n - a.n)[0];
-    if (next) return next.runId;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  return null;
+/** The run a queued spec gets once its program launches it: the newest run of the spec started after `current`, or null before that. */
+export async function newerRun(projectId: string, specId: string, current: string): Promise<string | null> {
+  const rows: RunRow[] = await runApi.runs(projectId).catch(() => []);
+  const afterN = rows.find((r) => r.runId === current)?.n ?? 0;
+  return rows.filter((r) => r.specId === specId && r.kind === 'run' && r.n > afterN).sort((a, b) => b.n - a.n)[0]?.runId ?? null;
 }
 
 const reprocessError = (message: string) => {
@@ -1172,6 +1179,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
   const [writerRun, setWriterRun] = useState<string | null>(null);
   const [readmeError, setReadmeError] = useState<string | null>(null);
   const [reprocessing, setReprocessing] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [deciding, setDeciding] = useState(false);
   const [decideFailure, setDecideFailure] = useState<string | null>(null);
   const [reprocessFailure, setReprocessFailure] = useState<string | null>(null);
@@ -1232,19 +1240,32 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       .then((r) => setWriterRun(r.runId))
       .catch((e: Error) => setReadmeError(e.message));
   };
+  // A queued Reprocessar waits for a program slot, so it looks for the new run until it exists.
+  const projectId = detail?.projectId;
+  const specId = detail?.specId;
+  useEffect(() => {
+    if (!queued || !projectId || !specId || !runId) return;
+    const id = setInterval(() => {
+      newerRun(projectId, specId, runId)
+        .then((next) => next && navigate(runPath(next)))
+        .catch(() => undefined);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [queued, projectId, specId, runId, navigate]);
   const reprocess = () => {
     if (!detail) return;
     setReprocessing(true);
     setReprocessFailure(null);
     runApi
       .startRun(detail.projectId, detail.specId)
-      .then(async (r) => {
-        // Straight to the new run; the program page only when the run does not appear in time.
-        const started = r.queued ? await awaitNewRun(detail.projectId, detail.specId, detail.runId) : r.runId;
-        navigate(started ? runPath(started) : afterStartPath(detail.projectId));
+      .then((r) => {
+        // Queued: the page stays and says so; the effect above opens the run once the program launches it.
+        if (r.queued) setQueued(true);
+        else navigate(r.runId ? runPath(r.runId) : afterStartPath(detail.projectId));
       })
       .catch((e: Error) => {
         setReprocessing(false);
+        setQueued(false);
         setReprocessFailure(reprocessError(e.message));
       });
   };
@@ -1314,7 +1335,7 @@ function RunScreen({ runId }: { runId: string | undefined }) {
       error={error}
       loadStep={(stepId) => runApi.step(runId, stepId)}
       readmeAction={{ onGenerate: generateReadme, busy: writerRun !== null, error: readmeError }}
-      reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure }}
+      reprocessAction={{ onReprocess: reprocess, busy: reprocessing, error: reprocessFailure, queued }}
       decideAction={{ onDecide: decide, busy: deciding || reprocessing, error: decideFailure ?? reprocessFailure }}
       stopAction={{ onStop: stopExecution, busy: stopping, error: stopFailure }}
       resumeAction={{ onResume: resumeExecution, busy: resuming, error: resumeFailure, sent: sentBack }}

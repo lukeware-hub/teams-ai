@@ -96,7 +96,7 @@ describe('agent prompts for a project of services (R12.6)', () => {
   it('the environment agent names recipes, never sees a value, and picks the strategy by what the variable is', () => {
     const env = agent('env');
     expect(env).toContain('You never see, ask for or write a secret value');
-    for (const strategy of ['`random`', '`fake`', '`from-service`', '`mint`']) expect(env).toContain(strategy);
+    for (const strategy of ['`random`', '`fake`', '`from-service`', '`mint`', '`oidc-issuer`', '`oidc-token`']) expect(env).toContain(strategy);
     expect(env).toContain('A variable the pack already says exists is never in your answer');
   });
 

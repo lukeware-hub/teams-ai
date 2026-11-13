@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
-import { DockerLocalTarget, teardownProject } from '../../server/deploy/docker-local.js';
+import { DockerLocalTarget, setServiceRunning, teardownProject } from '../../server/deploy/docker-local.js';
 import type { DeploymentIntent, HttpGet } from '../../server/deploy/target.js';
 import { dockerArgs } from '../../server/exec/gate-runner.js';
 import { FakeExec } from '../fixtures/fake-exec.js';
@@ -93,6 +93,18 @@ describe('DockerLocalTarget with a compose file', () => {
     expect(fake.lines('docker')).toEqual(['compose -p teams-ai-todo-api--orders start --wait']);
     const bad = new FakeExec().onArgs('docker', ['compose'], () => ({ exitCode: 1, stderr: 'no container found for project' }));
     const r = await mk(bad).ensureRunning('Todo-Api', 'orders');
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain('no container found for project');
+  });
+
+  it('stops and starts a service by its compose project, and the single project of a deploy without services', async () => {
+    const fake = new FakeExec();
+    expect(await setServiceRunning(fake.exec, 'Todo-Api', 'orders', false)).toEqual({ ok: true, detail: 'stopped' });
+    expect(await setServiceRunning(fake.exec, 'Todo-Api', 'orders', true)).toEqual({ ok: true, detail: 'running' });
+    expect(await setServiceRunning(fake.exec, 'Todo-Api', null, false)).toEqual({ ok: true, detail: 'stopped' });
+    expect(fake.lines('docker')).toEqual(['compose -p teams-ai-todo-api--orders stop', 'compose -p teams-ai-todo-api--orders start --wait', 'compose -p teams-ai-todo-api stop']);
+    const bad = new FakeExec().onArgs('docker', ['compose'], () => ({ exitCode: 1, stderr: 'no container found for project' }));
+    const r = await setServiceRunning(bad.exec, 'Todo-Api', 'orders', true);
     expect(r.ok).toBe(false);
     expect(r.detail).toContain('no container found for project');
   });

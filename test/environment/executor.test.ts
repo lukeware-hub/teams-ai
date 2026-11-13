@@ -142,3 +142,29 @@ describe('mintValues', () => {
     expect(r.failed[0]!.reason).not.toContain('admin-secret');
   });
 });
+
+describe('oidc recipes', () => {
+  it('writes the issuer address the platform fixes, over a value held from an earlier recipe', async () => {
+    const secretsDir = await dir();
+    const r = await applyRecipes([{ ...base, name: 'OIDC_ISSUER_URL', strategy: 'oidc-issuer', realm: 'kayron' }], { secretsDir, held: { OIDC_ISSUER_URL: 'https://old.example' }, serviceEnv: async () => null });
+    expect(r.values.OIDC_ISSUER_URL).toBe('http://platform-keycloak:8080/realms/kayron');
+    expect((await readFile(path.join(secretsDir, 'OIDC_ISSUER_URL'), 'utf8')).trim()).toBe(r.values.OIDC_ISSUER_URL);
+  });
+
+  it('derives the keys address from the issuer made in the same pass', async () => {
+    const vars: EnvironmentVariable[] = [
+      { ...base, name: 'OIDC_JWKS_URL', strategy: 'derive', template: '${OIDC_ISSUER_URL}/protocol/openid-connect/certs' },
+      { ...base, name: 'OIDC_ISSUER_URL', strategy: 'oidc-issuer', realm: 'kayron' },
+    ];
+    const r = await applyRecipes(vars, { secretsDir: await dir(), held: { OIDC_ISSUER_URL: 'https://old.example' }, serviceEnv: async () => null });
+    expect(r.values.OIDC_JWKS_URL).toBe('http://platform-keycloak:8080/realms/kayron/protocol/openid-connect/certs');
+  });
+
+  it('leaves a token for Keycloak to sign, even when a value is held: a token expires', async () => {
+    const token: EnvironmentVariable = { ...base, name: 'E2E_MAKER_TOKEN', strategy: 'oidc-token', realm: 'kayron', audience: 'api', username: 'maker', roles: [] };
+    const r = await applyRecipes([token], { secretsDir: await dir(), held: { E2E_MAKER_TOKEN: 'stale' }, serviceEnv: async () => null });
+    expect(r.values).toEqual({});
+    expect(r.tokens).toEqual([token]);
+    expect(r.applied[0]!.outcome).toBe('deferred');
+  });
+});

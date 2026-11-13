@@ -1,5 +1,5 @@
 import type { DecideOutput } from '../agents/outputs.js';
-import { redactSecrets } from '../core/redact.js';
+import { maskableValues, redactSecrets } from '../core/redact.js';
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { AgentDefinition } from '../agents/registry.js';
@@ -52,7 +52,7 @@ import { withMainSnapshot } from './phases/shared.js';
 import { runDocsPhase } from './phases/docs.js';
 import { planGapTasks, runPlanReview } from './phases/converge.js';
 import { reconcile } from './reconcile.js';
-import { mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
+import { environmentContainers, issueEnvironmentTokens, mintEnvironment, prepareEnvironment, type EnvironmentHost } from '../environment/service.js';
 import { runAgentStep, type AgentStepDeps, type AgentStepRequest, type PackBase } from './steps.js';
 import { TaskRunner, type TaskRunnerDeps } from './task-runner.js';
 import { portKey, registeredPorts } from '../deploy/port-registry.js';
@@ -425,7 +425,7 @@ export class Run {
   }
 
   private secretValues(): string[] {
-    return [...Object.values(this.deps.secrets), ...(this.deps.apiKey ? [this.deps.apiKey] : [])];
+    return [...maskableValues(this.deps.secrets), ...(this.deps.apiKey ? [this.deps.apiKey] : [])];
   }
 
   private agentDeps(view?: ServiceView): AgentStepDeps {
@@ -516,7 +516,7 @@ export class Run {
       pause: async (failure) => (await this.pauseFor(failure as 'quota' | 'auth')) === 'auth',
       journal: this.journal,
     };
-    return (this.environmentPhase = { prepare: (repo, failure) => prepareEnvironment(host, repo, failure), mint: (urls) => mintEnvironment(host, urls) });
+    return (this.environmentPhase = { prepare: (repo, failure) => prepareEnvironment(host, repo, failure), mint: (urls) => mintEnvironment(host, urls), containers: () => environmentContainers(host), issue: () => issueEnvironmentTokens(host) });
   }
 
   private runAgent = <K extends StepKind>(req: AgentStepRequest<K>): Promise<StepOutcome<OutputOf<K>>> => runAgentStep(req, this.agentDeps());

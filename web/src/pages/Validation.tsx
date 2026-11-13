@@ -61,12 +61,12 @@ function SmokeTable({ runId }: { runId: string }) {
       <TableFilters view={view} subject="testes rápidos" placeholder="Filtrar por critério, serviço ou teste" facetName="Resultado" />
       <div data-testid="validation-smoke-table-wrap" className="@container overflow-x-auto">
         <table data-testid="validation-smoke-table" className={`${TABLE} ${responsiveTable} @min-[32rem]:min-w-[32rem] table-fixed`}>
-          <colgroup data-testid="validation-smoke-colgroup"><col data-testid="validation-smoke-col-criterion" className="w-[11rem]" /><col data-testid="validation-smoke-col-test" /><col data-testid="validation-smoke-col-result" className="w-[10rem]" /></colgroup>
+          <colgroup data-testid="validation-smoke-colgroup"><col data-testid="validation-smoke-col-criterion" className="w-[15rem]" /><col data-testid="validation-smoke-col-test" /><col data-testid="validation-smoke-col-result" className="w-[9rem]" /></colgroup>
           <thead data-testid="validation-smoke-head" className={responsiveHead}>
             <tr data-testid="validation-smoke-head-row">
               <SortHeader view={view} column="criterion" tip={<InfoTip text={`${CRITERION_HELP} Entre parênteses, o serviço que o testa.`} />}>Critério</SortHeader>
               <SortHeader view={view} column="test" tip={<InfoTip text="Smoke test: teste automático curto, rodado no serviço publicado, que confirma o essencial de cada critério." />}>Teste rápido</SortHeader>
-              <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
+              <SortHeader view={view} column="result" className={CENTER} tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
           <tbody data-testid="validation-smoke-body" className="@max-[44rem]:block">
@@ -75,7 +75,7 @@ function SmokeTable({ runId }: { runId: string }) {
               <tr key={`${s.service ?? ''}-${s.acId}`} data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}`} className={`result-${s.status} ${responsiveRow}`}>
                 <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-criterion`} className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{s.acId}{s.service ? ` (${s.service})` : ''}</td>
                 <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-test`} className={`${TD_MONO} ${responsiveCell}`} data-label="Teste rápido">{s.testId ?? '—'}</td>
-                <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-result`} className={responsiveCell} data-label="Resultado"><ResultChip status={s.status} /></td>
+                <td data-testid={`smoke-${s.service ? `${s.service}-` : ''}${s.acId}-result`} className={`${CENTER} ${responsiveCell}`} data-label="Resultado"><ResultChip status={s.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -92,14 +92,14 @@ function EvidenceTable({ runId }: { runId: string }) {
       <TableFilters view={view} subject="evidências" placeholder="Filtrar por critério, tarefa ou teste" facetName="Resultado" />
       <div data-testid="validation-evidence-table-wrap" className="@container overflow-x-auto">
         <table data-testid="validation-evidence-table" className={`${TABLE} ${responsiveTable} @min-[44rem]:min-w-[44rem] table-fixed`}>
-          <colgroup data-testid="validation-evidence-colgroup"><col data-testid="validation-evidence-col-criterion" className="w-[8rem]" /><col data-testid="validation-evidence-col-tasks" className="w-[8rem]" /><col data-testid="validation-evidence-col-tests" /><col data-testid="validation-evidence-col-e2e" className="w-[8.5rem]" /><col data-testid="validation-evidence-col-result" className="w-[9rem]" /></colgroup>
+          <colgroup data-testid="validation-evidence-colgroup"><col data-testid="validation-evidence-col-criterion" className="w-[7rem]" /><col data-testid="validation-evidence-col-tasks" className="w-[12rem]" /><col data-testid="validation-evidence-col-tests" /><col data-testid="validation-evidence-col-e2e" className="w-[9rem]" /><col data-testid="validation-evidence-col-result" className="w-[9rem]" /></colgroup>
           <thead data-testid="validation-evidence-table-head" className={responsiveHead}>
             <tr data-testid="validation-evidence-table-head-row">
               <SortHeader view={view} column="criterion" tip={<InfoTip text={CRITERION_HELP} />}>Critério</SortHeader>
               <SortHeader view={view} column="tasks" tip={<InfoTip text="As tarefas dos agentes que implementaram o critério." />}>Tarefas</SortHeader>
               <SortHeader view={view} column="tests" tip={<InfoTip text="Os testes automáticos que comprovam o critério." />}>Testes</SortHeader>
-              <SortHeader view={view} column="e2e" tip={<InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." />}>Teste E2E</SortHeader>
-              <SortHeader view={view} column="result" tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
+              <SortHeader view={view} column="e2e" className={CENTER} tip={<InfoTip text="Teste ponta a ponta: simula uma pessoa usando o serviço publicado, do início ao fim do fluxo." />}>Teste E2E</SortHeader>
+              <SortHeader view={view} column="result" className={CENTER} tip={<InfoTip text={RESULT_HELP} />}>Resultado</SortHeader>
             </tr>
           </thead>
           <tbody data-testid="validation-evidence-body" className="@max-[44rem]:block">
@@ -107,10 +107,10 @@ function EvidenceTable({ runId }: { runId: string }) {
             {view.rows.map((r) => (
               <tr key={r.criterion} data-testid={`evidence-${r.criterion}`} className={`result-${r.status} ${responsiveRow}`}>
                 <td data-testid={`evidence-${r.criterion}-criterion`} className={`${TD_ID} ${responsiveCell}`} data-label="Critério">{r.criterion}</td>
-                <td data-testid={`evidence-${r.criterion}-tasks`} className={`${TD_MONO} ${responsiveCell}`} data-label="Tarefas">{r.tasks.join(', ')}</td>
-                <td data-testid={`evidence-${r.criterion}-tests`} className={`${TD_MONO} ${responsiveCell}`} data-label="Testes">{r.tests.join(', ') || '—'}</td>
-                <td className={responsiveCell} data-label="Teste E2E" data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
-                <td data-testid={`evidence-${r.criterion}-result`} className={responsiveCell} data-label="Resultado"><ResultChip status={r.status} /></td>
+                <td data-testid={`evidence-${r.criterion}-tasks`} className={`${TD_MONO} ${responsiveCell}`} data-label="Tarefas"><CellList items={r.tasks} /></td>
+                <td data-testid={`evidence-${r.criterion}-tests`} className={`${TD_MONO} ${responsiveCell}`} data-label="Testes"><CellList items={r.tests} /></td>
+                <td className={`${CENTER} ${responsiveCell}`} data-label="Teste E2E" data-testid={`e2e-${r.criterion}`} title={r.e2eReason}>{r.e2e ? <ResultChip status={r.e2e} /> : '—'}{r.e2eReason ? ` (${r.e2eReason})` : ''}</td>
+                <td data-testid={`evidence-${r.criterion}-result`} className={`${CENTER} ${responsiveCell}`} data-label="Resultado"><ResultChip status={r.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -121,9 +121,20 @@ function EvidenceTable({ runId }: { runId: string }) {
   );
 }
 // Ids stay on one line and long test names break between words, so a narrow screen scrolls the table instead of wrapping letter by letter.
-const TABLE = 'mt-0 wrap-break-word';
-const TD_ID = 'font-mono text-[0.8125rem] font-semibold whitespace-nowrap text-accent-text';
-const TD_MONO = 'font-mono text-[0.78rem] text-ink-soft';
+const TABLE = 'mt-0 wrap-break-word [&_td]:align-middle';
+const TD_ID = 'font-mono text-[0.8125rem] font-semibold text-accent-text';
+const TD_MONO = 'font-mono text-[0.78rem] text-left text-ink-soft [hyphens:manual] wrap-anywhere';
+// Every cell is centred vertically; result columns are centred horizontally too.
+const CENTER = 'text-center';
+/** One item per line, so long lists of tasks and tests stay readable. */
+function CellList({ items }: { items: string[] }) {
+  if (items.length === 0) return <>—</>;
+  return (
+    <ul className="m-0 grid list-none gap-1.5 p-0">
+      {items.map((item) => <li key={item} className="[&:not(:first-child)]:border-t [&:not(:first-child)]:border-line [&:not(:first-child)]:pt-1.5">{item}</li>)}
+    </ul>
+  );
+}
 // Assumptions, blocked tasks and security findings: plain bordered rows.
 const FINDINGS = `${RUN_UI.boxList} [&>li]:px-[0.9rem] [&>li]:py-[0.7rem] [&>li]:text-[0.875rem] [&>li]:leading-normal`;
 // Commands, URLs and JSON the agents quoted between backticks.
@@ -398,12 +409,6 @@ export function ValidationView({ detail, specStatus, actionError = null, service
           </div>
           <p data-testid="validation-subtitle" className="mt-3 mb-0 max-w-[60ch] text-[0.875rem] text-ink-soft">Confira o serviço publicado e siga o roteiro de teste. Depois, conclua a especificação ou relate um problema.</p>
         </div>
-        <div data-testid="validation-actions" className={RUN_UI.actions}>
-          <Link className={`link-button ${RUN_UI.action}`} to={runPath(detail.runId)}>
-            Execução
-            <Icon name="arrow-left" size={16} />
-          </Link>
-        </div>
       </header>
       <Workspace
         columns={RUN_UI.columns}
@@ -488,15 +493,15 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                           <div data-testid={`validation-script-block-${block.acId}`} key={block.acId}>
                             {/* Manual script: one bordered list per criterion, a real checkbox on every row. */}
                             <h3 data-testid={`validation-script-block-title-${block.acId}`} className={`mb-1 font-mono text-[0.8125rem] tracking-normal text-accent-text normal-case mt-5`}>{block.acId}</h3>
-                            {criterion ? <p data-testid={`validation-script-block-criterion-${block.acId}`} className="hint mt-0 mb-[0.6rem] leading-normal">{criterionText(criterion)}</p> : null}
+                            {criterion ? <p data-testid={`validation-script-block-criterion-${block.acId}`} className="hint mt-0 mb-[0.6rem] leading-normal max-sm:text-left">{criterionText(criterion)}</p> : null}
                             <ul data-testid={`validation-script-steps-${block.acId}`} className={RUN_UI.boxList}>
                               {block.steps.map((s, i) => {
                                 const id = `${block.acId}-${i}`;
                                 return (
                                   <li data-testid={`validation-script-step-${id}`} key={id}>
-                                    <label data-testid={`validation-script-step-label-${id}`} className="flex cursor-pointer items-start gap-3 px-[0.9rem] py-[0.7rem] leading-normal text-ink hover:bg-surface-sunken">
-                                      <input type="checkbox" className="m-0 mt-[0.2rem] size-[1.05rem] min-w-0 flex-none cursor-pointer p-0" data-testid={`step-${id}`} checked={Boolean(checks[id])} onChange={() => toggle(id)} />
-                                      <span data-testid={`validation-script-step-text-${id}`} className={`min-w-0 text-[0.875rem] wrap-anywhere ${checks[id] ? 'text-ink-soft' : ''}`}><Rich text={s} /></span>
+                                    <label data-testid={`validation-script-step-label-${id}`} className="flex cursor-pointer items-center gap-3 px-[0.9rem] py-[0.7rem] leading-normal text-ink hover:bg-surface-sunken">
+                                      <input type="checkbox" className="m-0 size-[1.05rem] min-w-0 flex-none cursor-pointer p-0" data-testid={`step-${id}`} checked={Boolean(checks[id])} onChange={() => toggle(id)} />
+                                      <span data-testid={`validation-script-step-text-${id}`} className={`min-w-0 text-[0.875rem] wrap-anywhere max-sm:text-left ${checks[id] ? 'text-ink-soft' : ''}`}><Rich text={s} /></span>
                                     </label>
                                   </li>
                                 );
@@ -579,7 +584,7 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                     <div data-testid="validation-summary-head" className={RUN_UI.panelHead}>
                       <h2 data-testid="validation-summary-title">Resumo</h2>
                     </div>
-                    <p data-testid="validation-summary-text" className="mt-0 mb-[0.9rem] max-h-64 overflow-auto text-[0.875rem] leading-[1.55] text-ink"><Rich text={report.summary} /></p>
+                    <p data-testid="validation-summary-text" className="mt-0 mb-[0.9rem] max-h-64 overflow-auto text-[0.875rem] leading-[1.55] text-ink [text-wrap:pretty] max-sm:text-left"><Rich text={report.summary} /></p>
                     <dl data-testid="validation-totals" className={RUN_UI.totals}>
                       <div data-testid="validation-totals-cost">
                         <dt data-testid="validation-totals-cost-term">Custo estimado <InfoTip text="Estimativa em dólares das chamadas aos modelos de IA nesta execução, calculada pelos preços de API." /></dt>

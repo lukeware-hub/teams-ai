@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REDACTED, redactSecrets } from '../../server/core/redact.js';
+import { REDACTED, maskableValues, redactSecrets } from '../../server/core/redact.js';
 
 describe('redactSecrets', () => {
   it('replaces every known value, longest first', () => {
@@ -72,5 +72,15 @@ describe('redactSecrets gaps (audit L5)', () => {
   });
   it('does not mangle ordinary key-like prose', () => {
     expect(redactSecrets('token: 5 and secret=ok')).toBe('token: 5 and secret=ok');
+  });
+});
+
+describe('maskableValues', () => {
+  it('leaves out the identity settings, so a task id that ends with the audience is not shredded, and keeps every credential', () => {
+    const secrets = { OIDC_AUDIENCE: 'policy-registry-api', OIDC_ISSUER_URL: 'http://platform-keycloak:8080/realms/kayron', OIDC_JWKS_URL: 'http://x/certs', E2E_MAKER_TOKEN: 'tok-1234567890abcdef', DATABASE_URL: 'postgres://app:pw@db/app' };
+    const values = maskableValues(secrets);
+    expect(values).toEqual(['tok-1234567890abcdef', 'postgres://app:pw@db/app']);
+    expect(redactSecrets('T0-scaffold-policy-registry-api', values)).toBe('T0-scaffold-policy-registry-api');
+    expect(redactSecrets('Bearer tok-1234567890abcdef', values)).not.toContain('tok-1234567890abcdef');
   });
 });

@@ -79,9 +79,10 @@ export async function stop(deps: RunControlDeps, pid: number, timeoutMs = DRAIN_
 /** Waits for the spawned process to write its journal, so a spawn that dies on preconditions (e.g. `docker version`
  * unreachable) surfaces its `ui.log` tail instead of leaving the caller to poll a run that will never exist.
  * A busy host (parallel Rust builds, a full test suite) takes well over 10 seconds to start node, so the wait is generous. */
-export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, secretsDir: string, timeoutMs = 30_000): Promise<void> {
+export async function waitForRunJournal(deps: RunControlDeps, runs: string, runId: string, pid: number, secretsDir: string, timeoutMs = 90_000): Promise<void> {
   const file = path.join(runs, runId, 'events.ndjson');
-  for (let waited = 0; waited < timeoutMs; waited += POLL_MS) {
+  let waited = 0;
+  for (; waited < timeoutMs; waited += POLL_MS) {
     if (
       await fs.access(file).then(
         () => true,
@@ -95,7 +96,9 @@ export async function waitForRunJournal(deps: RunControlDeps, runs: string, runI
   const log = await fs.readFile(path.join(runs, runId, 'ui.log'), 'utf8').catch(() => '');
   // Secret values are read now, so a secret added after startup is covered; the cut comes after the redaction so a secret cannot be split by it.
   const tail = redactSecrets(log, await loadSecretValues(secretsDir)).slice(-500);
-  throw new Error(`run ${runId} did not start: ${tail || 'no output'}`);
+  // Still alive with nothing in its log: the host was too busy to start node in time, not a failed precondition.
+  const silent = isAlive(deps, pid) ? `still starting after ${Math.round(waited / 1000)}s with no output (busy host)` : 'no output';
+  throw new Error(`run ${runId} did not start: ${tail || silent}`);
 }
 
 /** A new launch that did not start leaves nothing behind: its process group is stopped and its run directory removed. */

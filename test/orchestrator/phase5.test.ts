@@ -242,6 +242,15 @@ describe('Phase 5 environment step', () => {
     expect(journal.events.some((e) => e.type === OrchEvent.DeployFailed)).toBe(true);
   });
 
+  it('asks the environment step again when the suite is refused, and runs the attempt again once it made a new credential', async () => {
+    const refused = 'e2e gate: prepare policy version: unauthenticated: UNAUTHENTICATED';
+    const h = hooks([false, true]);
+    const r = await runPhase5({ ...deps(refused), environment: h.environment }, 1);
+    expect(r).toMatchObject({ ok: false, retryEnvironment: true });
+    expect(h.calls.filter((c) => c.kind === 'prepare').map((c) => c.failure)).toEqual([null, refused]);
+    expect(planned()).toHaveLength(0);
+  });
+
   it('plans the fix task as before when the environment step has nothing to create', async () => {
     const h = hooks([false, false]);
     const r = await runPhase5({ ...deps(MISSING), environment: h.environment }, 1);

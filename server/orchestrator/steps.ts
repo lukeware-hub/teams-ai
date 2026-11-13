@@ -494,7 +494,7 @@ const OWNER_RULE =
 export function environmentPack(base: PackBase, opts: { unknown: Readonly<Record<string, readonly string[]>>; existing: readonly string[]; services: readonly string[]; failure: string | null }): ContextPackInput {
   const unknown = Object.entries(opts.unknown).map(([name, files]) => `- ${name}: read in ${files.join(', ') || 'a file of the repository'}`);
   return { ...common(base, 'environment', 'env'), criteria: base.spec.acceptanceCriteria, feedback: [
-    'The deploy of this spec is a local Docker test of what was built, so every credential it needs is made up by the platform and nobody types one. Decide how the platform creates each variable below, with one recipe per variable (random, fake, from-service or mint, as your rules say).',
+    'The deploy of this spec is a local Docker test of what was built, so every credential it needs is made up by the platform and nobody types one. Decide how the platform creates each variable below, with one recipe per variable (random, fake, from-service, mint, derive, oidc-issuer or oidc-token, as your rules say).',
     `Unknown variables (name and where it is read):\n${unknown.join('\n') || '- none'}`,
     `Variables that already exist (names only, never list them in your answer):\n${opts.existing.map((n) => `- ${n}`).join('\n') || '- none'}`,
     `Services of this project (the names a from-service or mint recipe may use):\n${opts.services.map((s) => `- ${s}`).join('\n') || '- the project has a single service, named like the project'}`,

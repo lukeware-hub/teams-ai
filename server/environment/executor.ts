@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { EnvironmentVariable } from '../agents/outputs.js';
 import { redactSecrets } from '../core/redact.js';
 import { writeSecret } from '../core/secrets.js';
+import { issuerUrl, type TokenRecipe } from './keycloak.js';
 
 export type MintRecipe = Extract<EnvironmentVariable, { strategy: 'mint' }>;
 
@@ -28,6 +29,8 @@ export interface ApplyResult {
   values: Record<string, string>;
   applied: AppliedVariable[];
   mints: MintRecipe[];
+  /** The `oidc-token` recipes: Keycloak signs them after the platform is up. */
+  tokens: TokenRecipe[];
 }
 
 const DEFAULT_LENGTH = 32;
@@ -39,7 +42,7 @@ function randomText(format: 'hex' | 'base64url' | 'alnum', length: number, rando
   return [...random(length)].map((b) => chars[b % chars.length]).join('');
 }
 
-function valueOf(v: Exclude<EnvironmentVariable, { strategy: 'derive' | 'mint' }>, random: (bytes: number) => Buffer): string {
+function valueOf(v: Exclude<EnvironmentVariable, { strategy: 'derive' | 'mint' | 'oidc-issuer' | 'oidc-token' }>, random: (bytes: number) => Buffer): string {
   if (v.strategy === 'fake') return `${v.prefix ?? ''}${randomText('hex', Math.max(v.minLength ?? DEFAULT_LENGTH, 16), random)}`;
   const format = v.strategy === 'random' ? (v.format ?? 'hex') : 'hex';
   const length = v.strategy === 'random' ? (v.minLength ?? DEFAULT_LENGTH) : DEFAULT_LENGTH;
@@ -52,6 +55,7 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
   const values: Record<string, string> = {};
   const applied: AppliedVariable[] = [];
   const mints: MintRecipe[] = [];
+  const tokens: TokenRecipe[] = [];
   const derived: Array<Extract<EnvironmentVariable, { strategy: 'derive' }>> = [];
   const seen = new Set<string>();
   for (const v of variables) {
@@ -61,6 +65,20 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
     if (v.strategy === 'mint') {
       mints.push(v);
       applied.push({ ...base, outcome: 'deferred' });
+      continue;
+    }
+    // A token expires and the key set may be new: Keycloak signs a fresh one at every deploy, never a held value.
+    if (v.strategy === 'oidc-token') {
+      tokens.push(v);
+      applied.push({ ...base, outcome: 'deferred' });
+      continue;
+    }
+    // The address is fixed by the platform: a held value from an earlier recipe never wins.
+    if (v.strategy === 'oidc-issuer') {
+      const value = issuerUrl(v.realm);
+      await writeSecret(deps.secretsDir, v.name, value);
+      values[v.name] = value;
+      applied.push({ ...base, outcome: deps.held[v.name] === value ? 'kept' : 'created' });
       continue;
     }
     const held = deps.held[v.name];
@@ -92,7 +110,7 @@ export async function applyRecipes(variables: readonly EnvironmentVariable[], de
       applied.push({ ...base, outcome: 'deferred' });
     }
   }
-  return { values, applied, mints };
+  return { values, applied, mints, tokens };
 }
 
 export interface MintDeps {

@@ -10,7 +10,7 @@ import { TERMINAL_STATES } from '../../pipeline/task-state.js';
 import { Intent, OrchEvent } from '../events.js';
 import { E2E_CONTRACT, SMOKE_CONTRACT, uiCheckPack } from '../steps.js';
 import { scanRepository } from '../../environment/scan.js';
-import { MISSING_VARIABLE } from '../../environment/service.js';
+import { AUTH_FAILURE, MISSING_VARIABLE } from '../../environment/service.js';
 import { checkoutMain, withMainSnapshot, type GateScope, type PhaseDeps, type ServiceRepo } from './shared.js';
 import { listState, readState } from '../../docs/project-state.js';
 import { sameVersionRunEvents, serviceWorkspace, type Workspace } from '../workspace.js';
@@ -271,7 +271,7 @@ export async function runPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opts: { fix
     await deps.journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail, rolledBack, rollbackHealthy, tag });
     if (rolledBack) await deps.journal.fact(OrchEvent.RollbackDone, { attempt, previous });
     // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
-    if (envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan! }, detail))) return { ok: false, reason: `deploy failed at ${stage}: a missing variable was created, retrying`, retryEnvironment: true };
+    if (envRerun < MAX_ENV_RERUNS && deps.environment && (MISSING_VARIABLE.test(detail) || AUTH_FAILURE.test(detail)) && (await deps.environment.prepare({ service: null, dir: deps.ws.repo, plan: deps.plan! }, detail))) return { ok: false, reason: `deploy failed at ${stage}: a missing variable was created, retrying`, retryEnvironment: true };
     if (same) return { ok: false, reason: sameCauseReason(same, deps.journal.events[0]?.runId, stage, null, detail) };
     if (attempt >= 3 || opts.fixTasks === false) return { ok: false, reason: `deploy failed on attempt ${attempt} at ${stage}: ${detail}` };
     if (planGap(stage, detail)) return { ok: false, reason: `deploy failed at ${stage}: ${detail}` };
@@ -359,7 +359,7 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
     await journal.fact(OrchEvent.DeployFailed, { attempt, stage, detail: `${detail}${broken.length > 0 ? `; rollback failed for ${broken.join('; ')}` : ''}`, rolledBack, rollbackHealthy: broken.length > 0 ? false : own.rollbackHealthy ?? null, ...(repo ? { service: repo.service } : {}) });
     if (rolledBack) await journal.fact(OrchEvent.RollbackDone, { attempt, services: restored });
     // A variable the failure says is missing is made up by the environment step and the same attempt runs again: no fix task could provide it.
-    if (repo && envRerun < MAX_ENV_RERUNS && deps.environment && MISSING_VARIABLE.test(detail) && (await deps.environment.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, detail))) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): a missing variable was created, retrying`, retryEnvironment: true as const };
+    if (repo && envRerun < MAX_ENV_RERUNS && deps.environment && (MISSING_VARIABLE.test(detail) || AUTH_FAILURE.test(detail)) && (await deps.environment.prepare({ service: repo.service, dir: repo.ws.repo, plan: repo.plan }, detail))) return { ok: false as const, reason: `deploy failed at ${stage} (${repo.service}): a missing variable was created, retrying`, retryEnvironment: true as const };
     if (same && repo) return { ok: false as const, reason: sameCauseReason(same, journal.events[0]?.runId, stage, repo.service, detail) };
     // The platform comes from the docs, never from the code: no task could fix it.
     if (!repo || attempt >= 3 || opts.fixTasks === false) return { ok: false as const, reason: `deploy failed on attempt ${attempt} at ${stage}${repo ? ` (${repo.service})` : ''}: ${detail}` };
@@ -373,8 +373,14 @@ export async function runServicesPhase5(deps: PhaseDeps, attempt: 1 | 2 | 3, opt
   // Without a compose file a service would take the project's single container: a plan gap, not code to fix.
   const bare = services.repos.find((_, i) => !intents[i]!.compose);
   if (bare) return failed('validate', `services.${bare.service}.delivery.compose is missing: each service deploys as its own compose project`, bare, { fixable: false });
-  const platform = await (target.startPlatform ? target.startPlatform(deps.project.projectId, platformContainers) : Promise.resolve({ ok: true, detail: '' })).catch((err: Error) => ({ ok: false, detail: err.message }));
+  // Keycloak joins the platform when a recipe needs an issuer; its realms and tokens come right after it is up, on every attempt.
+  const environmentContainers = (await deps.environment?.containers?.()) ?? [];
+  const platform = await (target.startPlatform ? target.startPlatform(deps.project.projectId, [...platformContainers, ...environmentContainers]) : Promise.resolve({ ok: true, detail: '' })).catch((err: Error) => ({ ok: false, detail: err.message }));
   if (!platform.ok) return failed('platform', platform.detail, null);
+  if (environmentContainers.length > 0) {
+    const issued = await deps.environment!.issue!().then(() => null, (err: Error) => err.message);
+    if (issued !== null) return failed('platform', `identity provider: ${issued}`, null);
+  }
   for (const [i, repo] of services.repos.entries()) {
     const intent = intents[i]!;
     const key = `deploy-${repo.service}-${attempt}${envRerun > 0 ? `-e${envRerun}` : ''}`;

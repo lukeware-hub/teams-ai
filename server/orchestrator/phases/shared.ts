@@ -88,6 +88,10 @@ export interface PhaseDeps {
   environment?: {
     prepare(repo: EnvironmentRepo, failure: string | null): Promise<boolean>;
     mint(urls: Record<string, string>): Promise<void>;
+    /** The platform containers the recipes need (Keycloak for an issuer or a token recipe). */
+    containers?(): Promise<readonly PlatformService[]>;
+    /** Once the platform is up: Keycloak signs the tokens the recipes name. Throws with Keycloak's answer. */
+    issue?(): Promise<void>;
   };
   /** False for a service whose main holds no code yet: it has a registered port from planning, but was never delivered, so there is nothing to start or build. Absent means every service has code. */
   serviceHasCode?: (service: string) => Promise<boolean>;

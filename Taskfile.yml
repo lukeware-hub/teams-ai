@@ -121,6 +121,11 @@ tasks:
     cmds:
       - docker compose logs -f teams-ai
 
+  logs:tail:
+    desc: Print the last 80 lines of the orchestrator logs and stop
+    cmds:
+      - docker compose logs --no-color --tail 80 teams-ai
+
   logs:dind:
     desc: Follow the nested Docker daemon logs
     cmds:
@@ -131,6 +136,21 @@ tasks:
     interactive: true
     cmds:
       - docker compose exec teams-ai bash
+
+  docker:restart:
+    desc: Restart Docker Desktop when its engine answers 500 (stops every container of the machine; those with a restart policy come back)
+    cmds:
+      - docker desktop restart
+
+  exec:
+    desc: 'Run one command in the orchestrator container, e.g. task exec -- ls /home/node/.teams-ai/runs'
+    cmds:
+      - docker compose exec -T teams-ai {{.CLI_ARGS}}
+
+  dind:docker:
+    desc: 'Run the Docker CLI against the nested daemon that runs the gates, e.g. task dind:docker -- network ls'
+    cmds:
+      - docker compose exec -T -e DOCKER_HOST=tcp://localhost:2375 dind docker {{.CLI_ARGS}}
 
   login:claude:
     desc: Log in to Claude Code inside the container

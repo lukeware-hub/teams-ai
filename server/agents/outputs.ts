@@ -229,6 +229,7 @@ export const DeploymentOutput = z.object({
 });
 
 const envName = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
+const realmName = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 const envBase = { name: envName, scope: z.enum(['compose', 'suites', 'both']), reason: z.string().min(1) };
 /** How the platform makes one variable exist for a local test: the agent names the recipe, the orchestrator creates the value (an agent never sees a secret). */
 export const EnvironmentVariable = z.discriminatedUnion('strategy', [
@@ -248,6 +249,21 @@ export const EnvironmentVariable = z.discriminatedUnion('strategy', [
     request: z.object({ method: z.enum(['GET', 'POST', 'PUT']), path: z.string().startsWith('/'), headers: z.record(z.string(), z.string()).optional(), body: z.string().optional() }),
     extract: z.object({ from: z.enum(['json', 'header']), path: z.string().min(1) }),
     /** The value's shape around the extracted text, `{value}` marking it: `Bearer {value}`. */
+    template: z.string().optional(),
+  }),
+  /** The issuer URL of a realm on the platform's Keycloak (`iss` of its tokens); the keys URL is a `derive` of it. */
+  z.object({ ...envBase, strategy: z.literal('oidc-issuer'), realm: realmName, algorithm: z.enum(['ES256', 'RS256']).optional() }),
+  /** An access token the platform's Keycloak signs for a made-up user: `roles` go in the claim `roles`, `claims` are fixed text claims (`tenant_id`), `subject` is the `sub` UUID. */
+  z.object({
+    ...envBase,
+    strategy: z.literal('oidc-token'),
+    realm: realmName,
+    audience: z.string().min(1).max(100),
+    username: z.string().regex(/^[a-z][a-z0-9._-]{0,39}$/),
+    roles: z.array(z.string().min(1).max(60)).max(20),
+    claims: z.record(z.string().min(1).max(60), z.string().max(200)).optional(),
+    subject: z.string().uuid().optional(),
+    /** The value's shape around the token, `{value}` marking it: `Bearer {value}`. */
     template: z.string().optional(),
   }),
 ]);

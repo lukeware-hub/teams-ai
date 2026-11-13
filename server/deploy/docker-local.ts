@@ -4,9 +4,10 @@ import path from 'node:path';
 import type { PlatformService } from '../contracts/project.js';
 import { redactSecrets } from '../core/redact.js';
 import type { Exec } from '../exec/command.js';
-import { imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet } from './target.js';
+import { imageName, imageRef, waitHealthy, type DeploymentIntent, type DeployTarget, type HttpGet, type PlatformRequest } from './target.js';
 
 const TIMEOUT = 600_000;
+const CURL_IMAGE = 'curlimages/curl:8.11.1';
 /** Longest container log a failed deploy carries into the feedback of the fix task. */
 const CONTAINER_LOG_CHARS = 2_500;
 
@@ -28,7 +29,7 @@ export function renderPlatform(platform: readonly PlatformService[], network: st
     image: p.image,
     ...(p.command ? { command: p.command.map(literal) } : {}),
     ...(p.environment ? { environment: Object.fromEntries(Object.entries(p.environment).map(([k, v]) => [k, literal(v)])) } : {}),
-    ...(p.healthcheck ? { healthcheck: { test: p.healthcheck.map(literal), interval: '2s', timeout: '5s', retries: 30 } } : {}),
+    ...(p.healthcheck ? { healthcheck: { test: p.healthcheck.map(literal), interval: '2s', timeout: '5s', retries: 60, start_period: '20s' } } : {}),
     restart: 'unless-stopped',
     networks: { shared: { aliases: [p.name] } },
   }]));
@@ -60,6 +61,14 @@ export async function teardownProject(exec: Exec, projectId: string, services: r
   for (const project of new Set([...services.map((s) => serviceComposeProject(projectId, s)), ...listed.filter((n) => n.startsWith(prefix))])) await down(project);
   await down(platformComposeProject(projectId));
   await exec({ bin: 'docker', args: ['network', 'rm', sharedNetwork(projectId)], timeoutMs: 30_000 }).catch(() => undefined);
+}
+
+/** Stops or starts a deployed repository's containers without removing them; `service` is null for a deploy with a single compose project. */
+export async function setServiceRunning(exec: Exec, projectId: string, service: string | null, on: boolean): Promise<{ ok: boolean; detail: string }> {
+  const project = service ? serviceComposeProject(projectId, service) : composeProject(projectId);
+  const args = ['compose', '-p', project, on ? 'start' : 'stop', ...(on ? ['--wait'] : [])];
+  const r = await exec({ bin: 'docker', args, timeoutMs: 120_000 }).catch((e: Error) => ({ exitCode: 1, stdout: '', stderr: e.message }));
+  return r.exitCode === 0 ? { ok: true, detail: on ? 'running' : 'stopped' } : { ok: false, detail: dockerFailure(`docker compose ${on ? 'start' : 'stop'}`, r.stderr) };
 }
 
 /** A docker failure that opens with the last stderr line, where docker writes the cause, followed by the stderr's tail. */
@@ -231,11 +240,28 @@ export class DockerLocalTarget implements DeployTarget {
       if (created.exitCode !== 0) return { ok: false, detail: `docker network create failed: ${created.stderr.slice(-1000)}` };
     }
     if (platform.length === 0) return { ok: true, detail: 'no platform' };
-    const up = await withTempFile('platform.json', renderPlatform(platform, network), (file) => this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait', '--remove-orphans'], undefined, TIMEOUT));
-    if (up.exitCode === 0) return { ok: true, detail: 'platform up' };
-    // A platform that did not come up would restart forever, until the project is deleted.
-    await this.docker(['compose', '-p', platformComposeProject(projectId), 'down'], undefined, 120_000);
-    return { ok: false, detail: dockerFailure('docker compose up', up.stderr) };
+    let up;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      up = await withTempFile('platform.json', renderPlatform(platform, network), (file) => this.docker(['compose', '-p', platformComposeProject(projectId), '-f', file, 'up', '-d', '--wait', '--remove-orphans'], undefined, TIMEOUT));
+      if (up.exitCode === 0) return { ok: true, detail: 'platform up' };
+      // A platform that did not come up would restart forever, until the project is deleted.
+      await this.docker(['compose', '-p', platformComposeProject(projectId), 'down'], undefined, 120_000);
+    }
+    return { ok: false, detail: dockerFailure('docker compose up', up!.stderr) };
+  }
+
+  /** One HTTP call from inside the project's shared network, so a platform container is reached by its name from any host. Headers and body go in through stdin, never in the command line. */
+  async platformRequest(projectId: string, req: PlatformRequest): Promise<{ status: number; body: string }> {
+    const q = (s: string) => `"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n').replaceAll('\r', '\\r').replaceAll('\t', '\\t')}"`;
+    const config = [
+      'silent', 'show-error', `request = ${q(req.method)}`, `url = ${q(req.url)}`, `write-out = ${q('\n%{http_code}')}`,
+      ...Object.entries(req.headers ?? {}).map(([k, v]) => `header = ${q(`${k}: ${v}`)}`),
+      ...(req.body === undefined ? [] : [`data-binary = ${q(req.body)}`]),
+    ].join('\n');
+    const r = await this.deps.exec({ bin: 'docker', args: ['run', '--rm', '-i', '--network', sharedNetwork(projectId), CURL_IMAGE, '-K', '-'], stdin: config, timeoutMs: 60_000 });
+    if (r.exitCode !== 0) throw new Error(`request to ${new URL(req.url).host} failed: ${r.stderr.trim().slice(-300)}`);
+    const at = r.stdout.lastIndexOf('\n');
+    return { status: Number(r.stdout.slice(at + 1)), body: r.stdout.slice(0, Math.max(at, 0)) };
   }
 
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {

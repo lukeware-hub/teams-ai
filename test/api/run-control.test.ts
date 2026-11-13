@@ -1,6 +1,8 @@
+import { mkdtemp } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { defaultRunControl, isAlive, runCommand, spawnRun, stop, type RunControlDeps } from '../../server/api/run-control.js';
+import { defaultRunControl, isAlive, runCommand, spawnRun, stop, waitForRunJournal, type RunControlDeps } from '../../server/api/run-control.js';
 
 function fake(alive: Set<number>, over: Partial<RunControlDeps> = {}) {
   const spawns: Array<{ bin: string; args: string[]; cwd: string; logFile: string }> = [];
@@ -74,6 +76,19 @@ describe('run control', () => {
   it('starts the CLI in this node with the tsx loader, not through the tsx launcher', () => {
     expect(defaultRunControl('/repo').cliEntry()).toEqual({ bin: process.execPath, prefix: ['--import', 'tsx', path.join('/repo', 'server', 'cli.ts')] });
   });
+  it('says the host was busy when the process is alive but wrote nothing, and waits a minute and a half before giving up', async () => {
+    const runs = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-wait-'));
+    const { deps, sleeps } = fake(new Set([4242]));
+    await expect(waitForRunJournal(deps, runs, 'r1', 4242, runs)).rejects.toThrow('did not start: still starting after 90s with no output (busy host)');
+    expect(sleeps).toHaveLength(90_000 / 250);
+  });
+
+  it('keeps "no output" when the process is already gone', async () => {
+    const runs = await mkdtemp(path.join(os.tmpdir(), 'teams-ai-wait-'));
+    const { deps } = fake(new Set());
+    await expect(waitForRunJournal(deps, runs, 'r1', 4242, runs)).rejects.toThrow('did not start: no output');
+  });
+
   it('adds --draft to a run command when asked', () => {
     const { deps } = fake(new Set());
     expect(runCommand(deps, { projectDir: '/d', specId: 's', runId: 's-r1', mode: 'run', draft: true }).args.slice(-1)).toEqual(['--draft']);

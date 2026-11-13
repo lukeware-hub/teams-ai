@@ -128,12 +128,44 @@ describe('RepositoryPage', () => {
     vi.spyOn(runApi, 'serviceStatus').mockResolvedValue(probe({ online: false, status: null, docs: false }));
     vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
     vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    const set = vi.spyOn(runApi, 'setService').mockResolvedValue({ running: true });
+    const deploy = vi.spyOn(runApi, 'deployAgain');
+    renderAt();
+    fireEvent.click(await screen.findByTestId('start-system'));
+    await waitFor(() => expect(set).toHaveBeenCalledWith('shop', 'shop-api', 'start'));
+    expect(deploy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('shortcut-swagger').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByText('sistema desligado')).toBeTruthy();
+  });
+
+  it('deploys again when the container cannot start because it is gone', async () => {
+    vi.spyOn(runApi, 'serviceStatus').mockResolvedValue(probe({ online: false, status: null, docs: false }));
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    vi.spyOn(runApi, 'setService').mockRejectedValue(new Error('502'));
     const deploy = vi.spyOn(runApi, 'deployAgain').mockResolvedValue({ runId: 'shop-api-cart-2' });
     renderAt();
     fireEvent.click(await screen.findByTestId('start-system'));
-    expect(deploy).toHaveBeenCalledWith('shop', 'cart');
-    expect(screen.getByTestId('shortcut-swagger').getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByText('sistema desligado')).toBeTruthy();
+    await waitFor(() => expect(deploy).toHaveBeenCalledWith('shop', 'cart'));
+  });
+
+  it('stops the container only after a second click that confirms it', async () => {
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    const set = vi.spyOn(runApi, 'setService').mockResolvedValue({ running: false });
+    renderAt();
+    fireEvent.click(await screen.findByTestId('stop-system'));
+    expect(set).not.toHaveBeenCalled();
+    expect(screen.getByTestId('stop-system').textContent).toBe('Confirmar parada');
+    fireEvent.click(screen.getByTestId('stop-system'));
+    await waitFor(() => expect(set).toHaveBeenCalledWith('shop', 'shop-api', 'stop'));
+  });
+
+  it('says a gRPC service has no Swagger instead of only that it does not exist', async () => {
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail({ integrations: ['web-bff → shop-api: gRPC sobre HTTP/2'] }));
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard({ lastDeploy: { runId: 'r', specId: 'cart', url: 'http://dind:20059', kind: 'api', docsPath: null, healthcheckPath: '/healthz', services: null } }));
+    renderAt();
+    expect(await screen.findByText('Serviço gRPC: sem Swagger')).toBeTruthy();
   });
 
   it('says "sem dados" for the indicators when the dashboard cannot be read, and keeps the repository', async () => {

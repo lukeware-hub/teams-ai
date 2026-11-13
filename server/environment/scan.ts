@@ -23,6 +23,11 @@ function composeReads(text: string): string[] {
   return out;
 }
 
+/** Variables the compose files among `files` read from the environment of whoever runs them. */
+export function composeVariables(files: readonly ScannedFile[]): string[] {
+  return [...new Set(files.filter((f) => /compose.*\.ya?ml$/i.test(path.basename(f.path))).flatMap((f) => composeReads(f.text)))];
+}
+
 /** What the compose file itself sets (`- X=value`, `X: value`), so the variable exists inside the container; a value that is only the same name read from the caller does not count. */
 function composeSets(text: string): string[] {
   const out: string[] = [];

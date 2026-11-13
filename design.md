@@ -1266,6 +1266,8 @@ Rota `/projects/:projectId/:repoId`. Um monólito usa o nome do projeto como `re
 - Migalha `Projetos › <projeto> › <repositório>`.
 - Cabeçalho com o nome, o chip do tipo, o chip de estado, a responsabilidade e os atalhos.
 - Botões conforme o tipo, sempre visíveis: API e Workers mostram `Abrir Swagger`; Web mostra `Abrir aplicação`; Monólito mostra os dois. O botão abre o endereço do último deploy verificado quando a sonda confirma o caminho. Quando não pode abrir, fica desabilitado com o motivo em palavras: `sem dados` antes de qualquer deploy, `sistema desligado`, `o plano não declara a documentação da API`, `a documentação não responde`, `a aplicação não responde na raiz` ou `a porta do serviço não está publicada`. Com o sistema desligado, aparece também o botão `Iniciar`.
+- Cabeçalho em duas faixas. Na faixa do título ficam o nome, o chip do tipo, o chip de estado e, à direita, o estado do sistema (`Sistema no ar` ou `Sistema fora do ar`, com ponto), porque é estado e não ação. Abaixo de uma linha divisória ficam os botões, todos com ícone e a mesma altura: `Parar` ou `Iniciar`, `Abrir sistema` e o atalho do tipo. Na tela larga os botões ficam numa única linha, alinhados ao canto inferior direito do cartão. Abaixo de 768px ficam um embaixo do outro, na mesma coluna, e cada um ocupa a linha inteira.
+- `Parar` aparece com o sistema no ar e pede um segundo clique (`Confirmar parada`; sair do botão cancela). `Iniciar` aparece com o sistema fora do ar, usa o gradiente primário e só religa o container que já existe, sem refazer o deploy; se o container não existe mais, refaz o deploy. Durante a troca o botão mostra `Parando…` ou `Iniciando…` e fica desabilitado. Quando o serviço fala gRPC e o plano não declara documentação, o motivo do atalho é `Serviço gRPC: sem Swagger`. O motivo de um botão desabilitado aparece na faixa do título, numa linha logo abaixo da responsabilidade, e nunca embaixo do botão.
 - Sete cartões, na mesma fileira: `Tarefas` (total, com concluídas, pendentes e em execução); `Runs` (total, com em andamento); `Falhas` (runs e tarefas com falha); `Bloqueios` (tarefas, perguntas, segredos e paradas do programa); `Entregas` (tarefas entregues, com specs entregues e aguardando validação); `Progresso geral` (tarefas entregues sobre o total, com barra determinada); `Custo` (soma do custo em US$ das runs do repositório, com o número de runs). Desktop: sete colunas. Entre 768 px e 1279 px: quatro e três. Celular de 390 px: duas colunas, com `Custo` ocupando a linha inteira.
 - `Entregas por spec`: as specs agrupadas por estado, nesta ordem: `Aguarda validação`, `Falhou`, `Bloqueado`, `Em desenvolvimento`, `Pendente`, `Não iniciado`, `Entregue`. Grupo vazio não aparece. Cada linha mostra a spec, a prioridade, o chip de estado e `n de m tarefas`; quando todas as tarefas foram entregues e só o deploy da última run falhou, o texto vira `n de m tarefas entregues · deploy falhou`. Uma linha expande as suas tarefas, com estado, tentativas, motivo, pull request e `Abrir run`, que leva a `/runs/:runId?task=<id>`.
 - Classificação da tarefa: `Falhou` é a tarefa parada pela própria causa, sem decisão pendente. `Bloqueada` é a tarefa que espera uma dependência ou uma decisão do dono. Uma run pausada aparece em `Bloqueios`, não como tarefa bloqueada.
@@ -1552,6 +1554,16 @@ Vale para a tabela de execuções do projeto (§27) e para a linha do programa n
 - **Programa.** A linha acompanha sempre a execução mais nova do spec. Cancelar a execução da linha marca o item como falhou, e "Tentar de novo" já existente o reinicia. Uma spec concluída parcialmente (o código está na main, mas o deploy falhou) também mostra "Tentar de novo": ela volta à fila do programa.
 - **Erro.** A recusa do servidor aparece no aviso da página, como a do Retomar.
 - Sem visual novo: botões de linha de §11.3, diálogo e tons do `ConfirmDialog` atual.
+
+### 27.6b Reprocessar que entra na fila do programa
+
+Vale para o botão **Reprocessar** da tela da execução quando o servidor responde `queued`: a spec pertence a um programa em andamento e só começa quando houver vaga.
+
+- **Botão.** Fica desabilitado e passa de "Iniciando nova run…" para "Na fila…" (curto, para caber ao lado de "Ver relatório"; o aviso abaixo diz "do programa"). Não volta ao normal sozinho.
+- **Aviso.** Logo abaixo dos botões, um callout de orientação (§11.5, tom `guidance`) com o lead-in em negrito "Aguardando vaga:" e o texto "a run entrou na fila do programa e começa quando houver vaga." Abaixo do texto, o botão de link "Ver a fila do programa", que abre a seção `#execucao` do projeto. O aviso tem `role="status"`.
+- **Sem navegação automática.** A página consulta as execuções do projeto a cada 2 segundos e abre a nova execução assim que ela existir. Nunca leva ao programa por conta própria.
+- **Erro.** Igual ao de hoje: a mensagem do servidor aparece no aviso de erro da página e o botão volta ao normal.
+- Sem visual novo: callout de §11.5, botão de link de §11.3.
 
 ### 27.7 Repositório — tabela de tarefas
 

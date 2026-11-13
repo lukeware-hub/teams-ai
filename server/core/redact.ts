@@ -78,6 +78,14 @@ export function findCredential(text: string, knownValues: readonly string[] = []
   return known ? { kind: 'known value' } : null;
 }
 
+/** Identity settings the platform computes or takes from the docs: public names, not credentials. Masked, the audience (a service name) shreds every task id that ends with it. */
+const PUBLIC_SETTING = /^OIDC_(AUDIENCE|ISSUER_URL|JWKS_URL)$/;
+
+/** The values of a secrets map that must be masked in text: every one but the public settings. */
+export function maskableValues(secrets: Readonly<Record<string, string>>): string[] {
+  return Object.entries(secrets).filter(([name]) => !PUBLIC_SETTING.test(name)).map(([, value]) => value);
+}
+
 export function redactSecrets(text: string, knownValues: readonly string[] = []): string {
   let out = text;
   // Longest first so a secret that contains another is masked whole.

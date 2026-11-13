@@ -349,6 +349,7 @@ export const runApi = {
   resumeRun: (runId: string) => jsonPost(`/runs/${encodeURIComponent(runId)}/resume`).then((r) => json<{ runId: string }>(r)),
   decide: (runId: string, answers: Array<{ taskId: string; answer: string }>) => jsonPost(`/runs/${encodeURIComponent(runId)}/decisions`, { decisions: answers }).then((r) => json<{ saved: number }>(r)),
   serviceStatus: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
+  setService: (projectId: string, repo: string, action: 'start' | 'stop') => jsonPost(`/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/service/${action}`).then((r) => json<{ running: boolean }>(r)),
   artifactUrl: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/artifact`,
   deployAgain: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/deploy`).then((r) => json<{ runId: string }>(r)),
   complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),

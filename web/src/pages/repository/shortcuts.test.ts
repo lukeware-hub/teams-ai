@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LastDeploy, ServiceStatus } from '../../api.js';
-import { isOffline, shortcutsOf, systemHrefOf } from './shortcuts.js';
+import { shortcutsOf, systemHrefOf } from './shortcuts.js';
 
 const HOST = 'localhost';
 const deploy = (over: Partial<LastDeploy> = {}): LastDeploy => ({ runId: 'r1', specId: 'cart', url: 'http://localhost:3001', kind: null, docsPath: '/docs', healthcheckPath: null, services: null, ...over });
@@ -77,26 +77,5 @@ describe('the address a browser opens', () => {
 describe('a probe that failed', () => {
   it('says it could not check the system, not that it is still checking', () => {
     expect(shortcutsOf('api', 'shop-api', deploy(), null, HOST, true)).toEqual([{ kind: 'swagger', href: null, reason: 'não foi possível verificar o sistema' }]);
-  });
-});
-
-describe('a system that is down', () => {
-  it('reads as offline only when there is a deploy and the probe says it does not answer', () => {
-    expect(isOffline(deploy(), probe({ online: false }))).toBe(true);
-    expect(isOffline(deploy(), probe())).toBe(false);
-    expect(isOffline(deploy(), null)).toBe(false);
-    expect(isOffline(null, probe({ online: false }))).toBe(false);
-  });
-});
-
-describe('the address that opens the running system', () => {
-  it('opens the published port at the health path when the system is up', () => {
-    const api = deploy({ url: 'http://localhost:20045', kind: 'api', docsPath: null, healthcheckPath: '/greeting' });
-    expect(systemHrefOf('greeting-route', api, probe({ ui: false, docs: false }), HOST)).toBe('http://localhost:20045/greeting');
-  });
-
-  it('gives no address while the system is down', () => {
-    const api = deploy({ url: 'http://localhost:20045', kind: 'api', docsPath: null, healthcheckPath: '/greeting' });
-    expect(systemHrefOf('greeting-route', api, probe({ online: false }), HOST)).toBeNull();
   });
 });

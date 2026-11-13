@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { EnvironmentVariable } from '../../server/agents/outputs.js';
 import type { Plan } from '../../server/contracts/plan.js';
 import { citedVariables } from '../../server/orchestrator/stop-explain.js';
-import { mintEnvironment, MISSING_VARIABLE, prepareEnvironment, type EnvironmentHost } from '../../server/environment/service.js';
+import { AUTH_FAILURE, environmentContainers, issueEnvironmentTokens, mintEnvironment, MISSING_VARIABLE, prepareEnvironment, type EnvironmentHost } from '../../server/environment/service.js';
 import { makeFrozenSpec, makeProject } from '../fixtures/contracts.js';
 
 let root: string;
@@ -150,5 +150,87 @@ describe('names the platform keeps and services outside the project', () => {
     expect(asked).toEqual(['identity-service']);
     expect(h.secrets.E2E_AUTHORIZATION).toBe('running-value');
     expect(h.secrets.POSTGRES_PASSWORD).toHaveLength(32);
+  });
+});
+
+describe('identity provider', () => {
+  const issuer: EnvironmentVariable = { name: 'POSTGRES_PASSWORD', scope: 'compose', reason: 'emissor', strategy: 'oidc-issuer', realm: 'kayron' };
+  const token: EnvironmentVariable = { name: 'E2E_AUTHORIZATION', scope: 'suites', reason: 'ator', strategy: 'oidc-token', realm: 'kayron', audience: 'api', username: 'maker', roles: ['R'], template: 'Bearer {value}' };
+
+  it('recognizes a refused credential, and only that', () => {
+    for (const text of ['prepare: unauthenticated: UNAUTHENTICATED', 'got HTTP 401']) expect(AUTH_FAILURE.test(text)).toBe(true);
+    for (const text of ['AC-001: expected 201, got 500', 'port 14012 is taken']) expect(AUTH_FAILURE.test(text)).toBe(false);
+  });
+
+  it('asks again for a credential that was made up at random once the suite is refused, and drops the stale value', async () => {
+    const first = host((wanted) => wanted.map((n) => random(n, n === 'E2E_AUTHORIZATION' ? 'suites' : 'both')));
+    await prepareEnvironment(first.h, { service: null, dir: repoDir, plan });
+    const stale = first.h.secrets.E2E_AUTHORIZATION!;
+    const again = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? token : random(n))), { ...first.h.secrets });
+    expect(await prepareEnvironment(again.h, { service: null, dir: repoDir, plan }, 'e2e: UNAUTHENTICATED')).toBe(true);
+    expect(again.calls[0]!.feedback).toContain('- E2E_AUTHORIZATION: read in e2e/a_test.go');
+    // Listed as unknown, so it must not also be listed as existing: the agent never answers a variable the pack says exists.
+    const existing = again.calls[0]!.feedback.split('Variables that already exist')[1]!.split('Services of this project')[0]!;
+    expect(existing).not.toContain('E2E_AUTHORIZATION');
+    expect(existing).toContain('POSTGRES_PASSWORD');
+    expect(again.h.secrets.E2E_AUTHORIZATION).toBeUndefined();
+    expect(stale).toHaveLength(32);
+  });
+
+  it('starts no Keycloak when no recipe needs an issuer', async () => {
+    const none = host((wanted) => wanted.map((n) => random(n)));
+    await prepareEnvironment(none.h, { service: null, dir: repoDir, plan });
+    expect(await environmentContainers(none.h)).toEqual([]);
+  });
+
+  it('starts Keycloak with a made-up admin password when a recipe needs an issuer', async () => {
+    const withOidc = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? token : n === 'POSTGRES_PASSWORD' ? issuer : random(n))));
+    await prepareEnvironment(withOidc.h, { service: null, dir: repoDir, plan });
+    const [kc] = await environmentContainers(withOidc.h);
+    expect(kc!.name).toBe('platform-keycloak');
+    expect(kc!.environment!.KC_BOOTSTRAP_ADMIN_PASSWORD).toBe(withOidc.h.secrets.TEAMS_AI_KEYCLOAK_PASSWORD);
+  });
+
+  it('signs the tokens through the target and makes them readable by the suites', async () => {
+    const { h, events } = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? token : n === 'POSTGRES_PASSWORD' ? issuer : random(n))));
+    await prepareEnvironment(h, { service: null, dir: repoDir, plan });
+    await environmentContainers(h);
+    h.target.platformRequest = async (_p, req) => (req.url.endsWith('/token') ? { status: 200, body: JSON.stringify({ access_token: 'jwt' }) } : { status: req.method === 'GET' ? 404 : 201, body: '' });
+    await issueEnvironmentTokens(h);
+    expect(h.secrets.E2E_AUTHORIZATION).toBe('Bearer jwt');
+    expect(h.suiteNames.has('E2E_AUTHORIZATION')).toBe(true);
+    expect(events.at(-1)).toEqual({ type: 'ENVIRONMENT_MINTED', data: { names: ['E2E_AUTHORIZATION'], failed: [] } });
+  });
+});
+
+describe('a refused suite never re-asks a credential the compose file also uses', () => {
+  it('keeps a random password of scope both, so a running database is not given a new one', async () => {
+    const first = host((wanted) => wanted.map((n) => random(n, 'both')));
+    await prepareEnvironment(first.h, { service: null, dir: repoDir, plan });
+    const before = { ...first.h.secrets };
+    const again = host(() => { throw new Error('the agent must not be asked'); }, { ...first.h.secrets });
+    expect(await prepareEnvironment(again.h, { service: null, dir: repoDir, plan }, 'e2e: UNAUTHENTICATED')).toBe(false);
+    expect(again.h.secrets).toEqual(before);
+  });
+});
+
+describe('a refused credential the scan does not see', () => {
+  it('is asked again and its new recipe is kept, even when no file names it', async () => {
+    const first = host((wanted) => wanted.map((n) => random(n, n === 'E2E_AUTHORIZATION' ? 'suites' : 'both')));
+    await prepareEnvironment(first.h, { service: null, dir: repoDir, plan });
+    await writeFile(path.join(repoDir, 'e2e', 'a_test.go'), 'os.Getenv(tokenVariable)');
+    const token: EnvironmentVariable = { name: 'E2E_AUTHORIZATION', scope: 'suites', reason: 'ator', strategy: 'oidc-token', realm: 'kayron', audience: 'api', username: 'maker', roles: ['R'] };
+    const again = host((wanted) => wanted.map((n) => (n === 'E2E_AUTHORIZATION' ? token : random(n))), { ...first.h.secrets });
+    expect(await prepareEnvironment(again.h, { service: null, dir: repoDir, plan }, 'e2e: UNAUTHENTICATED')).toBe(true);
+    expect(again.events.at(-1)!.data.variables).toEqual([{ name: 'E2E_AUTHORIZATION', scope: 'suites', strategy: 'oidc-token', outcome: 'deferred' }]);
+  });
+});
+
+describe('a held value the compose file reads', () => {
+  it('reaches compose even though no recipe made it (live: OIDC_AUDIENCE, a pass-through variable every call depended on)', async () => {
+    await writeFile(path.join(repoDir, 'docker-compose.yml'), ['services:', '  app:', '    environment:', '      - POSTGRES_PASSWORD', '      - OIDC_AUDIENCE', '      - GITHUB_TOKEN', ''].join('\n'));
+    const { h, provided } = host(() => 'fail', { POSTGRES_PASSWORD: 'x', E2E_AUTHORIZATION: 'y', OIDC_AUDIENCE: 'policy-registry-api', GITHUB_TOKEN: 'platform' });
+    await prepareEnvironment(h, { service: null, dir: repoDir, plan });
+    expect(provided).toEqual([{ POSTGRES_PASSWORD: 'x', OIDC_AUDIENCE: 'policy-registry-api' }]);
   });
 });

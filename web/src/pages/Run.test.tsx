@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { runApi, type RunDetail, type RunRow, type StoredEvent } from '../api.js';
-import { RunView, awaitNewRun } from './Run.js';
+import { RunView, newerRun } from './Run.js';
 
 // jsdom gives import.meta.url an http: scheme; vitest runs with cwd = web/
 const events: StoredEvent[] = readFileSync(path.resolve('../test/fixtures/runs/hello-run.ndjson'), 'utf8')
@@ -457,6 +457,13 @@ describe('RunView', () => {
       expect((screen.getByTestId('reprocess') as HTMLButtonElement).disabled).toBe(true);
       expect(screen.getByTestId('reprocess').textContent).toBe('Iniciando nova run…');
       expect(screen.getByTestId('reprocess-error').textContent).toContain('hello-001-r5');
+      expect(screen.queryByTestId('reprocess-queued')).toBeNull();
+      rerender(failedView({ reprocessAction: { onReprocess, busy: true, error: null, queued: true } }));
+      expect(screen.getByTestId('reprocess').textContent).toBe('Na fila…');
+      expect((screen.getByTestId('reprocess') as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByTestId('reprocess-queued').getAttribute('role')).toBe('status');
+      expect(screen.getByTestId('reprocess-queued').textContent).toContain('Aguardando vaga:');
+      expect(screen.getByTestId('reprocess-queue-link').getAttribute('href')).toContain('#execucao');
     });
 
     it('names the usage panel and every metric plainly, with the raw role id kept beside the name', () => {
@@ -760,13 +767,13 @@ describe('RunView header: the step running now', () => {
   });
 });
 
-describe('awaitNewRun', () => {
+describe('newerRun', () => {
   const row = (runId: string, n: number): RunRow => ({ runId, specId: 'hello-001', projectId: 'hello-app', status: 'running', at: null, tokens: 0, cost: 0, stoppable: false, kind: 'run', n, locked: false });
 
-  it('returns the newest run of the spec started after the current one, once the program launches it', async () => {
+  it('returns the newest run of the spec started after the current one, and null before the program launches it', async () => {
     const spy = vi.spyOn(runApi, 'runs').mockResolvedValueOnce([row('hello-001-r1', 1), row('hello-001-r2', 2)]).mockResolvedValueOnce([row('hello-001-r1', 1), row('hello-001-r2', 2), row('hello-001-r3', 3)]);
-    await expect(awaitNewRun('hello-app', 'hello-001', 'hello-001-r2')).resolves.toBe('hello-001-r3');
-    expect(spy).toHaveBeenCalledTimes(2);
+    await expect(newerRun('hello-app', 'hello-001', 'hello-001-r2')).resolves.toBeNull();
+    await expect(newerRun('hello-app', 'hello-001', 'hello-001-r2')).resolves.toBe('hello-001-r3');
     spy.mockRestore();
-  }, 10_000);
+  });
 });

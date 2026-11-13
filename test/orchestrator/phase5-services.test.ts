@@ -138,6 +138,33 @@ describe('Phase 5 shared database', () => {
   });
 });
 
+describe('Phase 5 identity provider', () => {
+  const keycloak = { name: 'platform-keycloak', image: 'quay.io/keycloak/keycloak:26.0.7' };
+  const withEnvironment = (deps: PhaseDeps, log: string[], issue: () => Promise<void> = async () => { log.push('issue'); }) => {
+    deps.environment = { prepare: async () => false, mint: async () => undefined, containers: async () => [keycloak], issue };
+    (deps.target as unknown as { startPlatform: (project: string, platform: readonly unknown[]) => Promise<{ ok: boolean; detail: string }> }).startPlatform = async (_p, platform) => { log.push(`platform:${platform.map((p) => (p as { name: string }).name).join(',')}`); return { ok: true, detail: 'platform up' }; };
+  };
+
+  it('starts Keycloak with the platform and gets the tokens before any service is applied', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log);
+    withEnvironment(deps, log);
+    await runServicesPhase5(deps, 1);
+    expect(log.slice(0, 2)).toEqual(['platform:nats,platform-keycloak', 'issue']);
+    expect(log.findIndex((l) => l.startsWith('apply:'))).toBeGreaterThan(1);
+  });
+
+  it('fails at the platform, with Keycloak\'s answer, when the tokens cannot be signed', async () => {
+    const log: string[] = [];
+    const { deps } = await setup(log);
+    withEnvironment(deps, log, async () => { throw new Error('keycloak POST /admin/realms answered 500: boom'); });
+    const res = await runServicesPhase5(deps, 1);
+    expect(res.ok).toBe(false);
+    expect(failure()).toMatchObject({ stage: 'platform', detail: 'identity provider: keycloak POST /admin/realms answered 500: boom' });
+    expect(log.some((l) => l.startsWith('apply:'))).toBe(false);
+  });
+});
+
 describe('Phase 5 with several services', () => {
   it('stops a repeat within the same service with no new fix task, and names the service', async () => {
     const log: string[] = [];

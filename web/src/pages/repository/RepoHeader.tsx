@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { runApi, type LastDeploy, type RepoDetailView, type ServiceStatus } from '../../api.js';
 import { usePolling } from '../../usePolling.js';
 import { action, panel } from '../project-shared.js';
+import { Icon } from '../../components/Icons.js';
 import { KIND_LABEL } from './labels.js';
 import { StatePill } from './StatePill.js';
-import { isOffline, shortcutsOf, systemHrefOf } from './shortcuts.js';
+import { shortcutsOf, systemHrefOf } from './shortcuts.js';
 
 const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
   blocked: 'Bloqueado',
@@ -34,8 +35,9 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   const navigate = useNavigate();
   const [probe, setProbe] = useState<ServiceStatus | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [startFailed, setStartFailed] = useState(false);
+  const [busy, setBusy] = useState<'start' | 'stop' | null>(null);
+  const [confirmingStop, setConfirmingStop] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const runId = deploy?.runId ?? null;
 
   // The system can stop after the page opened, so the probe runs again on the page's interval.
@@ -59,23 +61,26 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   }, [checkProbe]);
   usePolling(checkProbe, PROBE_MS);
 
-  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed);
+  const grpc = detail.integrations.some((i) => /grpc|connectrpc/i.test(i));
+  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed, grpc);
   const systemHref = systemHrefOf(detail.name, deploy, probe, window.location.hostname);
-  const start = () => {
+  const canToggle = deploy !== null && probe !== null;
+  // The containers of the last deploy start or stop in place; a start with no containers left deploys again.
+  const toggle = (action: 'start' | 'stop') => {
     if (!deploy) return;
-    setStarting(true);
-    setStartFailed(false);
-    runApi.deployAgain(projectId, deploy.specId).then(
-      (r) => navigate(runPath(r.runId)),
-      () => {
-        setStarting(false);
-        setStartFailed(true);
-      },
-    );
+    setConfirmingStop(false);
+    setBusy(action);
+    setActionError(null);
+    runApi
+      .setService(projectId, detail.name, action)
+      .then(() => checkProbe())
+      .catch(() => (action === 'start' ? runApi.deployAgain(projectId, deploy.specId).then((r) => navigate(runPath(r.runId))) : Promise.reject(new Error('stop failed'))))
+      .catch(() => setActionError(action === 'start' ? 'Não foi possível iniciar o sistema. Tente de novo.' : 'Não foi possível parar o sistema. Tente de novo.'))
+      .finally(() => setBusy(null));
   };
 
   return (
-    <section className={`${panel} grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start`} data-testid="repo-header">
+    <section className={`${panel} gap-4`} data-testid="repo-header">
       <div className="grid min-w-0 gap-2">
         <div data-testid="repo-header-title-row" className="flex flex-wrap items-center gap-2">
           <h1 data-testid="repo-header-name" className="m-0 text-[1.25rem] font-semibold wrap-anywhere">{detail.name}</h1>
@@ -83,47 +88,57 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
           <span data-testid="repo-status">
             <StatePill label={STATUS_LABEL[detail.status]} tone={STATUS_TONE[detail.status]} />
           </span>
+          {deploy && probe && (
+            <span data-testid="repo-service-status" className={`status-pill tone-${probe.online ? 'good' : 'bad'} md:ml-auto`}>{probe.online ? 'Sistema no ar' : 'Sistema fora do ar'}</span>
+          )}
         </div>
         <p data-testid="repo-header-responsibility" className="hint m-0 max-w-[65ch]">{detail.responsibility}</p>
+        {shortcuts.map((s) =>
+          s.reason ? (
+            <p key={s.kind} data-testid={`repo-header-shortcut-reason-${s.kind}`} id={`why-${s.kind}`} className="hint m-0 text-[0.8125rem]">
+              {s.reason}
+            </p>
+          ) : null,
+        )}
       </div>
-      <div className="flex flex-wrap items-start gap-3 max-md:flex-col md:max-w-[34rem] md:justify-end" data-testid="repo-shortcuts">
+      <div className="flex items-start gap-3 border-t border-line pt-4 max-md:flex-col md:flex-wrap md:items-center md:justify-end" data-testid="repo-shortcuts">
+        {canToggle && (
+          probe.online ? (
+            <button type="button" className={`${action.secondary} ${confirmingStop ? 'border-bad-line text-bad' : ''}`} onClick={() => (confirmingStop ? toggle('stop') : setConfirmingStop(true))} onBlur={() => setConfirmingStop(false)} disabled={busy !== null} data-testid="stop-system">
+              <Icon name="stop" size={16} />
+              {busy === 'stop' ? 'Parando…' : confirmingStop ? 'Confirmar parada' : 'Parar'}
+            </button>
+          ) : (
+            <button type="button" className={action.primary} onClick={() => toggle('start')} disabled={busy !== null} data-testid="start-system">
+              <Icon name="play" size={16} />
+              {busy === 'start' ? 'Iniciando…' : 'Iniciar'}
+            </button>
+          )
+        )}
         {shortcuts.map((s) => (
           <div data-testid={`repo-header-shortcut-${s.kind}`} key={s.kind} className="grid gap-1 max-md:w-full">
             {s.href ? (
               <a href={s.href} target="_blank" rel="noreferrer" className={action.secondary} data-testid={`shortcut-${s.kind}`}>
-                {SHORTCUT_LABEL[s.kind]}
+                <Icon name="external" size={16} />{SHORTCUT_LABEL[s.kind]}
                 <span data-testid={`repo-header-shortcut-note-${s.kind}`} className="sr-only"> (abre em nova aba)</span>
               </a>
             ) : (
               // aria-disabled keeps the button in the tab order, so the reason it gives can be read where it is.
               <button type="button" className={`${action.secondary} cursor-not-allowed border-line bg-surface-muted text-ink-soft hover:bg-surface-muted`} aria-disabled="true" aria-describedby={`why-${s.kind}`} data-testid={`shortcut-${s.kind}`}>
-                {SHORTCUT_LABEL[s.kind]}
+                <Icon name="external" size={16} />{SHORTCUT_LABEL[s.kind]}
               </button>
-            )}
-            {s.reason && (
-              <span data-testid={`repo-header-shortcut-reason-${s.kind}`} id={`why-${s.kind}`} className="hint text-[0.75rem]">
-                {s.reason}
-              </span>
             )}
           </div>
         ))}
         {systemHref && (
           <a href={systemHref} target="_blank" rel="noreferrer" className={action.secondary} data-testid="shortcut-system">
-            Abrir sistema
+            <Icon name="external" size={16} />Abrir sistema
             <span className="sr-only"> (abre em nova aba)</span>
           </a>
         )}
-        {deploy && probe && (
-          <span data-testid="repo-service-status" className={`status-pill tone-${probe.online ? 'good' : 'bad'}`}>{probe.online ? 'Sistema no ar' : 'Sistema fora do ar'}</span>
-        )}
-        {isOffline(deploy, probe) && (
-          <button type="button" className={action.primary} onClick={start} disabled={starting} data-testid="start-system">
-            Iniciar
-          </button>
-        )}
-        {startFailed && (
+        {actionError && (
           <span data-testid="repo-header-start-error" role="alert" className="text-[0.75rem] tone-bad rounded px-1">
-            Não foi possível iniciar o sistema. Tente de novo.
+            {actionError}
           </span>
         )}
       </div>
