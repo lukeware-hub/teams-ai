@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { ProgramView } from '../api.js';
@@ -156,6 +156,64 @@ describe('ProgramPanel', () => {
     expect(pill.className).toContain('tone-warn');
     expect(within(screen.getByTestId('program-item-a')).queryByText('em execução')).toBeNull();
     expect(within(screen.getByTestId('program-item-b')).getByText('em execução')).toBeTruthy();
+  });
+
+  describe('as a table', () => {
+    const rows = () => screen.getAllByTestId(/^program-item-[a-z]$/).map((r) => r.getAttribute('data-testid')!.slice(-1));
+    const three = () => renderPanel(program([
+      item('a', { rank: 1, status: 'done', costUsd: 5 }),
+      item('b', { rank: 2, status: 'running', runId: 'd-b-r1', costUsd: 1 }),
+      item('c', { rank: 3, status: 'pending' }),
+    ]));
+
+    it('reads top-down by status and rank until a header is clicked', () => {
+      three();
+      expect(rows()).toEqual(['b', 'c', 'a']);
+      expect(screen.getByRole('table')).toBeTruthy();
+    });
+
+    it('keeps each status together and its specs by rank, also when the Status header sorts', () => {
+      renderPanel(program([
+        item('a', { rank: 1, status: 'blocked' }),
+        item('b', { rank: 2, status: 'failed' }),
+        item('c', { rank: 3, status: 'blocked' }),
+        item('d', { rank: 4, status: 'failed' }),
+      ]));
+      expect(rows()).toEqual(['b', 'd', 'a', 'c']);
+      fireEvent.click(screen.getByRole('button', { name: /^Status/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Status/ }));
+      expect(rows()).toEqual(['a', 'c', 'b', 'd']);
+    });
+
+    it('sorts by a column header, ascending then descending, with empty costs last', () => {
+      three();
+      fireEvent.click(screen.getByRole('button', { name: /^Custo/ }));
+      expect(rows()).toEqual(['b', 'a', 'c']);
+      expect(screen.getByRole('columnheader', { name: /^Custo/ }).getAttribute('aria-sort')).toBe('ascending');
+      fireEvent.click(screen.getByRole('button', { name: /^Custo/ }));
+      expect(rows()).toEqual(['a', 'b', 'c']);
+      fireEvent.click(screen.getByRole('button', { name: /^Spec/ }));
+      expect(rows()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('filters by title, by run and by status, and clears the filters', async () => {
+      three();
+      fireEvent.change(screen.getByLabelText('Filtrar specs'), { target: { value: 'empréstimos' } });
+      await waitFor(() => expect(rows()).toEqual(['b']));
+      fireEvent.change(screen.getByLabelText('Filtrar specs'), { target: { value: 'd-b-r1' } });
+      await waitFor(() => expect(rows()).toEqual(['b']));
+      fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+      await waitFor(() => expect(rows()).toEqual(['b', 'c', 'a']));
+      fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } });
+      expect(rows()).toEqual(['a']);
+    });
+
+    it('pages a long backlog', () => {
+      renderPanel(program(Array.from({ length: 12 }, (_, i) => item(String.fromCharCode(97 + i), { rank: i + 1 }))));
+      expect(rows()).toHaveLength(10);
+      fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }));
+      expect(rows()).toEqual(['k', 'l']);
+    });
   });
 });
 

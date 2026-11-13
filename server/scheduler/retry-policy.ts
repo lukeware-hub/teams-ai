@@ -89,7 +89,8 @@ export function decideOnFailure(
       if (gateRetries(task.infraRetries, failure) < cfg.maxInfraRetriesPerGate) {
         return { action: 'rerun-gate', consumeAttempt: false };
       }
-      return attemptFailure(failure, task, cfg);
+      // Infrastructure is nothing the Dev can change: blocking spends no attempt and hands the Dev no feedback.
+      return failure.kind === 'infra' ? { action: 'block', consumeAttempt: false } : attemptFailure(failure, task, cfg);
     case 'flaky-test':
       if (gateRetries(task.flakyRetries, failure) < cfg.maxFlakyRetriesPerGate) {
         return { action: 'rerun-gate', consumeAttempt: false };

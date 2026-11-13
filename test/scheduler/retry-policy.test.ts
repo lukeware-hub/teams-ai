@@ -38,10 +38,14 @@ describe('decideOnFailure', () => {
       action: 'rerun-gate',
       consumeAttempt: false,
     });
-    expect(decideOnFailure({ kind: 'infra', gate: 'unit-test' }, task({ infraRetries: { 'unit-test': 3 } }))).toEqual({
+    expect(decideOnFailure({ kind: 'environment', gate: 'unit-test' }, task({ infraRetries: { 'unit-test': 3 } }))).toEqual({
       action: 'retry-dev',
       consumeAttempt: true,
     });
+  });
+
+  it('blocks a task whose infra reruns are spent without charging the Dev an attempt', () => {
+    expect(decideOnFailure({ kind: 'infra', gate: 'unit-test' }, task({ infraRetries: { 'unit-test': 3 } }))).toEqual({ action: 'block', consumeAttempt: false });
   });
 
   it('counts infra retries per gate', () => {

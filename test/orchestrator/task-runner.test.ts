@@ -471,6 +471,32 @@ describe('TaskRunner: implementing', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('changed nothing again');
   });
 
+  it('blocks on spent infra reruns without feedback to the Dev, and runs the gates again when the Dev changes nothing after the return', async () => {
+    const infraGates: TaskRunnerDeps['gates'] = async () => {
+      const g = gate('unit-test', { passed: false, exitCode: null, failure: 'infra', junit: null });
+      return { results: [g], blockingFailure: g };
+    };
+    const first = new TaskRunner('T1', deps({ gates: infraGates }));
+    for (let i = 0; i < 10 && state().state !== 'blocked'; i++) await first.advance();
+    expect(state()).toMatchObject({ state: 'blocked', attempts: 0 });
+    expect(journal.events.some((e) => e.type === OrchEvent.Feedback && e.data.taskId === 'T1')).toBe(false);
+
+    await journal.fact(RunEvent.TasksUnblocked, { taskIds: ['T1'] });
+    const questions: string[] = [];
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') {
+        questions.push(req.kind);
+        return ok({ specHash: HASH, answer: 'rerun the gates', assumption: 'T1: gate → rerun' });
+      }
+      if (req.kind !== 'dev') return devDone()(req);
+      return ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' });
+    };
+    const second = new TaskRunner('T1', deps({ agent }));
+    for (let i = 0; i < 8 && state().state !== 'merged'; i++) await second.advance();
+    expect(questions).toEqual([]);
+    expect(state().state).toBe('merged');
+  });
+
   it('gives the SM a second round over the environment before blocking a task whose Dev changed nothing', async () => {
     const questions: string[] = [];
     let devCalls = 0;

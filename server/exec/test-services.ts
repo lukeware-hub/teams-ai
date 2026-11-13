@@ -94,6 +94,13 @@ export async function withTestServices<T>(names: readonly TestServiceName[], pre
   const secrets: Record<string, string> = {};
   const urlNames: string[] = [];
 
+  const cleanup = async (list: readonly string[]) => {
+    for (const container of list) await docker(['rm', '-f', container]).catch(() => undefined);
+    await docker(['network', 'rm', network]).catch(() => undefined);
+  };
+
+  // A process killed mid-gate leaves its services and network behind; the same name would fail every retry.
+  await cleanup(names.map((name) => `${prefix}-${name}`));
   await docker(['network', 'create', '--internal', network]);
   try {
     for (const name of names) {
@@ -133,8 +140,7 @@ export async function withTestServices<T>(names: readonly TestServiceName[], pre
     }
     return await use({ network, secrets, urlNames });
   } finally {
-    for (const container of containers) await docker(['rm', '-f', container]).catch(() => undefined);
-    await docker(['network', 'rm', network]).catch(() => undefined);
+    await cleanup(containers);
   }
 }
 

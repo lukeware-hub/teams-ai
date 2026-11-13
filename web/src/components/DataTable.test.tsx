@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { queryPage, type PageRequest, type TableSpec } from '@server/api/paging.js';
-import { Pagination, SortHeader, TableFilters, usePagedTable } from './DataTable.js';
+import { Pagination, SortHeader, TableFilters, useLocalTable, usePagedTable } from './DataTable.js';
 
 type Row = { id: string; cost: number | null; status: string; kind: string };
 
@@ -156,5 +156,67 @@ describe('table paging on the server', () => {
     fireEvent.change(screen.getByLabelText('Tipo'), { target: { value: 'b' } });
     await waitFor(() => expect(pageIds()).toEqual(range(7, 11)));
     expect(screen.getByText('1–5 de 6')).toBeTruthy();
+  });
+});
+
+function Local({ rows }: { rows: Row[] }) {
+  const view = useLocalTable(rows, SPEC, (s) => LABEL[s] ?? s);
+  return (
+    <>
+      <TableFilters view={view} subject="linhas" placeholder="Filtrar" facetName="Status" />
+      <table>
+        <thead>
+          <tr>
+            <SortHeader view={view} column="id">Id</SortHeader>
+            <SortHeader view={view} column="cost">Custo</SortHeader>
+          </tr>
+        </thead>
+        <tbody>{view.rows.map((r) => <tr key={r.id}><td>{r.id}</td></tr>)}</tbody>
+      </table>
+      <Pagination view={view} />
+    </>
+  );
+}
+
+describe('table sorting, filtering and paging in the browser', () => {
+  it('shows the rows at once, cycles the sort and keeps empty values last', () => {
+    render(<Local rows={ROWS} />);
+    expect(ids()).toEqual(['T10', 'T2', 'T1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Id' }));
+    expect(ids()).toEqual(['T1', 'T2', 'T10']);
+    fireEvent.click(screen.getByRole('button', { name: 'Id' }));
+    expect(ids()).toEqual(['T10', 'T2', 'T1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Id' }));
+    expect(screen.getByRole('columnheader', { name: 'Id' }).getAttribute('aria-sort')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Custo' }));
+    expect(ids()).toEqual(['T1', 'T10', 'T2']);
+  });
+
+  it('filters by text and by the dropdown, counts the matches and clears both', async () => {
+    render(<Local rows={ROWS} />);
+    fireEvent.change(screen.getByLabelText('Filtrar linhas'), { target: { value: 't1' } });
+    await waitFor(() => expect(ids()).toEqual(['T10', 'T1']));
+    expect(screen.getByText('2 de 3')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'failed' } });
+    expect(ids()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    await waitFor(() => expect(ids()).toEqual(['T10', 'T2', 'T1']));
+  });
+
+  it('pages the rows and keeps the page and the sort when the rows are replaced', () => {
+    const { rerender } = render(<Local rows={PAGED} />);
+    expect(ids()).toHaveLength(10);
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }));
+    expect(ids()).toEqual(range(11, 12));
+    rerender(<Local rows={PAGED.map((r) => ({ ...r, cost: 1 }))} />);
+    expect(ids()).toEqual(range(11, 12));
+    expect(screen.getByText('11–12 de 12')).toBeTruthy();
+  });
+
+  it('stays on the last page that exists when the rows shrink', () => {
+    const { rerender } = render(<Local rows={PAGED} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }));
+    rerender(<Local rows={PAGED.slice(0, 3)} />);
+    expect(ids()).toEqual(['T1', 'T2', 'T3']);
   });
 });

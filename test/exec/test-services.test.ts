@@ -18,10 +18,22 @@ describe('withTestServices', () => {
     });
 
     expect(result).toBe('ok');
-    expect(steps(fake)).toEqual(['network create', 'run -d', 'inspect --format', 'run -d', 'inspect --format', 'rm -f', 'rm -f', 'network rm']);
-    expect(fake.lines('docker')[0]).toBe('network create --internal teams-ai-run-branch-net');
-    expect(fake.lines('docker')[1]).toContain('--network-alias redis');
-    expect(fake.lines('docker')[1]).toContain(`--health-cmd ${TEST_SERVICES.redis.health}`);
+    expect(steps(fake)).toEqual(['rm -f', 'rm -f', 'network rm', 'network create', 'run -d', 'inspect --format', 'run -d', 'inspect --format', 'rm -f', 'rm -f', 'network rm']);
+    expect(fake.lines('docker')[3]).toBe('network create --internal teams-ai-run-branch-net');
+    expect(fake.lines('docker')[4]).toContain('--network-alias redis');
+    expect(fake.lines('docker')[4]).toContain(`--health-cmd ${TEST_SERVICES.redis.health}`);
+  });
+
+  it('starts again when an interrupted run left its network and services behind', async () => {
+    let leftover = true;
+    const fake = new FakeExec()
+      .onArgs('docker', ['network', 'rm'], () => {
+        leftover = false;
+        return {};
+      })
+      .onArgs('docker', ['network', 'create'], () => ({ exitCode: leftover ? 1 : 0 }))
+      .onArgs('docker', ['inspect'], () => ({ stdout: 'healthy' }));
+    await expect(withTestServices(['redis'], 'p', { exec: fake.exec, sleep: noSleep }, async () => 'ok')).resolves.toBe('ok');
   });
 
   it('gives the test command the conventional URL variables, and passes the generated passwords only through the environment', async () => {

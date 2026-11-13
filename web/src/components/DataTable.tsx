@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { PAGE_SIZES, type Page, type PageRequest } from '@server/api/paging.js';
+import { PAGE_SIZES, queryPage, type Page, type PageRequest, type TableSpec } from '@server/api/paging.js';
 import { Icon } from './Icons.js';
 import { Select } from './Select.js';
 
@@ -8,27 +8,21 @@ type Sort = { key: string; direction: 'asc' | 'desc' } | null;
 // Numeric collation puts "T2" before "T10"; the facet options follow it.
 const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
 
-/** A table whose pages, search, facet and sort are read from the server one page at a time; the view feeds the header, filters and pager, and a new `reloadKey` reads the page again. */
-export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) => Promise<Page<T>>, facetLabel: (value: string) => string = (v) => v, reloadKey = '') {
+/** The state every table shares: page, size, search text, facet and sort, with the search waiting for a pause in typing. */
+function useTableControls(scope: string) {
   const [size, setSize] = useState<number>(PAGE_SIZES[1]);
   const [page, setPage] = useState(1);
   const [text, setText] = useState('');
   const [query, setQueryNow] = useState('');
   const [facet, setFacetNow] = useState('');
   const [sort, setSortNow] = useState<Sort>(null);
-  const [data, setData] = useState<Page<T> | null>(null);
-  const [failed, setFailed] = useState(false);
   const [lastScope, setLastScope] = useState(scope);
   if (lastScope !== scope) {
     setLastScope(scope);
     setPage(1);
   }
-  const fetchRef = useRef(fetchPage);
-  fetchRef.current = fetchPage;
-  const sortKey = sort?.key ?? null;
-  const direction = sort?.direction ?? 'asc';
 
-  // The search waits for a pause in typing, then goes back to the first page only when the text changed.
+  // The search goes back to the first page only when the text changed.
   useEffect(() => {
     const timer = setTimeout(() => {
       if (text.trim() === query) return;
@@ -38,52 +32,19 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
     return () => clearTimeout(timer);
   }, [text, query]);
 
-  useEffect(() => {
-    let live = true;
-    setFailed(false);
-    fetchRef.current({ page, size, q: query.toLowerCase(), facet, sort: sortKey, dir: direction })
-      .then((next) => {
-        if (!live) return;
-        setData(next);
-        setPage(next.page);
-      })
-      .catch(() => {
-        if (live) setFailed(true);
-      });
-    return () => {
-      live = false;
-    };
-  }, [scope, page, size, query, facet, sortKey, direction, reloadKey]);
-
-  const filtered = query !== '' || facet !== '';
-  const total = data?.total ?? 0;
-  const matched = data?.matched ?? 0;
-  const pages = data?.pages ?? 1;
-  const current = data?.page ?? page;
-  // Sorting the facet labels is the costly part, so it reruns only when the facets or the label function change.
-  const options = useMemo(() => (data?.facets ?? []).map((v) => ({ value: v, label: facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label)), [data?.facets, facetLabel]);
   return {
-    rows: data?.list ?? [],
-    loaded: data !== null,
-    failed,
-    total,
-    matched,
-    page: current,
-    pages,
     size,
-    from: matched === 0 ? 0 : (current - 1) * size + 1,
-    to: Math.min(current * size, matched),
-    sort,
-    query: text,
+    page,
+    text,
+    query,
     facet,
-    options,
-    filtered,
-    setQuery: setText,
+    sort,
+    setPage,
+    setText,
     setFacet: (value: string) => {
       setFacetNow(value);
       setPage(1);
     },
-    setPage,
     setSize: (next: number) => {
       setSize(next);
       setPage(1);
@@ -99,6 +60,79 @@ export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) =>
       setPage(1);
     },
   };
+}
+
+type Controls = ReturnType<typeof useTableControls>;
+
+/** The view a table's header, filters and pager read, from its controls and the current page of rows. */
+function useTableView<T>(c: Controls, data: Page<T> | null, facetLabel: (value: string) => string, failed: boolean) {
+  const matched = data?.matched ?? 0;
+  const current = data?.page ?? c.page;
+  // Sorting the facet labels is the costly part, so it reruns only when the facets or the label function change.
+  const options = useMemo(() => (data?.facets ?? []).map((v) => ({ value: v, label: facetLabel(v) })).sort((a, b) => collator.compare(a.label, b.label)), [data?.facets, facetLabel]);
+  return {
+    rows: data?.list ?? [],
+    loaded: data !== null,
+    failed,
+    total: data?.total ?? 0,
+    matched,
+    page: current,
+    pages: data?.pages ?? 1,
+    size: c.size,
+    from: matched === 0 ? 0 : (current - 1) * c.size + 1,
+    to: Math.min(current * c.size, matched),
+    sort: c.sort,
+    query: c.text,
+    facet: c.facet,
+    options,
+    filtered: c.query !== '' || c.facet !== '',
+    setQuery: c.setText,
+    setFacet: c.setFacet,
+    setPage: c.setPage,
+    setSize: c.setSize,
+    toggleSort: c.toggleSort,
+    clear: c.clear,
+  };
+}
+
+/** A table whose pages, search, facet and sort are read from the server one page at a time; the view feeds the header, filters and pager, and a new `reloadKey` reads the page again. */
+export function usePagedTable<T>(scope: string, fetchPage: (req: PageRequest) => Promise<Page<T>>, facetLabel: (value: string) => string = (v) => v, reloadKey = '') {
+  const c = useTableControls(scope);
+  const [data, setData] = useState<Page<T> | null>(null);
+  const [failed, setFailed] = useState(false);
+  const fetchRef = useRef(fetchPage);
+  fetchRef.current = fetchPage;
+  const sortKey = c.sort?.key ?? null;
+  const direction = c.sort?.direction ?? 'asc';
+  const { setPage } = c;
+
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    fetchRef.current({ page: c.page, size: c.size, q: c.query.toLowerCase(), facet: c.facet, sort: sortKey, dir: direction })
+      .then((next) => {
+        if (!live) return;
+        setData(next);
+        setPage(next.page);
+      })
+      .catch(() => {
+        if (live) setFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [scope, c.page, c.size, c.query, c.facet, sortKey, direction, reloadKey, setPage]);
+
+  return useTableView(c, data, facetLabel, failed);
+}
+
+/** A table whose rows are already in the browser: the same pages, search, facet and sort as the server tables, cut with the same rules and shown at once. */
+export function useLocalTable<T>(rows: T[], spec: TableSpec<T>, facetLabel: (value: string) => string = (v) => v) {
+  const c = useTableControls('');
+  const sortKey = c.sort?.key ?? null;
+  const direction = c.sort?.direction ?? 'asc';
+  const data = useMemo(() => queryPage(rows, spec, { page: c.page, size: c.size, q: c.query.toLowerCase(), facet: c.facet, sort: sortKey, dir: direction }), [rows, spec, c.page, c.size, c.query, c.facet, sortKey, direction]);
+  return useTableView(c, data, facetLabel, false);
 }
 
 export type TableView<T = unknown> = ReturnType<typeof usePagedTable<T>>;

@@ -663,7 +663,8 @@ export class TaskRunner {
     const since = events.slice(at + 1);
     if (since.some((e) => e.type === OrchEvent.GateFixed || e.type === OrchEvent.GateImageFixed)) return false;
     const outcome = since.filter((e) => (e.type === OrchEvent.GatePassed || e.type === OrchEvent.GateFailed) && e.data.taskId === this.taskId).at(-1);
-    if (outcome?.type !== OrchEvent.GateFailed) return false;
+    // An infra failure says nothing about the commit: the gates must run on it again.
+    if (outcome?.type !== OrchEvent.GateFailed || outcome.data.failure === 'infra') return false;
     // A commit still tracking a sandbox placeholder is owed its removal, so it is not a repeat.
     if ((await git(this.worktree, ['ls-files', '--', ...SANDBOX_PLACEHOLDERS], this.deps.exec)) !== '') return false;
     return (await git(this.worktree, ['rev-parse', 'HEAD'], this.deps.exec)) === events[at]!.data.sha;

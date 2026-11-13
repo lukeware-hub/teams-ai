@@ -1,17 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { runPath } from '../routes.js';
 import { Link } from 'react-router-dom';
 import { refineApi, runApi, type ProgramView, type ProgramViewItem, type RefineState } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
-import { Pagination } from '../components/DataTable.js';
+import { SortHeader, TableFilters, Pagination, useLocalTable } from '../components/DataTable.js';
 import { Icon } from '../components/Icons.js';
 import { InfoTip, Tipped } from '../components/InfoTip.js';
 import { RunStoppedActions } from '../components/RunStoppedActions.js';
-import { Select } from '../components/Select.js';
-import { PAGE_SIZES } from '@server/api/paging.js';
+import type { TableSpec } from '@server/api/paging.js';
 import { canStart, type StartInput } from '@server/refine/state';
 import { explainStop, phaseTitle } from '../run/selectors.js';
-import { action, panel, plural, sectionHeading, sectionTitle } from '../pages/project-shared.js';
+import { action, panel, plural, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle } from '../pages/project-shared.js';
 import { visibleInterval } from '../visibleInterval.js';
 import { money } from '../pages/costs/format.js';
 
@@ -44,11 +43,12 @@ const PILL = {
   blocked: 'status-pill tone-bad',
   interrupted: 'status-pill tone-warn',
 } as const;
-// Rank, spec, status, cost and action share fixed columns so every row lines up; below lg status, cost and action wrap under the title.
-const ROW = 'grid grid-cols-[2.5rem_minmax(0,1fr)_13rem_9rem_5.5rem] items-center gap-x-4 gap-y-2 border-b border-line px-3 py-[0.9rem] last:border-b-0 max-lg:grid-cols-[2rem_minmax(0,1fr)]';
+// A live row carries the faint accent ground: cell by cell on a wide screen, on the whole card on a phone.
+const LIVE = '@min-[44rem]:[&>td]:bg-accent-soft/40 @max-[44rem]:bg-accent-soft/40';
 
-// The list reads top-down: what runs, then what waits on a person or a retry, then what failed, then what is done.
-const ORDER: Record<string, number> = { running: 0, completing: 0, interrupted: 1, delivered: 2, waiting: 3, pending: 4, failed: 5, blocked: 5, partial: 6, done: 7 };
+// The list reads top-down: what runs, then what waits on a person or a retry, then what failed, then what is done; each status by rank.
+const STATUS_ORDER = ['running', 'completing', 'interrupted', 'delivered', 'waiting', 'pending', 'failed', 'blocked', 'partial', 'done'];
+const statusRank = (i: ProgramViewItem) => STATUS_ORDER.indexOf(shownStatus(i));
 
 /** The state a row shows: a run whose process is gone reads as interrupted, whatever the ledger says. */
 const shownStatus = (i: ProgramViewItem) => (i.interrupted ? 'interrupted' : i.status);
@@ -187,28 +187,19 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
   const running = program.status !== 'finished';
   const waiting = onlyValidationsLeft(program);
   const awaiting = awaitingOwner(program);
-  const [facet, setFacet] = useState('');
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState<number>(PAGE_SIZES[1]);
-  const ordered = [...program.items].sort((a, b) => (ORDER[shownStatus(a)] ?? 9) - (ORDER[shownStatus(b)] ?? 9) || a.rank - b.rank);
-  const matching = ordered.filter((i) => !facet || shownStatus(i) === facet);
-  const pages = Math.max(1, Math.ceil(matching.length / size));
-  const current = Math.min(page, pages);
-  const visible = matching.slice((current - 1) * size, current * size);
-  const view = {
-    matched: matching.length,
-    page: current,
-    pages,
-    size,
-    from: matching.length === 0 ? 0 : (current - 1) * size + 1,
-    to: Math.min(current * size, matching.length),
-    setPage,
-    setSize: (next: number) => {
-      setSize(next);
-      setPage(1);
-    },
-  };
-  const statuses = [...new Set(ordered.map(shownStatus))];
+  const ordered = useMemo(() => [...program.items].sort((a, b) => statusRank(a) - statusRank(b) || a.rank - b.rank), [program.items]);
+  const spec = useMemo<TableSpec<ProgramViewItem>>(() => ({
+    sorts: { rank: (i) => i.rank, spec: (i) => titles[i.key] ?? i.key, status: statusRank, cost: (i) => i.costUsd },
+    text: (i) => [titles[i.key] ?? i.key, i.key, i.runId ?? ''],
+    facet: shownStatus,
+  }), [titles]);
+  /** What the owner can do with a row, each with its own key. */
+  const rowActions = (i: ProgramViewItem) => [
+    onStoppedRun && i.status === 'running' && i.runId && (i.pause?.reason === 'auth' || i.interrupted) && <RunStoppedActions key="stopped" runId={i.interrupted?.runId ?? i.runId} latest onResume={onStoppedRun.resume} onRestart={onStoppedRun.restart} onCancel={onStoppedRun.cancel} />,
+    i.status === 'pending' && (i.priority ? <Tipped key="priority" text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton key="run" className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>),
+    (i.status === 'failed' || i.status === 'partial') && onPrioritize && <ActionButton key="retry" className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>,
+  ].filter(Boolean);
+  const view = useLocalTable(ordered, spec, (status) => LABEL[status as keyof typeof LABEL] ?? status);
   return (
     <section className={`${panel} gap-4`} data-testid="program-panel">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2" data-testid="program-panel-header">
@@ -228,49 +219,59 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
       </div>
       <progress data-testid="program-panel-progress-bar" className="h-2 w-full appearance-none overflow-hidden rounded-full border-0 bg-surface-muted [&::-moz-progress-bar]:bg-good-live [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-good-live" max={total} value={done} />
       {program.status === 'finished' && <p className="hint m-0" data-testid="program-panel-finished">Programa encerrado{program.items.some((i) => i.status === 'failed' || i.status === 'blocked') ? ': há specs que falharam ou ficaram bloqueadas.' : program.items.some((i) => i.status === 'partial') ? ': há specs concluídas parcialmente.' : '.'}</p>}
-      {ordered.length > 1 && (
-        <label data-testid="program-panel-filter" className="block w-fit min-w-0 max-md:w-full">
-          <span className="sr-only">Filtrar por status</span>
-          <Select wrapperClassName="md:w-56" value={facet} onChange={(e) => { setFacet(e.target.value); setPage(1); }}>
-            <option value="">Status: todos</option>
-            {statuses.map((s) => <option key={s} value={s}>{LABEL[s]}</option>)}
-          </Select>
-        </label>
-      )}
-      <ol className="-mx-3 my-0 list-none p-0 text-left" data-testid="program-panel-list">
-        {visible.map((i) => (
-          <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
-            <span className="font-mono text-[0.8125rem] text-ink-soft tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
-            <div className="grid min-w-0 gap-1 text-justify hyphens-auto" data-testid={`program-panel-body-${i.key}`}>
-              <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
-              {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
-              {i.status === 'running' && i.runId && phases[i.runId] !== undefined && <span className="text-[0.8125rem] text-ink-soft" data-testid={`program-panel-phase-${i.key}`}>{phaseTitle(phases[i.runId]!)}</span>}
-              {i.pause && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-item-pause-${i.key}`}>{pauseText(i.pause)}</p>}
-              {i.status === 'waiting' && i.retryAt && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-panel-retry-${i.key}`}>tenta de novo às {hhmm(new Date(i.retryAt))}</p>}
-              {i.prs && i.prs.length > 0 && (
-                <details className="text-[0.8125rem]" data-testid={`program-item-prs-${i.key}`}>
-                  <summary className="w-fit cursor-pointer text-ink-soft" data-testid={`program-panel-prs-summary-${i.key}`}>{i.prs.length} {i.prs.length === 1 ? 'pull request' : 'pull requests'}</summary>
-                  <p className="m-0 mt-1 flex flex-wrap gap-x-3 gap-y-1" data-testid={`program-panel-prs-list-${i.key}`}>
-                    {i.prs.map((pr) => <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="font-mono" data-testid={`program-panel-pr-${pr.url}`}>{prLabel(pr)}</a>)}
-                  </p>
-                </details>
-              )}
-              {i.reason && <ItemReason status={i.status} reason={i.reason} />}
-            </div>
-            <div className="flex flex-wrap items-center gap-3 max-lg:col-start-2 lg:contents" data-testid={`program-panel-meta-${i.key}`}>
-              <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
-              <span className="flex flex-wrap gap-2 lg:justify-self-end" data-testid={`program-panel-action-${i.key}`}>
-                {onStoppedRun && i.status === 'running' && i.runId && (i.pause?.reason === 'auth' || i.interrupted) && <RunStoppedActions runId={i.interrupted?.runId ?? i.runId} latest onResume={onStoppedRun.resume} onRestart={onStoppedRun.restart} onCancel={onStoppedRun.cancel} />}
-                {i.status === 'pending' && (i.priority ? <Tipped text="Esta spec foi escolhida para executar antes das outras da fila."><span className="status-chip tone-neutral" data-testid={`program-panel-priority-${i.key}`}>prioritária</span></Tipped> : onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="play" size={14} />}>Executar agora</ActionButton>)}
-                {(i.status === 'failed' || i.status === 'partial') && onPrioritize && <ActionButton className={action.secondary} onClick={() => onPrioritize(i.specId)} icon={<Icon name="refresh" size={14} />}>Tentar de novo</ActionButton>}
-              </span>
-              <span className="text-right text-[0.8125rem] text-ink-soft tabular-nums max-lg:ml-auto lg:justify-self-end" data-testid={`program-panel-cost-${i.key}`}>
-                {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
-              </span>
-            </div>
-          </li>
-        ))}
-      </ol>
+      <TableFilters view={view} subject="specs" placeholder="Filtrar por spec ou run" facetName="Status" />
+      <div data-testid="program-panel-table-wrap" className="@container relative -mx-[0.6rem] @max-[44rem]:mx-0 min-w-0 overflow-x-auto @min-[44rem]:[&_td]:py-3 [&_td]:align-middle">
+        <table data-testid="program-panel-table" className={`m-0 ${responsiveTable} @min-[60rem]:min-w-[60rem] table-fixed`}>
+          <colgroup><col className="w-[6%]" /><col className="w-[44%]" /><col className="w-[18%]" /><col className="w-[18%]" /><col className="w-[14%]" /></colgroup>
+          <thead className={responsiveHead}>
+            <tr>
+              <SortHeader view={view} column="rank">#</SortHeader>
+              <SortHeader view={view} column="spec">Spec</SortHeader>
+              <SortHeader view={view} column="status">Status</SortHeader>
+              <th scope="col"><span className="sr-only">Ação</span></th>
+              <SortHeader view={view} column="cost" className="num">Custo</SortHeader>
+            </tr>
+          </thead>
+          <tbody className="@max-[44rem]:block">
+            {view.rows.length === 0 ? <tr data-testid="program-panel-empty"><td colSpan={5} className="text-ink-soft">Nenhuma spec corresponde ao filtro.</td></tr> : null}
+            {view.rows.map((i) => {
+              const actions = rowActions(i);
+              return (
+              <tr key={i.specId} className={`${i.status === 'running' || i.status === 'completing' ? LIVE : ''} ${responsiveRow} @max-[44rem]:grid-cols-[auto_1fr_auto] @max-[44rem]:gap-x-3 @max-[44rem]:gap-y-2`} data-testid={`program-item-${i.key}`}>
+                <td className={`font-mono text-[0.8125rem] text-ink-soft tabular-nums ${responsiveCell} @max-[44rem]:before:hidden`} data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</td>
+                <td className={`${responsiveCell} @max-[44rem]:col-span-3 @max-[44rem]:row-start-2 @max-[44rem]:before:hidden`}>
+                  <div className="grid min-w-0 gap-1 text-left hyphens-auto" data-testid={`program-panel-body-${i.key}`}>
+                    <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
+                    {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
+                    {i.status === 'running' && i.runId && phases[i.runId] !== undefined && <span className="text-[0.8125rem] text-ink-soft" data-testid={`program-panel-phase-${i.key}`}>{phaseTitle(phases[i.runId]!)}</span>}
+                    {i.pause && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-item-pause-${i.key}`}>{pauseText(i.pause)}</p>}
+                    {i.status === 'waiting' && i.retryAt && <p className="m-0 text-[0.8125rem] text-ink-soft" data-testid={`program-panel-retry-${i.key}`}>tenta de novo às {hhmm(new Date(i.retryAt))}</p>}
+                    {i.prs && i.prs.length > 0 && (
+                      <details className="text-[0.8125rem]" data-testid={`program-item-prs-${i.key}`}>
+                        <summary className="w-fit cursor-pointer text-ink-soft" data-testid={`program-panel-prs-summary-${i.key}`}>{i.prs.length} {i.prs.length === 1 ? 'pull request' : 'pull requests'}</summary>
+                        <p className="m-0 mt-1 flex flex-wrap gap-x-3 gap-y-1" data-testid={`program-panel-prs-list-${i.key}`}>
+                          {i.prs.map((pr) => <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer" className="font-mono" data-testid={`program-panel-pr-${pr.url}`}>{prLabel(pr)}</a>)}
+                        </p>
+                      </details>
+                    )}
+                    {i.reason && <ItemReason status={i.status} reason={i.reason} />}
+                  </div>
+                </td>
+                <td className={`${responsiveCell} @max-[44rem]:col-start-2 @max-[44rem]:col-span-2 @max-[44rem]:row-start-1 @max-[44rem]:items-end! @max-[44rem]:before:hidden`}>
+                  <Tipped text={ITEM_HELP[shownStatus(i)]}><span className={PILL[shownStatus(i)]} data-testid={`program-panel-status-${i.key}`}>{LABEL[shownStatus(i)]}</span></Tipped>
+                </td>
+                <td className={`${responsiveCell} @max-[44rem]:col-span-2 @max-[44rem]:row-start-3 ${actions.length > 0 ? '' : '@max-[44rem]:hidden!'}`} data-testid={`program-panel-action-${i.key}`}>
+                  <span className="flex flex-wrap gap-2">{actions}</span>
+                </td>
+                <td className={`num text-[0.8125rem] text-ink-soft ${responsiveCell} @max-[44rem]:col-start-3 @max-[44rem]:row-start-3 @max-[44rem]:items-end! @max-[44rem]:before:hidden`} data-testid={`program-panel-cost-${i.key}`}>
+                  {i.costUsd != null ? <span className="whitespace-nowrap" data-testid={`program-item-cost-${i.key}`}>{fmtCost(i.costUsd)}</span> : <span className="text-ink-faint" aria-hidden="true" data-testid={`program-panel-cost-empty-${i.key}`}>—</span>}
+                </td>
+              </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <Pagination view={view} />
     </section>
   );
