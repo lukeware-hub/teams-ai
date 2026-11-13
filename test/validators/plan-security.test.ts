@@ -182,4 +182,12 @@ describe('stack classification and pack text', () => {
       expect(text).toContain(s);
     }
   });
+
+  // Live: a plan pinned gotestsum v1.12.0, which does not build with Go 1.27, and every task of the spec failed its gate.
+  it('planRules tells the agent to pin a JUnit tool that builds with the gate image Go and to reuse the project pin', () => {
+    const text = planRules(false);
+    expect(text).toContain('builds with the Go of the gateImage');
+    expect(text).toContain('v1.12.0 fails on Go 1.27');
+    expect(text).toContain('reuse the release the other specs of the project already pin');
+  });
 });

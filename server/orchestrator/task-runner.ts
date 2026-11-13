@@ -53,6 +53,8 @@ const MAX_TASK_DECISIONS = 2;
  * step; a transient infra flake, never a reason in the task's own files, so it is worth one more try instead of
  * blocking the task at once (spec 10A.5-adjacent: `environment` failures already retry without an attempt). */
 const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
+/** What the Dev may do when the same commit keeps failing for a cause outside the code. */
+const ENVIRONMENT_REPAIR_RULE = 'The gate fails for a cause outside the code, and you are allowed to repair the environment yourself: install or pin the tool the gate needs (a release that builds with the gate image toolchain) into .tools, fix the install script, add the ignore or config file the tool needs, or correct the variable or service address the code reads. State each repair in scopeJustification. Never report a block for an environment cause; change the worktree until the gate can pass.';
 
 export interface TaskRunnerDeps {
   journal: Journal;
@@ -131,6 +133,7 @@ export class TaskRunner {
   private schemaRetries = 0;
   private specGapRounds = 0;
   private unchangedRounds = 0;
+  private environmentRepaired = false;
   private skillRounds = 0;
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
@@ -406,7 +409,13 @@ export class TaskRunner {
     if (touched.length === 0 && (await this.repeatsLastCommit())) {
       const last = tail(this.deps.journal.lastFeedback(this.taskId) ?? '');
       if (this.unchangedRounds > 1) {
-        // The environment round also changed nothing: the gate fails for a cause the Dev cannot change (live: gitleaks on node_modules, prettier on home dotfiles).
+        // The Dev repairs the environment itself once before the task blocks.
+        if (!this.environmentRepaired) {
+          this.environmentRepaired = true;
+          await this.feedback(`${ENVIRONMENT_REPAIR_RULE}\nLast feedback:\n${last}`);
+          return this.implement();
+        }
+        // The repair round also changed nothing: the gate fails for a cause the Dev cannot change (live: gitleaks on node_modules, prettier on home dotfiles).
         const reason = `The Dev changed nothing again after the SM answered, so the gate fails for a cause the code cannot fix. Last feedback:\n${last}`;
         await this.askOwner(task.def, reason);
         return this.block(reason);
@@ -417,6 +426,7 @@ export class TaskRunner {
       return this.specGap(task.def, `Your last attempt changed nothing, so the same commit fails the same gates again. Last feedback:\n${last}\nName the defect: when a gate command is wrong, answer with gateFix; otherwise change the code.`);
     }
     this.unchangedRounds = 0;
+    this.environmentRepaired = false;
     const scope = checkScope({ changedFiles: touched, affectedPaths: task.def.affectedPaths, frozenPaths: this.deps.plan.frozenPaths, scopeJustification: value.scopeJustification, allowFrozen: this.deps.firstSpec && task.bootstrapsFrozenPaths, frozenDocs: this.deps.docs?.style === 'monolith' });
     if (!scope.ok) return this.fail('review-changes', `Scope violation:\n${scope.errors.join('\n')}`);
     this.scopeJustification = value.scopeJustification;

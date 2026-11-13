@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { FixTasksOutput } from '../../agents/outputs.js';
 import { DELIVERY_PATH_FIELDS, scaffoldId, type Plan, type PlanTask } from '../../contracts/plan.js';
-import type { TestResult } from '../../evidence/junit.js';
+import { extractAcIds, type TestResult } from '../../evidence/junit.js';
+import { specShare, type Spec } from '../../contracts/spec.js';
 import { buildEvidenceMatrix, readyForValidation, type EvidenceRow } from '../../evidence/matrix.js';
 import type { GateResult } from '../../exec/gate-runner.js';
 import { RunEvent } from '../../pipeline/run-state.js';
@@ -128,6 +129,25 @@ export function postDeployPaths(plan: Plan): string[] {
   return [suiteDir, ...smoke].filter((p) => p !== '');
 }
 
+/** Every file under a path, or the path itself when it is a file. */
+async function filesUnder(root: string): Promise<string[]> {
+  const stat = await fs.stat(root).catch(() => null);
+  if (!stat) return [];
+  if (stat.isFile()) return [root];
+  const entries = await fs.readdir(root, { withFileTypes: true });
+  const nested = await Promise.all(entries.filter((e) => e.name !== 'node_modules' && e.name !== '.git').map((e) => filesUnder(path.join(root, e.name))));
+  return nested.flat();
+}
+
+/** Smoke criteria of this repository that no post-deploy test names: the deploy would end with "no smoke test" only after the whole run. */
+export async function untestedSmoke(repo: string, plan: Plan, spec: Spec): Promise<string[]> {
+  const wanted = specShare(spec, plan.tasks).acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
+  if (wanted.length === 0) return [];
+  const files = (await Promise.all(postDeployPaths(plan).map((p) => filesUnder(path.join(repo, p))))).flat();
+  const named = new Set((await Promise.all(files.map((f) => fs.readFile(f, 'utf8').catch(() => '')))).flatMap(extractAcIds));
+  return wanted.filter((id) => !named.has(id));
+}
+
 /** Files a unit test cannot cover: documentation, scripts and configuration. */
 const SUPPORT_FILE = /(^|\/)(scripts|docs)\/|\.(md|sh|ps1|ya?ml|json|toml|txt)$/i;
 
@@ -208,8 +228,9 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   const planOf = (task: PlanTask) => (repos.find((r) => r.service === (task.service ?? null)) ?? repos[0]!).plan;
   const matrix = buildEvidenceMatrix(deps.spec, deps.tasks(), junit, (task) => taskKind(planOf(task), task));
   const failedTests = junit.filter((t) => t.status === 'failed').map((t) => t.id);
-  const uncoveredAcs = matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion);
-  if (!blocking && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
+  const noSmoke = (await Promise.all(repos.map((r) => untestedSmoke(r.ws.repo, r.plan, deps.spec)))).flat();
+  const uncoveredAcs = [...new Set([...matrix.filter((r) => r.status === 'missing' || r.status === 'blocked').map((r) => r.criterion), ...noSmoke])];
+  if (!blocking && noSmoke.length === 0 && readyForValidation(matrix)) { await deps.journal.fact(OrchEvent.VerificationPassed, { round, matrix }); return { ok: true, matrix }; }
   await deps.journal.fact(OrchEvent.VerificationFailed, { round, failedTests, uncoveredAcs, matrix, gate: blocking?.name ?? null });
   if (round === 2) return { ok: false, reason: `verification failed in round 2: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria${blocking ? `; gate ${blocking.name} failed` : ''}` };
   const runId = deps.journal.events[0]?.runId;
@@ -217,7 +238,8 @@ export async function runPhase4(deps: PhaseDeps, round: 1 | 2): Promise<Phase4Re
   if (repeatedVerificationFailure(earlier, { failedTests, uncoveredAcs, gate: blocking?.name ?? null })) {
     return { ok: false, reason: `verification failed again with the same cause as an earlier run that already tried a fix round: ${failedTests.length} failing tests, ${uncoveredAcs.length} uncovered criteria (${uncoveredAcs.join(', ')}); no new fix round, change the spec, the plan or the tests first` };
   }
-  const sm = await smFixTasks(deps, repos, { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')), uncoveredAcs, cwd: (failing ?? repos[0]!).ws.repo });
+  const smokeHint = noSmoke.length > 0 ? `\nNo post-deploy test names ${noSmoke.join(', ')}: write each as a black-box test over HTTP, and when the service does not yet expose what it calls (routes, main wiring, authentication, test data), plan that code too.` : '';
+  const sm = await smFixTasks(deps, repos, { failedTests, tails: tail(results.map((r) => `${r.name}: ${r.stderrTail || r.stdoutTail}`).join('\n')) + smokeHint, uncoveredAcs, cwd: (failing ?? repos[0]!).ws.repo });
   if ('reason' in sm) return { ok: false, reason: sm.reason };
   await deps.journal.fact(RunEvent.FixTasksPlanned, { tasks: sm.tasks, round });
   return { ok: false, reason: 'verification failed; fix tasks planned', fixTasks: sm.tasks };

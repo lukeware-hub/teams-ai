@@ -493,6 +493,26 @@ describe('TaskRunner: implementing', () => {
     expect(questions.some((q) => q.includes('You may repair the environment'))).toBe(true);
   });
 
+  it('lets the Dev repair the environment once before blocking a task whose Dev changed nothing', async () => {
+    const feedbacks: string[] = [];
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') return ok({ specHash: HASH, answer: 'rerun the gates', assumption: 'T1: gate → rerun' });
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      feedbacks.push(JSON.stringify(req.pack));
+      return devCalls === 1 ? devDone()(req) : ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' });
+    };
+    const failingGates: TaskRunnerDeps['gates'] = async () => {
+      const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+      return { results: [g], blockingFailure: g };
+    };
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates }));
+    for (let i = 0; i < 16 && state().state !== 'blocked'; i++) await r.advance();
+    expect(state().state).toBe('blocked');
+    expect(feedbacks.filter((f) => f.includes('you are allowed to repair the environment yourself'))).toHaveLength(1);
+  });
+
   it('pauses the run on a quota failure without consuming an attempt', async () => {
     const r = new TaskRunner('T1', deps({ agent: async () => failed('quota', 'usage limit reached') }));
     await r.advance();

@@ -9,7 +9,7 @@ import { makeRemote, type Remote } from '../fixtures/git-remote.js';
 const spec = makeFrozenSpec();
 const delivery = { dockerfile: 'Dockerfile', compose: 'docker-compose.yml', ciWorkflow: '.github/workflows/ci.yml', releaseWorkflow: '.github/workflows/release.yml', e2eSuite: 'e2e/run.test.ts', readmeSections: ['Run'] };
 const PINNED_DOCKERFILE = 'FROM node:22-bookworm@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7';
-const ALL = { Dockerfile: PINNED_DOCKERFILE, 'docker-compose.yml': 'services: {}', '.github/workflows/ci.yml': 'on: push', '.github/workflows/release.yml': 'on: push', 'e2e/run.test.ts': '//' };
+const ALL = { Dockerfile: PINNED_DOCKERFILE, 'docker-compose.yml': 'services: {}', '.github/workflows/ci.yml': 'on: push', '.github/workflows/release.yml': 'on: push', 'e2e/run.test.ts': "test('[AC-001] creates a todo')" };
 
 let remote: Remote;
 let journal: Journal;
@@ -48,6 +48,14 @@ describe('Phase 4 delivery contract', () => {
     expect(res.fixTasks?.[0].affectedPaths).toEqual(['docker-compose.yml', '.github/workflows/ci.yml', '.github/workflows/release.yml']);
     expect(res.fixTasks?.[1].affectedPaths).toEqual(['e2e/run.test.ts']);
     expect(journal.events.some((e) => e.type === 'FIX_TASKS_PLANNED' || String(e.type).includes('FixTasks'))).toBe(true);
+  });
+
+  it('fails before the deploy when no post-deploy test names a smoke criterion', async () => {
+    const deps = await setup({ ...ALL, 'e2e/run.test.ts': '//' });
+    const res = await runPhase4(deps, 2);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.reason).toContain('1 uncovered criteria');
+    expect(journal.events.find((e) => e.type === 'VERIFICATION_FAILED')?.data.uncoveredAcs).toEqual(['AC-001']);
   });
 
   it('fails without fix tasks in round 2', async () => {
