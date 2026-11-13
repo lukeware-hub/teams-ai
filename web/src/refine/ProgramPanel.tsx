@@ -134,6 +134,13 @@ const onlyValidationsLeft = (program: ProgramView) => awaitingOwner(program) > 0
 /** `1 aguarda sua validação` or `2 aguardam sua validação`. */
 const awaitingText = (n: number) => plural(n, 'aguarda sua validação', 'aguardam sua validação');
 
+/** "2 em execução · 35 bloqueadas": the specs that are neither done nor waiting in line, so the headline count is not read alone. */
+function statusCounts(items: ReadonlyArray<{ status: string }>): string {
+  const count = (status: string) => items.filter((i) => i.status === status).length;
+  const parts: Array<[number, string, string]> = [[count('running'), 'em execução', 'em execução'], [count('blocked'), 'bloqueada', 'bloqueadas'], [count('failed'), 'falhou', 'falharam'], [count('partial'), 'parcial', 'parciais']];
+  return parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(' · ');
+}
+
 /** The banner of a started backlog: a spinner while it runs, the progress, and each spec running now with its phase. */
 export function ProgramStatus({ program, titles, phases, link }: { program: ProgramView | null; titles: Record<string, string>; phases: Record<string, number>; link?: string }) {
   const done = program?.items.filter((i) => i.status === 'done').length ?? 0;
@@ -213,6 +220,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
         <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
           {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : waiting ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-waiting"><Icon name="clock" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
           <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
+          {statusCounts(program.items) && <span data-testid="program-panel-counts">{statusCounts(program.items)}</span>}
           {awaiting > 0 && <span data-testid="program-panel-awaiting">{awaitingText(awaiting)}</span>}
           {totalCost > 0 && <span className="whitespace-nowrap" data-testid="program-total-cost">{fmtCost(totalCost)}</span>}
           {unanswered > 0 && <Tipped text="Um modelo foi consultado e falhou, ou falta a chave do Jev. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}

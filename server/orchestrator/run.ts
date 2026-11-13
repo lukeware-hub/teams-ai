@@ -553,11 +553,11 @@ export class Run {
   }
 
   /** The plan's install command in the gate container, never on the host: the toolchain must be the plan's gateImage, not the orchestrator's. */
-  private async installInGate(view: ServiceView, worktree = this.wsOf(view).repo): Promise<GateResult | null> {
+  private async installInGate(view: ServiceView, worktree = this.wsOf(view).repo, command?: string): Promise<GateResult | null> {
     const p = this.effective(view.plan, view.service);
     const where = worktree === this.wsOf(view).repo ? 'deploy' : `install-${path.basename(worktree)}`.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const ctx = { worktree, image: await this.gateImageOf(p), junitPath: p.junitPath, cpus: 2, memory: '2g', timeoutMs: buildTimeoutMs(p), secrets: {}, containerName: `teams-ai-${this.runId}-${where}${view.service ? `-${view.service}` : ''}`, user: containerUser(this.deps.cfg.docker.rootless), bindRewrite: this.deps.cfg.docker.bindRewrite };
-    const r = await runGate({ name: 'install', command: p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
+    const r = await runGate({ name: 'install', command: command ?? p.commands.install, blocking: true, network: 'egress', secrets: [] }, ctx, { exec: this.deps.exec, executor: this.deps.gateExecutor, readFile: (f) => fs.readFile(f, 'utf8').catch(() => null), removeFile: (f) => fs.rm(f, { force: true }) });
     return r.passed ? null : r;
   }
 
@@ -707,6 +707,7 @@ export class Run {
       runAgent: <K extends StepKind>(req: AgentStepRequest<K>) => runAgentStep(req, this.agentDeps(view)),
       gates: this.gatesFor(view),
       installDeps: (worktree) => this.installDeps(view, worktree),
+      installTool: (worktree, command) => this.installInGate(view, worktree, command),
       mergeQueue: this.mergeQueue,
       mergeSteps: (task, worktree, branch) => taskMergeSteps(this.mergeDeps(view), task, worktree, branch, spec, this.summaryOf(task.id)),
       code: this.codeFor(view),

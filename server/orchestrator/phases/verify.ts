@@ -142,8 +142,9 @@ async function filesUnder(root: string): Promise<string[]> {
 /** Smoke criteria of this repository that no post-deploy test names: the deploy would end with "no smoke test" only after the whole run. */
 export async function untestedSmoke(repo: string, plan: Plan, spec: Spec): Promise<string[]> {
   const wanted = specShare(spec, plan.tasks).acceptanceCriteria.filter((ac) => ac.smoke).map((ac) => ac.id);
-  if (wanted.length === 0) return [];
-  const files = (await Promise.all(postDeployPaths(plan).map((p) => filesUnder(path.join(repo, p))))).flat();
+  const paths = postDeployPaths(plan);
+  if (wanted.length === 0 || paths.length === 0) return [];
+  const files = (await Promise.all(paths.map((p) => filesUnder(path.join(repo, p))))).flat();
   const named = new Set((await Promise.all(files.map((f) => fs.readFile(f, 'utf8').catch(() => '')))).flatMap(extractAcIds));
   return wanted.filter((id) => !named.has(id));
 }

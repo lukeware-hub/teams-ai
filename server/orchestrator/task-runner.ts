@@ -16,6 +16,7 @@ import { SANDBOX_PLACEHOLDERS, devChangedFiles } from './sandbox-placeholders.js
 import type { DecideContext, Decider } from '../decide/decider.js';
 import { assessAttemptProgress, repeatedFailure } from '../decide/decisions/attempt-progress.js';
 import { triageGateFailure } from '../decide/decisions/gate-triage.js';
+import { toolInstallError } from './tool-install.js';
 import { chooseModelTier, heuristicTier, type Effort, type ModelTier, type ModelTierResult } from '../decide/decisions/model-tier.js';
 import { REVIEW_PROFILE_DEPTH, choosePrRisk } from '../decide/decisions/pr-risk.js';
 import { assessScopeDrift } from '../decide/decisions/scope-drift.js';
@@ -53,6 +54,11 @@ const MAX_TASK_DECISIONS = 2;
  * step; a transient infra flake, never a reason in the task's own files, so it is worth one more try instead of
  * blocking the task at once (spec 10A.5-adjacent: `environment` failures already retry without an attempt). */
 const SANDBOX_INIT_FAILURE = /failed to create bridge sockets/i;
+/** Gate output of a tool that is missing or does not build with the gate image toolchain (live: gotestsum v1.12.0 on Go 1.27). */
+const TOOL_FAILURE = /command not found|executable file not found|is not recognized as|requires go >= [\d.]+|^# golang\.org\/x\/tools/im;
+const MAX_ENVIRONMENT_ROUTES = 2;
+const MAX_TOOL_INSTALLS = 3;
+const ENVIRONMENT_ROUTE_MARK = 'The gate fails for an environment cause, not the code: a tool is missing or does not build with the gate image toolchain. Repair it: pin a tool release that builds, or correct the install command with gateFix, or move the gate image with imageFix. Do not report a block.\n';
 /** What the Dev may do when the same commit keeps failing for a cause outside the code. */
 const ENVIRONMENT_REPAIR_RULE = 'The gate fails for a cause outside the code, and you are allowed to repair the environment yourself: install or pin the tool the gate needs (a release that builds with the gate image toolchain) into .tools, fix the install script, add the ignore or config file the tool needs, or correct the variable or service address the code reads. State each repair in scopeJustification. Never report a block for an environment cause; change the worktree until the gate can pass.';
 
@@ -70,6 +76,8 @@ export interface TaskRunnerDeps {
   /** A fresh worktree from origin/main has no node_modules; install before the Dev starts so its own self-verification
    * (running the project's test command, per its rules) does not fall through to a dependency tree outside the worktree. */
   installDeps: (worktree: string) => Promise<GateResult | null>;
+  /** Runs one tool install in the gate container with network; null when it passed. */
+  installTool?: (worktree: string, command: string) => Promise<GateResult | null>;
   mergeQueue: MergeQueue;
   mergeSteps: (task: PlanTask, worktree: string, branch: string) => MergeSteps;
   code: (worktree: string, task: PlanTask) => Promise<CodeContext>;
@@ -134,6 +142,7 @@ export class TaskRunner {
   private specGapRounds = 0;
   private unchangedRounds = 0;
   private environmentRepaired = false;
+  private toolInstalls = 0;
   private skillRounds = 0;
   private junit: TestResult[] = [];
   private mergeRefusals = 0;
@@ -391,6 +400,7 @@ export class TaskRunner {
     // Only a task's first skill request goes to the SM; a later one is journaled and the status decides.
     if (value.skillRequest && this.skillRounds === 0) return this.selectSkill(owner, task.def, value.skillRequest);
     await this.journalSkillRequest(owner, value.skillRequest);
+    if (value.toolInstall) return this.installTool(value.toolInstall);
     if (value.status === 'spec-gap') return this.specGap(task.def, value.question);
     if (value.status === 'blocked') {
       if (SANDBOX_INIT_FAILURE.test(value.reason) || outcome.summary.profile?.sandboxInitFailed) return this.fail('environment', value.reason, 'dev-sandbox-init');
@@ -692,7 +702,26 @@ export class TaskRunner {
     ]
       .filter((s) => s !== '')
       .join('\n\n');
+    // A missing or unbuildable tool is repaired at once, before the Dev spends an attempt on code that is not at fault.
+    if ((triage.kind === 'environment' || TOOL_FAILURE.test(delta)) && this.environmentRoutes() < MAX_ENVIRONMENT_ROUTES) return this.specGap(this.task.def, `${ENVIRONMENT_ROUTE_MARK}${delta}`);
     return this.fail(triage.kind, delta, blockingFailure.name);
+  }
+
+  /** Runs the tool install the Dev asked for, with network, and hands the result back to the Dev. */
+  private async installTool(command: string): Promise<void> {
+    const refused = toolInstallError(command);
+    if (refused) return this.fail('schema', refused);
+    this.toolInstalls += 1;
+    if (this.toolInstalls > MAX_TOOL_INSTALLS || !this.deps.installTool) return this.fail('environment', `The tool install was not accepted: ${this.deps.installTool ? `${MAX_TOOL_INSTALLS} installs already ran for this task` : 'this run cannot install tools'}`, 'tool-install');
+    const result = await this.deps.installTool(this.worktree, command);
+    const out = result ? [result.stderrTail ? `stderr (tail):\n${this.clean(tail(result.stderrTail))}` : '', result.stdoutTail ? `stdout (tail):\n${this.clean(tail(result.stdoutTail))}` : ''].filter(Boolean).join('\n\n') : '';
+    await this.feedback(result ? `The tool install failed (exit ${result.exitCode}): ${command}\n${out}\nPick a release that builds with the gate image toolchain and ask again.` : `The tool install succeeded: ${command}. The tool is in .tools; run the gates with it.`);
+    return this.implement();
+  }
+
+  /** Spec-gap rounds this task already spent on an environment failure; the journal keeps them across restarts. */
+  private environmentRoutes(): number {
+    return this.deps.journal.events.filter((e) => e.type === OrchEvent.SpecGapAnswered && e.data.taskId === this.taskId && String(e.data.question).startsWith(ENVIRONMENT_ROUTE_MARK)).length;
   }
 
   private junitFromJournal(): TestResult[] {

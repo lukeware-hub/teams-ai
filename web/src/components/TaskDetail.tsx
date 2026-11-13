@@ -7,7 +7,7 @@ import { StepList } from './StepList.js';
 export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]; taskId: string; loadStep: (stepId: string) => Promise<{ prompt: string; output: unknown }> }) {
   const d = taskDetail(events, taskId);
   return (
-    <div data-testid={`detail-${taskId}`} className="grid gap-5">
+    <div data-testid={`detail-${taskId}`} className="grid grid-cols-[minmax(0,1fr)] gap-5">
       {d.pr || d.lockHeld ? (
         <p className="m-0 flex flex-wrap gap-x-3" data-testid="task-detail-links">
           {d.pr ? (
@@ -24,8 +24,8 @@ export function TaskDetail({ events, taskId, loadStep }: { events: StoredEvent[]
       ) : null}
       {d.attempts.length ? null : <p className="hint m-0" data-testid="task-detail-empty">Nenhuma tentativa registrada ainda.</p>}
       {d.attempts.map((a) => (
-        <div key={a.attempt} data-testid={`attempt-${a.attempt}`}>
-          <h3 className="mt-0" data-testid={`task-detail-attempt-title-${a.attempt}`}>Tentativa {a.attempt}</h3>
+        <div key={a.attempt} data-testid={`attempt-${a.attempt}`} className="min-w-0">
+          <h3 className="m-0 mb-3 text-left" data-testid={`task-detail-attempt-title-${a.attempt}`}>Tentativa {a.attempt}</h3>
           <StepList steps={a.steps} loadStep={loadStep} />
           {a.gates.length ? (
             <p className="gates m-0 mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1.5" data-testid={`task-detail-gates-${a.attempt}`}>

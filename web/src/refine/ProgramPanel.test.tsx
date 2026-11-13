@@ -130,6 +130,16 @@ describe('ProgramPanel', () => {
     expect(screen.getByTestId('program-panel-spinner')).toBeTruthy();
   });
 
+  it('sums up the running, blocked and failed specs beside the done count', () => {
+    renderPanel(program([item('a', { status: 'running', runId: 'd-a-r1' }), item('b', { rank: 2, status: 'blocked' }), item('c', { rank: 3, status: 'blocked' }), item('d', { rank: 4, status: 'failed' })]));
+    expect(screen.getByTestId('program-panel-counts').textContent).toBe('1 em execução · 2 bloqueadas · 1 falhou');
+  });
+
+  it('shows no count line when every spec is waiting or done', () => {
+    renderPanel(program([item('a', { status: 'done' }), item('b', { rank: 2, status: 'pending' })]));
+    expect(screen.queryByTestId('program-panel-counts')).toBeNull();
+  });
+
   it('counts the specs awaiting validation in the plural', () => {
     renderPanel(program([item('a', { status: 'delivered' }), item('b', { rank: 2, status: 'delivered' })]));
     expect(screen.getByTestId('program-panel-awaiting').textContent).toContain('2 aguardam sua validação');

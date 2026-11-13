@@ -32,7 +32,7 @@ afterEach(async () => {
 
 /** A run whose T2 blocked and took T3 with it; the SM answers each fix-tasks step with the next list. */
 async function setup(answers: PlanTask[][], over: Partial<{ delivery: Record<string, unknown>; junit: GateResult['junit']; blocking: GateResult; tasks: Array<{ def: PlanTask; state: string }>; commands: Record<string, string> }> = {}): Promise<PhaseDeps> {
-  remote = await makeRemote({ 'README.md': '#\n' });
+  remote = await makeRemote({ 'README.md': '#\n', 'smoke/smoke_test.go': '// [AC-001] [AC-002]' });
   journal = await Journal.open({ file: path.join(remote.root, 'events.ndjson'), runId: 'r1', specHash: HASH });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T2', reason: 'the Dev found no way to reach the payment API' });
   await journal.fact(OrchEvent.TaskBlocked, { taskId: 'T3', reason: 'a dependency is blocked' });

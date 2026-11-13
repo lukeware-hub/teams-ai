@@ -158,7 +158,8 @@ const sourceRules = (base: PackBase): string[] => [
 export const FILES_READ_RULE = 'On a done result, list in filesRead, as repository paths, every file the rules above told you to read; a done result that leaves out one this repository holds is sent back.';
 
 /** A departure from the task or from its implementation plan is listed, so a contradiction never passes silently. */
-export const DEVIATIONS_RULE = 'On a done result, list in deviations, one sentence each, every departure from the task or from its implementation plan; leave it empty when you followed both.';
+export const TOOL_INSTALL_RULE = 'Your sandbox has no network. When a tool the gates need is missing or does not build, ask the platform to install it with toolInstall (one command, for example `GOBIN=$PWD/.tools/bin go install gotest.tools/gotestsum@v1.13.0`); it runs in the gate container with network, and its result comes back as your next feedback.';
+export const DEVIATIONS_RULE ='On a done result, list in deviations, one sentence each, every departure from the task or from its implementation plan; leave it empty when you followed both.';
 
 const fileExists = (dir: string, file: string): Promise<boolean> => fs.access(path.join(dir, file)).then(() => true, () => false);
 
@@ -210,7 +211,7 @@ export function devPack(
   const shared = common(base, 'dev', role);
   return {
     ...shared,
-    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []), ...(opts.gates?.some((g) => g.blocking) ? [gateRules(opts.gates)] : [])],
+    principles: [...shared.principles, ...sourceRules(base), FILES_READ_RULE, DEVIATIONS_RULE, TOOL_INSTALL_RULE, ...(opts.plan ? [taskRule(shown(base, opts.plan.file)!, opts.plan.ids)] : []), ...(opts.e2eSuite && writesE2eSuite(task, opts.e2eSuite) ? [e2eSuiteRules(opts.e2eSuite)] : []), ...(opts.gates?.some((g) => g.blocking) ? [gateRules(opts.gates)] : [])],
     task,
     criteria: criteriaOf(base.spec, task.criteriaRefs),
     decisions: base.spec.decisions,

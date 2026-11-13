@@ -156,6 +156,8 @@ const devCommon = {
   summary: z.string().min(1),
   changedFiles: z.array(z.string().min(1)),
   scopeJustification: z.string().optional(),
+  /** One tool install into .tools that the platform runs with network and answers with its result (the Dev sandbox has no network). */
+  toolInstall: z.string().min(1).nullish(),
   ...skillFields,
 };
 
