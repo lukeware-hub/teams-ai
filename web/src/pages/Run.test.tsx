@@ -408,6 +408,12 @@ describe('RunView', () => {
       expect(screen.getByTestId('outcome-hint').textContent).not.toContain('reprocesse');
     });
 
+    it('an owner who lets the agents decide still gets Reprocessar when the deploy failed', () => {
+      const finished = { seq: 9997, at: '2026-09-24T12:00:00.000Z', runId: 'hello-001-r1', specHash: 'h', type: 'RUN_FINISHED', kind: 'fact' as const, data: { result: 'deploy-failed', reason: null, merged: [], blocked: [], tokens: {} } };
+      render(failedView({ events: [finished], detail: { ...detail, status: 'deploy-failed', agentsDecide: true }, reprocessAction: { onReprocess: vi.fn(), busy: false, error: null } }));
+      expect(screen.getByTestId('reprocess').textContent).toBe('Reprocessar');
+    });
+
     it('a block the owner must decide shows the question with its choices, the recommended one picked, and one submit saves it', () => {
       const onDecide = vi.fn();
       const decisions = [{ taskId: 'T2', question: 'Qual versão do Go?', options: [{ label: 'Go 1.26.9', detail: 'O gate já tem essa versão.', recommended: true }, { label: 'Go 1.27.2', detail: 'Exige outra imagem.' }], answer: null }];

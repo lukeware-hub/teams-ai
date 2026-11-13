@@ -878,7 +878,7 @@ export function RunView({ detail, events, ended, error, loadStep, readmeAction, 
                                     {redeployAction.busy ? 'Iniciando o deploy…' : 'Tentar deploy de novo'}
                                   </ActionButton>
                                 ) : null}
-                                {reprocessAction && !detail.locked && !autonomous ? (
+                                {reprocessAction && !detail.locked && (!autonomous || status === 'deploy-failed') ? (
                                   <span data-testid="run-outcome-reprocess" className="flex min-w-0 flex-1 items-center gap-[0.35rem]">
                                     <ActionButton className={`${redeploying || pendingDecisions.length ? 'secondary' : 'primary-button'} flex-1`} data-testid="reprocess" busy={reprocessAction.busy} onClick={reprocessAction.onReprocess} icon={<Icon name="refresh" size={16} />}>
                                       {reprocessAction.busy ? 'Iniciando nova run…' : 'Reprocessar'}
