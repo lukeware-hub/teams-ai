@@ -930,7 +930,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
             const blocked = row.status === 'blocked' || (row.status === 'awaiting-validation' && endedBlocked(await events(runs, runId)));
             // A run that failed in phase 6 resumes there, once phases 4 and 5 passed: its report is written again without the earlier phases.
             const phase6 = row.status === 'phase-failed' && phase6Resume(journal) !== null;
-            if (!blocked && !phase6 && !['paused:auth', 'interrupted', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted, verification-failed, blocked or phase 6 failed runs resume`);
+            if (!blocked && !phase6 && !['paused:auth', 'interrupted', 'unknown', 'verification-failed'].includes(row.status)) throw new HttpError(409, `run ${runId} is ${row.status}; only paused:auth, interrupted, unknown, verification-failed, blocked or phase 6 failed runs resume`);
             const later = (await listRuns(idx, row.projectId)).find((r) => r.specId === row.specId && r.kind === row.kind && r.n > row.n);
             if (later) throw new HttpError(409, `run ${runId} is behind ${later.runId} of spec ${row.specId}; only the latest run of a spec resumes`);
             await clearStopRequested(runs, runId); // an explicit resume overrides an earlier Stop
