@@ -17,3 +17,23 @@ export function sharedDatabase(project: Project, needed: boolean, password: stri
   const container: PlatformService = { name: NAME, image: 'postgres:17-bookworm', environment: { POSTGRES_USER: USER, POSTGRES_PASSWORD: password, POSTGRES_DB: DB }, healthcheck: ['CMD-SHELL', `pg_isready -U ${USER} -d ${DB}`] };
   return { project: { ...project, platform: [...platform, container] }, url: `postgres://${USER}:${password}@${NAME}:5432/${DB}` };
 }
+
+/**
+ * A DATABASE_URL whose bare host (such as `db`, copied from a single application's compose file) no platform container answers to,
+ * pointed at the project's own postgres with the same user, password and database. Null when nothing needs repair or no single postgres exists.
+ */
+export function repairedDatabaseUrl(url: string | undefined, platform: readonly PlatformService[]): string | null {
+  if (!url) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname;
+  const bare = host !== '' && !host.includes('.') && !host.includes(':') && host !== 'localhost';
+  const postgres = platform.filter((p) => p.image.startsWith('postgres'));
+  if (!bare || platform.some((p) => p.name === host) || postgres.length !== 1) return null;
+  parsed.hostname = postgres[0]!.name;
+  return parsed.toString();
+}

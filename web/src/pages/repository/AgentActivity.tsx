@@ -2,7 +2,7 @@ import { runApi, type RoleActivity } from '../../api.js';
 import { InfoTip } from '../../components/InfoTip.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
 import { ROLE_LABEL } from '../../run/roles.js';
-import { money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
+import { cardCell, cardRow, cardTable, cardTitleCell, money, panel, responsiveHead, sectionHeading, sectionTitle, when } from '../project-shared.js';
 
 const COLUMNS: ReadonlyArray<readonly [string, string, string]> = [
   ['agent', 'Agente', 'O papel do agente que trabalhou neste repositório.'],
@@ -28,7 +28,7 @@ export function AgentActivity({ projectId, repo }: { projectId: string; repo: st
       ) : view.total === 0 ? (
         <p data-testid="agent-activity-empty" className="hint">sem dados: nenhum agente atuou neste repositório.</p>
       ) : (
-        <div data-testid="agent-activity-scroll" className={`@container ${responsiveTable} -mx-1 overflow-x-auto`}>
+        <div data-testid="agent-activity-scroll" className={`@container ${cardTable} overflow-x-auto`}>
           <table data-testid="agent-activity-table" className="w-full text-[0.8125rem]">
             <thead data-testid="agent-activity-head" className={responsiveHead}>
               <tr data-testid="agent-activity-head-row" className="text-left text-ink-soft">
@@ -44,14 +44,14 @@ export function AgentActivity({ projectId, repo }: { projectId: string; repo: st
             </thead>
             <tbody data-testid="agent-activity-body">
               {view.rows.map((a) => (
-                <tr key={a.role} className={responsiveRow} data-testid={`agent-${a.role}`}>
-                  <th data-testid={`agent-activity-role-${a.role}`} scope="row" className={`${responsiveCell} text-left font-medium`}>{ROLE_LABEL[a.role] ?? a.role}</th>
-                  <td data-testid={`agent-activity-steps-${a.role}`} className={responsiveCell} data-label="Etapas">{`${a.steps} (${a.ok} ok, ${a.failed} falha${a.failed === 1 ? '' : 's'})`}</td>
-                  <td data-testid={`agent-activity-tasks-${a.role}`} className={responsiveCell} data-label="Tarefas">{a.created === null ? '—' : `${a.created} criadas · ${a.started} iniciadas · ${a.finished} concluídas`}</td>
-                  <td data-testid={`agent-activity-files-${a.role}`} className={responsiveCell} data-label="Arquivos">{a.files}</td>
-                  <td data-testid={`agent-activity-tests-${a.role}`} className={responsiveCell} data-label="Testes">{a.tests === null ? '—' : `${a.tests.passed} passaram · ${a.tests.failed} falharam`}</td>
-                  <td data-testid={`agent-activity-cost-${a.role}`} className={responsiveCell} data-label="Custo">{money(a.costUsd)}</td>
-                  <td data-testid={`agent-activity-last-${a.role}`} className={responsiveCell} data-label="Última atividade">{a.lastAt ? `${a.lastDoing} · ${when(a.lastAt)}` : '—'}</td>
+                <tr key={a.role} className={cardRow} data-testid={`agent-${a.role}`}>
+                  <th data-testid={`agent-activity-role-${a.role}`} scope="row" className={cardTitleCell}>{ROLE_LABEL[a.role] ?? a.role}</th>
+                  <td data-testid={`agent-activity-steps-${a.role}`} className={cardCell('2')} data-label="Etapas">{`${a.steps} (${a.ok} ok, ${a.failed} falha${a.failed === 1 ? '' : 's'})`}</td>
+                  <td data-testid={`agent-activity-tasks-${a.role}`} className={cardCell('2')} data-label="Tarefas">{a.created === null ? '—' : `${a.created} criadas · ${a.started} iniciadas · ${a.finished} concluídas`}</td>
+                  <td data-testid={`agent-activity-files-${a.role}`} className={cardCell('1')} data-label="Arquivos">{a.files}</td>
+                  <td data-testid={`agent-activity-tests-${a.role}`} className={cardCell('2')} data-label="Testes">{a.tests === null ? '—' : `${a.tests.passed} passaram · ${a.tests.failed} falharam`}</td>
+                  <td data-testid={`agent-activity-cost-${a.role}`} className={cardCell('1')} data-label="Custo">{money(a.costUsd)}</td>
+                  <td data-testid={`agent-activity-last-${a.role}`} className={cardCell('2')} data-label="Última atividade">{a.lastAt ? `${a.lastDoing} · ${when(a.lastAt)}` : '—'}</td>
                 </tr>
               ))}
             </tbody>

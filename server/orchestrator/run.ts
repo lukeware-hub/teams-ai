@@ -29,7 +29,7 @@ import { fetch as gitFetch, git, headSha, withCheckoutLock, withRepoLock } from 
 import { INSTALLED_AT, needsInstall } from './install-state.js';
 import { writeSecret } from '../core/secrets.js';
 import type { PlatformService } from '../contracts/project.js';
-import { sharedDatabase } from './shared-database.js';
+import { repairedDatabaseUrl, sharedDatabase } from './shared-database.js';
 import { freePort, needsTestDatabase, startTestDatabase, stopTestDatabase } from './test-database.js';
 import { MergeQueue } from '../git/merge-queue.js';
 import type { CodeContext, GraphAccess, HandoffSummary } from '../knowledge/context-pack.js';
@@ -1200,8 +1200,19 @@ export class Run {
   /** The platform containers of the deploy; a needed shared PostgreSQL also replaces any older DATABASE_URL, which may name a host that does not exist. */
   private async provisionDatabase(needed: boolean): Promise<readonly PlatformService[]> {
     const shared = sharedDatabase(this.deps.project, needed, this.deps.secrets.POSTGRES_PASSWORD);
-    if (!shared) return this.deps.project.platform ?? [];
-    await writeSecret(path.posix.join(this.deps.ws.root, 'secrets'), 'DATABASE_URL', shared.url);
+    const secretsDir = path.posix.join(this.deps.ws.root, 'secrets');
+    if (!shared) {
+      // A URL that names a host nobody starts is pointed at the project's own postgres instead of failing every service that reads it.
+      const platform = this.deps.project.platform ?? [];
+      const url = needed ? await fs.readFile(path.posix.join(secretsDir, 'DATABASE_URL'), 'utf8').then((v) => v.trim(), () => undefined) : undefined;
+      const repaired = repairedDatabaseUrl(url, platform);
+      if (repaired) {
+        await writeSecret(secretsDir, 'DATABASE_URL', repaired);
+        this.deps.secrets.DATABASE_URL = repaired;
+      }
+      return platform;
+    }
+    await writeSecret(secretsDir, 'DATABASE_URL', shared.url);
     this.deps.secrets.DATABASE_URL = shared.url;
     return shared.project.platform!;
   }

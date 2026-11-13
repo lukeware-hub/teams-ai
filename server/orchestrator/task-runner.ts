@@ -405,13 +405,15 @@ export class TaskRunner {
     // A Dev that changes nothing after its commit failed a gate would fail the same gate again: the SM answers once, and a repeat fails the attempt.
     if (touched.length === 0 && (await this.repeatsLastCommit())) {
       const last = tail(this.deps.journal.lastFeedback(this.taskId) ?? '');
-      if (this.unchangedRounds > 0) {
-        // Another attempt cannot help: the gate fails for a cause the Dev cannot change (live: gitleaks on node_modules, prettier on home dotfiles).
+      if (this.unchangedRounds > 1) {
+        // The environment round also changed nothing: the gate fails for a cause the Dev cannot change (live: gitleaks on node_modules, prettier on home dotfiles).
         const reason = `The Dev changed nothing again after the SM answered, so the gate fails for a cause the code cannot fix. Last feedback:\n${last}`;
         await this.askOwner(task.def, reason);
         return this.block(reason);
       }
       this.unchangedRounds += 1;
+      // The second round gives the SM the authority over the environment, so a tool or image problem is repaired instead of blocking the task.
+      if (this.unchangedRounds > 1) return this.specGap(task.def, `The same commit still fails the same gates, so the cause is probably outside the code: a tool version, a missing tool, a variable or a service. You may repair the environment: pin another tool version or correct the install command with gateFix, move the gate image with imageFix, or change the code. Do not report a block for an environment cause. Last feedback:\n${last}`);
       return this.specGap(task.def, `Your last attempt changed nothing, so the same commit fails the same gates again. Last feedback:\n${last}\nName the defect: when a gate command is wrong, answer with gateFix; otherwise change the code.`);
     }
     this.unchangedRounds = 0;

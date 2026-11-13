@@ -471,6 +471,28 @@ describe('TaskRunner: implementing', () => {
     expect(journal.events.find((e) => e.type === OrchEvent.TaskBlocked)!.data.reason).toContain('changed nothing again');
   });
 
+  it('gives the SM a second round over the environment before blocking a task whose Dev changed nothing', async () => {
+    const questions: string[] = [];
+    let devCalls = 0;
+    const agent: Agent = async (req) => {
+      if (req.kind === 'spec-gap') {
+        questions.push(JSON.stringify(req.pack));
+        return ok({ specHash: HASH, answer: 'rerun the gates', assumption: 'T1: gate → rerun' });
+      }
+      if (req.kind !== 'dev') return devDone()(req);
+      devCalls += 1;
+      return devCalls === 1 ? devDone()(req) : ok({ specHash: HASH, status: 'done', summary: 'nothing', changedFiles: [], commitMessage: 'feat: nothing' });
+    };
+    const failingGates: TaskRunnerDeps['gates'] = async () => {
+      const g = gate('unit-test', { passed: false, exitCode: 1, failure: 'code', junit: null });
+      return { results: [g], blockingFailure: g };
+    };
+    const r = new TaskRunner('T1', deps({ agent, gates: failingGates }));
+    for (let i = 0; i < 12 && state().state !== 'blocked'; i++) await r.advance();
+    expect(state().state).toBe('blocked');
+    expect(questions.some((q) => q.includes('You may repair the environment'))).toBe(true);
+  });
+
   it('pauses the run on a quota failure without consuming an attempt', async () => {
     const r = new TaskRunner('T1', deps({ agent: async () => failed('quota', 'usage limit reached') }));
     await r.advance();

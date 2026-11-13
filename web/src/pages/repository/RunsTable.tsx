@@ -3,7 +3,7 @@ import { InfoTip } from '../../components/InfoTip.js';
 import { runPath } from '../../routes.js';
 import { runApi, type DashboardRunRow } from '../../api.js';
 import { Pagination, usePagedTable } from '../../components/DataTable.js';
-import { chip, money, panel, responsiveCell, responsiveHead, responsiveRow, responsiveTable, sectionHeading, sectionTitle, when } from '../project-shared.js';
+import { cardCell, cardRow, cardTable, cardTitleCell, chip, money, panel, responsiveHead, sectionHeading, sectionTitle, when } from '../project-shared.js';
 import { RUN_KIND_LABEL } from './labels.js';
 
 /** The runs of the repository's specs, newest first, one page at a time; each row links to its run page. */
@@ -20,7 +20,7 @@ export function RunsTable({ projectId, repo }: { projectId: string; repo: string
       ) : view.total === 0 ? (
         <p data-testid="runs-table-empty" className="hint">sem dados: nenhuma run neste repositório.</p>
       ) : (
-        <div data-testid="runs-table-scroll" className={`@container ${responsiveTable} -mx-1 overflow-x-auto`}>
+        <div data-testid="runs-table-scroll" className={`@container ${cardTable} overflow-x-auto`}>
           <table data-testid="runs-table" className="w-full text-[0.8125rem]">
             <thead data-testid="runs-table-head" className={responsiveHead}>
               <tr data-testid="runs-table-head-row" className="text-left text-ink-soft">
@@ -34,15 +34,15 @@ export function RunsTable({ projectId, repo }: { projectId: string; repo: string
             </thead>
             <tbody data-testid="runs-table-body">
               {view.rows.map((r) => (
-                <tr key={r.runId} className={responsiveRow} data-testid={`run-${r.runId}`}>
-                  <td data-testid={`runs-table-run-cell-${r.runId}`} className={responsiveCell} data-label="Run">
+                <tr key={r.runId} className={cardRow} data-testid={`run-${r.runId}`}>
+                  <td data-testid={`runs-table-run-cell-${r.runId}`} className={cardTitleCell} data-label="Run">
                     <Link to={runPath(r.runId)} className="wrap-anywhere">{r.runId}</Link>
                   </td>
-                  <td data-testid={`runs-table-kind-${r.runId}`} className={responsiveCell} data-label="Tipo">{RUN_KIND_LABEL[r.kind] ?? r.kind}</td>
-                  <td data-testid={`runs-table-state-${r.runId}`} className={responsiveCell} data-label="Estado">{chip(r.status)}</td>
-                  <td data-testid={`runs-table-start-${r.runId}`} className={responsiveCell} data-label="Início">{when(r.at)}</td>
-                  <td data-testid={`runs-table-merged-${r.runId}`} className={responsiveCell} data-label="Tarefas mescladas">{r.merged}</td>
-                  <td data-testid={`runs-table-cost-${r.runId}`} className={responsiveCell} data-label="Custo">{money(r.cost)}</td>
+                  <td data-testid={`runs-table-kind-${r.runId}`} className={cardCell('1')} data-label="Tipo">{RUN_KIND_LABEL[r.kind] ?? r.kind}</td>
+                  <td data-testid={`runs-table-state-${r.runId}`} className={cardCell('1')} data-label="Estado">{chip(r.status)}</td>
+                  <td data-testid={`runs-table-start-${r.runId}`} className={cardCell('2')} data-label="Início">{when(r.at)}</td>
+                  <td data-testid={`runs-table-merged-${r.runId}`} className={cardCell('1')} data-label="Tarefas mescladas">{r.merged}</td>
+                  <td data-testid={`runs-table-cost-${r.runId}`} className={cardCell('1')} data-label="Custo">{money(r.cost)}</td>
                 </tr>
               ))}
             </tbody>

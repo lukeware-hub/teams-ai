@@ -57,6 +57,14 @@ export const responsiveHead = '@max-[44rem]:hidden';
 export const responsiveRow = '@max-[44rem]:mb-3 @max-[44rem]:grid @max-[44rem]:gap-1 @max-[44rem]:rounded-lg @max-[44rem]:border @max-[44rem]:border-line @max-[44rem]:p-3';
 export const responsiveCell = '@max-[44rem]:flex @max-[44rem]:h-auto @max-[44rem]:flex-col @max-[44rem]:items-start @max-[44rem]:gap-0.5 @max-[44rem]:border-0 @max-[44rem]:p-0 @max-[44rem]:py-[0.2rem] @max-[44rem]:whitespace-normal @max-[44rem]:wrap-anywhere @max-[44rem]:text-left @max-[44rem]:before:shrink-0 @max-[44rem]:before:text-left @max-[44rem]:before:text-[0.75rem] @max-[44rem]:before:font-semibold @max-[44rem]:before:text-ink-soft @max-[44rem]:before:content-[attr(data-label)]';
 
+/** Narrow screens turn each table row into a two-column card: a title cell, then label-over-value cells. */
+const NARROW = '@max-[44rem]';
+export const cardTable = `${NARROW}:block ${NARROW}:min-w-0`;
+export const cardRow = `${NARROW}:mb-3 ${NARROW}:grid ${NARROW}:grid-cols-2 ${NARROW}:gap-x-4 ${NARROW}:gap-y-3 ${NARROW}:rounded-lg ${NARROW}:border ${NARROW}:border-line ${NARROW}:bg-surface-sunken ${NARROW}:p-4`;
+const cardCellBase = `align-top tabular-nums ${NARROW}:flex ${NARROW}:min-w-0 ${NARROW}:flex-col ${NARROW}:gap-0.5 ${NARROW}:border-0 ${NARROW}:bg-transparent! ${NARROW}:p-0 ${NARROW}:text-[0.9375rem] ${NARROW}:leading-snug ${NARROW}:wrap-anywhere ${NARROW}:before:text-[0.75rem] ${NARROW}:before:font-medium ${NARROW}:before:text-ink-soft ${NARROW}:before:content-[attr(data-label)]`;
+export const cardCell = (span: '1' | '2') => `${cardCellBase} ${span === '2' ? `${NARROW}:col-span-2` : ''}`;
+export const cardTitleCell = `text-left text-[0.9375rem] font-semibold normal-case tracking-normal text-ink ${NARROW}:col-span-2 ${NARROW}:border-0 ${NARROW}:p-0 ${NARROW}:text-base`;
+
 /** A determinate bar for a share from 0 to 100; `testId` names the bar and its fill. */
 export const Meter = ({ value, label, testId }: { value: number; label: string; testId: string }) => (
   <div data-testid={`${testId}-meter`} className="h-1.5 overflow-hidden rounded-full bg-accent-line" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={value}>

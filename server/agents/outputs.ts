@@ -298,14 +298,14 @@ export const DecideOutput = z.object({
 });
 export type DecideOutput = z.infer<typeof DecideOutput>;
 
-/** Spec (orchestrator) §4.5: SM answers a Dev's spec-gap; the assumption is the one-line log entry. A gateFix corrects a blocking gate command the plan has wrong. */
+/** Spec (orchestrator) §4.5: SM answers a Dev's spec-gap; the assumption is the one-line log entry. A gateFix corrects a blocking gate command the plan has wrong. A model often sends null for a fix it does not make, and that must not reject the answer. */
 export const SpecGapOutput = z.object({
   specHash,
   answer: z.string().min(1),
   assumption: z.string().min(1),
-  gateFix: z.object({ gate: z.string().regex(ID_PATTERNS.SLUG), command: z.string().min(1) }).optional(),
+  gateFix: z.object({ gate: z.string().regex(ID_PATTERNS.SLUG), command: z.string().min(1) }).nullish(),
   /** A newer version of the same gate image, when the answer moves the toolchain (a patched Go) and the gates must follow. */
-  imageFix: z.object({ gateImage: z.string().min(1) }).optional(),
+  imageFix: z.object({ gateImage: z.string().min(1) }).nullish(),
 });
 export type SpecGapOutput = z.infer<typeof SpecGapOutput>;
 

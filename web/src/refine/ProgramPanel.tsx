@@ -210,11 +210,11 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
           <h2 className={`${sectionHeading} ml-1`} data-testid="program-panel-title">Specs do backlog</h2>
           <InfoTip label="Execução do backlog" text={HELP} />
         </div>
-        <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
+        <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-ink-soft tabular-nums" role="status" data-testid="program-panel-summary">
           {interrupted ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-interrupted"><Icon name="alert" size={16} /></span> : waiting ? <span className="grid size-4 flex-none place-items-center text-warn" aria-hidden="true" data-testid="program-panel-icon-waiting"><Icon name="clock" size={16} /></span> : running ? <span className="loading-spinner flex-none" aria-hidden="true" data-testid="program-panel-spinner" /> : null}
           <span data-testid="program-panel-progress"><b className="font-semibold text-ink">{interrupted ? 'Backlog interrompido' : waiting ? 'Aguardando sua validação' : running ? 'Executando o backlog' : 'Backlog executado'}</b> · {done} de {total} concluída{total === 1 ? '' : 's'}</span>
-          {awaiting > 0 && <span data-testid="program-panel-awaiting"> · {awaitingText(awaiting)}</span>}
-          {totalCost > 0 && <span className="whitespace-nowrap" data-testid="program-total-cost"> · {fmtCost(totalCost)}</span>}
+          {awaiting > 0 && <span data-testid="program-panel-awaiting">{awaitingText(awaiting)}</span>}
+          {totalCost > 0 && <span className="whitespace-nowrap" data-testid="program-total-cost">{fmtCost(totalCost)}</span>}
           {unanswered > 0 && <Tipped text="Um modelo foi consultado e falhou, ou falta a chave do Jev. Verifique o Jev e a chave do modelo."><span className="status-chip tone-warn" data-testid="program-panel-unanswered">{unanswered} {unanswered === 1 ? 'consulta sem resposta' : 'consultas sem resposta'}</span></Tipped>}
         </p>
       </div>
@@ -233,7 +233,7 @@ export function ProgramPanel({ program, titles, phases = {}, unanswered = 0, onP
         {visible.map((i) => (
           <li key={i.specId} className={`${ROW} ${i.status === 'running' || i.status === 'completing' ? 'bg-accent-soft/40' : 'hover:bg-surface-sunken'}`} data-testid={`program-item-${i.key}`}>
             <span className="font-mono text-[0.8125rem] text-ink-soft tabular-nums" data-testid={`program-panel-rank-${i.key}`}>#{i.rank}</span>
-            <div className="grid min-w-0 gap-1" data-testid={`program-panel-body-${i.key}`}>
+            <div className="grid min-w-0 gap-1 text-justify hyphens-auto" data-testid={`program-panel-body-${i.key}`}>
               <b className="font-semibold text-ink wrap-anywhere" data-testid={`program-panel-name-${i.key}`}>{titles[i.key] ?? i.key}</b>
               {i.runId && <Link to={runPath(i.runId)} className="w-fit max-w-full truncate font-mono text-[0.75rem] no-underline hover:underline">{i.runId}</Link>}
               {i.status === 'running' && i.runId && phases[i.runId] !== undefined && <span className="text-[0.8125rem] text-ink-soft" data-testid={`program-panel-phase-${i.key}`}>{phaseTitle(phases[i.runId]!)}</span>}

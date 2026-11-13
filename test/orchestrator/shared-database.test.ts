@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sharedDatabase } from '../../server/orchestrator/shared-database.js';
+import { repairedDatabaseUrl, sharedDatabase } from '../../server/orchestrator/shared-database.js';
 import { makeProject } from '../fixtures/contracts.js';
 
 const system = makeProject({ services: ['policy-registry-api', 'audit-api'] });
@@ -31,5 +31,28 @@ describe('sharedDatabase', () => {
 
   it('does nothing without a generated password', () => {
     expect(sharedDatabase(system, true, undefined)).toBeNull();
+  });
+});
+
+describe('repairedDatabaseUrl', () => {
+  const platform = [{ name: 'postgres', image: 'postgres:17-bookworm' }];
+
+  it('points a host nobody starts at the project postgres and keeps the credentials', () => {
+    expect(repairedDatabaseUrl('postgres://app:pw@db:5432/app', platform)).toBe('postgres://app:pw@postgres:5432/app');
+  });
+
+  it('leaves a URL whose host is already a platform container', () => {
+    expect(repairedDatabaseUrl('postgres://app:pw@postgres:5432/app', platform)).toBeNull();
+  });
+
+  it('leaves dotted, local and missing addresses alone', () => {
+    expect(repairedDatabaseUrl('postgres://app:pw@db.example.com:5432/app', platform)).toBeNull();
+    expect(repairedDatabaseUrl('postgres://app:pw@localhost:5432/app', platform)).toBeNull();
+    expect(repairedDatabaseUrl(undefined, platform)).toBeNull();
+  });
+
+  it('does nothing when the platform has no single postgres to point at', () => {
+    expect(repairedDatabaseUrl('postgres://app:pw@db:5432/app', [])).toBeNull();
+    expect(repairedDatabaseUrl('postgres://app:pw@db:5432/app', [{ name: 'a', image: 'postgres:16' }, { name: 'b', image: 'postgres:17' }])).toBeNull();
   });
 });

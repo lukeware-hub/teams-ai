@@ -45,7 +45,7 @@ The reference project kayron-hub (40 specs, 23 repositories), two small referenc
 
 1. The owner decides scope and the start; the rest is the agents' work and stays traceable.
 2. Honest state: running, waiting, blocked, failed, with real numbers only.
-3. Security by construction: agents never touch credentials or infrastructure.
+3. Security by construction: Teams AI prepares the project's environment (database, connections, variables) and the agents may create or fix what they need to deliver; real secrets never leave the machine, and an environment problem is repaired, never a block.
 4. A tested, running service beats fast code.
 5. Familiarity: no invented affordance for a common task.
 
