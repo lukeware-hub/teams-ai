@@ -43,7 +43,7 @@ function Group({ state, specs, tasksBySpec }: { state: SpecState; specs: Dashboa
             <span className={META}>
             {spec.priority && <span data-testid={`delivery-spec-priority-${spec.specId}`} className="count-pill">{spec.priority}</span>}
             <StatePill label={SPEC_STATE[spec.state].label} tone={SPEC_STATE[spec.state].tone} />
-            <span data-testid={`delivery-spec-progress-${spec.specId}`} className="hint whitespace-nowrap tabular-nums">{`${spec.delivered} de ${spec.total} tarefas`}</span>
+            <span data-testid={`delivery-spec-progress-${spec.specId}`} className="hint whitespace-nowrap tabular-nums">{`${spec.delivered} de ${spec.total} tarefas${spec.deployFailed ? ' entregues · deploy falhou' : ''}`}</span>
             {spec.validationRunId && (
               // The summary toggles the spec; the link only opens the validation page.
               <Link data-testid={`delivery-validate-${spec.specId}`} className="link-button ml-auto" to={validationPath(spec.validationRunId)} onClick={(e) => e.stopPropagation()}>

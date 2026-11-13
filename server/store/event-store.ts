@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { processAlive } from '../core/process.js';
@@ -84,6 +85,68 @@ export async function loadEvents(file: string): Promise<StoredEvent[]> {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw err;
+  }
+}
+
+interface CachedLog {
+  /** Bytes read so far, always the end of a complete line. */
+  offset: number;
+  /** The last bytes before `offset`: tells an appended file from a rewritten one. */
+  tail: Buffer;
+  events: StoredEvent[];
+}
+
+const TAIL_BYTES = 64;
+const MAX_CACHED_LOGS = 500;
+const cachedLogs = new Map<string, CachedLog>();
+
+async function readBytes(handle: FileHandle, position: number, length: number): Promise<Buffer> {
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, position);
+  return buffer.subarray(0, bytesRead);
+}
+
+/**
+ * Same events as loadEvents, for read-only callers that read the same journals again and again:
+ * a journal only grows, so a repeat read parses just the lines added since. A rewritten file is read
+ * from the start, and a line still being written is left for the next read.
+ */
+export async function loadEventsCached(file: string): Promise<StoredEvent[]> {
+  let handle: FileHandle;
+  try {
+    handle = await fs.open(file, 'r');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      cachedLogs.delete(file);
+      return [];
+    }
+    throw err;
+  }
+  try {
+    const { size } = await handle.stat();
+    let log = cachedLogs.get(file);
+    if (log && (size < log.offset || !(await readBytes(handle, log.offset - log.tail.length, log.tail.length)).equals(log.tail))) log = undefined;
+    const from = log?.offset ?? 0;
+    const chunk = await readBytes(handle, from, size - from);
+    const complete = chunk.subarray(0, chunk.lastIndexOf(0x0a) + 1);
+    const known = log?.events ?? [];
+    const added: StoredEvent[] = [];
+    // Line numbers only matter for the message: a cached read counts its own chunk.
+    complete.toString('utf8').split('\n').forEach((line, i) => {
+      if (line.trim() === '') return;
+      const event = parseLine(line, i + 1);
+      const expected = known.length + added.length + 1;
+      if (event.seq !== expected) throw new EventLogCorruptError(`expected seq ${expected}, found ${event.seq}`);
+      added.push(event);
+    });
+    const events = [...known, ...added];
+    const offset = from + complete.length;
+    cachedLogs.delete(file);
+    cachedLogs.set(file, { offset, tail: await readBytes(handle, Math.max(0, offset - TAIL_BYTES), Math.min(TAIL_BYTES, offset)), events });
+    if (cachedLogs.size > MAX_CACHED_LOGS) cachedLogs.delete(cachedLogs.keys().next().value!);
+    return [...events];
+  } finally {
+    await handle.close();
   }
 }
 

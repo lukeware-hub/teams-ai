@@ -9,6 +9,7 @@ import {
   EventLogLockedError,
   EventStore,
   loadEvents,
+  loadEventsCached,
   repairEventLog,
   unconfirmedIntents,
 } from '../../server/store/event-store.js';
@@ -294,4 +295,51 @@ describe('EventStore crash recovery', () => {
       for (const child of children) child.kill();
     }
   }, 30_000);
+});
+
+describe('loadEventsCached', () => {
+  it('reads like loadEvents, and an absent file is empty', async () => {
+    expect(await loadEventsCached(file)).toEqual([]);
+    await writeLines(rawEvent(1), rawEvent(2));
+    expect(await loadEventsCached(file)).toEqual(await loadEvents(file));
+  });
+
+  it('picks up events appended after the first read', async () => {
+    await writeLines(rawEvent(1));
+    expect(await loadEventsCached(file)).toHaveLength(1);
+    await fs.appendFile(file, rawEvent(2) + rawEvent(3));
+    expect((await loadEventsCached(file)).map((e) => e.seq)).toEqual([1, 2, 3]);
+  });
+
+  it('waits for a line still being written, then reads it whole', async () => {
+    await writeLines(rawEvent(1));
+    await loadEventsCached(file);
+    const second = rawEvent(2);
+    await fs.appendFile(file, second.slice(0, 20));
+    expect((await loadEventsCached(file)).map((e) => e.seq)).toEqual([1]);
+    await fs.appendFile(file, second.slice(20));
+    expect((await loadEventsCached(file)).map((e) => e.seq)).toEqual([1, 2]);
+  });
+
+  it('reads again from the start when the file was rewritten', async () => {
+    await writeLines(rawEvent(1, 'A'), rawEvent(2, 'A'));
+    await loadEventsCached(file);
+    await writeLines(rawEvent(1, 'B'), rawEvent(2, 'B'), rawEvent(3, 'B'));
+    expect((await loadEventsCached(file)).map((e) => e.type)).toEqual(['B', 'B', 'B']);
+    await writeLines(rawEvent(1, 'C'));
+    expect((await loadEventsCached(file)).map((e) => e.type)).toEqual(['C']);
+  });
+
+  it('still reports corruption', async () => {
+    await writeLines(rawEvent(1));
+    await loadEventsCached(file);
+    await fs.appendFile(file, rawEvent(5));
+    await expect(loadEventsCached(file)).rejects.toThrow(EventLogCorruptError);
+  });
+
+  it('does not let a caller change what the next read returns', async () => {
+    await writeLines(rawEvent(1));
+    (await loadEventsCached(file)).pop();
+    expect(await loadEventsCached(file)).toHaveLength(1);
+  });
 });

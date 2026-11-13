@@ -24,8 +24,8 @@ const detail = (over: Partial<RepoDetailView> = {}): RepoDetailView => ({
 const dashboard = (over: Partial<RepoDashboard> = {}): RepoDashboard => ({
   counts: { tasks: 3, delivered: 1, pending: 1, running: 0, blocked: 1, failed: 0, runs: 1, runsActive: 0, failures: 0, blockers: 1, specsDelivered: 1, specsAwaiting: 0, progress: 33, cost: 0.5 },
   specs: [
-    { specId: 'cart', title: 'Carrinho', priority: 'P1', status: 'done', state: 'delivered', total: 1, delivered: 1, running: 0, pending: 0, blocked: 0, failed: 0, validationRunId: null },
-    { specId: 'pay', title: 'Pagamento', priority: 'P2', status: 'running', state: 'blocked', total: 2, delivered: 0, running: 0, pending: 1, blocked: 1, failed: 0, validationRunId: null },
+    { specId: 'cart', title: 'Carrinho', priority: 'P1', status: 'done', state: 'delivered', total: 1, delivered: 1, running: 0, pending: 0, blocked: 0, failed: 0, validationRunId: null, deployFailed: false },
+    { specId: 'pay', title: 'Pagamento', priority: 'P2', status: 'running', state: 'blocked', total: 2, delivered: 0, running: 0, pending: 1, blocked: 1, failed: 0, validationRunId: null, deployFailed: false },
   ],
   tasks: {
     total: 3,

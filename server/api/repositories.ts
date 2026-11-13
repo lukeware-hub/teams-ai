@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Architecture, repositoryContext, type RepoKind } from '../contracts/architecture.js';
-import { loadEvents } from '../store/event-store.js';
+import { loadEventsCached } from '../store/event-store.js';
 import type { SecretInfo } from './repository-dashboard.js';
 
 /** The run statuses that stop a spec: its run needs the owner. */
@@ -175,7 +175,7 @@ export async function loadRepoSource(dir: string, specs: ReadonlyArray<Pick<Repo
 /** The last `limit` events of the runs given, oldest first; a run with no journal yet contributes nothing. */
 export async function historyOf(runsDir: string, runs: ReadonlyArray<{ runId: string; specId: string }>, limit = 50): Promise<HistoryEvent[]> {
   const events = await Promise.all(
-    runs.map(async (run) => (await loadEvents(path.join(runsDir, run.runId, 'events.ndjson')).catch(() => [])).map((e) => ({ at: e.at, type: e.type, runId: run.runId, specId: run.specId }))),
+    runs.map(async (run) => (await loadEventsCached(path.join(runsDir, run.runId, 'events.ndjson')).catch(() => [])).map((e) => ({ at: e.at, type: e.type, runId: run.runId, specId: run.specId }))),
   );
   return events.flat().sort((a, b) => a.at.localeCompare(b.at)).slice(-limit);
 }

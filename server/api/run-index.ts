@@ -5,7 +5,7 @@ import { Project } from '../contracts/project.js';
 import { Spec } from '../contracts/spec.js';
 import { parseRunId, type RunKind } from '../core/ids.js';
 import { expandHome } from '../orchestrator/workspace.js';
-import { loadEvents } from '../store/event-store.js';
+import { loadEventsCached } from '../store/event-store.js';
 import { probeProcess } from './process-identity.js';
 
 /** Run, spec and step ids become path segments: no leading dot, so neither `.` nor `..` matches. */
@@ -213,7 +213,7 @@ export async function runCost(runs: string, runId: string): Promise<number> {
 
 export async function runRow(deps: IndexDeps, runId: string): Promise<RunRow | null> {
   const runs = runsDir(deps);
-  const events = await loadEvents(path.join(runs, runId, 'events.ndjson')).catch(() => []);
+  const events = await loadEventsCached(path.join(runs, runId, 'events.ndjson')).catch(() => []);
   const startedAt = events.find((e) => e.type === 'RUN_STARTED');
   const parsed = parseRunId(runId);
   const specId = String(startedAt?.data.specId ?? parsed?.specId ?? runId);

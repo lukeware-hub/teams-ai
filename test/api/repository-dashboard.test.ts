@@ -93,6 +93,12 @@ describe('task states across runs', () => {
     expect(d.counts).toMatchObject({ tasks: 3, delivered: 3, progress: 100, specsDelivered: 1 });
   });
 
+  it('marks a spec whose tasks are all delivered but whose last run failed at the deploy', () => {
+    const r = run('r1', 'cart', 1, 'deploy-failed', [planned('r1', 'T1-a'), to('r1', 'T1-a', 'merged')]);
+    const d = buildDashboard(input({ specs: [spec('cart', { tasks: 1 })], runs: [r] }));
+    expect(d.specs[0]).toMatchObject({ state: 'failed', delivered: 1, total: 1, deployFailed: true });
+  });
+
   it('lists a journal that does not replay as a failure instead of counting its tasks as not started', () => {
     const broken = run('r1', 'cart', 1, 'running', [to('r1', 'T1-a', 'implementing')]);
     const inp = input({ specs: [spec('cart', { tasks: 1 })], runs: [broken] });

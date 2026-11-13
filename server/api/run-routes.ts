@@ -26,7 +26,7 @@ import { execCommand, type Exec } from '../exec/command.js';
 import { nextRunId } from '../orchestrator/workspace.js';
 import { reduceEvents } from '../pipeline/run-state.js';
 import { locateTests, testsByRepo, type TestRef } from '../evidence/locate.js';
-import { EventLogCorruptError, loadEvents, type StoredEvent } from '../store/event-store.js';
+import { EventLogCorruptError, loadEventsCached, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
 import { teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
@@ -358,7 +358,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       throw new HttpError(404, `unknown run ${runId}`);
     });
     try {
-      return await loadEvents(file);
+      return await loadEventsCached(file);
     } catch (err) {
       if (err instanceof EventLogCorruptError) throw new HttpError(500, 'journal corrupt; run teams-ai status --repair');
       throw err;
@@ -514,7 +514,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const needed = new Set<string>();
     const declared: Array<{ id: string; deps: ExternalDependency[] }> = [];
     for (const id of drafts) {
-      const events = await loadEvents(draftPaths(ws, id).events).catch(() => []);
+      const events = await loadEventsCached(draftPaths(ws, id).events).catch(() => []);
       if (events.length === 0) continue;
       const state = reduceRefineEvents(events);
       questions.push(...state.questions.filter((q) => q.status === 'pending' && q.blocking).map((q) => ({ itemKey: q.itemKey ?? null, text: q.text })));
@@ -623,7 +623,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const updatedAt = await fs.stat(file).then((s) => s.mtime.toISOString(), () => null);
         // The refinement drafts and the chat answers are read apart from `repoRuns`, which the dashboard shares.
         const refine: StoredEvent[][] = [];
-        for (const id of await fs.readdir(refineRoot(ws)).catch(() => [] as string[])) refine.push(await loadEvents(draftPaths(ws, id).events).catch(() => []));
+        for (const id of await fs.readdir(refineRoot(ws)).catch(() => [] as string[])) refine.push(await loadEventsCached(draftPaths(ws, id).events).catch(() => []));
         const chat = ((await deps.chatMessages?.(params.projectId!).catch(() => [])) ?? []).filter((m) => m.usage !== undefined).map((m) => m.usage!.graphQueries);
         const linked = await linkNodes(buildGraphView(raw, repoRuns, { refine, chat }), graphLinkResolver({ blobUrl, repoUrlOf, git: gitOut }, await graphClones(params.projectId!)));
         json(200, { ...linked, status: { updatedAt, failure: graphFailure(params.projectId!) } });

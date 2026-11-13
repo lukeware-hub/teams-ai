@@ -4,7 +4,7 @@ import { explainBlockReason, firstSentence } from '../orchestrator/stop-explain.
 import { reduceEvents, type TaskRuntime } from '../pipeline/run-state.js';
 import { DEPENDENCY_BLOCKED } from '../pipeline/task-state.js';
 import { parseRunId } from '../core/ids.js';
-import { loadEvents, type StoredEvent } from '../store/event-store.js';
+import { loadEventsCached, type StoredEvent } from '../store/event-store.js';
 import { queryPage, type Page, type PageRequest, type TableSpec } from './paging.js';
 import path from 'node:path';
 
@@ -91,6 +91,8 @@ export interface DashboardSpec {
   failed: number;
   /** The latest run of the spec that waits for the owner to validate it, or null. */
   validationRunId: string | null;
+  /** Every task is delivered and the last run failed only at the deploy. */
+  deployFailed: boolean;
 }
 
 export interface DashboardTask {
@@ -334,8 +336,10 @@ function specView(spec: DashboardSpecInput, runs: DashboardRun[], tasksByRun: Ma
     blocked: count('blocked'),
     failed: count('failed'),
     validationRunId: latestAwaitingRun(spec.specId, runs)?.runId ?? null,
+    deployFailed: false,
   };
   view.state = specStateOf(spec, runs, view);
+  view.deployFailed = view.state === 'failed' && view.delivered === view.total && runs.at(-1)?.status === 'deploy-failed';
   return { view, rows };
 }
 
@@ -351,7 +355,7 @@ export async function loadRepoRuns(runsDir: string, rows: ReadonlyArray<{ runId:
       at: r.at,
       cost: r.cost,
       stopped: r.stopped === true,
-      events: await loadEvents(path.join(runsDir, r.runId, 'events.ndjson')).catch(() => [] as StoredEvent[]),
+      events: await loadEventsCached(path.join(runsDir, r.runId, 'events.ndjson')).catch(() => [] as StoredEvent[]),
     })),
   );
 }
