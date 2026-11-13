@@ -492,7 +492,7 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
     const located = await locateProject((await index()).cfg, projectId);
     return located ? { [projectId]: located.ws.repo, ...Object.fromEntries((located.project.services ?? []).map((service) => [service, serviceWorkspace(located.ws, service).repo])) } : {};
   };
-  const repoSource = async (projectId: string) => {
+  const readRepoSource = async (projectId: string) => {
     const idx = await index();
     const row = (await listProjects(idx)).find((p) => p.projectId === projectId);
     if (!row) throw new HttpError(404, `unknown project ${projectId}`);
@@ -552,6 +552,15 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       taskLists.set(spec.specId, [...text.matchAll(/^## Task (\d+): (.+)$/gm)].map((m) => ({ taskId: `T${m[1]}`, title: m[2]!.trim() })));
     }
     return { src: { ...src, questions, missingSecrets, secretInfo, programStops, rootBlocks }, runs, runsDir: runsDir(idx), journals, repoRuns, taskLists };
+  };
+  // A page asks for its summary and each table together: they share one read instead of reading every journal again.
+  const reading = new Map<string, ReturnType<typeof readRepoSource>>();
+  const repoSource = (projectId: string) => {
+    const running = reading.get(projectId);
+    if (running) return running;
+    const started = readRepoSource(projectId).finally(() => reading.delete(projectId));
+    reading.set(projectId, started);
+    return started;
   };
   // The dashboard's input for one repository; the summary and each paged table read the same input.
   const dashboardInput = async (params: Record<string, string>) => {

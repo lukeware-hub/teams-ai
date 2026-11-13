@@ -50,3 +50,15 @@ describe('project graph routes', () => {
     await expect(find('POST', rebuild, { graphify: {} })({ params: { projectId: 'shop' }, json: vi.fn() } as never)).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe('repository source sharing', () => {
+  it('reads a project once for requests made at the same time, and again for a later one', async () => {
+    const cfg = vi.fn(async () => ({ projects: [] }) as never);
+    const list = runRoutes({ cfg, home: '/tmp/teams-ai-none', control: {} as never } as never).find((r) => r.method === 'GET' && r.path.endsWith('/repositories'))!.handler;
+    const ask = () => list({ params: { projectId: 'shop' }, json: vi.fn() } as never).catch(() => undefined);
+    await Promise.all([ask(), ask(), ask()]);
+    expect(cfg).toHaveBeenCalledTimes(1);
+    await ask();
+    expect(cfg).toHaveBeenCalledTimes(2);
+  });
+});
