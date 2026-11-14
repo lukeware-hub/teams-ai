@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { runPath } from '../../routes.js';
-import { useNavigate } from 'react-router-dom';
+import { repoGrpcPath, runPath } from '../../routes.js';
+import { Link, useNavigate } from 'react-router-dom';
 import { runApi, type LastDeploy, type RepoDetailView, type ServiceStatus } from '../../api.js';
 import { usePolling } from '../../usePolling.js';
 import { action, panel } from '../project-shared.js';
+import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { Icon } from '../../components/Icons.js';
 import { KIND_LABEL } from './labels.js';
 import { StatePill } from './StatePill.js';
-import { shortcutsOf, systemHrefOf } from './shortcuts.js';
+import { shortcutsOf, speaksGrpc, systemHrefOf } from './shortcuts.js';
 
 const STATUS_LABEL: Record<RepoDetailView['status'], string> = {
   blocked: 'Bloqueado',
@@ -36,7 +37,7 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   const [probe, setProbe] = useState<ServiceStatus | null>(null);
   const [probeFailed, setProbeFailed] = useState(false);
   const [busy, setBusy] = useState<'start' | 'stop' | null>(null);
-  const [confirmingStop, setConfirmingStop] = useState(false);
+  const [askingStop, setAskingStop] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const runId = deploy?.runId ?? null;
 
@@ -61,14 +62,13 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
   }, [checkProbe]);
   usePolling(checkProbe, PROBE_MS);
 
-  const grpc = detail.integrations.some((i) => /grpc|connectrpc/i.test(i));
-  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed, grpc);
+  const shortcuts = shortcutsOf(detail.kind, detail.name, deploy, probe, window.location.hostname, probeFailed, speaksGrpc(detail.integrations));
   const systemHref = systemHrefOf(detail.name, deploy, probe, window.location.hostname);
   const canToggle = deploy !== null && probe !== null;
   // The containers of the last deploy start or stop in place; a start with no containers left deploys again.
   const toggle = (action: 'start' | 'stop') => {
     if (!deploy) return;
-    setConfirmingStop(false);
+    setAskingStop(false);
     setBusy(action);
     setActionError(null);
     runApi
@@ -100,13 +100,18 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
             </p>
           ) : null,
         )}
+        {actionError && (
+          <p data-testid="repo-header-start-error" role="alert" className="m-0 w-fit rounded px-1 text-[0.8125rem] tone-bad">
+            {actionError}
+          </p>
+        )}
       </div>
       <div className="flex items-start gap-3 border-t border-line pt-4 max-md:flex-col md:flex-wrap md:items-center md:justify-end" data-testid="repo-shortcuts">
         {canToggle && (
           probe.online ? (
-            <button type="button" className={`${action.secondary} ${confirmingStop ? 'border-bad-line text-bad' : ''}`} onClick={() => (confirmingStop ? toggle('stop') : setConfirmingStop(true))} onBlur={() => setConfirmingStop(false)} disabled={busy !== null} data-testid="stop-system">
+            <button type="button" className={action.secondary} onClick={() => setAskingStop(true)} disabled={busy !== null} data-testid="stop-system">
               <Icon name="stop" size={16} />
-              {busy === 'stop' ? 'Parando…' : confirmingStop ? 'Confirmar parada' : 'Parar'}
+              {busy === 'stop' ? 'Parando…' : 'Parar'}
             </button>
           ) : (
             <button type="button" className={action.primary} onClick={() => toggle('start')} disabled={busy !== null} data-testid="start-system">
@@ -130,18 +135,24 @@ export function RepoHeader({ detail, projectId, deploy }: { detail: RepoDetailVi
             )}
           </div>
         ))}
+        {deploy && speaksGrpc(detail.integrations) && (
+          <Link to={repoGrpcPath(projectId, detail.name)} className={action.secondary} data-testid="shortcut-grpc">
+            <Icon name="code" size={16} />
+            Abrir gRPC
+          </Link>
+        )}
         {systemHref && (
           <a href={systemHref} target="_blank" rel="noreferrer" className={action.secondary} data-testid="shortcut-system">
             <Icon name="external" size={16} />Abrir sistema
             <span className="sr-only"> (abre em nova aba)</span>
           </a>
         )}
-        {actionError && (
-          <span data-testid="repo-header-start-error" role="alert" className="text-[0.75rem] tone-bad rounded px-1">
-            {actionError}
-          </span>
-        )}
       </div>
+      {askingStop && (
+        <ConfirmDialog title="Parar o sistema" subject={detail.name} confirmLabel="Parar" tone="accent" icon="close" confirmTestId="stop-confirm" onConfirm={() => toggle('stop')} onCancel={() => setAskingStop(false)}>
+          O container deixa de responder até você iniciar de novo. Os dados são mantidos.
+        </ConfirmDialog>
+      )}
     </section>
   );
 }

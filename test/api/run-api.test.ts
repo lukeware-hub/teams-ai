@@ -686,6 +686,24 @@ describe('start, resume, stop', () => {
     expect((await fetch(base() + '/api/runs/hello-001-r2/artifact')).status).toBe(404);
   });
 
+  it('refuses a bad service action, a bad gRPC call, and a repository the architecture does not give', async () => {
+    const repo = '/api/projects/hello-app/repositories/hello-app';
+    expect((await post(repo + '/service/restart')).status).toBe(400);
+    expect((await post(repo + '/grpc/call', { method: 'a.B/C' })).status).toBe(400);
+    expect((await post(repo + '/grpc/call', { method: 'a.B/C', body: '{}', headers: 'not a header' })).status).toBe(400);
+    expect((await post(repo + '/grpc/call', { method: 'a.B/C', body: 5 })).status).toBe(400);
+    // A well-formed call gets past the body check and stops at the repository the architecture does not give.
+    expect((await post(repo + '/grpc/call', { method: 'a.B/C', body: '{}', headers: 'authorization: Bearer t' })).status).toBe(404);
+    // The test tokens: a name that is not an environment variable name is refused, a project with no recipes lists none and issues none.
+    expect((await post(repo + '/grpc/token', { name: 'not-a-recipe' })).status).toBe(400);
+    expect((await post(repo + '/grpc/token', { name: 'E2E_MAKER_TOKEN' })).status).toBe(502);
+    expect(await (await fetch(base() + repo + '/grpc/tokens')).json()).toEqual({ tokens: [] });
+    expect((await post('/api/projects/Bad_Project/repositories/x/grpc/token', { name: 'E2E_MAKER_TOKEN' })).status).toBe(400);
+    expect((await post(repo + '/service/stop')).status).toBe(404);
+    expect((await fetch(base() + repo + '/grpc')).status).toBe(404);
+    expect(docker.some((c) => c.includes('grpcurl') || c.includes(' stop'))).toBe(false);
+  });
+
   it('service status is 404 for a run that never deployed', async () => {
     await writeRun(runs, 'hello-001-r1', [started('hello-001-r1')], state('running'));
     expect((await fetch(base() + '/api/runs/hello-001-r1/service')).status).toBe(404);

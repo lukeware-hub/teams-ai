@@ -167,7 +167,7 @@ const openLink = (href: string, testId: string, text: string, primary: boolean, 
   </a>
 );
 const recheckButton = (checking: boolean, onRecheck: () => void) => (
-  <ActionButton className="link-button min-h-10 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} busy={checking} icon={<Icon name="refresh" size={14} />}>
+  <ActionButton className="link-button ml-auto min-h-10 px-[0.65rem] text-[0.8125rem]" data-testid="recheck-service" onClick={onRecheck} busy={checking} icon={<Icon name="refresh" size={14} />}>
     Verificar de novo
   </ActionButton>
 );
@@ -182,10 +182,10 @@ const SERVICE = {
   status: 'flex flex-wrap items-center justify-between gap-x-4 gap-y-2',
   actions: 'flex flex-wrap gap-2 empty:hidden [&>*]:flex-auto',
 };
-interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => unknown; onRecheck: () => void }
+interface ControlProps { status: ServiceStatus | null; starting: boolean; canStart: boolean; onStart: () => unknown }
 
 /** Is the service up, where to open it, and a button to bring it up when it is not. */
-function ServiceControls({ service, status, starting, canStart, onStart, onRecheck }: { service: NonNullable<Report['service']> } & ControlProps) {
+function ServiceControls({ service, status, starting, canStart, onStart }: { service: NonNullable<Report['service']> } & ControlProps) {
   const links = serviceLinks(service, window.location.hostname);
   const checking = status === null;
   const online = status?.online === true;
@@ -193,7 +193,6 @@ function ServiceControls({ service, status, starting, canStart, onStart, onReche
     <div data-testid="validation-service-controls" className={SERVICE.controls}>
       <div data-testid="validation-service-status" className={SERVICE.status}>
         <StatePill checking={checking} online={online} testId="service-online" />
-        {recheckButton(checking, onRecheck)}
       </div>
       <div data-testid="validation-service-actions" className={SERVICE.actions}>
         {online && links.appUrl && (status?.ui === true || service.kind === 'front') ? openLink(links.appUrl, 'open-app', 'Abrir aplicação', true) : null}
@@ -220,7 +219,7 @@ function ArtifactDownload({ runId, artifact }: { runId: string; artifact: string
 }
 
 /** A services run: one line per service with its state and its link, then one recheck and one start for them all. */
-function ServiceList({ services, status, starting, canStart, onStart, onRecheck }: { services: NonNullable<Report['services']> } & ControlProps) {
+function ServiceList({ services, status, starting, canStart, onStart }: { services: NonNullable<Report['services']> } & ControlProps) {
   const checking = status === null;
   const entryOf = (service: string) => status?.services?.find((s) => s.service === service);
   const onlineOf = (service: string) => entryOf(service)?.online === true;
@@ -230,7 +229,7 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
         {services.map((s) => {
           const links = serviceLinks(s, window.location.hostname);
           return (
-            <li key={s.service} data-testid={`service-${s.service}`} className="flex flex-wrap items-center gap-3">
+            <li key={s.service} data-testid={`service-${s.service}`} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface-sunken px-4 py-3 [&>a:first-of-type]:md:ml-auto">
               <strong data-testid={`validation-service-name-${s.service}`}>{s.service}</strong>
               <StatePill checking={checking} online={onlineOf(s.service)} />
               {onlineOf(s.service) && links.appUrl && (entryOf(s.service)?.ui === true || s.kind === 'front') ? openLink(links.appUrl, `open-app-${s.service}`, 'Abrir aplicação', false, `Abrir aplicação (${s.service})`) : null}
@@ -240,7 +239,6 @@ function ServiceList({ services, status, starting, canStart, onStart, onRecheck 
           );
         })}
       </ul>
-      <div data-testid="validation-service-list-status" className={SERVICE.status}>{recheckButton(checking, onRecheck)}</div>
       <div data-testid="validation-service-list-actions" className={SERVICE.actions}>
         {!checking && services.some((s) => !onlineOf(s.service)) ? startButton(starting, canStart, onStart, ['Subir serviços', 'Subindo os serviços…']) : null}
       </div>
@@ -460,15 +458,16 @@ export function ValidationView({ detail, specStatus, actionError = null, service
                     <section data-testid="validation-service-card" className="card">
                       <div data-testid="validation-service-head" className={RUN_UI.panelHead}>
                         <h2 data-testid="validation-service-title">{report.services ? 'Serviços publicados' : report.service?.kind === 'mobile' ? 'Aplicativo gerado' : 'Serviço publicado'}</h2>
+                        {report.service && report.service.kind !== 'mobile' ? recheckButton(serviceStatus === null, onRecheckService) : null}
                       </div>
                       {report.service ? (
                         <>
                           {report.services ? (
-                            <ServiceList services={report.services} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                            <ServiceList services={report.services} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} />
                           ) : report.service.kind === 'mobile' ? (
                             <ArtifactDownload runId={report.runId} artifact={report.service.artifact ?? ''} />
                           ) : (
-                            <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} onRecheck={onRecheckService} />
+                            <ServiceControls service={report.service} status={serviceStatus} starting={startingService} canStart={specStatus === 'awaiting-validation'} onStart={onStartService} />
                           )}
                           <SmokeTable runId={detail.runId} />
                         </>

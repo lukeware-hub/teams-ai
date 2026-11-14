@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { graphPath, projectPath, refinePath } from '../routes.js';
 import { NewSpecDialog } from '../components/NewSpecDialog.js';
 import { Link, useNavigate } from 'react-router-dom';
-import { refineApi, runApi, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
+import { refineApi, runApi, tasksPercent, type DraftRow, type NameRequest, type NameSuggestion, type ProjectRow } from '../api.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
 import { Icon } from '../components/Icons.js';
@@ -57,6 +57,8 @@ function ProjectsSkeleton() {
 
 export function ProjectsView(p: {
   projects: ProjectRow[];
+  /** Share of tasks delivered and tested, by project; a project missing here falls back to its concluded specs. */
+  percents?: Record<string, number | null>;
   drafts: DraftRow[];
   loading?: boolean;
   error: string | null;
@@ -305,16 +307,18 @@ export function ProjectsView(p: {
       {visible.length > 0 ? (
         <div className={grid} data-testid="projects-grid">
           {visible.map((pr) => {
-            const percent = pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100);
+            const percent = p.percents?.[pr.projectId] ?? (pr.specs.length === 0 ? null : Math.round((pr.specs.filter((s) => s.status === 'done' || s.status === 'complete').length / pr.specs.length) * 100));
             const busy = busyIds.includes(pr.projectId);
             return (
               <article className={card} key={pr.projectId} data-testid={`projects-card-${pr.projectId}`}>
                 <div className={cardBody} data-testid={`projects-card-body-${pr.projectId}`}>
-                  <h2 className={cardTitle} data-testid={`projects-card-title-${pr.projectId}`}>{pr.name || pr.projectId}</h2>
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className={cardTitle} data-testid={`projects-card-title-${pr.projectId}`}>{pr.name || pr.projectId}</h2>
+                    {percent === null ? null : <span className="flex-none text-[0.8125rem] font-[650] text-ink-soft tabular-nums" data-testid={`projects-card-percent-${pr.projectId}`} aria-label={`${percent}% concluído`}>{percent}%</span>}
+                  </div>
                   <p className={cardDesc} data-testid={`projects-card-desc-${pr.projectId}`}>{pr.description || 'Sem descrição.'}</p>
                   <p className={cardFacts} data-testid={`projects-card-facts-${pr.projectId}`}>
                     {plural(pr.specs.length, 'spec', 'specs')}
-                    {percent === null ? null : ` · ${percent}% concluído`}
                   </p>
                 </div>
                 <div className={cardActions} data-testid={`projects-card-actions-${pr.projectId}`}>
@@ -408,6 +412,7 @@ export function ProjectsView(p: {
 
 export function Projects() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [percents, setPercents] = useState<Record<string, number | null>>({});
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [deleting, setDeleting] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -416,7 +421,11 @@ export function Projects() {
   const navigate = useNavigate();
   const refresh = useCallback(async () => {
     try {
-      setProjects(await runApi.projects());
+      const rows = await runApi.projects();
+      setProjects(rows);
+      // A project whose repositories cannot be read keeps the fallback percent.
+      const cards = await Promise.all(rows.map((r) => runApi.repositories(r.projectId).catch(() => [])));
+      setPercents(Object.fromEntries(rows.map((r, i) => [r.projectId, tasksPercent(cards[i] ?? [])])));
       setDrafts(await refineApi.list());
       setDeleting(await runApi.deletingProjects());
     } catch (e) {
@@ -453,6 +462,7 @@ export function Projects() {
   return (
     <ProjectsView
       projects={projects}
+      percents={percents}
       drafts={drafts}
       loading={loading}
       error={error}

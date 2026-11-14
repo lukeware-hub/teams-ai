@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { serviceLinks } from '@server/deploy/service-links';
-import { refineApi, runApi, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
+import { refineApi, runApi, tasksPercent, type SpecPageRow, type DraftRow, type NameRequest, type NameSuggestion, type ProjectDoc, type ProjectRow, type RepoCardView, type Report, type RunRow, type ServiceStatus, type SpecRow } from '../api.js';
 import { mdDownload } from '../download.js';
 import { ActionButton } from '../components/ActionButton.js';
 import { ConfirmDialog } from '../components/ConfirmDialog.js';
@@ -183,7 +183,8 @@ export function ProjectHubView(p: {
   if (!p.project) return <main data-testid="project-hub-empty" />;
   const pr = p.project;
   const refineSpec = p.backlogs?.find((id) => id === `${pr.projectId}-001`);
-  const percent = pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100);
+  // Progress counts tasks delivered and tested; a project with no planned tasks yet counts its concluded specs.
+  const percent = tasksPercent(p.repositories ?? []) ?? (pr.specs.length === 0 ? null : Math.round((doneCount / pr.specs.length) * 100));
   const allConcluded = percent === 100;
   return (
     <main data-testid="project-hub-main">

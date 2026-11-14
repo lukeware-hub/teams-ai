@@ -63,12 +63,12 @@ describe('ProjectsView', () => {
     const o = on();
     render(
       <MemoryRouter>
-        <ProjectsView projects={projects} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
+        <ProjectsView projects={projects} percents={{ 'hello-app': 19 }} drafts={[]} error={null} onAdd={o.add} onNewProject={o.newProject} onDeleteDraft={o.deleteDraft} onDeleteProject={o.deleteProject} />
       </MemoryRouter>,
     );
     expect(screen.getByText('Hello app')).toBeTruthy();
     expect(screen.getByText('A tiny HTTP service that greets by name.')).toBeTruthy();
-    expect(screen.getByText('33% concluído', { exact: false })).toBeTruthy();
+    expect(screen.getByTestId('projects-card-percent-hello-app').textContent).toBe('19%');
     expect(screen.getByTestId('open-project-hello-app').getAttribute('href')).toBe('/projects/hello-app');
     fireEvent.click(screen.getByTestId('delete-project-hello-app'));
     fireEvent.change(await screen.findByTestId('delete-project-name'), { target: { value: 'hello-app' } });

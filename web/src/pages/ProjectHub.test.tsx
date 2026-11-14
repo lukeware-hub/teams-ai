@@ -592,6 +592,11 @@ describe('the backlog banner on the project page', () => {
     ];
     chain.slice(1).forEach((el, i) => expect(chain[i].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy());
   });
+  it('shows the progress as the share of tasks delivered and tested', () => {
+    const repository: RepoCardView = { name: 'hello-api', kind: 'api', responsibility: 'Saúda', status: 'running', specs: 1, plans: 1, tasks: 4, tasksDone: 1, blockers: 0 };
+    render(view({ repositories: [repository] }));
+    expect(screen.getByTestId('project-hub-progress-value').textContent).toBe('25%');
+  });
   it('keeps both header links in one container, graph first', () => {
     render(view({ project: { ...project, repoUrl: 'https://github.com/acme/hello' } }));
     const links = screen.getByTestId('project-hub-header-links');

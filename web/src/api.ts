@@ -2,6 +2,8 @@ import type { Divergence } from '@server/refine/checklist';
 /** One of the five documents a stage refines. */
 type StageFile = 'flow.md' | 'project.md' | 'briefing.md' | 'stack.md' | 'design.md';
 import type { DashboardTable, RepoDashboard } from '@server/api/repository-dashboard.js';
+import type { GrpcCallResult, GrpcCatalog } from '@server/grpc/grpc.js';
+import type { TokenChoice } from '@server/grpc/token.js';
 import type { GraphView } from '@server/api/repository-graph.js';
 export type { GraphView };
 import type { Page, PageRequest } from '@server/api/paging.js';
@@ -301,6 +303,12 @@ export interface RepoCardView {
   blockers: number;
 }
 
+/** The share of planned tasks delivered and tested across the repositories, or null while no task is planned. */
+export function tasksPercent(cards: readonly RepoCardView[]): number | null {
+  const tasks = cards.reduce((sum, c) => sum + c.tasks, 0);
+  return tasks === 0 ? null : Math.round((cards.reduce((sum, c) => sum + c.tasksDone, 0) / tasks) * 100);
+}
+
 /** One spec of a repository's dashboard: its state, its plan, its tasks, and whether its run needs the owner. */
 export interface RepoSpecView {
   specId: string;
@@ -350,6 +358,10 @@ export const runApi = {
   decide: (runId: string, answers: Array<{ taskId: string; answer: string }>) => jsonPost(`/runs/${encodeURIComponent(runId)}/decisions`, { decisions: answers }).then((r) => json<{ saved: number }>(r)),
   serviceStatus: (runId: string) => fetch(`${R}/runs/${encodeURIComponent(runId)}/service`).then((r) => json<ServiceStatus>(r)),
   setService: (projectId: string, repo: string, action: 'start' | 'stop') => jsonPost(`/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/service/${action}`).then((r) => json<{ running: boolean }>(r)),
+  grpcCatalog: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/grpc`).then((r) => json<GrpcCatalog>(r)),
+  grpcCall: (projectId: string, repo: string, call: { method: string; body: string; headers: string }) => jsonPost(`/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/grpc/call`, call).then((r) => json<GrpcCallResult>(r)),
+  grpcTokens: (projectId: string, repo: string) => fetch(`${R}/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/grpc/tokens`).then((r) => json<{ tokens: TokenChoice[] }>(r)).then((b) => b.tokens),
+  grpcToken: (projectId: string, repo: string, name: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repo)}/grpc/token`, { name }).then((r) => json<{ header: string }>(r)).then((b) => b.header),
   artifactUrl: (runId: string) => `${R}/runs/${encodeURIComponent(runId)}/artifact`,
   deployAgain: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/deploy`).then((r) => json<{ runId: string }>(r)),
   complete: (projectId: string, specId: string) => jsonPost(`/projects/${encodeURIComponent(projectId)}/specs/${encodeURIComponent(specId)}/complete`).then((r) => json<{ runId: string }>(r)),

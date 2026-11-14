@@ -35,6 +35,9 @@ function shortcutOf(kind: Shortcut['kind'], repo: string, deploy: LastDeploy | n
   return links.appUrl ? { kind, href: links.appUrl, reason: null } : { kind, href: null, reason: 'a porta do serviço não está publicada' };
 }
 
+/** True when the architecture says other repositories reach this one over gRPC or ConnectRPC. */
+export const speaksGrpc = (integrations: readonly string[]): boolean => integrations.some((i) => /grpc|connectrpc/i.test(i));
+
 /** The address that opens the running system: its health path, so an API answers with a page; null while the system is down or its port is not published. */
 export function systemHrefOf(repo: string, deploy: LastDeploy | null, probe: ServiceStatus | null, hostname: string): string | null {
   if (!deploy || !probe?.online) return null;

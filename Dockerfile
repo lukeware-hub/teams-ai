@@ -44,6 +44,22 @@ RUN set -eu; \
   tar -xzOf /tmp/gh.tar.gz "gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh" > /opt/teams-ai-bin/gh; \
   chmod 755 /opt/teams-ai-bin/gh; \
   rm /tmp/gh.tar.gz
+# grpcurl and buf feed the gRPC test screen: grpcurl calls a deployed service, buf turns its .proto files into a descriptor set. Pinned releases, sha256 checked.
+ARG GRPCURL_VERSION=1.9.4
+ARG GRPCURL_SHA256_AMD64=97e13d58d2733a0e62cd2571d1d5f0c02823f0d25282f08bddedf1ad9c5d1736
+ARG GRPCURL_SHA256_ARM64=ad66227d90631da5428b4a5ccf28d63846f0f15649d8b2367df044a59edbb617
+ARG BUF_VERSION=1.75.0
+ARG BUF_SHA256_AMD64=fad1e38d6909bbb583a4da81d8c02a01046e2cd663bde7e337dd24277393764b
+ARG BUF_SHA256_ARM64=00eb190aa82df17f393e05b04889cc60a0b13b3259d336e21a87d5f23ab4fd26
+RUN set -eu; \
+  case "$TARGETARCH" in amd64) g=$GRPCURL_SHA256_AMD64; ga=x86_64; b=$BUF_SHA256_AMD64; ba=x86_64 ;; arm64) g=$GRPCURL_SHA256_ARM64; ga=arm64; b=$BUF_SHA256_ARM64; ba=aarch64 ;; *) echo "unsupported arch $TARGETARCH" >&2; exit 1 ;; esac; \
+  curl -fsSL -o /tmp/grpcurl.tar.gz "https://github.com/fullstorydev/grpcurl/releases/download/v${GRPCURL_VERSION}/grpcurl_${GRPCURL_VERSION}_linux_${ga}.tar.gz"; \
+  echo "$g  /tmp/grpcurl.tar.gz" | sha256sum -c -; \
+  tar -xzOf /tmp/grpcurl.tar.gz grpcurl > /opt/teams-ai-bin/grpcurl; \
+  curl -fsSL -o /opt/teams-ai-bin/buf "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-${ba}"; \
+  echo "$b  /opt/teams-ai-bin/buf" | sha256sum -c -; \
+  chmod 755 /opt/teams-ai-bin/grpcurl /opt/teams-ai-bin/buf; \
+  rm /tmp/grpcurl.tar.gz
 # graphify builds the code graph the step packs read (R11.13 slice 3); pinned to the version the CLI spike recorded.
 RUN PIP_NO_CACHE_DIR=1 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install graphifyy==0.9.102
 # agent-reach is the browser and search CLI the agents call (role settings allow it); pinned to a commit, installed from the repository, not PyPI.

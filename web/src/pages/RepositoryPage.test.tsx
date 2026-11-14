@@ -149,16 +149,45 @@ describe('RepositoryPage', () => {
     await waitFor(() => expect(deploy).toHaveBeenCalledWith('shop', 'cart'));
   });
 
-  it('stops the container only after a second click that confirms it', async () => {
+  it('stops the container only after the owner confirms in the dialog, and can cancel', async () => {
     vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
     vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
     const set = vi.spyOn(runApi, 'setService').mockResolvedValue({ running: false });
     renderAt();
     fireEvent.click(await screen.findByTestId('stop-system'));
     expect(set).not.toHaveBeenCalled();
-    expect(screen.getByTestId('stop-system').textContent).toBe('Confirmar parada');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByTestId('stop-confirm')).toBeNull();
     fireEvent.click(screen.getByTestId('stop-system'));
+    fireEvent.click(screen.getByTestId('stop-confirm'));
     await waitFor(() => expect(set).toHaveBeenCalledWith('shop', 'shop-api', 'stop'));
+  });
+
+  it('shows a stop failure under the description, not next to the buttons', async () => {
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    vi.spyOn(runApi, 'setService').mockRejectedValue(new Error('404'));
+    renderAt();
+    fireEvent.click(await screen.findByTestId('stop-system'));
+    fireEvent.click(screen.getByTestId('stop-confirm'));
+    const error = await screen.findByTestId('repo-header-start-error');
+    expect(error.textContent).toBe('Não foi possível parar o sistema. Tente de novo.');
+    expect(screen.getByTestId('repo-shortcuts').contains(error)).toBe(false);
+  });
+
+  it('offers the gRPC button, a link to its own screen, only for a gRPC repository with a deploy', async () => {
+    vi.spyOn(runApi, 'repositoryDashboard').mockResolvedValue(dashboard());
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail());
+    const plain = renderAt();
+    await screen.findByTestId('repo-header');
+    expect(screen.queryByTestId('shortcut-grpc')).toBeNull();
+    plain.unmount();
+    vi.spyOn(runApi, 'repository').mockResolvedValue(detail({ integrations: ['web-bff → shop-api: gRPC sobre HTTP/2'] }));
+    renderAt();
+    const button = await screen.findByTestId('shortcut-grpc');
+    expect(button.tagName).toBe('A');
+    expect(button.getAttribute('href')).toBe('/projects/shop/shop-api/grpc');
+    expect(screen.queryByTestId('repo-grpc')).toBeNull();
   });
 
   it('says a gRPC service has no Swagger instead of only that it does not exist', async () => {

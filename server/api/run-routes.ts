@@ -28,6 +28,8 @@ import { reduceEvents } from '../pipeline/run-state.js';
 import { locateTests, testsByRepo, type TestRef } from '../evidence/locate.js';
 import { EventLogCorruptError, loadEventsCached, type StoredEvent } from '../store/event-store.js';
 import { httpGet, type HttpGet } from '../deploy/target.js';
+import { grpcCatalog, grpcInvoke, grpcTarget, parseHeaders } from '../grpc/grpc.js';
+import { mintProjectToken, tokenChoices } from '../grpc/token.js';
 import { setServiceRunning, teardownProject } from '../deploy/docker-local.js';
 import { releaseDeployPort } from '../deploy/port-registry.js';
 import { withGitAuth } from '../git/auth.js';
@@ -73,6 +75,8 @@ export interface RunRoutesDeps {
   resolveHost?: ResolveHost;
   /** Probe of the deployed service for the validation page; the real one is fetch with a timeout. */
   httpGet?: HttpGet;
+  /** Sends the gRPC test screen's calls; the global fetch by default. */
+  connectFetch?: typeof fetch;
   /** Runs the docker commands that take a deleted project's deploys down; the real one by default. */
   exec?: Exec;
   /** Prioritizes the spec in the started backlog program that still has it pending; null when no program owns it. */
@@ -579,6 +583,22 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
       programStops: detail.reasons.map((r) => ({ specId: r.specId, reason: r.reason })),
     };
   };
+  // Where a repository's deployed service answers (from its last deploy, never from the request) and where its code lives.
+  const grpcContext = async (params: Record<string, string>) => {
+    const deploy = buildDashboard(await dashboardInput(params)).lastDeploy;
+    if (!deploy) throw new HttpError(404, 'this repository has no deployed service');
+    const own = deploy.services?.find((s) => s.service === params.repo);
+    const target = grpcTarget(own?.url ?? deploy.url);
+    if (!target) throw new HttpError(404, 'the deployed service has no published port');
+    const ws = workspacePaths((await index()).cfg, params.projectId!, deps.home);
+    return { target, repo: serviceWorkspace(ws, own ? params.repo! : null).repo };
+  };
+  // Where a project remembers its environment recipes and keeps its secrets, for the test token of the gRPC screen.
+  const tokenDirs = async (projectId: string) => {
+    if (!ID_PATTERNS.SLUG.test(projectId)) throw new HttpError(400, `invalid project ${projectId}`);
+    const ws = workspacePaths((await index()).cfg, projectId, deps.home);
+    return { manifestDir: path.posix.join(ws.root, 'environment'), secretsDir: ws.secrets };
+  };
   return [
     {
       method: 'GET',
@@ -633,6 +653,60 @@ export function runRoutes(deps: RunRoutesDeps): Route[] {
         const result = await setServiceRunning(deps.exec ?? execCommand, params.projectId!, own, on);
         if (!result.ok) throw new HttpError(502, result.detail);
         json(200, { running: on });
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/grpc`,
+      handler: async ({ params, json }) => {
+        const { target, repo } = await grpcContext(params);
+        try {
+          json(200, await grpcCatalog(deps.exec ?? execCommand, target, repo));
+        } catch (e) {
+          throw new HttpError(502, (e as Error).message);
+        }
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/repositories/:repo/grpc/call`,
+      handler: async ({ params, body, json }) => {
+        const { method, body: message, headers } = ((await body()) ?? {}) as { method?: unknown; body?: unknown; headers?: unknown };
+        if (typeof method !== 'string' || typeof message !== 'string' || (headers !== undefined && typeof headers !== 'string')) throw new HttpError(400, 'method and body are required; headers must be text');
+        let sent: Record<string, string>;
+        try {
+          sent = parseHeaders(headers ?? '');
+        } catch (e) {
+          throw new HttpError(400, (e as Error).message);
+        }
+        const { target } = await grpcContext(params);
+        try {
+          json(200, await grpcInvoke(target, method, message, sent, deps.connectFetch));
+        } catch (e) {
+          throw new HttpError(400, (e as Error).message);
+        }
+      },
+    },
+    {
+      method: 'GET',
+      path: `${P}/projects/:projectId/repositories/:repo/grpc/tokens`,
+      handler: async ({ params, json }) => {
+        const dirs = await tokenDirs(params.projectId!);
+        json(200, { tokens: await tokenChoices(dirs.manifestDir) });
+      },
+    },
+    {
+      method: 'POST',
+      path: `${P}/projects/:projectId/repositories/:repo/grpc/token`,
+      handler: async ({ params, body, json }) => {
+        const { name } = ((await body()) ?? {}) as { name?: unknown };
+        if (typeof name !== 'string' || !/^[A-Z][A-Z0-9_]{0,79}$/.test(name)) throw new HttpError(400, 'name must be the name of a token recipe');
+        const dirs = await tokenDirs(params.projectId!);
+        try {
+          json(200, { header: `authorization: Bearer ${await mintProjectToken(deps.exec ?? execCommand, params.projectId!, dirs, name)}` });
+        } catch (e) {
+          throw new HttpError(502, (e as Error).message);
+        }
       },
     },
     {

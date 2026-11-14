@@ -12,6 +12,7 @@ import { Onboarding } from './pages/Onboarding.js';
 import { OnboardingGate, StatusRedirect } from './pages/OnboardingGate.js';
 import { ProjectHub } from './pages/ProjectHub.js';
 import { ProjectGraph } from './pages/ProjectGraph.js';
+import { GrpcPage } from './pages/GrpcPage.js';
 import { RepositoryPage } from './pages/RepositoryPage.js';
 import { Projects } from './pages/Projects.js';
 import { RefinementPage } from './pages/Refinement.js';
@@ -62,6 +63,7 @@ export function App() {
             <Route path="/projects/:projectId" element={<ProjectHub />} />
             <Route path="/graph/:projectId" element={<ProjectGraph />} />
             <Route path="/projects/:projectId/:repoId" element={<RepositoryPage />} />
+            <Route path="/projects/:projectId/:repoId/grpc" element={<GrpcPage />} />
             <Route path="/runs/:runId" element={<RunPage />} />
             <Route path="/refine/:projectId/:specId" element={<RefinementPage />} />
             <Route path="/refine/:projectId/:specId/program" element={<ExecutionRedirect />} />

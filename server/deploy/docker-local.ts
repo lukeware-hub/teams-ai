@@ -71,6 +71,20 @@ export async function setServiceRunning(exec: Exec, projectId: string, service: 
   return r.exitCode === 0 ? { ok: true, detail: on ? 'running' : 'stopped' } : { ok: false, detail: dockerFailure(`docker compose ${on ? 'start' : 'stop'}`, r.stderr) };
 }
 
+/** One HTTP call from inside the project's shared network, so a platform container is reached by its name from any host. Headers and body go in through stdin, never in the command line. */
+export async function platformRequest(exec: Exec, projectId: string, req: PlatformRequest): Promise<{ status: number; body: string }> {
+  const q = (s: string) => `"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n').replaceAll('\r', '\\r').replaceAll('\t', '\\t')}"`;
+  const config = [
+    'silent', 'show-error', `request = ${q(req.method)}`, `url = ${q(req.url)}`, `write-out = ${q('\n%{http_code}')}`,
+    ...Object.entries(req.headers ?? {}).map(([k, v]) => `header = ${q(`${k}: ${v}`)}`),
+    ...(req.body === undefined ? [] : [`data-binary = ${q(req.body)}`]),
+  ].join('\n');
+  const r = await exec({ bin: 'docker', args: ['run', '--rm', '-i', '--network', sharedNetwork(projectId), CURL_IMAGE, '-K', '-'], stdin: config, timeoutMs: 60_000 });
+  if (r.exitCode !== 0) throw new Error(`request to ${new URL(req.url).host} failed: ${r.stderr.trim().slice(-300)}`);
+  const at = r.stdout.lastIndexOf('\n');
+  return { status: Number(r.stdout.slice(at + 1)), body: r.stdout.slice(0, Math.max(at, 0)) };
+}
+
 /** A docker failure that opens with the last stderr line, where docker writes the cause, followed by the stderr's tail. */
 function dockerFailure(what: string, stderr: string): string {
   const tail = stderr.slice(-2000);
@@ -250,18 +264,9 @@ export class DockerLocalTarget implements DeployTarget {
     return { ok: false, detail: dockerFailure('docker compose up', up!.stderr) };
   }
 
-  /** One HTTP call from inside the project's shared network, so a platform container is reached by its name from any host. Headers and body go in through stdin, never in the command line. */
-  async platformRequest(projectId: string, req: PlatformRequest): Promise<{ status: number; body: string }> {
-    const q = (s: string) => `"${s.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('\n', '\\n').replaceAll('\r', '\\r').replaceAll('\t', '\\t')}"`;
-    const config = [
-      'silent', 'show-error', `request = ${q(req.method)}`, `url = ${q(req.url)}`, `write-out = ${q('\n%{http_code}')}`,
-      ...Object.entries(req.headers ?? {}).map(([k, v]) => `header = ${q(`${k}: ${v}`)}`),
-      ...(req.body === undefined ? [] : [`data-binary = ${q(req.body)}`]),
-    ].join('\n');
-    const r = await this.deps.exec({ bin: 'docker', args: ['run', '--rm', '-i', '--network', sharedNetwork(projectId), CURL_IMAGE, '-K', '-'], stdin: config, timeoutMs: 60_000 });
-    if (r.exitCode !== 0) throw new Error(`request to ${new URL(req.url).host} failed: ${r.stderr.trim().slice(-300)}`);
-    const at = r.stdout.lastIndexOf('\n');
-    return { status: Number(r.stdout.slice(at + 1)), body: r.stdout.slice(0, Math.max(at, 0)) };
+  /** One HTTP call from inside the project's shared network, so a platform container is reached by its name from any host. */
+  platformRequest(projectId: string, req: PlatformRequest): Promise<{ status: number; body: string }> {
+    return platformRequest(this.deps.exec, projectId, req);
   }
 
   private docker(args: string[], env?: Record<string, string>, timeoutMs = 120_000) {
